@@ -13,3 +13,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bytemuck = { version = "1", features = ["derive"] }
 wgpu = "27"
 egui = "0.33"
+grafton-ndi = "1.0.0"

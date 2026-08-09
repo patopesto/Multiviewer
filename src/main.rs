@@ -1,5 +1,6 @@
 mod compositor;
 mod config;
+mod ndi;
 mod source;
 mod ui;
 
@@ -32,6 +33,7 @@ fn main() -> eframe::Result<()> {
 struct App {
     cfg: Config,
     registry: Registry,
+    ndi: Option<ndi::Discovery>,
     comp: Option<Compositor>,
     dirty: bool,
 }
@@ -50,7 +52,14 @@ impl App {
                 cfg.grid.cells[i] = Some(name);
             }
         }
-        Self { cfg, registry, comp: None, dirty: true }
+        let ndi = ndi::Discovery::start();
+        Self {
+            cfg,
+            registry,
+            ndi: Some(ndi),
+            comp: None,
+            dirty: true,
+        }
     }
 }
 
@@ -95,7 +104,7 @@ impl egui_wgpu::CallbackTrait for GridCallback {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        ui::side_panel(ctx, &mut self.cfg, &mut self.registry, &mut self.dirty);
+        ui::side_panel(ctx, &mut self.cfg, &mut self.registry, self.ndi.as_ref(), &mut self.dirty);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             let rect = ui.available_rect_before_wrap();

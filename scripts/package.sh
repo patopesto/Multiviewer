@@ -25,12 +25,19 @@ Darwin)
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 EOF
-    if ls vendor/ndi/macos/*.dylib >/dev/null 2>&1; then
-        cp vendor/ndi/macos/*.dylib "$BUNDLE/Contents/Frameworks/"
+    SDK_LIB="/Library/NDI SDK for Apple/lib/macOS/libndi.dylib"
+    VEND_DIR="vendor/ndi/macos"
+    mkdir -p "$VEND_DIR"
+    if [ -f "$SDK_LIB" ]; then
+        cp "$SDK_LIB" "$VEND_DIR/"
+        echo "copied NDI runtime from SDK"
+    fi
+    if ls "$VEND_DIR"/*.dylib >/dev/null 2>&1; then
+        cp "$VEND_DIR"/*.dylib "$BUNDLE/Contents/Frameworks/"
         install_name_tool -add_rpath @executable_path/../Frameworks "$BUNDLE/Contents/MacOS/$APP" 2>/dev/null || true
         echo "bundled NDI runtime"
     else
-        echo "warning: vendor/ndi/macos is empty, NDI will be unavailable" >&2
+        echo "warning: no NDI runtime found, NDI will be unavailable" >&2
     fi
     codesign --force --deep -s - "$BUNDLE" 2>/dev/null || true
     echo "wrote $BUNDLE"
@@ -40,8 +47,9 @@ Linux)
     rm -rf "$OUT"
     mkdir -p "$OUT"
     cp "target/release/$APP" "$OUT/"
-    if ls vendor/ndi/linux/*.so* >/dev/null 2>&1; then
-        cp -a vendor/ndi/linux/*.so* "$OUT/"
+    VEND_DIR="vendor/ndi/linux"
+    if ls "$VEND_DIR"/*.so* >/dev/null 2>&1; then
+        cp -a "$VEND_DIR"/*.so* "$OUT/"
         command -v patchelf >/dev/null && patchelf --set-rpath '$ORIGIN' "$OUT/$APP" || true
         echo "bundled NDI runtime"
     else

@@ -12,6 +12,7 @@ pub struct CpuFrame {
     pub data: Arc<Vec<u8>>,
     pub w: u32,
     pub h: u32,
+    #[allow(dead_code)]
     pub fmt: PixelFormat,
     /// Monotonic per-source counter; compositor uploads only when this changes.
     pub seq: u64,
@@ -47,12 +48,25 @@ impl Registry {
         self.sources.push(Box::new(src));
     }
 
+    pub fn add_ndi(&mut self, name: String, source: grafton_ndi::Source) {
+        if self.sources.iter().any(|s| s.name() == name) {
+            return; // already connected
+        }
+        let src = crate::ndi::NdiSource::spawn(name.clone(), source);
+        self.sources.push(Box::new(src));
+    }
+
     pub fn get(&self, name: &str) -> Option<&dyn VideoSource> {
         self.sources.iter().find(|s| s.name() == name).map(|s| &**s)
     }
 
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.sources.iter().map(|s| s.name())
+    }
+
+    #[allow(dead_code)]
+    pub fn remove(&mut self, name: &str) {
+        self.sources.retain(|s| s.name() != name);
     }
 }
 

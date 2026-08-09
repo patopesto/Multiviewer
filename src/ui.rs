@@ -1,7 +1,14 @@
 use crate::config::Config;
+use crate::ndi::Discovery;
 use crate::source::Registry;
 
-pub fn side_panel(ctx: &egui::Context, cfg: &mut Config, registry: &mut Registry, dirty: &mut bool) {
+pub fn side_panel(
+    ctx: &egui::Context,
+    cfg: &mut Config,
+    registry: &mut Registry,
+    ndi: Option<&Discovery>,
+    dirty: &mut bool,
+) {
     egui::SidePanel::left("panel").default_width(280.0).show(ctx, |ui| {
         ui.heading("Sources");
         if ui.button("+ Test source").clicked() {
@@ -9,6 +16,30 @@ pub fn side_panel(ctx: &egui::Context, cfg: &mut Config, registry: &mut Registry
         }
         for name in registry.names().map(str::to_owned).collect::<Vec<_>>() {
             ui.label(format!("● {name}"));
+        }
+
+        ui.separator();
+        ui.heading("NDI Sources");
+        if let Some(disco) = ndi {
+            let list = disco.list();
+            if list.is_empty() {
+                ui.label("(scanning…)");
+            } else {
+                for src in &list {
+                    let name = &src.name;
+                    let already = registry.names().any(|n| n == name);
+                    ui.horizontal(|ui| {
+                        ui.label(name);
+                        if already {
+                            ui.label("✓");
+                        } else if ui.button("Connect").clicked() {
+                            registry.add_ndi(name.clone(), src.clone());
+                        }
+                    });
+                }
+            }
+        } else {
+            ui.label("NDI unavailable");
         }
 
         ui.separator();

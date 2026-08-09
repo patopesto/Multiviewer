@@ -1,2 +1,9 @@
-/target
-/dist
+# Rust
+target/
+dist/
+
+# NDI
+vendor/ndi/**/*.lib
+vendor/ndi/**/*.dylib
+vendor/ndi/**/*.dll
+vendor/ndi/**/*.so
