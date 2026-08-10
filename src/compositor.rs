@@ -1,9 +1,26 @@
-use crate::config::Grid;
-use crate::source::{Frame, Registry};
+use crate::config::{Canvas, TextureMode};
+use crate::sources::{Frame, Registry};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-const MAX_CELLS: usize = 64; // 8x8 UI cap
+const MAX_LAYERS: usize = 256;
+
+/// A simple rectangle, replacing the previous egui::Rect dependency.
+pub struct Rect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+impl Rect {
+    pub fn width(&self) -> f32 {
+        self.w
+    }
+    pub fn height(&self) -> f32 {
+        self.h
+    }
+}
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -56,7 +73,7 @@ pub struct Compositor {
 
 pub struct Draw {
     pub verts: Arc<Vec<Vert>>,
-    /// (first_index, bind group) per grid cell, in cell order
+    /// (first_index, bind group) per layer, in z-order
     pub draws: Vec<(u32, Arc<wgpu::BindGroup>)>,
 }
 
@@ -132,12 +149,12 @@ impl Compositor {
 
         let vb = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("cells-vb"),
-            size: (MAX_CELLS * 4 * std::mem::size_of::<Vert>()) as u64,
+            size: (MAX_LAYERS * 4 * std::mem::size_of::<Vert>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let mut indices = Vec::with_capacity(MAX_CELLS * 6);
-        for i in 0..MAX_CELLS as u16 {
+        let mut indices = Vec::with_capacity(MAX_LAYERS * 6);
+        for i in 0..MAX_LAYERS as u16 {
             let v = i * 4;
             indices.extend_from_slice(&[v, v + 1, v + 2, v + 2, v + 3, v]);
         }
@@ -159,30 +176,35 @@ impl Compositor {
         }
     }
 
-    /// Per-frame: upload changed source textures, build quads for all cells.
-    /// `rect` is the grid viewport in points; aspect fitting needs its shape.
+    /// Per-frame: upload changed source textures, build quads for all layers.
     pub fn build(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        grid: &Grid,
+        canvas: &Canvas,
         registry: &Registry,
-        rect: egui::Rect,
+        panel_rect: &Rect,
     ) -> Draw {
-        // one texture upload per unique source, even if shown in several cells
-        let mut seen: HashMap<&str, Option<(Arc<wgpu::BindGroup>, f32)>> = HashMap::new();
-        let mut verts = Vec::with_capacity(grid.cells.len() * 4);
-        let mut draws = Vec::with_capacity(grid.cells.len());
+        let (scale, offset_x, offset_y) = canvas_transform(canvas, panel_rect);
+        let cx = panel_rect.x + offset_x;
+        let cy = panel_rect.y + offset_y;
 
-        for (i, cell) in grid.cells.iter().enumerate() {
-            let name = cell.as_deref();
-            let entry = name.and_then(|n| {
-                seen.entry(n)
+        let mut seen: HashMap<&str, Option<(Arc<wgpu::BindGroup>, f32)>> = HashMap::new();
+
+        let mut layers: Vec<_> = canvas.layers.iter().collect();
+        layers.sort_by_key(|l| l.z);
+
+        let mut verts = Vec::with_capacity(layers.len() * 4);
+        let mut draws = Vec::with_capacity(layers.len());
+
+        for (i, layer) in layers.iter().enumerate() {
+            let entry = layer.source_id.as_deref().and_then(|sid| {
+                seen.entry(sid)
                     .or_insert_with(|| {
-                        let src = registry.get(n)?;
-                        #[allow(irrefutable_let_patterns)] // phase 2 adds more Frame variants
+                        let src = registry.get(&sid.to_string())?;
+                        #[allow(irrefutable_let_patterns)]
                         let Frame::Cpu(f) = src.latest()?;
-                        let st = self.ensure_texture(device, queue, n, &f);
+                        let st = self.ensure_texture(device, queue, sid, &f);
                         Some((st.bg.clone(), f.w as f32 / f.h as f32))
                     })
                     .clone()
@@ -193,32 +215,52 @@ impl Compositor {
                 None => (self.shared.placeholder_bg.clone(), 16.0 / 9.0),
             };
 
-            let col = (i as u32) % grid.cols;
-            let row = (i as u32) / grid.cols;
-            let x0 = col as f32 / grid.cols as f32 * 2.0 - 1.0;
-            let x1 = (col + 1) as f32 / grid.cols as f32 * 2.0 - 1.0;
-            let y0 = 1.0 - row as f32 / grid.rows as f32 * 2.0;
-            let y1 = 1.0 - (row + 1) as f32 / grid.rows as f32 * 2.0;
+            let lx = cx + layer.x * scale;
+            let ly = cy + layer.y * scale;
+            let lw = layer.width as f32 * scale;
+            let lh = layer.height as f32 * scale;
 
-            // fit source aspect into the cell, centered (letterbox)
-            let cell_aspect =
-                (rect.width() / grid.cols as f32) / (rect.height() / grid.rows as f32);
-            let (mut sx, mut sy) = (1.0f32, 1.0f32);
-            if aspect > cell_aspect {
-                sy = cell_aspect / aspect;
-            } else {
-                sx = aspect / cell_aspect;
-            }
-            let cx = (x0 + x1) / 2.0;
-            let cy = (y0 + y1) / 2.0;
+            let x0 = (lx - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
+            let x1 = (lx + lw - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
+            let y0 = 1.0 - (ly - panel_rect.y) / panel_rect.height() * 2.0;
+            let y1 = 1.0 - (ly + lh - panel_rect.y) / panel_rect.height() * 2.0;
+
+            let layer_aspect = if lh > 0.0 { lw / lh } else { 1.0 };
+
+            let (sx, sy, u0, u1, v0, v1) = match layer.mode {
+                TextureMode::Fit => {
+                    if aspect > layer_aspect {
+                        let sy = layer_aspect / aspect;
+                        (1.0f32, sy, 0.0, 1.0, 0.0, 1.0)
+                    } else {
+                        let sx = aspect / layer_aspect;
+                        (sx, 1.0, 0.0, 1.0, 0.0, 1.0)
+                    }
+                }
+                TextureMode::Fill => {
+                    if aspect > layer_aspect {
+                        let u_scale = layer_aspect / aspect;
+                        let uc = 0.5;
+                        (1.0, 1.0, uc - u_scale / 2.0, uc + u_scale / 2.0, 0.0, 1.0)
+                    } else {
+                        let v_scale = aspect / layer_aspect;
+                        let vc = 0.5;
+                        (1.0, 1.0, 0.0, 1.0, vc - v_scale / 2.0, vc + v_scale / 2.0)
+                    }
+                }
+                TextureMode::Stretch => (1.0, 1.0, 0.0, 1.0, 0.0, 1.0),
+            };
+
+            let cx_ = (x0 + x1) / 2.0;
+            let cy_ = (y0 + y1) / 2.0;
             let hx = (x1 - x0) / 2.0 * sx;
             let hy = (y0 - y1) / 2.0 * sy;
 
             verts.extend_from_slice(&[
-                Vert { pos: [cx - hx, cy + hy], uv: [0.0, 0.0] },
-                Vert { pos: [cx + hx, cy + hy], uv: [1.0, 0.0] },
-                Vert { pos: [cx + hx, cy - hy], uv: [1.0, 1.0] },
-                Vert { pos: [cx - hx, cy - hy], uv: [0.0, 1.0] },
+                Vert { pos: [cx_ - hx, cy_ + hy], uv: [u0, v0] },
+                Vert { pos: [cx_ + hx, cy_ + hy], uv: [u1, v0] },
+                Vert { pos: [cx_ + hx, cy_ - hy], uv: [u1, v1] },
+                Vert { pos: [cx_ - hx, cy_ - hy], uv: [u0, v1] },
             ]);
             draws.push(((i * 6) as u32, bg));
         }
@@ -231,7 +273,7 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         name: &str,
-        f: &crate::source::CpuFrame,
+        f: &crate::sources::CpuFrame,
     ) -> &SourceTex {
         let stale = self
             .textures
@@ -285,6 +327,21 @@ impl Compositor {
     }
 }
 
+/// Compute the scale and offset to letterbox the canvas inside the panel.
+pub fn canvas_transform(canvas: &Canvas, panel_rect: &Rect) -> (f32, f32, f32) {
+    let canvas_aspect = canvas.width as f32 / canvas.height.max(1) as f32;
+    let panel_aspect = panel_rect.width() / panel_rect.height().max(0.001);
+    if canvas_aspect > panel_aspect {
+        let scale = panel_rect.width() / canvas.width.max(1) as f32;
+        let h = canvas.height as f32 * scale;
+        (scale, 0.0, (panel_rect.height() - h) / 2.0)
+    } else {
+        let scale = panel_rect.height() / canvas.height.max(1) as f32;
+        let w = canvas.width as f32 * scale;
+        (scale, (panel_rect.width() - w) / 2.0, 0.0)
+    }
+}
+
 fn placeholder(
     device: &wgpu::Device,
     layout: &wgpu::BindGroupLayout,
@@ -309,5 +366,4 @@ fn placeholder(
             wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
         ],
     })
-    // ponytail: texture never written → sample returns 0 (black). Good enough for empty cells.
 }

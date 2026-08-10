@@ -1,78 +1,23 @@
+use super::{CpuFrame, Frame, PixelFormat, VideoSource};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum PixelFormat {
-    Rgba8,
-    // Phase 2: Uyvy (NDI). Phase 3: Gpu texture frames (Syphon).
-}
-
 #[derive(Clone)]
-pub struct CpuFrame {
-    pub data: Arc<Vec<u8>>,
-    pub w: u32,
-    pub h: u32,
-    #[allow(dead_code)]
-    pub fmt: PixelFormat,
-    /// Monotonic per-source counter; compositor uploads only when this changes.
-    pub seq: u64,
+pub struct TestConfig {
+    pub width: u32,
+    pub height: u32,
 }
 
-#[derive(Clone)]
-pub enum Frame {
-    Cpu(CpuFrame),
-}
-
-pub trait VideoSource: Send + Sync {
-    /// Latest frame, non-blocking. None if nothing received yet.
-    fn latest(&self) -> Option<Frame>;
-    fn name(&self) -> &str;
-}
-
-/// All live sources. Owned by the UI thread; sources render their own threads.
-pub struct Registry {
-    sources: Vec<Box<dyn VideoSource>>,
-    next_test: u32,
-}
-
-impl Registry {
-    pub fn new() -> Self {
-        Self { sources: Vec::new(), next_test: 0 }
-    }
-
-    pub fn add_test(&mut self) {
-        self.next_test += 1;
-        let letter = (b'A' + (self.next_test as u8 - 1) % 26) as char;
-        let name = format!("Test {letter}");
-        let src = TestSource::spawn(name, self.next_test);
-        self.sources.push(Box::new(src));
-    }
-
-    pub fn add_ndi(&mut self, name: String, source: grafton_ndi::Source) {
-        if self.sources.iter().any(|s| s.name() == name) {
-            return; // already connected
-        }
-        let src = crate::ndi::NdiSource::spawn(name.clone(), source);
-        self.sources.push(Box::new(src));
-    }
-
-    pub fn get(&self, name: &str) -> Option<&dyn VideoSource> {
-        self.sources.iter().find(|s| s.name() == name).map(|s| &**s)
-    }
-
-    pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.sources.iter().map(|s| s.name())
-    }
-
-    #[allow(dead_code)]
-    pub fn remove(&mut self, name: &str) {
-        self.sources.retain(|s| s.name() != name);
+impl Default for TestConfig {
+    fn default() -> Self {
+        Self { width: 1280, height: 720 }
     }
 }
 
 /// Generated color-bars feed with a moving marker, on its own thread.
 pub struct TestSource {
     slot: Arc<Mutex<Option<Frame>>>,
+    #[allow(dead_code)]
     name: String,
 }
 
@@ -107,7 +52,6 @@ impl TestSource {
 
 impl VideoSource for TestSource {
     fn latest(&self) -> Option<Frame> {
-        // ponytail: lock+clone of Arc per frame per cell is cheap enough at 16 sources
         self.slot.lock().unwrap().clone()
     }
 

@@ -1,75 +1,39 @@
-use grafton_ndi::{
-    Finder, FinderOptions, LineStrideOrSize, NDI, Receiver, ReceiverBandwidth,
-    ReceiverColorFormat, ReceiverOptions, Source,
-};
+use super::super::{CpuFrame, Frame, PixelFormat, VideoSource};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// Background NDI discovery thread.
-pub struct Discovery {
-    sources: Arc<Mutex<Vec<Source>>>,
+#[derive(Clone)]
+pub struct NdiConfig {
+    pub bandwidth: grafton_ndi::ReceiverBandwidth,
+    pub color_format: grafton_ndi::ReceiverColorFormat,
 }
 
-impl Discovery {
-    pub fn start() -> Self {
-        let sources = Arc::new(Mutex::new(Vec::new()));
-        let sources2 = sources.clone();
-        std::thread::Builder::new()
-            .name("ndi-discovery".into())
-            .spawn(move || {
-                let ndi = match NDI::new() {
-                    Ok(n) => n,
-                    Err(e) => {
-                        tracing::error!("NDI init failed in discovery: {e}");
-                        return;
-                    }
-                };
-                let finder = match Finder::new(
-                    &ndi,
-                    &FinderOptions::builder().show_local_sources(true).build(),
-                ) {
-                    Ok(f) => f,
-                    Err(e) => {
-                        tracing::error!("NDI Finder failed: {e}");
-                        return;
-                    }
-                };
-                loop {
-                    match finder.current_sources() {
-                        Ok(list) => {
-                            let mut lock = sources2.lock().unwrap();
-                            *lock = list;
-                        }
-                        Err(e) => tracing::warn!("NDI discovery error: {e}"),
-                    }
-                    std::thread::sleep(Duration::from_secs(2));
-                }
-            })
-            .expect("spawn ndi-discovery");
-        Self { sources }
-    }
-
-    pub fn list(&self) -> Vec<Source> {
-        self.sources.lock().unwrap().clone()
-    }
-
-    #[allow(dead_code)]
-    pub fn find_by_name(&self, name: &str) -> Option<Source> {
-        self.sources.lock().unwrap().iter().find(|s| s.name == name).cloned()
+impl Default for NdiConfig {
+    fn default() -> Self {
+        Self {
+            bandwidth: grafton_ndi::ReceiverBandwidth::Lowest,
+            color_format: grafton_ndi::ReceiverColorFormat::RGBX_RGBA,
+        }
     }
 }
 
 /// Active NDI receiver on its own thread.
 pub struct NdiSource {
-    slot: Arc<Mutex<Option<crate::source::Frame>>>,
+    slot: Arc<Mutex<Option<Frame>>>,
+    #[allow(dead_code)]
     name: String,
 }
 
 impl NdiSource {
-    pub fn spawn(name: String, source: Source) -> Self {
+    pub fn spawn(name: String, source: grafton_ndi::Source, cfg: &NdiConfig) -> Self {
+        use grafton_ndi::{
+            LineStrideOrSize, NDI, Receiver, ReceiverOptions,
+        };
         let slot = Arc::new(Mutex::new(None));
         let slot2 = slot.clone();
         let thread_name = name.clone();
+        let bandwidth = cfg.bandwidth;
+        let color_format = cfg.color_format;
         std::thread::Builder::new()
             .name(format!("ndi-recv-{thread_name}"))
             .spawn(move || {
@@ -81,8 +45,8 @@ impl NdiSource {
                     }
                 };
                 let options = ReceiverOptions::builder(source)
-                    .color(ReceiverColorFormat::RGBX_RGBA)
-                    .bandwidth(ReceiverBandwidth::Lowest)
+                    .color(color_format)
+                    .bandwidth(bandwidth)
                     .build();
                 let receiver = match Receiver::new(&ndi, &options) {
                     Ok(r) => r,
@@ -114,19 +78,16 @@ impl NdiSource {
                                 }
                                 packed
                             };
-                            *slot2.lock().unwrap() = Some(crate::source::Frame::Cpu(
-                                crate::source::CpuFrame {
-                                    data: Arc::new(data),
-                                    w,
-                                    h,
-                                    fmt: crate::source::PixelFormat::Rgba8,
-                                    seq,
-                                },
-                            ));
+                            *slot2.lock().unwrap() = Some(Frame::Cpu(CpuFrame {
+                                data: Arc::new(data),
+                                w,
+                                h,
+                                fmt: PixelFormat::Rgba8,
+                                seq,
+                            }));
                             seq += 1;
                         }
                         Err(e) => {
-                            // Timeouts are normal when source goes offline
                             tracing::trace!("NDI capture timeout for {thread_name}: {e}");
                         }
                     }
@@ -137,8 +98,8 @@ impl NdiSource {
     }
 }
 
-impl crate::source::VideoSource for NdiSource {
-    fn latest(&self) -> Option<crate::source::Frame> {
+impl VideoSource for NdiSource {
+    fn latest(&self) -> Option<Frame> {
         self.slot.lock().unwrap().clone()
     }
 

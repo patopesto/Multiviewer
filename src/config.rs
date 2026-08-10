@@ -1,48 +1,104 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Grid {
-    pub rows: u32,
-    pub cols: u32,
-    /// row-major, len == rows*cols
-    pub cells: Vec<Option<String>>,
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TextureMode {
+    Fit,
+    Fill,
+    Stretch,
 }
 
-impl Grid {
-    pub fn new(rows: u32, cols: u32) -> Self {
-        let n = (rows * cols) as usize;
-        Self { rows, cols, cells: vec![None; n] }
-    }
-
-    /// Resize, keeping overlapping top-left region assignments.
-    pub fn resize(&mut self, rows: u32, cols: u32) {
-        let mut cells = vec![None; (rows * cols) as usize];
-        for r in 0..rows.min(self.rows) {
-            for c in 0..cols.min(self.cols) {
-                cells[(r * cols + c) as usize] = self.cells[(r * self.cols + c) as usize].take();
-            }
+impl TextureMode {
+    pub fn label(&self) -> &'static str {
+        match self {
+            TextureMode::Fit => "Fit",
+            TextureMode::Fill => "Fill",
+            TextureMode::Stretch => "Stretch",
         }
-        self.rows = rows;
-        self.cols = cols;
-        self.cells = cells;
     }
 }
 
-impl Default for Grid {
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Protocol {
+    Test,
+    Ndi,
+}
+
+impl Protocol {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Protocol::Test => "Test",
+            Protocol::Ndi => "NDI",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Layer {
+    pub uuid: String,
+    #[serde(default)]
+    pub name: String,
+    pub protocol: Protocol,
+    pub source_id: Option<String>,
+    pub x: f32,
+    pub y: f32,
+    pub width: u32,
+    pub height: u32,
+    pub z: i32,
+    pub mode: TextureMode,
+}
+
+impl Layer {
+    pub fn new_v4(
+        name: String,
+        protocol: Protocol,
+        source_id: Option<String>,
+        x: f32,
+        y: f32,
+        width: u32,
+        height: u32,
+        z: i32,
+        mode: TextureMode,
+    ) -> Self {
+        Self {
+            uuid: uuid::Uuid::new_v4().to_string(),
+            name,
+            protocol,
+            source_id,
+            x,
+            y,
+            width,
+            height,
+            z,
+            mode,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Canvas {
+    pub width: u32,
+    pub height: u32,
+    pub layers: Vec<Layer>,
+}
+
+impl Default for Canvas {
     fn default() -> Self {
-        Self::new(4, 4)
+        Self {
+            width: 1920,
+            height: 1080,
+            layers: Vec::new(),
+        }
     }
 }
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
-    pub grid: Grid,
+    pub canvas: Canvas,
 }
 
 pub fn path() -> PathBuf {
-    // ponytail: exe-dir beats CWD for packaged apps; dev builds get target/{profile}/multiviewer.json
     let dir = std::env::current_exe()
         .ok()
         .and_then(|p| p.parent().map(|p| p.to_path_buf()))
@@ -53,10 +109,7 @@ pub fn path() -> PathBuf {
 impl Config {
     pub fn load() -> Self {
         match std::fs::read_to_string(path()) {
-            Ok(s) => serde_json::from_str(&s).unwrap_or_else(|e| {
-                tracing::warn!("bad config, using defaults: {e}");
-                Config::default()
-            }),
+            Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
             Err(_) => Config::default(),
         }
     }

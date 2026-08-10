@@ -4,7 +4,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-APP=multiviewer
+APP=Multiviewer
 cargo build --release
 
 case "$(uname -s)" in

@@ -1,5 +1,5 @@
 [package]
-name = "multiviewer"
+name = "Multiviewer"
 version = "0.1.0"
 edition = "2024"
 
@@ -14,3 +14,4 @@ bytemuck = { version = "1", features = ["derive"] }
 wgpu = "27"
 egui = "0.33"
 grafton-ndi = "1.0.0"
+uuid = { version = "1", features = ["v4"] }
