@@ -4,14 +4,18 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-eframe = { version = "0.33", default-features = false, features = ["wgpu", "default_fonts"] }
+eframe = { version = "0.35", default-features = false, features = ["wgpu", "default_fonts"] }
+egui = "0.35"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bytemuck = { version = "1", features = ["derive"] }
-wgpu = "27"
-egui = "0.33"
+wgpu = "29"
 grafton-ndi = "1.0.0"
 uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+syphon-wgpu = "0.3"
+syphon-core = "0.3"

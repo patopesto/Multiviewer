@@ -51,7 +51,7 @@ impl TestSource {
 }
 
 impl VideoSource for TestSource {
-    fn latest(&self) -> Option<Frame> {
+    fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
         self.slot.lock().unwrap().clone()
     }
 

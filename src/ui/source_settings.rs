@@ -1,9 +1,14 @@
 use crate::sources::{NdiConfig, SourceKind, TestConfig};
 
+#[cfg(target_os = "macos")]
+use crate::sources::SyphonConfig;
+
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
     match source {
         SourceKind::Test(_, cfg) => test_settings_ui(cfg, ui),
         SourceKind::Ndi(_, cfg, _) => ndi_settings_ui(cfg, ui),
+        #[cfg(target_os = "macos")]
+        SourceKind::Syphon(_, cfg, _) => syphon_settings_ui(cfg, ui),
     }
 }
 
@@ -57,4 +62,10 @@ fn ndi_settings_ui(cfg: &mut NdiConfig, ui: &mut egui::Ui) -> bool {
             });
     });
     cfg.bandwidth != old_bw || cfg.color_format != old_cf
+}
+
+#[cfg(target_os = "macos")]
+fn syphon_settings_ui(_cfg: &mut SyphonConfig, _ui: &mut egui::Ui) -> bool {
+    // No tunables yet
+    false
 }

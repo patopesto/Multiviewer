@@ -22,6 +22,7 @@ impl TextureMode {
 pub enum Protocol {
     Test,
     Ndi,
+    Syphon,
 }
 
 impl Protocol {
@@ -29,6 +30,7 @@ impl Protocol {
         match self {
             Protocol::Test => "Test",
             Protocol::Ndi => "NDI",
+            Protocol::Syphon => "Syphon",
         }
     }
 }

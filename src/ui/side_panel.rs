@@ -1,8 +1,8 @@
 use crate::config::{Protocol, TextureMode};
 use crate::engine::Engine;
 
-pub fn draw(ctx: &egui::Context, engine: &mut Engine) {
-    egui::SidePanel::left("panel").default_width(280.0).show(ctx, |ui| {
+pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
+    egui::Panel::left("panel").default_size(280.0).show(ui, |ui| {
         ui.heading("Global Settings");
         ui.horizontal(|ui| {
             ui.label("Canvas W");
@@ -37,9 +37,12 @@ pub fn draw(ctx: &egui::Context, engine: &mut Engine) {
             let mut removed = false;
             let mut new_test_source = false;
             let mut new_ndi_connect: Option<String> = None;
+            let mut new_syphon_connect: Option<String> = None;
             let mut selected_source: Option<String> = None;
             let mut protocol_changed = false;
             let mut ndi_restart_sid: Option<String> = None;
+            #[cfg(target_os = "macos")]
+            let mut syphon_restart_sid: Option<String> = None;
 
             if let Some(layer) = engine.cfg.canvas.layers.iter_mut().find(|l| l.uuid == selected_uuid) {
                 ui.separator();
@@ -63,6 +66,10 @@ pub fn draw(ctx: &egui::Context, engine: &mut Engine) {
                                 protocol_changed = true;
                             }
                             if ui.selectable_value(&mut layer.protocol, Protocol::Ndi, "NDI").clicked() {
+                                protocol_changed = true;
+                            }
+                            #[cfg(target_os = "macos")]
+                            if ui.selectable_value(&mut layer.protocol, Protocol::Syphon, "Syphon").clicked() {
                                 protocol_changed = true;
                             }
                         });
@@ -122,6 +129,36 @@ pub fn draw(ctx: &egui::Context, engine: &mut Engine) {
                                 });
                         });
                     }
+                    #[cfg(target_os = "macos")]
+                    Protocol::Syphon => {
+                        let syphon_ids: Vec<String> = engine.registry.list_syphon_sources()
+                            .into_iter().map(|(id, _)| id.clone()).collect();
+                        let current = layer.source_id.as_deref().unwrap_or("");
+                        let discovered = engine.syphon.as_ref().map(|d| d.list()).unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            ui.label("Source");
+                            egui::ComboBox::from_id_salt("syphon_source")
+                                .selected_text(current.to_string())
+                                .show_ui(ui, |ui| {
+                                    for id in &syphon_ids {
+                                        if ui.selectable_label(current == id, id).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    for name in &discovered {
+                                        if !syphon_ids.iter().any(|id| id == name) {
+                                            if ui.selectable_label(current == name, name).clicked() {
+                                                new_syphon_connect = Some(name.clone());
+                                                selected_source = Some(name.clone());
+                                            }
+                                        }
+                                    }
+                                    if syphon_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        });
+                    }
                 }
 
                 if protocol_changed {
@@ -175,9 +212,13 @@ pub fn draw(ctx: &egui::Context, engine: &mut Engine) {
                         ui.separator();
                         ui.heading("Source Settings");
                         if super::source_settings::render_source_settings(source, ui) {
-                            // Config changed — NDI needs restart
+                            // Config changed — NDI/Syphon need restart
                             if !source.is_test() {
                                 ndi_restart_sid = Some(sid.clone());
+                            }
+                            #[cfg(target_os = "macos")]
+                            if source.is_syphon() {
+                                syphon_restart_sid = Some(sid.clone());
                             }
                         }
                     }
@@ -187,6 +228,10 @@ pub fn draw(ctx: &egui::Context, engine: &mut Engine) {
             if let Some(name) = new_ndi_connect {
                 engine.connect_ndi(&name);
             }
+            #[cfg(target_os = "macos")]
+            if let Some(name) = new_syphon_connect {
+                engine.connect_syphon(&name);
+            }
 
             if removed {
                 engine.remove_layer(&selected_uuid);
@@ -195,6 +240,10 @@ pub fn draw(ctx: &egui::Context, engine: &mut Engine) {
             // Restart NDI source if its config changed
             if let Some(sid) = ndi_restart_sid {
                 engine.registry.restart_ndi(&sid);
+            }
+            #[cfg(target_os = "macos")]
+            if let Some(sid) = syphon_restart_sid {
+                engine.registry.restart_syphon(&sid);
             }
         }
 

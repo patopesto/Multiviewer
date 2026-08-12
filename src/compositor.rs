@@ -62,6 +62,7 @@ struct SourceTex {
     w: u32,
     h: u32,
     seq: u64,
+    format: wgpu::TextureFormat,
 }
 
 pub struct Compositor {
@@ -114,8 +115,8 @@ impl Compositor {
         });
         let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("compositor"),
-            bind_group_layouts: &[&bind_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[Some(&bind_layout)],
+            immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("compositor"),
@@ -143,7 +144,7 @@ impl Compositor {
             primitive: wgpu::PrimitiveState::default(),
             depth_stencil: None,
             multisample: Default::default(),
-            multiview: None,
+            multiview_mask: None,
             cache: None,
         });
 
@@ -202,10 +203,15 @@ impl Compositor {
                 seen.entry(sid)
                     .or_insert_with(|| {
                         let src = registry.get(&sid.to_string())?;
-                        #[allow(irrefutable_let_patterns)]
-                        let Frame::Cpu(f) = src.latest()?;
-                        let st = self.ensure_texture(device, queue, sid, &f);
-                        Some((st.bg.clone(), f.w as f32 / f.h as f32))
+                        match src.latest(device, queue)? {
+                            Frame::Cpu(f) => {
+                                let st = self.ensure_texture(device, queue, sid, &f);
+                                Some((st.bg.clone(), f.w as f32 / f.h as f32))
+                            }
+                            Frame::Syphon(f) => {
+                                Some((f.bg.clone(), f.w as f32 / f.h as f32))
+                            }
+                        }
                     })
                     .clone()
             });
@@ -275,10 +281,15 @@ impl Compositor {
         name: &str,
         f: &crate::sources::CpuFrame,
     ) -> &SourceTex {
+        use crate::sources::PixelFormat;
+        let format = match f.fmt {
+            PixelFormat::Rgba8 => wgpu::TextureFormat::Rgba8UnormSrgb,
+            PixelFormat::Bgra8 => wgpu::TextureFormat::Bgra8UnormSrgb,
+        };
         let stale = self
             .textures
             .get(name)
-            .map(|t| t.w != f.w || t.h != f.h)
+            .map(|t| t.w != f.w || t.h != f.h || t.format != format)
             .unwrap_or(false);
         if stale {
             self.textures.remove(name);
@@ -290,7 +301,7 @@ impl Compositor {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                format,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
@@ -303,7 +314,7 @@ impl Compositor {
                     wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
                 ],
             }));
-            SourceTex { _tex: tex, bg, w: f.w, h: f.h, seq: u64::MAX }
+            SourceTex { _tex: tex, bg, w: f.w, h: f.h, seq: u64::MAX, format }
         });
         if st.seq != f.seq {
             queue.write_texture(

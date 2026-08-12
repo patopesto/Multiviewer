@@ -3,10 +3,15 @@ use crate::config::{Config, Layer, Protocol, TextureMode};
 use crate::sources::ndi::Discovery;
 use crate::sources::Registry;
 
+#[cfg(target_os = "macos")]
+use crate::sources::syphon::Discovery as SyphonDiscovery;
+
 pub struct Engine {
     pub cfg: Config,
     pub registry: Registry,
     pub ndi: Option<Discovery>,
+    #[cfg(target_os = "macos")]
+    pub syphon: Option<SyphonDiscovery>,
     comp: Option<Compositor>,
     pub dirty: bool,
     pub selected_layer_id: Option<String>,
@@ -21,6 +26,10 @@ impl Engine {
 
         // Start NDI discovery before restoring sources
         let ndi = Discovery::start();
+
+        // Start Syphon discovery on macOS
+        #[cfg(target_os = "macos")]
+        let syphon = Some(SyphonDiscovery::start());
 
         // Restore Test sources for all Test layers in the loaded config.
         // Each Test layer gets a fresh dedicated test source.
@@ -38,7 +47,7 @@ impl Engine {
                 layer.source_id = Some(sid);
                 dirty = true;
             }
-            // NDI layers keep their source_id; auto-connect happens in update()
+            // NDI and Syphon layers keep their source_id; auto-connect happens in update()
         }
 
         // Seed demo layout if nothing was loaded
@@ -68,6 +77,8 @@ impl Engine {
             cfg,
             registry,
             ndi: Some(ndi),
+            #[cfg(target_os = "macos")]
+            syphon,
             comp: None,
             dirty,
             selected_layer_id: None,
@@ -86,6 +97,26 @@ impl Engine {
                             if let Some(src) = discovered.iter().find(|s| &s.name == name) {
                                 self.registry.add_ndi(name.clone(), src.clone());
                                 self.dirty = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Auto-connect pending Syphon sources on macOS
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(ref syphon) = self.syphon {
+                let discovered = syphon.list();
+                for layer in &self.cfg.canvas.layers {
+                    if layer.protocol == Protocol::Syphon {
+                        if let Some(ref name) = layer.source_id {
+                            if self.registry.get(name).is_none() {
+                                if discovered.iter().any(|s| s == name) {
+                                    self.registry.add_syphon(name.clone(), name.clone());
+                                    self.dirty = true;
+                                }
                             }
                         }
                     }
@@ -199,5 +230,10 @@ impl Engine {
                 self.registry.add_ndi(name.to_string(), src);
             }
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn connect_syphon(&mut self, name: &str) {
+        self.registry.add_syphon(name.to_string(), name.to_string());
     }
 }

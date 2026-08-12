@@ -4,14 +4,22 @@ use std::sync::Arc;
 pub mod ndi;
 pub mod test;
 
+#[cfg(target_os = "macos")]
+pub mod syphon;
+
 pub use ndi::source::{NdiConfig, NdiSource};
 pub use test::{TestConfig, TestSource};
+
+#[cfg(target_os = "macos")]
+pub use syphon::source::{SyphonConfig, SyphonSource};
 
 pub type SourceId = String;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PixelFormat {
     Rgba8,
+    #[allow(dead_code)]
+    Bgra8,
 }
 
 #[derive(Clone)]
@@ -26,12 +34,22 @@ pub struct CpuFrame {
 }
 
 #[derive(Clone)]
+pub struct SyphonFrame {
+    pub bg: Arc<wgpu::BindGroup>,
+    pub w: u32,
+    pub h: u32,
+    #[allow(dead_code)]
+    pub seq: u64,
+}
+
+#[derive(Clone)]
 pub enum Frame {
     Cpu(CpuFrame),
+    Syphon(SyphonFrame),
 }
 
 pub trait VideoSource: Send + Sync {
-    fn latest(&self) -> Option<Frame>;
+    fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame>;
     #[allow(dead_code)]
     fn name(&self) -> &str;
 }
@@ -39,6 +57,8 @@ pub trait VideoSource: Send + Sync {
 pub enum SourceKind {
     Test(TestSource, TestConfig),
     Ndi(NdiSource, NdiConfig, grafton_ndi::Source),
+    #[cfg(target_os = "macos")]
+    Syphon(SyphonSource, SyphonConfig, String),
 }
 
 impl SourceKind {
@@ -47,18 +67,33 @@ impl SourceKind {
         match self {
             SourceKind::Test(s, _) => s.name(),
             SourceKind::Ndi(s, _, _) => s.name(),
+            #[cfg(target_os = "macos")]
+            SourceKind::Syphon(s, _, _) => s.name(),
         }
     }
 
-    pub fn latest(&self) -> Option<Frame> {
+    pub fn latest(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Frame> {
         match self {
-            SourceKind::Test(s, _) => s.latest(),
-            SourceKind::Ndi(s, _, _) => s.latest(),
+            SourceKind::Test(s, _) => s.latest(device, queue),
+            SourceKind::Ndi(s, _, _) => s.latest(device, queue),
+            #[cfg(target_os = "macos")]
+            SourceKind::Syphon(s, _, _) => s.latest(device, queue),
         }
     }
 
     pub fn is_test(&self) -> bool {
         matches!(self, SourceKind::Test(_, _))
+    }
+
+    pub fn is_syphon(&self) -> bool {
+        #[cfg(target_os = "macos")]
+        {
+            matches!(self, SourceKind::Syphon(_, _, _))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            false
+        }
     }
 
     #[allow(dead_code)]
@@ -74,6 +109,21 @@ impl SourceKind {
         match self {
             SourceKind::Ndi(_, cfg, _) => Some(cfg),
             _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn syphon_config_mut(&mut self) -> Option<&mut SyphonConfig> {
+        #[cfg(target_os = "macos")]
+        {
+            match self {
+                SourceKind::Syphon(_, cfg, _) => Some(cfg),
+                _ => None,
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            None
         }
     }
 }
@@ -109,6 +159,16 @@ impl Registry {
         name
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn add_syphon(&mut self, name: String, server_name: String) -> SourceId {
+        if self.sources.contains_key(&name) {
+            return name;
+        }
+        let src = SyphonSource::spawn(name.clone(), server_name);
+        self.sources.insert(name.clone(), SourceKind::Syphon(src, SyphonConfig::default(), name.clone()));
+        name
+    }
+
     pub fn get(&self, id: &SourceId) -> Option<&SourceKind> {
         self.sources.get(id)
     }
@@ -135,6 +195,14 @@ impl Registry {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn restart_syphon(&mut self, name: &str) {
+        if let Some(SourceKind::Syphon(_, cfg, server_name)) = self.sources.remove(name) {
+            let new = SyphonSource::spawn(name.to_string(), server_name);
+            self.sources.insert(name.to_string(), SourceKind::Syphon(new, cfg, name.to_string()));
+        }
+    }
+
     /// Remove all sources not referenced by any layer.
     pub fn cleanup_orphaned_sources(&mut self, active_source_ids: &[&str]) {
         let active: HashSet<&str> = active_source_ids.iter().copied().collect();
@@ -153,6 +221,11 @@ impl Registry {
     }
 
     pub fn list_ndi_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
-        self.sources.iter().filter(|(_, sk)| !sk.is_test()).collect()
+        self.sources.iter().filter(|(_, sk)| !sk.is_test() && !sk.is_syphon()).collect()
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn list_syphon_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
+        self.sources.iter().filter(|(_, sk)| sk.is_syphon()).collect()
     }
 }

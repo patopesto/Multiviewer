@@ -39,6 +39,13 @@ EOF
     else
         echo "warning: no NDI runtime found, NDI will be unavailable" >&2
     fi
+    # Bundle vendored Syphon framework
+    if [ -d "vendor/syphon/Syphon.framework" ]; then
+        cp -R "vendor/syphon/Syphon.framework" "$BUNDLE/Contents/Frameworks/"
+        echo "bundled Syphon framework"
+    else
+        echo "warning: vendor/syphon/Syphon.framework not found, Syphon will be unavailable" >&2
+    fi
     codesign --force --deep -s - "$BUNDLE" 2>/dev/null || true
     echo "wrote $BUNDLE"
     ;;
