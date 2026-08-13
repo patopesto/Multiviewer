@@ -53,12 +53,12 @@ fn ndi_settings_ui(cfg: &mut NdiConfig, ui: &mut egui::Ui) -> bool {
                 ui.selectable_value(
                     &mut cfg.color_format,
                     grafton_ndi::ReceiverColorFormat::RGBX_RGBA,
-                    "RGBX_RGBA",
+                    "RGBX/RGBA",
                 );
                 ui.selectable_value(
                     &mut cfg.color_format,
                     grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
-                    "UYVY_RGBA",
+                    "UYVY/RGBA",
                 );
             });
     });
@@ -67,7 +67,17 @@ fn ndi_settings_ui(cfg: &mut NdiConfig, ui: &mut egui::Ui) -> bool {
 
 fn decklink_settings_ui(cfg: &mut DecklinkConfig, ui: &mut egui::Ui) -> bool {
     let old_conn = cfg.connection.clone();
-    let all_options = [("SDI", "SDI"), ("HDMI", "HDMI"), ("Optical SDI", "Optical SDI"), ("Component", "Component"), ("Composite", "Composite"), ("S-Video", "S-Video")];
+    let all_options = [
+        ("SDI", "SDI"),
+        ("HDMI", "HDMI"),
+        ("Optical SDI", "Optical SDI"),
+        ("Component", "Component"),
+        ("Composite", "Composite"),
+        ("S-Video", "S-Video"),
+        ("Ethernet", "Ethernet"),
+        ("Optical Ethernet", "Optical Ethernet"),
+        ("Internal", "Internal"),
+    ];
 
     let available: Vec<(&str, &str)> = if cfg.supported_connections.is_empty() {
         all_options.to_vec()

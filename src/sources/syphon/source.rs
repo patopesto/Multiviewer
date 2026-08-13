@@ -1,4 +1,4 @@
-use super::super::{Frame, VideoSource};
+use super::super::{Frame, VideoSource, ConvUniform};
 use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
 
 #[derive(Clone)]
@@ -88,6 +88,16 @@ impl VideoSource for SyphonSource {
                             ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                             count: None,
                         },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 2,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
                     ],
                 });
                 *layout = Some(Arc::new(l));
@@ -104,6 +114,22 @@ impl VideoSource for SyphonSource {
 
             if dims.0 != w || dims.1 != h || bg.is_none() {
                 let view = tex.create_view(&Default::default());
+                let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(&format!("{}-conv", self.name)),
+                    size: std::mem::size_of::<ConvUniform>() as u64,
+                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                queue.write_buffer(
+                    &uniform,
+                    0,
+                    bytemuck::cast_slice(&[ConvUniform {
+                        mode: 0,
+                        width: w as f32,
+                        height: h as f32,
+                        _pad: 0.0,
+                    }]),
+                );
                 let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                     label: Some(&self.name),
                     layout: layout.as_ref().unwrap(),
@@ -115,6 +141,14 @@ impl VideoSource for SyphonSource {
                         wgpu::BindGroupEntry {
                             binding: 1,
                             resource: wgpu::BindingResource::Sampler(sampler.as_ref().unwrap()),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                                buffer: &uniform,
+                                offset: 0,
+                                size: None,
+                            }),
                         },
                     ],
                 });

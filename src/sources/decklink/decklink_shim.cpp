@@ -13,6 +13,14 @@
 #include <CoreVideo/CoreVideo.h>
 #endif
 
+/* ── pixel format identifiers passed to Rust ─────────────────────────── */
+
+enum class DecklinkPixelFormatOut : int {
+    Rgba8 = 1,   // legacy fallback
+    Bgra8 = 2,
+    Uyvy422 = 3,
+};
+
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
 #ifdef __APPLE__
@@ -86,43 +94,6 @@ static BMDVideoConnection parse_connection(const char* name)
     if (strcmp(name, "Optical Ethernet") == 0) return bmdVideoConnectionOpticalEthernet;
     if (strcmp(name, "Internal") == 0)         return bmdVideoConnectionInternal;
     return 0;
-}
-
-/* ── UYVY → RGBA (BT.601 for SD, BT.709 for HD) ─────────────────────── */
-
-static void uyvy_to_rgba(const uint8_t* src, size_t row_bytes, int w, int h, uint8_t* dst)
-{
-    // HD (>576 lines) uses BT.709 coefficients, SD uses BT.601.
-    const bool hd = h > 576;
-    const int rc = hd ? 459 : 409;  // R Cr coefficient
-    const int gc_u = hd ?  55 : 100; // G Cb coefficient
-    const int gc_v = hd ? 136 : 208; // G Cr coefficient
-    const int bc = hd ? 541 : 516;  // B Cb coefficient
-
-    for (int y = 0; y < h; ++y) {
-        const uint8_t* row = src + y * row_bytes;
-        for (int x = 0; x < w; x += 2) {
-            int u  = row[x * 2 + 0] - 128;
-            int y0 = row[x * 2 + 1] - 16;
-            int v  = row[x * 2 + 2] - 128;
-            int y1 = (x + 1 < w) ? row[x * 2 + 3] - 16 : y0;
-
-            int r0 = (298 * y0 + rc * v + 128) >> 8;
-            int g0 = (298 * y0 - gc_u * u - gc_v * v + 128) >> 8;
-            int b0 = (298 * y0 + bc * u + 128) >> 8;
-            int r1 = (298 * y1 + rc * v + 128) >> 8;
-            int g1 = (298 * y1 - gc_u * u - gc_v * v + 128) >> 8;
-            int b1 = (298 * y1 + bc * u + 128) >> 8;
-
-            auto clamp = [](int v) { return std::max(0, std::min(255, v)); };
-            int i0 = (y * w + x) * 4;
-            dst[i0 + 0] = clamp(r0); dst[i0 + 1] = clamp(g0); dst[i0 + 2] = clamp(b0); dst[i0 + 3] = 255;
-            if (x + 1 < w) {
-                int i1 = (y * w + x + 1) * 4;
-                dst[i1 + 0] = clamp(r1); dst[i1 + 1] = clamp(g1); dst[i1 + 2] = clamp(b1); dst[i1 + 3] = 255;
-            }
-        }
-    }
 }
 
 /* ── forward declarations ──────────────────────────────────────────── */
@@ -299,24 +270,43 @@ public:
             return S_OK;
         }
 
-        size_t rgba_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
+        // Determine frame size and validate the pre-allocated buffer before copying.
+        size_t frame_size = 0;
+        if (fmt == bmdFormat8BitBGRA) {
+            frame_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
+        } else if (fmt == bmdFormat8BitYUV) {
+            frame_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 2;
+        } else {
+            fprintf(stderr, "[decklink] unsupported pixel format 0x%08X\n", fmt);
+            return S_OK;
+        }
 
         // Write into the back buffer, then swap front/back under the lock.
         int back = back_idx_.load(std::memory_order_relaxed);
         uint8_t* dst = buffer_[back].data();
-        if (rgba_size > buffer_[back].size()) {
+        if (frame_size > buffer_[back].size()) {
             fprintf(stderr, "[decklink] frame %zux%zu exceeds pre-allocated buffer\n", w, h);
             return S_OK;
         }
 
         if (fmt == bmdFormat8BitBGRA) {
-            // Phase 2: pass BGRA through untouched — wgpu will use Bgra8UnormSrgb.
-            memcpy(dst, src, rgba_size);
+            // Phase 2: pass BGRA through untouched — wgpu will use Bgra8Unorm.
+            if (row_bytes == w * 4) {
+                memcpy(dst, src, frame_size);
+            } else {
+                for (long y = 0; y < h; ++y) {
+                    memcpy(dst + y * w * 4, src + y * row_bytes, w * 4);
+                }
+            }
         } else if (fmt == bmdFormat8BitYUV) {
-            uyvy_to_rgba(src, row_bytes, w, h, dst);
-        } else {
-            fprintf(stderr, "[decklink] unsupported pixel format 0x%08X\n", fmt);
-            return S_OK;
+            // Phase 3: pass UYVY 4:2:2 through untouched; conversion happens on the GPU.
+            if (row_bytes == w * 2) {
+                memcpy(dst, src, frame_size);
+            } else {
+                for (long y = 0; y < h; ++y) {
+                    memcpy(dst + y * w * 2, src + y * row_bytes, w * 2);
+                }
+            }
         }
 
 #ifdef __APPLE__
@@ -328,7 +318,7 @@ public:
         width_ = w;
         height_ = h;
         format_ = fmt;
-        frame_size_ = rgba_size;
+        frame_size_ = frame_size;
         back_idx_.store(1 - back, std::memory_order_relaxed);
         seq_++;
         return S_OK;
@@ -345,7 +335,13 @@ public:
         *w = width_;
         *h = height_;
         *seq = seq_;
-        *fmt_out = (format_ == bmdFormat8BitBGRA) ? 2 : 1;
+        if (format_ == bmdFormat8BitBGRA) {
+            *fmt_out = static_cast<int>(DecklinkPixelFormatOut::Bgra8);
+        } else if (format_ == bmdFormat8BitYUV) {
+            *fmt_out = static_cast<int>(DecklinkPixelFormatOut::Uyvy422);
+        } else {
+            *fmt_out = static_cast<int>(DecklinkPixelFormatOut::Rgba8);
+        }
         return true;
     }
 
@@ -585,33 +581,30 @@ bool decklink_source_start(DecklinkSource* s)
     }
 
     BMDDisplayMode mode = bmdModeUnknown;
-    BMDPixelFormat pixelFormat = bmdFormat8BitBGRA;
+    BMDPixelFormat pixelFormat = bmdFormat8BitYUV;
     HRESULT hr = E_FAIL;
 
-    // Phase 2: Prefer BGRA — if the device supports it we avoid a CPU-side
-    // BGRA→RGBA swizzle.  wgpu will sample the texture as Bgra8UnormSrgb.
-
-    // Strategy 1: Try bmdModeUnknown with format detection (BGRA first).
+    // Strategy 1: Try bmdModeUnknown with format detection (YUV first).
     if (supports_fmt_detection) {
         mode = bmdModeUnknown;
-        hr = s->input->EnableVideoInput(mode, bmdFormat8BitBGRA, bmdVideoInputEnableFormatDetection);
-        fprintf(stderr, "[decklink] trying bmdModeUnknown BGRA detection => 0x%08X\n", static_cast<unsigned int>(hr));
+        hr = s->input->EnableVideoInput(mode, bmdFormat8BitYUV, bmdVideoInputEnableFormatDetection);
+        fprintf(stderr, "[decklink] trying bmdModeUnknown YUV detection => 0x%08X\n", static_cast<unsigned int>(hr));
         if (hr != S_OK) {
-            hr = s->input->EnableVideoInput(mode, bmdFormat8BitYUV, bmdVideoInputEnableFormatDetection);
-            fprintf(stderr, "[decklink] trying bmdModeUnknown YUV detection => 0x%08X\n", static_cast<unsigned int>(hr));
-            if (hr == S_OK) pixelFormat = bmdFormat8BitYUV;
+            hr = s->input->EnableVideoInput(mode, bmdFormat8BitBGRA, bmdVideoInputEnableFormatDetection);
+            fprintf(stderr, "[decklink] trying bmdModeUnknown BGRA detection => 0x%08X\n", static_cast<unsigned int>(hr));
+            if (hr == S_OK) pixelFormat = bmdFormat8BitBGRA;
         }
     }
 
     // Strategy 2: Fallback to a concrete mode with detection enabled.
     if (hr != S_OK) {
         mode = bmdModeHD1080p30;
-        hr = s->input->EnableVideoInput(mode, bmdFormat8BitBGRA, bmdVideoInputEnableFormatDetection);
-        fprintf(stderr, "[decklink] trying bmdModeHD1080p30 BGRA detection => 0x%08X\n", static_cast<unsigned int>(hr));
+        hr = s->input->EnableVideoInput(mode, bmdFormat8BitYUV, bmdVideoInputEnableFormatDetection);
+        fprintf(stderr, "[decklink] trying bmdModeHD1080p30 YUV detection => 0x%08X\n", static_cast<unsigned int>(hr));
         if (hr != S_OK) {
-            hr = s->input->EnableVideoInput(mode, bmdFormat8BitYUV, bmdVideoInputEnableFormatDetection);
-            fprintf(stderr, "[decklink] trying bmdModeHD1080p30 YUV detection => 0x%08X\n", static_cast<unsigned int>(hr));
-            if (hr == S_OK) pixelFormat = bmdFormat8BitYUV;
+            hr = s->input->EnableVideoInput(mode, bmdFormat8BitBGRA, bmdVideoInputEnableFormatDetection);
+            fprintf(stderr, "[decklink] trying bmdModeHD1080p30 BGRA detection => 0x%08X\n", static_cast<unsigned int>(hr));
+            if (hr == S_OK) pixelFormat = bmdFormat8BitBGRA;
         }
     }
 

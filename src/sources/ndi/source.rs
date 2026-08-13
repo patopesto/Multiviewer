@@ -1,4 +1,5 @@
 use super::super::{CpuFrame, Frame, PixelFormat, VideoSource};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -12,7 +13,8 @@ impl Default for NdiConfig {
     fn default() -> Self {
         Self {
             bandwidth: grafton_ndi::ReceiverBandwidth::Lowest,
-            color_format: grafton_ndi::ReceiverColorFormat::RGBX_RGBA,
+            // Request UYVY for lower bandwidth; the SDK falls back to RGBA for alpha sources.
+            color_format: grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
         }
     }
 }
@@ -56,25 +58,44 @@ impl NdiSource {
                     }
                 };
                 let mut seq = 0u64;
+                let mut warned_formats: HashSet<u32> = HashSet::new();
                 loop {
                     match receiver.video().capture(Duration::from_millis(500)) {
                         Ok(frame) => {
                             let w = frame.width() as u32;
                             let h = frame.height() as u32;
+                            let (fmt, bpp) = match frame.pixel_format() {
+                                grafton_ndi::PixelFormat::UYVY => (PixelFormat::Uyvy422, 2usize),
+                                grafton_ndi::PixelFormat::RGBA | grafton_ndi::PixelFormat::RGBX => {
+                                    (PixelFormat::Rgba8, 4usize)
+                                }
+                                grafton_ndi::PixelFormat::BGRA | grafton_ndi::PixelFormat::BGRX => {
+                                    (PixelFormat::Bgra8, 4usize)
+                                }
+                                pf => {
+                                    if warned_formats.insert(pf as u32) {
+                                        tracing::warn!(
+                                            "NDI source {thread_name}: unsupported pixel format {pf:?}, frame dropped"
+                                        );
+                                    }
+                                    continue;
+                                }
+                            };
                             let stride = match frame.line_stride_or_size() {
                                 LineStrideOrSize::LineStrideBytes(s) => s as usize,
-                                _ => (w * 4) as usize,
+                                _ => (w as usize) * bpp,
                             };
-                            let expected = (w * h * 4) as usize;
-                            let data = if stride == w as usize * 4 {
+                            let expected = (w as usize) * (h as usize) * bpp;
+                            let data = if stride == (w as usize) * bpp {
                                 frame.data().to_vec()
                             } else {
                                 let mut packed = vec![0u8; expected];
                                 for y in 0..h as usize {
                                     let src = y * stride;
-                                    let dst = y * (w as usize * 4);
-                                    packed[dst..dst + (w as usize * 4)]
-                                        .copy_from_slice(&frame.data()[src..src + (w as usize * 4)]);
+                                    let dst = y * (w as usize) * bpp;
+                                    let row_bytes = (w as usize) * bpp;
+                                    packed[dst..dst + row_bytes]
+                                        .copy_from_slice(&frame.data()[src..src + row_bytes]);
                                 }
                                 packed
                             };
@@ -82,7 +103,7 @@ impl NdiSource {
                                 data: Arc::new(data),
                                 w,
                                 h,
-                                fmt: PixelFormat::Rgba8,
+                                fmt,
                                 seq,
                             }));
                             seq += 1;

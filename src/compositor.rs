@@ -1,5 +1,5 @@
 use crate::config::{Canvas, TextureMode};
-use crate::sources::{Frame, Registry};
+use crate::sources::{ConvUniform, Frame, Registry};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -29,6 +29,14 @@ pub struct Vert {
     uv: [f32; 2],
 }
 
+#[repr(u32)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConvMode {
+    Passthrough = 0,
+    UyvyBt601 = 1,
+    UyvyBt709 = 2,
+}
+
 const SHADER: &str = r#"
 struct VertIn { @location(0) pos: vec2<f32>, @location(1) uv: vec2<f32> };
 struct VertOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> };
@@ -40,11 +48,53 @@ struct VertOut { @builtin(position) pos: vec4<f32>, @location(0) uv: vec2<f32> }
     return out;
 }
 
+struct ConvUniform {
+    mode: u32,
+    width: f32,
+    height: f32,
+    _pad: f32,
+};
+
 @group(0) @binding(0) var tex: texture_2d<f32>;
 @group(0) @binding(1) var samp: sampler;
+@group(0) @binding(2) var<uniform> conv: ConvUniform;
+
+fn uyvy_to_rgb(sample: vec4<f32>, x: f32, mode: u32) -> vec3<f32> {
+    let u = sample.r - 0.5;
+    let v = sample.b - 0.5;
+    let is_even = (x % 2.0) < 0.5;
+    let y = select(sample.a, sample.g, is_even) - 0.062745098;
+
+    var r: f32;
+    var g: f32;
+    var b: f32;
+    if (mode == 1u) {
+        // BT.601
+        r = 1.164 * y + 1.596 * v;
+        g = 1.164 * y - 0.391 * u - 0.813 * v;
+        b = 1.164 * y + 2.018 * u;
+    } else {
+        // BT.709
+        r = 1.164 * y + 1.793 * v;
+        g = 1.164 * y - 0.213 * u - 0.533 * v;
+        b = 1.164 * y + 2.112 * u;
+    }
+    return clamp(vec3<f32>(r, g, b), vec3<f32>(0.0), vec3<f32>(1.0));
+}
 
 @fragment fn fs_main(in: VertOut) -> @location(0) vec4<f32> {
-    return textureSample(tex, samp, in.uv);
+    if (conv.mode == 0u) {
+        return textureSample(tex, samp, in.uv);
+    }
+
+    let size = textureDimensions(tex);
+    let max_x = i32(size.x * 2u) - 1;
+    let x = clamp(i32(in.uv.x * conv.width), 0, max_x);
+    let y = clamp(i32(in.uv.y * conv.height), 0, i32(size.y) - 1);
+    let macro_x = x / 2;
+    let s = textureLoad(tex, vec2<i32>(macro_x, y), 0);
+    let rgb = uyvy_to_rgb(s, f32(x), conv.mode);
+    return vec4<f32>(rgb, 1.0);
 }
 "#;
 
@@ -58,6 +108,7 @@ pub struct Shared {
 
 struct SourceTex {
     _tex: wgpu::Texture,
+    _uniform: wgpu::Buffer,
     bg: Arc<wgpu::BindGroup>,
     w: u32,
     h: u32,
@@ -97,6 +148,16 @@ impl Compositor {
                     binding: 1,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
                     count: None,
                 },
             ],
@@ -167,7 +228,7 @@ impl Compositor {
         });
         queue.write_buffer(&ib, 0, bytemuck::cast_slice(&indices));
 
-        let placeholder_bg = Arc::new(placeholder(device, &bind_layout, &sampler));
+        let placeholder_bg = Arc::new(placeholder(device, queue, &bind_layout, &sampler));
 
         Self {
             shared: Arc::new(Shared { pipeline, placeholder_bg, vb, ib }),
@@ -287,9 +348,20 @@ impl Compositor {
         f: &crate::sources::CpuFrame,
     ) -> &SourceTex {
         use crate::sources::PixelFormat;
-        let format = match f.fmt {
-            PixelFormat::Rgba8 => wgpu::TextureFormat::Rgba8Unorm,
-            PixelFormat::Bgra8 => wgpu::TextureFormat::Bgra8Unorm,
+        let (format, tex_w, bpp, mode) = match f.fmt {
+            PixelFormat::Rgba8 => (wgpu::TextureFormat::Rgba8Unorm, f.w, 4, ConvMode::Passthrough),
+            PixelFormat::Bgra8 => (wgpu::TextureFormat::Bgra8Unorm, f.w, 4, ConvMode::Passthrough),
+            // UYVY 4:2:2 is packed as Rgba8 at half width; shader does YUV→RGB.
+            PixelFormat::Uyvy422 => {
+                if f.w % 2 != 0 {
+                    tracing::warn!(
+                        "compositor {name}: UYVY frame has odd width {}, last column will be dropped",
+                        f.w
+                    );
+                }
+                let mode = if f.h <= 576 { ConvMode::UyvyBt601 } else { ConvMode::UyvyBt709 };
+                (wgpu::TextureFormat::Rgba8Unorm, f.w / 2, 2, mode)
+            }
         };
         let stale = self
             .textures
@@ -302,7 +374,7 @@ impl Compositor {
         let st = self.textures.entry(name.to_string()).or_insert_with(|| {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(name),
-                size: wgpu::Extent3d { width: f.w, height: f.h, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d { width: tex_w, height: f.h, depth_or_array_layers: 1 },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -311,15 +383,32 @@ impl Compositor {
                 view_formats: &[],
             });
             let view = tex.create_view(&Default::default());
+            let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(&format!("{name}-conv")),
+                size: std::mem::size_of::<ConvUniform>() as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+                queue.write_buffer(
+                    &uniform,
+                    0,
+                    bytemuck::cast_slice(&[ConvUniform {
+                        mode: mode as u32,
+                        width: f.w as f32,
+                        height: f.h as f32,
+                        _pad: 0.0,
+                    }]),
+                );
             let bg = Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(name),
                 layout: &self.bind_layout,
                 entries: &[
                     wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
                     wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
+                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniform, offset: 0, size: None }) },
                 ],
             }));
-            SourceTex { _tex: tex, bg, w: f.w, h: f.h, seq: u64::MAX, format }
+            SourceTex { _tex: tex, _uniform: uniform, bg, w: f.w, h: f.h, seq: u64::MAX, format }
         });
         if st.seq != f.seq {
             queue.write_texture(
@@ -332,10 +421,10 @@ impl Compositor {
                 &f.data,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(f.w * 4),
+                    bytes_per_row: Some(f.w * bpp),
                     rows_per_image: Some(f.h),
                 },
-                wgpu::Extent3d { width: f.w, height: f.h, depth_or_array_layers: 1 },
+                wgpu::Extent3d { width: tex_w, height: f.h, depth_or_array_layers: 1 },
             );
             st.seq = f.seq;
         }
@@ -360,6 +449,7 @@ pub fn canvas_transform(canvas: &Canvas, panel_rect: &Rect) -> (f32, f32, f32) {
 
 fn placeholder(
     device: &wgpu::Device,
+    queue: &wgpu::Queue,
     layout: &wgpu::BindGroupLayout,
     sampler: &wgpu::Sampler,
 ) -> wgpu::BindGroup {
@@ -374,12 +464,88 @@ fn placeholder(
         view_formats: &[],
     });
     let view = tex.create_view(&Default::default());
+    let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("placeholder-conv"),
+        size: std::mem::size_of::<ConvUniform>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    queue.write_buffer(
+        &uniform,
+        0,
+        bytemuck::cast_slice(&[ConvUniform { mode: ConvMode::Passthrough as u32, width: 1.0, height: 1.0, _pad: 0.0 }]),
+    );
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("placeholder"),
         layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
             wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniform, offset: 0, size: None }) },
         ],
     })
+}
+
+#[cfg(test)]
+mod tests {
+    /// CPU reference matching the old DeckLink shim fixed-point conversion.
+    fn ref_uyvy_to_rgb(u: u8, y: u8, v: u8, hd: bool) -> [u8; 3] {
+        let (rc, gc_u, gc_v, bc) = if hd {
+            (459, 55, 136, 541)
+        } else {
+            (409, 100, 208, 516)
+        };
+        let u = u as i32 - 128;
+        let y = y as i32 - 16;
+        let v = v as i32 - 128;
+        let r = (298 * y + rc * v + 128) >> 8;
+        let g = (298 * y - gc_u * u - gc_v * v + 128) >> 8;
+        let b = (298 * y + bc * u + 128) >> 8;
+        let clamp = |v: i32| v.clamp(0, 255) as u8;
+        [clamp(r), clamp(g), clamp(b)]
+    }
+
+    /// GPU shader equivalent (floating-point) for UYVY -> RGB.
+    fn shader_uyvy_to_rgb(u: u8, y: u8, v: u8, hd: bool) -> [u8; 3] {
+        let uf = (u as f32 - 128.0) / 255.0;
+        let yf = (y as f32 - 16.0) / 255.0;
+        let vf = (v as f32 - 128.0) / 255.0;
+        let (r, g, b) = if hd {
+            (
+                1.164 * yf + 1.793 * vf,
+                1.164 * yf - 0.213 * uf - 0.533 * vf,
+                1.164 * yf + 2.112 * uf,
+            )
+        } else {
+            (
+                1.164 * yf + 1.596 * vf,
+                1.164 * yf - 0.391 * uf - 0.813 * vf,
+                1.164 * yf + 2.018 * uf,
+            )
+        };
+        let clamp = |v: f32| (v * 255.0).clamp(0.0, 255.0).round() as u8;
+        [clamp(r), clamp(g), clamp(b)]
+    }
+
+    #[test]
+    fn uyvy_to_rgb_matches_cpu_reference() {
+        let test_values: &[(u8, u8, u8)] = &[
+            (128, 235, 128), // white
+            (128, 16, 128),  // black
+            (240, 180, 128), // yellow-ish
+            (128, 168, 184), // cyan-ish
+            (0, 81, 240),    // red-ish
+            (0, 145, 54),    // green-ish
+        ];
+        for &(u, y, v) in test_values {
+            for &hd in &[false, true] {
+                let expected = ref_uyvy_to_rgb(u, y, v, hd);
+                let actual = shader_uyvy_to_rgb(u, y, v, hd);
+                assert!(
+                    expected.iter().zip(&actual).all(|(e, a)| e.abs_diff(*a) <= 1),
+                    "mismatch for U={u} Y={y} V={v} hd={hd}: expected {expected:?}, got {actual:?}"
+                );
+            }
+        }
+    }
 }

@@ -21,6 +21,8 @@ pub type SourceId = String;
 pub enum PixelFormat {
     Rgba8,
     Bgra8,
+    /// Packed YUV 4:2:2 (UYVY), 2 bytes per pixel.
+    Uyvy422,
 }
 
 #[derive(Clone)]
@@ -51,6 +53,17 @@ pub trait VideoSource: Send + Sync {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame>;
     #[allow(dead_code)]
     fn name(&self) -> &str;
+}
+
+/// Uniform block consumed by the compositor's fragment shader.
+/// Must stay in sync with the `ConvUniform` struct in `compositor.rs`.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ConvUniform {
+    pub mode: u32,    // 0 = passthrough, 1 = UYVY BT.601, 2 = UYVY BT.709
+    pub width: f32,
+    pub height: f32,
+    pub _pad: f32,
 }
 
 pub enum SourceKind {

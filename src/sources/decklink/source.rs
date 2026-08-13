@@ -4,6 +4,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+// Values must match DecklinkPixelFormatOut in decklink_shim.cpp.
+#[allow(dead_code)]
+const DECKLINK_FMT_RGBA8: i32 = 1;
+const DECKLINK_FMT_BGRA8: i32 = 2;
+const DECKLINK_FMT_UYVY422: i32 = 3;
+
 pub enum DecklinkSourceHandle {}
 
 #[derive(Clone)]
@@ -89,7 +95,14 @@ impl DecklinkSource {
                             &mut seq,
                             &mut fmt,
                         ) {
-                            let data_size = (w * h * 4) as usize;
+                            let (pixel_format, bpp) = if fmt == DECKLINK_FMT_BGRA8 {
+                                (PixelFormat::Bgra8, 4)
+                            } else if fmt == DECKLINK_FMT_UYVY422 {
+                                (PixelFormat::Uyvy422, 2)
+                            } else {
+                                (PixelFormat::Rgba8, 4)
+                            };
+                            let data_size = (w * h * bpp) as usize;
                             pool[slot].truncate(data_size);
 
                             let mut guard = latest2.lock().unwrap();
@@ -98,11 +111,7 @@ impl DecklinkSource {
                                 data: Arc::new(std::mem::take(&mut pool[slot])),
                                 w: w as u32,
                                 h: h as u32,
-                                fmt: if fmt == 2 {
-                                    PixelFormat::Bgra8
-                                } else {
-                                    PixelFormat::Rgba8
-                                },
+                                fmt: pixel_format,
                                 seq,
                             });
                             drop(guard);
