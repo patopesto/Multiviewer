@@ -190,7 +190,7 @@ impl Compositor {
         let cx = panel_rect.x + offset_x;
         let cy = panel_rect.y + offset_y;
 
-        let mut seen: HashMap<&str, Option<(Arc<wgpu::BindGroup>, f32)>> = HashMap::new();
+        let mut seen: HashMap<&str, Option<(Arc<wgpu::BindGroup>, f32, bool)>> = HashMap::new();
 
         let mut layers: Vec<_> = canvas.layers.iter().collect();
         layers.sort_by_key(|l| l.z);
@@ -206,19 +206,19 @@ impl Compositor {
                         match src.latest(device, queue)? {
                             Frame::Cpu(f) => {
                                 let st = self.ensure_texture(device, queue, sid, &f);
-                                Some((st.bg.clone(), f.w as f32 / f.h as f32))
+                                Some((st.bg.clone(), f.w as f32 / f.h as f32, false))
                             }
                             Frame::Syphon(f) => {
-                                Some((f.bg.clone(), f.w as f32 / f.h as f32))
+                                Some((f.bg.clone(), f.w as f32 / f.h as f32, true))
                             }
                         }
                     })
                     .clone()
             });
 
-            let (bg, aspect) = match entry {
+            let (bg, aspect, is_syphon) = match entry {
                 Some(e) => e,
-                None => (self.shared.placeholder_bg.clone(), 16.0 / 9.0),
+                None => (self.shared.placeholder_bg.clone(), 16.0 / 9.0, false),
             };
 
             let lx = cx + layer.x * scale;
@@ -256,6 +256,8 @@ impl Compositor {
                 }
                 TextureMode::Stretch => (1.0, 1.0, 0.0, 1.0, 0.0, 1.0),
             };
+
+            let (v0, v1) = if is_syphon { (v1, v0) } else { (v0, v1) };
 
             let cx_ = (x0 + x1) / 2.0;
             let cy_ = (y0 + y1) / 2.0;

@@ -38,7 +38,6 @@ pub struct SyphonFrame {
     pub bg: Arc<wgpu::BindGroup>,
     pub w: u32,
     pub h: u32,
-    #[allow(dead_code)]
     pub seq: u64,
 }
 
