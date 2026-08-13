@@ -50,6 +50,10 @@ pub struct Layer {
     pub height: u32,
     pub z: i32,
     pub mode: TextureMode,
+    #[serde(default)]
+    pub flip_h: bool,
+    #[serde(default)]
+    pub flip_v: bool,
 }
 
 impl Layer {
@@ -63,6 +67,8 @@ impl Layer {
         height: u32,
         z: i32,
         mode: TextureMode,
+        flip_h: bool,
+        flip_v: bool,
     ) -> Self {
         Self {
             uuid: uuid::Uuid::new_v4().to_string(),
@@ -75,6 +81,8 @@ impl Layer {
             height,
             z,
             mode,
+            flip_h,
+            flip_v,
         }
     }
 }

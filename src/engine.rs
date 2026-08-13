@@ -73,6 +73,8 @@ impl Engine {
                     (h / 2.0) as u32,
                     i,
                     TextureMode::Fit,
+                    false,
+                    false,
                 ));
             }
             dirty = true;
@@ -232,6 +234,8 @@ impl Engine {
             self.cfg.canvas.height / 2,
             self.cfg.canvas.layers.len() as i32,
             TextureMode::Fit,
+            false,
+            false,
         );
         let uuid = layer.uuid.clone();
         self.cfg.canvas.layers.push(layer);

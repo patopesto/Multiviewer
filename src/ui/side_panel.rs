@@ -244,6 +244,14 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
                             ui.selectable_value(&mut layer.mode, TextureMode::Stretch, "Stretch");
                         });
                 });
+                ui.horizontal(|ui| {
+                    if ui.checkbox(&mut layer.flip_h, "Flip H").changed() {
+                        engine.dirty = true;
+                    }
+                    if ui.checkbox(&mut layer.flip_v, "Flip V").changed() {
+                        engine.dirty = true;
+                    }
+                });
                 if ui.button("Remove from Canvas").clicked() {
                     removed = true;
                 }
