@@ -246,8 +246,9 @@ impl Compositor {
         canvas: &Canvas,
         registry: &Registry,
         panel_rect: &Rect,
+        transform: (f32, f32, f32),
     ) -> Draw {
-        let (scale, offset_x, offset_y) = canvas_transform(canvas, panel_rect);
+        let (scale, offset_x, offset_y) = transform;
         let cx = panel_rect.x + offset_x;
         let cy = panel_rect.y + offset_y;
 

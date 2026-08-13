@@ -49,6 +49,7 @@ pub fn update(
     frame: &mut eframe::Frame,
 ) {
     let rect = ui.available_rect_before_wrap();
+    let panel_rect = Rect { x: rect.min.x, y: rect.min.y, w: rect.width(), h: rect.height() };
     let (response, painter) = ui.allocate_painter(rect.size(), egui::Sense::click_and_drag());
 
     // Only start a drag if the press actually happened on the canvas.
@@ -56,27 +57,47 @@ pub fn update(
     let primary_down = ctx.input(|i| i.pointer.primary_down());
     if !primary_down {
         engine.dragging_uuid = None;
-    } else if pressed && response.hovered() {
-        if let Some(pos) = response.interact_pointer_pos() {
-            let panel_rect = Rect { x: rect.min.x, y: rect.min.y, w: rect.width(), h: rect.height() };
-            let hit = engine.hit_test(&panel_rect, (pos.x, pos.y));
-            engine.selected_layer_id = hit.clone();
-            engine.dragging_uuid = hit;
-        }
+    } else if pressed && response.hovered() && let Some(pos) = response.interact_pointer_pos() {
+        let hit = engine.hit_test(&panel_rect, (pos.x, pos.y));
+        engine.selected_layer_id = hit.clone();
+        engine.dragging_uuid = hit;
     }
 
     if response.dragged() {
         if let Some(uuid) = engine.dragging_uuid.clone() {
-            let panel_rect = Rect { x: rect.min.x, y: rect.min.y, w: rect.width(), h: rect.height() };
             engine.drag_layer(&uuid, (response.drag_delta().x, response.drag_delta().y), &panel_rect);
+        } else {
+            // Primary-drag on empty canvas pans the view.
+            engine.view.pan += response.drag_delta();
+        }
+    }
+
+    // Zoom toward the center of the view.
+    if response.hovered() {
+        let scroll = ctx.input(|i| i.smooth_scroll_delta).y;
+        if scroll != 0.0 {
+            let (base_scale, base_ox, base_oy) =
+                compositor::canvas_transform(&engine.cfg.canvas, &panel_rect);
+            let old_zoom = engine.view.zoom;
+            let factor = 1.1_f32.powf(scroll / 50.0);
+            let new_zoom = (old_zoom * factor).clamp(crate::engine::MIN_ZOOM, crate::engine::MAX_ZOOM);
+            let center = egui::vec2(panel_rect.w / 2.0, panel_rect.h / 2.0);
+            let world_c = (center
+                - egui::vec2(base_ox + engine.view.pan.x, base_oy + engine.view.pan.y))
+                / (base_scale * old_zoom);
+            engine.view.zoom = new_zoom;
+            engine.view.pan = egui::vec2(
+                center.x - base_ox - world_c.x * base_scale * new_zoom,
+                center.y - base_oy - world_c.y * base_scale * new_zoom,
+            );
         }
     }
 
     let Some(rs) = frame.wgpu_render_state() else { return };
     engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
 
-    let panel_rect = Rect { x: rect.min.x, y: rect.min.y, w: rect.width(), h: rect.height() };
-    let draw = engine.build_frame(&rs.device, &rs.queue, &panel_rect);
+    let transform = engine.display_transform(&panel_rect);
+    let draw = engine.build_frame(&rs.device, &rs.queue, &panel_rect, transform);
     let ppp = ctx.pixels_per_point();
 
     painter.add(egui_wgpu::Callback::new_paint_callback(
@@ -94,7 +115,15 @@ pub fn update(
         },
     ));
 
-    draw_overlays(&engine.cfg.canvas, &panel_rect, &painter, &engine.selected_layer_id);
+    draw_overlays(&engine.cfg.canvas, &panel_rect, &painter, &engine.selected_layer_id, transform);
+
+    let btn_rect = egui::Rect::from_min_size(
+        egui::pos2(rect.max.x - 100.0, rect.min.y + 10.0),
+        egui::vec2(90.0, 24.0),
+    );
+    if ui.put(btn_rect, egui::Button::new("Recenter")).clicked() {
+        engine.recenter_view(&panel_rect);
+    }
 }
 
 fn draw_overlays(
@@ -102,8 +131,9 @@ fn draw_overlays(
     panel_rect: &Rect,
     painter: &egui::Painter,
     selected: &Option<String>,
+    transform: (f32, f32, f32),
 ) {
-    let (scale, offset_x, offset_y) = compositor::canvas_transform(canvas, panel_rect);
+    let (scale, offset_x, offset_y) = transform;
     let cx = panel_rect.x + offset_x;
     let cy = panel_rect.y + offset_y;
     let cw = canvas.width as f32 * scale;

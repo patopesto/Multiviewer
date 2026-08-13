@@ -7,6 +7,21 @@ use crate::sources::Registry;
 #[cfg(target_os = "macos")]
 use crate::sources::syphon::Discovery as SyphonDiscovery;
 
+pub const MIN_ZOOM: f32 = 0.1;
+pub const MAX_ZOOM: f32 = 10.0;
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ViewState {
+    pub zoom: f32,
+    pub pan: egui::Vec2,
+}
+
+impl ViewState {
+    pub fn new() -> Self {
+        Self { zoom: 1.0, pan: egui::Vec2::ZERO }
+    }
+}
+
 pub struct Engine {
     pub cfg: Config,
     pub registry: Registry,
@@ -18,6 +33,7 @@ pub struct Engine {
     pub dirty: bool,
     pub selected_layer_id: Option<String>,
     pub dragging_uuid: Option<String>,
+    pub view: ViewState,
 }
 
 impl Engine {
@@ -91,6 +107,7 @@ impl Engine {
             dirty,
             selected_layer_id: None,
             dragging_uuid: None,
+            view: ViewState::new(),
         }
     }
 
@@ -166,9 +183,37 @@ impl Engine {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         panel_rect: &Rect,
+        transform: (f32, f32, f32),
     ) -> Draw {
         let comp = self.comp.as_mut().expect("compositor not initialized");
-        comp.build(device, queue, &self.cfg.canvas, &self.registry, panel_rect)
+        comp.build(device, queue, &self.cfg.canvas, &self.registry, panel_rect, transform)
+    }
+
+    pub fn display_transform(&self, panel_rect: &Rect) -> (f32, f32, f32) {
+        let (base_scale, base_ox, base_oy) = compositor::canvas_transform(&self.cfg.canvas, panel_rect);
+        (base_scale * self.view.zoom, base_ox + self.view.pan.x, base_oy + self.view.pan.y)
+    }
+
+    pub fn recenter_view(&mut self, panel_rect: &Rect) {
+        let canvas = &self.cfg.canvas;
+        let (mut min_x, mut min_y) = (0.0_f32, 0.0_f32);
+        let (mut max_x, mut max_y) = (canvas.width as f32, canvas.height as f32);
+        for layer in &canvas.layers {
+            min_x = min_x.min(layer.x).min(layer.x + layer.width as f32);
+            min_y = min_y.min(layer.y).min(layer.y + layer.height as f32);
+            max_x = max_x.max(layer.x).max(layer.x + layer.width as f32);
+            max_y = max_y.max(layer.y).max(layer.y + layer.height as f32);
+        }
+        let bbox_w = (max_x - min_x).max(1.0);
+        let bbox_h = (max_y - min_y).max(1.0);
+        let (base_scale, base_ox, base_oy) = compositor::canvas_transform(canvas, panel_rect);
+        let target_scale = (panel_rect.width() / bbox_w).min(panel_rect.height() / bbox_h) * 0.9;
+        self.view.zoom = (target_scale / base_scale).clamp(MIN_ZOOM, MAX_ZOOM);
+        let display_scale = base_scale * self.view.zoom;
+        let cx = (min_x + max_x) / 2.0;
+        let cy = (min_y + max_y) / 2.0;
+        self.view.pan.x = panel_rect.width() / 2.0 - base_ox - cx * display_scale;
+        self.view.pan.y = panel_rect.height() / 2.0 - base_oy - cy * display_scale;
     }
 
     pub fn shared(&self) -> Option<std::sync::Arc<crate::compositor::Shared>> {
@@ -177,7 +222,7 @@ impl Engine {
 
     pub fn hit_test(&self, panel_rect: &Rect, pos: (f32, f32)) -> Option<String> {
         let canvas = &self.cfg.canvas;
-        let (scale, offset_x, offset_y) = compositor::canvas_transform(canvas, panel_rect);
+        let (scale, offset_x, offset_y) = self.display_transform(panel_rect);
         let cx = panel_rect.x + offset_x;
         let cy = panel_rect.y + offset_y;
 
@@ -198,7 +243,7 @@ impl Engine {
     }
 
     pub fn drag_layer(&mut self, uuid: &str, delta: (f32, f32), panel_rect: &Rect) {
-        let (scale, _, _) = compositor::canvas_transform(&self.cfg.canvas, panel_rect);
+        let (scale, _, _) = self.display_transform(panel_rect);
         if let Some(layer) = self.cfg.canvas.layers.iter_mut().find(|l| &l.uuid == uuid) {
             let (dx, dy) = delta;
             layer.x += dx / scale;
@@ -269,5 +314,88 @@ impl Engine {
     #[cfg(target_os = "macos")]
     pub fn connect_syphon(&mut self, name: &str) {
         self.registry.add_syphon(name.to_string(), name.to_string());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_engine(canvas: crate::config::Canvas) -> Engine {
+        Engine {
+            cfg: crate::config::Config { canvas },
+            registry: Registry::new(),
+            ndi: None,
+            decklink: None,
+            #[cfg(target_os = "macos")]
+            syphon: None,
+            comp: None,
+            dirty: false,
+            selected_layer_id: None,
+            dragging_uuid: None,
+            view: ViewState::new(),
+        }
+    }
+
+    #[test]
+    fn display_transform_is_base_at_default_zoom() {
+        let engine = test_engine(crate::config::Canvas { width: 1920, height: 1080, layers: vec![] });
+        let panel = Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 };
+        let (scale, ox, oy) = engine.display_transform(&panel);
+        let (base_scale, base_ox, base_oy) = compositor::canvas_transform(&engine.cfg.canvas, &panel);
+        assert!((scale - base_scale).abs() < 1e-3);
+        assert!((ox - base_ox).abs() < 1e-3);
+        assert!((oy - base_oy).abs() < 1e-3);
+    }
+
+    #[test]
+    fn recenter_fits_canvas_with_margin() {
+        let mut engine = test_engine(crate::config::Canvas { width: 1920, height: 1080, layers: vec![] });
+        let panel = Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 };
+        engine.recenter_view(&panel);
+        let (scale, ox, oy) = engine.display_transform(&panel);
+        let expected_scale = (panel.w / 1920.0).min(panel.h / 1080.0) * 0.9;
+        assert!((scale - expected_scale).abs() < 1e-3);
+        assert!((ox - (panel.w - 1920.0 * scale) / 2.0).abs() < 1e-3);
+        assert!((oy - (panel.h - 1080.0 * scale) / 2.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn recenter_expands_to_include_layers() {
+        let mut canvas = crate::config::Canvas { width: 100, height: 100, layers: vec![] };
+        canvas.layers.push(Layer::new_v4(
+            "L1".into(),
+            Protocol::Test,
+            None,
+            -50.0,
+            -50.0,
+            100,
+            100,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+        canvas.layers.push(Layer::new_v4(
+            "L2".into(),
+            Protocol::Test,
+            None,
+            200.0,
+            200.0,
+            100,
+            100,
+            1,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+        let mut engine = test_engine(canvas);
+        let panel = Rect { x: 0.0, y: 0.0, w: 400.0, h: 400.0 };
+        engine.recenter_view(&panel);
+        let (scale, _ox, _oy) = engine.display_transform(&panel);
+        let bbox_w = 350.0;
+        let bbox_h = 350.0;
+        let expected_scale = (panel.w / bbox_w).min(panel.h / bbox_h) * 0.9;
+        assert!((scale - expected_scale).abs() < 1e-3);
     }
 }
