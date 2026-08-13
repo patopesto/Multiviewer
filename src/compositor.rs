@@ -1,4 +1,4 @@
-use crate::config::{Canvas, TextureMode};
+use crate::config::{BorderVisibility, Canvas, LayerBorderVisibility, TextureMode};
 use crate::sources::{ConvUniform, Frame, Registry};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -102,6 +102,7 @@ fn uyvy_to_rgb(sample: vec4<f32>, x: f32, mode: u32) -> vec3<f32> {
 pub struct Shared {
     pub pipeline: wgpu::RenderPipeline,
     pub placeholder_bg: Arc<wgpu::BindGroup>,
+    pub border_bg: Arc<wgpu::BindGroup>,
     pub vb: wgpu::Buffer,
     pub ib: wgpu::Buffer,
 }
@@ -209,14 +210,16 @@ impl Compositor {
             cache: None,
         });
 
+        // One content quad + up to four border edge quads per layer.
+        const QUADS_PER_LAYER: usize = 5;
         let vb = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("cells-vb"),
-            size: (MAX_LAYERS * 4 * std::mem::size_of::<Vert>()) as u64,
+            size: (MAX_LAYERS * QUADS_PER_LAYER * 4 * std::mem::size_of::<Vert>()) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let mut indices = Vec::with_capacity(MAX_LAYERS * 6);
-        for i in 0..MAX_LAYERS as u16 {
+        let mut indices = Vec::with_capacity(MAX_LAYERS * QUADS_PER_LAYER * 6);
+        for i in 0..(MAX_LAYERS * QUADS_PER_LAYER) as u16 {
             let v = i * 4;
             indices.extend_from_slice(&[v, v + 1, v + 2, v + 2, v + 3, v]);
         }
@@ -229,9 +232,16 @@ impl Compositor {
         queue.write_buffer(&ib, 0, bytemuck::cast_slice(&indices));
 
         let placeholder_bg = Arc::new(placeholder(device, queue, &bind_layout, &sampler));
+        let border_bg = Arc::new(solid_bind_group(
+            device,
+            queue,
+            &bind_layout,
+            &sampler,
+            [180, 180, 180, 255],
+        ));
 
         Self {
-            shared: Arc::new(Shared { pipeline, placeholder_bg, vb, ib }),
+            shared: Arc::new(Shared { pipeline, placeholder_bg, border_bg, vb, ib }),
             bind_layout,
             sampler,
             textures: HashMap::new(),
@@ -244,6 +254,7 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         canvas: &Canvas,
+        global_borders: crate::config::BorderVisibility,
         registry: &Registry,
         panel_rect: &Rect,
         transform: (f32, f32, f32),
@@ -257,10 +268,11 @@ impl Compositor {
         let mut layers: Vec<_> = canvas.layers.iter().collect();
         layers.sort_by_key(|l| l.z);
 
-        let mut verts = Vec::with_capacity(layers.len() * 4);
-        let mut draws = Vec::with_capacity(layers.len());
+        let mut verts = Vec::with_capacity(layers.len() * 5 * 4);
+        let mut draws = Vec::with_capacity(layers.len() * 5);
 
-        for (i, layer) in layers.iter().enumerate() {
+        let mut first_index = 0u32;
+        for layer in layers {
             let entry = layer.source_id.as_deref().and_then(|sid| {
                 seen.entry(sid)
                     .or_insert_with(|| {
@@ -335,7 +347,59 @@ impl Compositor {
                 Vert { pos: [cx_ + hx, cy_ - hy], uv: [u1, v1] },
                 Vert { pos: [cx_ - hx, cy_ - hy], uv: [u0, v1] },
             ]);
-            draws.push(((i * 6) as u32, bg));
+            draws.push((first_index, bg));
+            first_index += 6;
+
+            let border_visible = match layer.border_visibility {
+                LayerBorderVisibility::Show => true,
+                LayerBorderVisibility::Hide => false,
+                LayerBorderVisibility::Inherit => global_borders == BorderVisibility::Show,
+            };
+            if border_visible {
+                const BORDER_PX: f32 = 1.0;
+                let dx = 2.0 * BORDER_PX / panel_rect.width();
+                let dy = 2.0 * BORDER_PX / panel_rect.height();
+
+                // Top edge (inside layer bounds).
+                verts.extend_from_slice(&[
+                    Vert { pos: [x0, y0], uv: [0.0, 0.0] },
+                    Vert { pos: [x1, y0], uv: [1.0, 0.0] },
+                    Vert { pos: [x1, y0 - dy], uv: [1.0, 1.0] },
+                    Vert { pos: [x0, y0 - dy], uv: [0.0, 1.0] },
+                ]);
+                draws.push((first_index, self.shared.border_bg.clone()));
+                first_index += 6;
+
+                // Bottom edge (inside layer bounds).
+                verts.extend_from_slice(&[
+                    Vert { pos: [x0, y1 + dy], uv: [0.0, 0.0] },
+                    Vert { pos: [x1, y1 + dy], uv: [1.0, 0.0] },
+                    Vert { pos: [x1, y1], uv: [1.0, 1.0] },
+                    Vert { pos: [x0, y1], uv: [0.0, 1.0] },
+                ]);
+                draws.push((first_index, self.shared.border_bg.clone()));
+                first_index += 6;
+
+                // Left edge (inside layer bounds).
+                verts.extend_from_slice(&[
+                    Vert { pos: [x0, y0], uv: [0.0, 0.0] },
+                    Vert { pos: [x0 + dx, y0], uv: [1.0, 0.0] },
+                    Vert { pos: [x0 + dx, y1], uv: [1.0, 1.0] },
+                    Vert { pos: [x0, y1], uv: [0.0, 1.0] },
+                ]);
+                draws.push((first_index, self.shared.border_bg.clone()));
+                first_index += 6;
+
+                // Right edge (inside layer bounds).
+                verts.extend_from_slice(&[
+                    Vert { pos: [x1 - dx, y0], uv: [0.0, 0.0] },
+                    Vert { pos: [x1, y0], uv: [1.0, 0.0] },
+                    Vert { pos: [x1, y1], uv: [1.0, 1.0] },
+                    Vert { pos: [x1 - dx, y1], uv: [0.0, 1.0] },
+                ]);
+                draws.push((first_index, self.shared.border_bg.clone()));
+                first_index += 6;
+            }
         }
 
         Draw { verts: Arc::new(verts), draws }
@@ -478,6 +542,61 @@ fn placeholder(
     );
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("placeholder"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
+            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniform, offset: 0, size: None }) },
+        ],
+    })
+}
+
+fn solid_bind_group(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    color: [u8; 4],
+) -> wgpu::BindGroup {
+    let tex = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("solid-border"),
+        size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let view = tex.create_view(&Default::default());
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &tex,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &color,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(4),
+            rows_per_image: Some(1),
+        },
+        wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+    );
+    let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("solid-border-conv"),
+        size: std::mem::size_of::<ConvUniform>() as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    queue.write_buffer(
+        &uniform,
+        0,
+        bytemuck::cast_slice(&[ConvUniform { mode: ConvMode::Passthrough as u32, width: 1.0, height: 1.0, _pad: 0.0 }]),
+    );
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("solid-border"),
         layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },

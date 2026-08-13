@@ -186,7 +186,7 @@ impl Engine {
         transform: (f32, f32, f32),
     ) -> Draw {
         let comp = self.comp.as_mut().expect("compositor not initialized");
-        comp.build(device, queue, &self.cfg.canvas, &self.registry, panel_rect, transform)
+        comp.build(device, queue, &self.cfg.canvas, self.cfg.layer_borders, &self.registry, panel_rect, transform)
     }
 
     pub fn display_transform(&self, panel_rect: &Rect) -> (f32, f32, f32) {
@@ -323,7 +323,7 @@ mod tests {
 
     fn test_engine(canvas: crate::config::Canvas) -> Engine {
         Engine {
-            cfg: crate::config::Config { canvas },
+            cfg: crate::config::Config { canvas, ..Default::default() },
             registry: Registry::new(),
             ndi: None,
             decklink: None,

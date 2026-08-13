@@ -1,4 +1,4 @@
-use crate::config::{Protocol, TextureMode};
+use crate::config::{BorderVisibility, LayerBorderVisibility, Protocol, TextureMode};
 use crate::engine::Engine;
 
 pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
@@ -13,6 +13,19 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
             if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.height).range(100..=7680)).changed() {
                 engine.dirty = true;
             }
+        });
+        ui.horizontal(|ui| {
+            ui.label("Borders");
+            egui::ComboBox::from_id_salt("global_layer_borders")
+                .selected_text(engine.cfg.layer_borders.label())
+                .show_ui(ui, |ui| {
+                    if ui.selectable_value(&mut engine.cfg.layer_borders, BorderVisibility::Show, "Show").clicked() {
+                        engine.dirty = true;
+                    }
+                    if ui.selectable_value(&mut engine.cfg.layer_borders, BorderVisibility::Hide, "Hide").clicked() {
+                        engine.dirty = true;
+                    }
+                });
         });
 
         ui.separator();
@@ -242,6 +255,22 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
                             ui.selectable_value(&mut layer.mode, TextureMode::Fit, "Fit");
                             ui.selectable_value(&mut layer.mode, TextureMode::Fill, "Fill");
                             ui.selectable_value(&mut layer.mode, TextureMode::Stretch, "Stretch");
+                        });
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Borders");
+                    egui::ComboBox::from_id_salt("layer_border_visibility")
+                        .selected_text(layer.border_visibility.label())
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_value(&mut layer.border_visibility, LayerBorderVisibility::Inherit, "Inherit").clicked() {
+                                engine.dirty = true;
+                            }
+                            if ui.selectable_value(&mut layer.border_visibility, LayerBorderVisibility::Hide, "Always hide").clicked() {
+                                engine.dirty = true;
+                            }
+                            if ui.selectable_value(&mut layer.border_visibility, LayerBorderVisibility::Show, "Always show").clicked() {
+                                engine.dirty = true;
+                            }
                         });
                 });
                 ui.horizontal(|ui| {

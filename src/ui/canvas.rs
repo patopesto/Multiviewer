@@ -142,25 +142,24 @@ fn draw_overlays(
     painter.rect_stroke(
         egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(cw, ch)),
         0.0,
-        egui::Stroke::new(2.0_f32, egui::Color32::WHITE),
+        egui::Stroke::new(2.0_f32, egui::Color32::from_rgba_unmultiplied(60, 60, 60, 120)),
         egui::StrokeKind::Inside,
     );
 
-    for layer in &canvas.layers {
-        let lx = cx + layer.x * scale;
-        let ly = cy + layer.y * scale;
-        let lw = layer.width as f32 * scale;
-        let lh = layer.height as f32 * scale;
-        let color = if selected.as_deref() == Some(&layer.uuid) {
-            egui::Color32::YELLOW
-        } else {
-            egui::Color32::from_rgba_premultiplied(200, 200, 200, 120)
-        };
-        painter.rect_stroke(
-            egui::Rect::from_min_size(egui::pos2(lx, ly), egui::vec2(lw, lh)),
-            0.0,
-            egui::Stroke::new(1.0_f32, color),
-            egui::StrokeKind::Inside,
-        );
-    }
+    let selected_uuid = match selected {
+        Some(uuid) => uuid,
+        None => return,
+    };
+
+    let Some(layer) = canvas.layers.iter().find(|l| &l.uuid == selected_uuid) else { return };
+    let lx = cx + layer.x * scale;
+    let ly = cy + layer.y * scale;
+    let lw = layer.width as f32 * scale;
+    let lh = layer.height as f32 * scale;
+    painter.rect_stroke(
+        egui::Rect::from_min_size(egui::pos2(lx, ly), egui::vec2(lw, lh)),
+        0.0,
+        egui::Stroke::new(2.0_f32, egui::Color32::YELLOW),
+        egui::StrokeKind::Inside,
+    );
 }

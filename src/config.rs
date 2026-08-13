@@ -37,6 +37,40 @@ impl Protocol {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum BorderVisibility {
+    #[default]
+    Show,
+    Hide,
+}
+
+impl BorderVisibility {
+    pub fn label(&self) -> &'static str {
+        match self {
+            BorderVisibility::Show => "Show",
+            BorderVisibility::Hide => "Hide",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LayerBorderVisibility {
+    #[default]
+    Inherit,
+    Hide,
+    Show,
+}
+
+impl LayerBorderVisibility {
+    pub fn label(&self) -> &'static str {
+        match self {
+            LayerBorderVisibility::Inherit => "Inherit",
+            LayerBorderVisibility::Hide => "Always hide",
+            LayerBorderVisibility::Show => "Always show",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Layer {
     pub uuid: String,
@@ -54,6 +88,8 @@ pub struct Layer {
     pub flip_h: bool,
     #[serde(default)]
     pub flip_v: bool,
+    #[serde(default)]
+    pub border_visibility: LayerBorderVisibility,
 }
 
 impl Layer {
@@ -83,6 +119,7 @@ impl Layer {
             mode,
             flip_h,
             flip_v,
+            border_visibility: LayerBorderVisibility::default(),
         }
     }
 }
@@ -108,6 +145,8 @@ impl Default for Canvas {
 pub struct Config {
     #[serde(default)]
     pub canvas: Canvas,
+    #[serde(default)]
+    pub layer_borders: BorderVisibility,
 }
 
 pub fn path() -> PathBuf {
