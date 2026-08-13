@@ -16,6 +16,9 @@ wgpu = "29"
 grafton-ndi = "1.0.0"
 uuid = { version = "1", features = ["v4"] }
 
+[build-dependencies]
+cc = "1.0"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 syphon-wgpu = "0.3"
 syphon-core = "0.3"

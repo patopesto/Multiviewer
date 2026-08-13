@@ -1,4 +1,27 @@
 fn main() {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        let mut build = cc::Build::new();
+        build.cpp(true);
+        build.file("src/sources/decklink/decklink_shim.cpp");
+
+        if cfg!(target_os = "macos") {
+            build.include("vendor/blackmagic/Mac/include/");
+            build.file("vendor/blackmagic/Mac/include/DeckLinkAPIDispatch.cpp");
+            println!("cargo:rustc-link-lib=framework=CoreFoundation");
+            println!("cargo:rustc-link-lib=framework=CoreVideo");
+        } else if cfg!(target_os = "linux") {
+            build.include("vendor/blackmagic/Linux/include/");
+            build.file("vendor/blackmagic/Linux/include/DeckLinkAPIDispatch.cpp");
+            println!("cargo:rustc-link-lib=dl");
+        }
+
+        build.compile("decklink_shim");
+
+        println!("cargo:rerun-if-changed=src/sources/decklink/decklink_shim.cpp");
+        println!("cargo:rerun-if-changed=src/sources/decklink/decklink_shim.h");
+    }
+
     #[cfg(target_os = "macos")]
     {
         // Dev builds: point rpath at the local SDK so `cargo run` works.

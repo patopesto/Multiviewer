@@ -37,10 +37,12 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
             let mut removed = false;
             let mut new_test_source = false;
             let mut new_ndi_connect: Option<String> = None;
+            let mut new_decklink_connect: Option<String> = None;
             let mut new_syphon_connect: Option<String> = None;
             let mut selected_source: Option<String> = None;
             let mut protocol_changed = false;
             let mut ndi_restart_sid: Option<String> = None;
+            let mut decklink_restart_sid: Option<String> = None;
             #[cfg(target_os = "macos")]
             let mut syphon_restart_sid: Option<String> = None;
 
@@ -66,6 +68,9 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
                                 protocol_changed = true;
                             }
                             if ui.selectable_value(&mut layer.protocol, Protocol::Ndi, "NDI").clicked() {
+                                protocol_changed = true;
+                            }
+                            if ui.selectable_value(&mut layer.protocol, Protocol::Decklink, "DeckLink").clicked() {
                                 protocol_changed = true;
                             }
                             #[cfg(target_os = "macos")]
@@ -124,6 +129,43 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
                                         }
                                     }
                                     if ndi_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        });
+                    }
+                    Protocol::Decklink => {
+                        let decklink_ids: Vec<String> = engine.registry.list_decklink_sources()
+                            .into_iter().map(|(id, _)| id.clone()).collect();
+                        let current = layer.source_id.as_deref().unwrap_or("");
+                        let discovered = engine.decklink.as_ref().map(|d| d.list()).unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            ui.label("Source");
+                            egui::ComboBox::from_id_salt("decklink_source")
+                                .selected_text(current.to_string())
+                                .show_ui(ui, |ui| {
+                                    // Already connected DeckLink sources
+                                    for id in &decklink_ids {
+                                        if ui.selectable_label(current == id, id).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    // Discovered ports not yet connected (auto-connect on select)
+                                    for port in &discovered {
+                                        let name = &port.name;
+                                        if !decklink_ids.iter().any(|id| id == name) {
+                                            let label = if port.connections.is_empty() {
+                                                name.clone()
+                                            } else {
+                                                format!("{} ({})", name, port.connections)
+                                            };
+                                            if ui.selectable_label(current == name, label).clicked() {
+                                                new_decklink_connect = Some(name.clone());
+                                                selected_source = Some(name.clone());
+                                            }
+                                        }
+                                    }
+                                    if decklink_ids.is_empty() && discovered.is_empty() {
                                         ui.weak("(scanning...)");
                                     }
                                 });
@@ -212,8 +254,10 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
                         ui.separator();
                         ui.heading("Source Settings");
                         if super::source_settings::render_source_settings(source, ui) {
-                            // Config changed — NDI/Syphon need restart
-                            if !source.is_test() {
+                            // Config changed — NDI/DeckLink/Syphon need restart
+                            if source.is_decklink() {
+                                decklink_restart_sid = Some(sid.clone());
+                            } else if !source.is_test() {
                                 ndi_restart_sid = Some(sid.clone());
                             }
                             #[cfg(target_os = "macos")]
@@ -228,6 +272,9 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
             if let Some(name) = new_ndi_connect {
                 engine.connect_ndi(&name);
             }
+            if let Some(name) = new_decklink_connect {
+                engine.connect_decklink(&name);
+            }
             #[cfg(target_os = "macos")]
             if let Some(name) = new_syphon_connect {
                 engine.connect_syphon(&name);
@@ -241,13 +288,16 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
             if let Some(sid) = ndi_restart_sid {
                 engine.registry.restart_ndi(&sid);
             }
+            if let Some(sid) = decklink_restart_sid {
+                engine.registry.restart_decklink(&sid);
+            }
             #[cfg(target_os = "macos")]
             if let Some(sid) = syphon_restart_sid {
                 engine.registry.restart_syphon(&sid);
             }
         }
 
-        // Cleanup all orphaned sources (Test and NDI)
+        // Cleanup all orphaned sources (Test, NDI, DeckLink)
         engine.cleanup_orphaned_sources();
     });
 }

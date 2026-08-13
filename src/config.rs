@@ -23,6 +23,7 @@ pub enum Protocol {
     Test,
     Ndi,
     Syphon,
+    Decklink,
 }
 
 impl Protocol {
@@ -31,6 +32,7 @@ impl Protocol {
             Protocol::Test => "Test",
             Protocol::Ndi => "NDI",
             Protocol::Syphon => "Syphon",
+            Protocol::Decklink => "DeckLink",
         }
     }
 }

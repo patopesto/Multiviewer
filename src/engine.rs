@@ -1,5 +1,6 @@
 use crate::compositor::{self, Compositor, Draw, Rect};
 use crate::config::{Config, Layer, Protocol, TextureMode};
+use crate::sources::decklink::Discovery as DecklinkDiscovery;
 use crate::sources::ndi::Discovery;
 use crate::sources::Registry;
 
@@ -10,6 +11,7 @@ pub struct Engine {
     pub cfg: Config,
     pub registry: Registry,
     pub ndi: Option<Discovery>,
+    pub decklink: Option<DecklinkDiscovery>,
     #[cfg(target_os = "macos")]
     pub syphon: Option<SyphonDiscovery>,
     comp: Option<Compositor>,
@@ -26,6 +28,9 @@ impl Engine {
 
         // Start NDI discovery before restoring sources
         let ndi = Discovery::start();
+
+        // Start DeckLink discovery
+        let decklink = DecklinkDiscovery::start();
 
         // Start Syphon discovery on macOS
         #[cfg(target_os = "macos")]
@@ -77,6 +82,7 @@ impl Engine {
             cfg,
             registry,
             ndi: Some(ndi),
+            decklink: Some(decklink),
             #[cfg(target_os = "macos")]
             syphon,
             comp: None,
@@ -96,6 +102,23 @@ impl Engine {
                         if self.registry.get(name).is_none() {
                             if let Some(src) = discovered.iter().find(|s| &s.name == name) {
                                 self.registry.add_ndi(name.clone(), src.clone());
+                                self.dirty = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Auto-connect pending DeckLink sources when they appear in discovery
+        if let Some(ref decklink) = self.decklink {
+            let discovered = decklink.list();
+            for layer in &self.cfg.canvas.layers {
+                if layer.protocol == Protocol::Decklink {
+                    if let Some(ref name) = layer.source_id {
+                        if self.registry.get(name).is_none() {
+                            if let Some(port) = discovered.iter().find(|p| &p.name == name) {
+                                self.registry.add_decklink(name.clone(), name.clone(), Some(port.connections.clone()));
                                 self.dirty = true;
                             }
                         }
@@ -230,6 +253,13 @@ impl Engine {
                 self.registry.add_ndi(name.to_string(), src);
             }
         }
+    }
+
+    pub fn connect_decklink(&mut self, name: &str) {
+        let connections = self.decklink.as_ref()
+            .and_then(|d| d.find_by_name(name))
+            .map(|p| p.connections);
+        self.registry.add_decklink(name.to_string(), name.to_string(), connections);
     }
 
     #[cfg(target_os = "macos")]

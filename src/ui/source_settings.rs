@@ -1,4 +1,4 @@
-use crate::sources::{NdiConfig, SourceKind, TestConfig};
+use crate::sources::{DecklinkConfig, NdiConfig, SourceKind, TestConfig};
 
 #[cfg(target_os = "macos")]
 use crate::sources::SyphonConfig;
@@ -7,6 +7,7 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
     match source {
         SourceKind::Test(_, cfg) => test_settings_ui(cfg, ui),
         SourceKind::Ndi(_, cfg, _) => ndi_settings_ui(cfg, ui),
+        SourceKind::Decklink(_, cfg, _) => decklink_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
         SourceKind::Syphon(_, cfg, _) => syphon_settings_ui(cfg, ui),
     }
@@ -62,6 +63,37 @@ fn ndi_settings_ui(cfg: &mut NdiConfig, ui: &mut egui::Ui) -> bool {
             });
     });
     cfg.bandwidth != old_bw || cfg.color_format != old_cf
+}
+
+fn decklink_settings_ui(cfg: &mut DecklinkConfig, ui: &mut egui::Ui) -> bool {
+    let old_conn = cfg.connection.clone();
+    let all_options = [("SDI", "SDI"), ("HDMI", "HDMI"), ("Optical SDI", "Optical SDI"), ("Component", "Component"), ("Composite", "Composite"), ("S-Video", "S-Video")];
+
+    let available: Vec<(&str, &str)> = if cfg.supported_connections.is_empty() {
+        all_options.to_vec()
+    } else {
+        all_options.iter()
+            .filter(|(_, value)| cfg.supported_connections.contains(*value))
+            .cloned()
+            .collect()
+    };
+
+    // Default to the first available connection if none is set.
+    if cfg.connection.is_empty() && !available.is_empty() {
+        cfg.connection = available[0].1.to_string();
+    }
+
+    ui.horizontal(|ui| {
+        ui.label("Connection");
+        egui::ComboBox::from_id_salt("decklink_conn")
+            .selected_text(cfg.connection.clone())
+            .show_ui(ui, |ui| {
+                for (label, value) in &available {
+                    ui.selectable_value(&mut cfg.connection, value.to_string(), *label);
+                }
+            });
+    });
+    cfg.connection != old_conn
 }
 
 #[cfg(target_os = "macos")]

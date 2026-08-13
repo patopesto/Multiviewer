@@ -1,12 +1,14 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+pub mod decklink;
 pub mod ndi;
 pub mod test;
 
 #[cfg(target_os = "macos")]
 pub mod syphon;
 
+pub use decklink::source::{DecklinkConfig, DecklinkSource};
 pub use ndi::source::{NdiConfig, NdiSource};
 pub use test::{TestConfig, TestSource};
 
@@ -18,7 +20,6 @@ pub type SourceId = String;
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum PixelFormat {
     Rgba8,
-    #[allow(dead_code)]
     Bgra8,
 }
 
@@ -27,7 +28,6 @@ pub struct CpuFrame {
     pub data: Arc<Vec<u8>>,
     pub w: u32,
     pub h: u32,
-    #[allow(dead_code)]
     pub fmt: PixelFormat,
     /// Monotonic per-source counter; compositor uploads only when this changes.
     pub seq: u64,
@@ -59,6 +59,7 @@ pub enum SourceKind {
     Ndi(NdiSource, NdiConfig, grafton_ndi::Source),
     #[cfg(target_os = "macos")]
     Syphon(SyphonSource, SyphonConfig, String),
+    Decklink(DecklinkSource, DecklinkConfig, String),
 }
 
 impl SourceKind {
@@ -69,6 +70,7 @@ impl SourceKind {
             SourceKind::Ndi(s, _, _) => s.name(),
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(s, _, _) => s.name(),
+            SourceKind::Decklink(s, _, _) => s.name(),
         }
     }
 
@@ -78,6 +80,7 @@ impl SourceKind {
             SourceKind::Ndi(s, _, _) => s.latest(device, queue),
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(s, _, _) => s.latest(device, queue),
+            SourceKind::Decklink(s, _, _) => s.latest(device, queue),
         }
     }
 
@@ -94,6 +97,10 @@ impl SourceKind {
         {
             false
         }
+    }
+
+    pub fn is_decklink(&self) -> bool {
+        matches!(self, SourceKind::Decklink(_, _, _))
     }
 
     #[allow(dead_code)]
@@ -124,6 +131,14 @@ impl SourceKind {
         #[cfg(not(target_os = "macos"))]
         {
             None
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn decklink_config_mut(&mut self) -> Option<&mut DecklinkConfig> {
+        match self {
+            SourceKind::Decklink(_, cfg, _) => Some(cfg),
+            _ => None,
         }
     }
 }
@@ -169,6 +184,19 @@ impl Registry {
         name
     }
 
+    pub fn add_decklink(&mut self, name: String, display_name: String, supported_connections: Option<String>) -> SourceId {
+        if self.sources.contains_key(&name) {
+            return name;
+        }
+        let mut cfg = DecklinkConfig::default();
+        if let Some(conn) = supported_connections {
+            cfg.supported_connections = conn;
+        }
+        let src = DecklinkSource::spawn(name.clone(), display_name, &cfg);
+        self.sources.insert(name.clone(), SourceKind::Decklink(src, cfg, name.clone()));
+        name
+    }
+
     pub fn get(&self, id: &SourceId) -> Option<&SourceKind> {
         self.sources.get(id)
     }
@@ -203,6 +231,13 @@ impl Registry {
         }
     }
 
+    pub fn restart_decklink(&mut self, name: &str) {
+        if let Some(SourceKind::Decklink(_, cfg, display_name)) = self.sources.remove(name) {
+            let new = DecklinkSource::spawn(name.to_string(), display_name, &cfg);
+            self.sources.insert(name.to_string(), SourceKind::Decklink(new, cfg, name.to_string()));
+        }
+    }
+
     /// Remove all sources not referenced by any layer.
     pub fn cleanup_orphaned_sources(&mut self, active_source_ids: &[&str]) {
         let active: HashSet<&str> = active_source_ids.iter().copied().collect();
@@ -221,11 +256,15 @@ impl Registry {
     }
 
     pub fn list_ndi_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
-        self.sources.iter().filter(|(_, sk)| !sk.is_test() && !sk.is_syphon()).collect()
+        self.sources.iter().filter(|(_, sk)| !sk.is_test() && !sk.is_syphon() && !sk.is_decklink()).collect()
     }
 
     #[cfg(target_os = "macos")]
     pub fn list_syphon_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
         self.sources.iter().filter(|(_, sk)| sk.is_syphon()).collect()
+    }
+
+    pub fn list_decklink_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
+        self.sources.iter().filter(|(_, sk)| sk.is_decklink()).collect()
     }
 }

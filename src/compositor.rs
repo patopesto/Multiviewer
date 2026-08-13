@@ -283,8 +283,8 @@ impl Compositor {
     ) -> &SourceTex {
         use crate::sources::PixelFormat;
         let format = match f.fmt {
-            PixelFormat::Rgba8 => wgpu::TextureFormat::Rgba8UnormSrgb,
-            PixelFormat::Bgra8 => wgpu::TextureFormat::Bgra8UnormSrgb,
+            PixelFormat::Rgba8 => wgpu::TextureFormat::Rgba8Unorm,
+            PixelFormat::Bgra8 => wgpu::TextureFormat::Bgra8Unorm,
         };
         let stale = self
             .textures
@@ -364,7 +364,7 @@ fn placeholder(
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        format: wgpu::TextureFormat::Rgba8Unorm,
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
     });

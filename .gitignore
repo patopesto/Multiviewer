@@ -7,3 +7,15 @@ vendor/ndi/**/*.lib
 vendor/ndi/**/*.dylib
 vendor/ndi/**/*.dll
 vendor/ndi/**/*.so
+
+# Blackmagic (only keep headers)
+vendor/blackmagic/*
+!vendor/blackmagic/Mac/
+vendor/blackmagic/Mac/*
+!vendor/blackmagic/Mac/include/
+!vendor/blackmagic/Linux/
+vendor/blackmagic/Linux/*
+!vendor/blackmagic/Linux/include/
+!vendor/blackmagic/Win/
+vendor/blackmagic/Win/*
+!vendor/blackmagic/Win/include/
