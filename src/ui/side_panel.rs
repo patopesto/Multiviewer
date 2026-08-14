@@ -302,6 +302,11 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
                                 syphon_restart_sid = Some(sid.clone());
                             }
                         }
+                        ui.separator();
+                        ui.heading("Source Stats");
+                        let stats_arc = source.stats();
+                        let stats = stats_arc.lock().unwrap();
+                        super::source_stats::render_source_stats(&*stats, ui);
                     }
                 }
             }

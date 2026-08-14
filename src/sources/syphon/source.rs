@@ -1,4 +1,4 @@
-use super::super::{Frame, VideoSource, ConvUniform};
+use super::super::{Frame, VideoSource, PixelFormat, ConvUniform, SourceStats};
 use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
 
 #[derive(Clone)]
@@ -20,6 +20,7 @@ pub struct SyphonSource {
     bg: Mutex<Option<Arc<wgpu::BindGroup>>>,
     dims: Mutex<(u32, u32)>,
     seq: AtomicU64,
+    stats: Arc<Mutex<SourceStats>>,
 }
 
 impl SyphonSource {
@@ -33,6 +34,7 @@ impl SyphonSource {
             bg: Mutex::new(None),
             dims: Mutex::new((0, 0)),
             seq: AtomicU64::new(0),
+            stats: Arc::new(Mutex::new(SourceStats::new())),
         }
     }
 }
@@ -62,6 +64,11 @@ impl VideoSource for SyphonSource {
             let size = tex.size();
             let w = size.width;
             let h = size.height;
+            {
+                let mut s = self.stats.lock().unwrap();
+                s.record_frame(w, h, PixelFormat::Bgra8.label(), 0.0);
+                s.record_copy_time(0.0);
+            }
 
             let mut dims = self.dims.lock().unwrap();
             let mut bg = self.bg.lock().unwrap();
@@ -183,5 +190,9 @@ impl VideoSource for SyphonSource {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn stats(&self) -> Arc<Mutex<SourceStats>> {
+        self.stats.clone()
     }
 }

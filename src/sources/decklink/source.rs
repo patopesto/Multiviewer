@@ -1,8 +1,8 @@
-use crate::sources::{CpuFrame, Frame, PixelFormat, VideoSource};
+use crate::sources::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
 use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // Values must match DecklinkPixelFormatOut in decklink_shim.cpp.
 #[allow(dead_code)]
@@ -30,6 +30,7 @@ impl Default for DecklinkConfig {
 pub struct DecklinkSource {
     name: String,
     latest: Arc<Mutex<Option<CpuFrame>>>,
+    stats: Arc<Mutex<SourceStats>>,
     running: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
@@ -38,6 +39,8 @@ impl DecklinkSource {
     pub fn spawn(name: String, display_name: String, cfg: &DecklinkConfig) -> Self {
         let latest = Arc::new(Mutex::new(None));
         let latest2 = latest.clone();
+        let stats = Arc::new(Mutex::new(SourceStats::new()));
+        let stats2 = stats.clone();
         let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
         let name_for_thread = name.clone();
@@ -78,6 +81,7 @@ impl DecklinkSource {
                     const MAX_SIZE: usize = 3840 * 2160 * 4;
                     let mut pool: Vec<Vec<u8>> = vec![vec![0u8; MAX_SIZE]; 3];
                     let mut slot = 0usize;
+                    let mut last_seq = 0u64;
                     while running2.load(Ordering::Relaxed) {
                         if pool[slot].len() < MAX_SIZE {
                             pool[slot].resize(MAX_SIZE, 0);
@@ -86,7 +90,9 @@ impl DecklinkSource {
                         let mut h = 0;
                         let mut seq = 0u64;
                         let mut fmt = 0i32;
-                        if decklink_source_poll_frame(
+                        let mut nominal_fps = 0.0f64;
+                        let t0 = Instant::now();
+                        let got = decklink_source_poll_frame(
                             src,
                             pool[slot].as_mut_ptr(),
                             pool[slot].len(),
@@ -94,7 +100,13 @@ impl DecklinkSource {
                             &mut h,
                             &mut seq,
                             &mut fmt,
-                        ) {
+                            &mut nominal_fps,
+                        );
+                        // Only process and count a frame when the C++ callback has
+                        // published a new seq. The 5 ms poll otherwise returns the
+                        // same front buffer repeatedly.
+                        if got && seq != last_seq {
+                            let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
                             let (pixel_format, bpp) = if fmt == DECKLINK_FMT_BGRA8 {
                                 (PixelFormat::Bgra8, 4)
                             } else if fmt == DECKLINK_FMT_UYVY422 {
@@ -104,6 +116,16 @@ impl DecklinkSource {
                             };
                             let data_size = (w * h * bpp) as usize;
                             pool[slot].truncate(data_size);
+
+                            {
+                                let mut s = stats2.lock().unwrap();
+                                s.record_frame(w as u32, h as u32, pixel_format.label(), nominal_fps);
+                                s.record_copy_time(copy_ms);
+                                if last_seq != 0 && seq > last_seq + 1 {
+                                    s.record_dropped(seq - last_seq - 1);
+                                }
+                            }
+                            last_seq = seq;
 
                             let mut guard = latest2.lock().unwrap();
                             let old = guard.take();
@@ -135,6 +157,7 @@ impl DecklinkSource {
         Self {
             name,
             latest,
+            stats,
             running,
             thread: Some(thread),
         }
@@ -160,6 +183,10 @@ impl VideoSource for DecklinkSource {
     fn name(&self) -> &str {
         &self.name
     }
+
+    fn stats(&self) -> Arc<Mutex<SourceStats>> {
+        self.stats.clone()
+    }
 }
 
 unsafe extern "C" {
@@ -176,5 +203,6 @@ unsafe extern "C" {
         h: *mut i32,
         seq: *mut u64,
         fmt_out: *mut i32,
+        nominal_fps_out: *mut f64,
     ) -> bool;
 }

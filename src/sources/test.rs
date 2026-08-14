@@ -1,6 +1,6 @@
-use super::{CpuFrame, Frame, PixelFormat, VideoSource};
+use super::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 pub struct TestConfig {
@@ -17,6 +17,7 @@ impl Default for TestConfig {
 /// Generated color-bars feed with a moving marker, on its own thread.
 pub struct TestSource {
     slot: Arc<Mutex<Option<Frame>>>,
+    stats: Arc<Mutex<SourceStats>>,
     #[allow(dead_code)]
     name: String,
 }
@@ -25,6 +26,8 @@ impl TestSource {
     pub fn spawn(name: String, variant: u32) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let writer = slot.clone();
+        let stats = Arc::new(Mutex::new(SourceStats::new()));
+        let stats2 = stats.clone();
         std::thread::Builder::new()
             .name(format!("src-{name}"))
             .spawn(move || {
@@ -32,8 +35,15 @@ impl TestSource {
                 const H: u32 = 720;
                 let mut seq = 0u64;
                 loop {
+                    let t0 = Instant::now();
                     let mut buf = vec![0u8; (W * H * 4) as usize];
                     bars(&mut buf, W, H, variant, seq);
+                    let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
+                    {
+                        let mut s = stats2.lock().unwrap();
+                        s.record_frame(W, H, PixelFormat::Rgba8.label(), 30.0);
+                        s.record_copy_time(copy_ms);
+                    }
                     *writer.lock().unwrap() = Some(Frame::Cpu(CpuFrame {
                         data: Arc::new(buf),
                         w: W,
@@ -46,7 +56,7 @@ impl TestSource {
                 }
             })
             .expect("spawn test source");
-        Self { slot, name }
+        Self { slot, stats, name }
     }
 }
 
@@ -57,6 +67,10 @@ impl VideoSource for TestSource {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn stats(&self) -> Arc<Mutex<SourceStats>> {
+        self.stats.clone()
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::config::{BorderVisibility, Canvas, LayerBorderVisibility, TextureMode};
 use crate::sources::{ConvUniform, Frame, Registry};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 const MAX_LAYERS: usize = 256;
 
@@ -277,9 +277,10 @@ impl Compositor {
                 seen.entry(sid)
                     .or_insert_with(|| {
                         let src = registry.get(&sid.to_string())?;
+                        let stats = src.stats();
                         match src.latest(device, queue)? {
                             Frame::Cpu(f) => {
-                                let st = self.ensure_texture(device, queue, sid, &f);
+                                let st = self.ensure_texture(device, queue, sid, &f, Some(stats));
                                 Some((st.bg.clone(), f.w as f32 / f.h as f32, false, false))
                             }
                             Frame::Syphon(f) => {
@@ -411,6 +412,7 @@ impl Compositor {
         queue: &wgpu::Queue,
         name: &str,
         f: &crate::sources::CpuFrame,
+        stats: Option<Arc<Mutex<crate::sources::SourceStats>>>,
     ) -> &SourceTex {
         use crate::sources::PixelFormat;
         let (format, tex_w, bpp, mode) = match f.fmt {
@@ -476,6 +478,7 @@ impl Compositor {
             SourceTex { _tex: tex, _uniform: uniform, bg, w: f.w, h: f.h, seq: u64::MAX, format }
         });
         if st.seq != f.seq {
+            let t0 = std::time::Instant::now();
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &st._tex,
@@ -491,6 +494,11 @@ impl Compositor {
                 },
                 wgpu::Extent3d { width: tex_w, height: f.h, depth_or_array_layers: 1 },
             );
+            let upload_ms = t0.elapsed().as_secs_f32() * 1000.0;
+            if let Some(stats) = stats {
+                let mut s = stats.lock().unwrap();
+                s.record_upload_time(upload_ms);
+            }
             st.seq = f.seq;
         }
         st

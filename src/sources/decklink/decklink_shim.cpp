@@ -177,6 +177,12 @@ public:
         long h = newDisplayMode->GetHeight();
         fprintf(stderr, "[decklink] VideoInputFormatChanged %ldx%ld mode=%d\n", w, h, static_cast<int>(newMode));
 
+        BMDTimeValue frame_duration = 0;
+        BMDTimeValue time_scale = 0;
+        if (newDisplayMode->GetFrameRate(&frame_duration, &time_scale) == S_OK && frame_duration > 0) {
+            nominal_fps_ = static_cast<double>(time_scale) / static_cast<double>(frame_duration);
+        }
+
         // Determine pixel format from detected signal flags.
         BMDPixelFormat pixelFormat = bmdFormat8BitYUV;
         if (notificationEvents & bmdVideoInputColorspaceChanged) {
@@ -325,7 +331,7 @@ public:
     }
 
 public:
-    bool poll(uint8_t* out, size_t out_size, int* w, int* h, uint64_t* seq, int* fmt_out)
+    bool poll(uint8_t* out, size_t out_size, int* w, int* h, uint64_t* seq, int* fmt_out, double* nominal_fps_out)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (frame_size_ == 0) return false;
@@ -335,6 +341,7 @@ public:
         *w = width_;
         *h = height_;
         *seq = seq_;
+        *nominal_fps_out = nominal_fps_;
         if (format_ == bmdFormat8BitBGRA) {
             *fmt_out = static_cast<int>(DecklinkPixelFormatOut::Bgra8);
         } else if (format_ == bmdFormat8BitYUV) {
@@ -356,12 +363,14 @@ private:
     int height_ = 0;
     BMDPixelFormat format_ = bmdFormat8BitBGRA;
     uint64_t seq_ = 0;
+    double nominal_fps_ = 0.0;
     DecklinkSource* source_ = nullptr;
     BMDDisplayMode last_mode_ = bmdModeUnknown;
     bool had_signal_ = false;
 public:
     void stop() { stopping_.store(true); }
     void detach() { source_ = nullptr; }
+    void set_nominal_fps(double fps) { nominal_fps_ = fps; }
 };
 
 /* ── Discovery ───────────────────────────────────────────────────────── */
@@ -621,6 +630,18 @@ bool decklink_source_start(DecklinkSource* s)
     // Some devices require audio to be enabled for video capture to work.
     // s->input->EnableAudioInput(bmdAudioSampleRate48kHz, bmdAudioSampleType16bitInteger, 2);
 
+    if (mode != bmdModeUnknown) {
+        IDeckLinkDisplayMode* display_mode = nullptr;
+        if (s->input->GetDisplayMode(mode, &display_mode) == S_OK && display_mode) {
+            BMDTimeValue frame_duration = 0;
+            BMDTimeValue time_scale = 0;
+            if (display_mode->GetFrameRate(&frame_duration, &time_scale) == S_OK && frame_duration > 0) {
+                s->callback->set_nominal_fps(static_cast<double>(time_scale) / static_cast<double>(frame_duration));
+            }
+            display_mode->Release();
+        }
+    }
+
     if (s->input->StartStreams() != S_OK) {
         fprintf(stderr, "[decklink] StartStreams failed\n");
         s->input->StopStreams();
@@ -669,8 +690,8 @@ void decklink_source_stop(DecklinkSource* s)
     }
 }
 
-bool decklink_source_poll_frame(DecklinkSource* s, uint8_t* out_rgba, size_t out_size, int* w, int* h, uint64_t* seq, int* fmt_out)
+bool decklink_source_poll_frame(DecklinkSource* s, uint8_t* out_rgba, size_t out_size, int* w, int* h, uint64_t* seq, int* fmt_out, double* nominal_fps_out)
 {
     if (!s || !s->callback) return false;
-    return s->callback->poll(out_rgba, out_size, w, h, seq, fmt_out);
+    return s->callback->poll(out_rgba, out_size, w, h, seq, fmt_out, nominal_fps_out);
 }

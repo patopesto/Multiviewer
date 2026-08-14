@@ -1,7 +1,7 @@
-use super::super::{CpuFrame, Frame, PixelFormat, VideoSource};
+use super::super::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Clone)]
 pub struct NdiConfig {
@@ -22,6 +22,7 @@ impl Default for NdiConfig {
 /// Active NDI receiver on its own thread.
 pub struct NdiSource {
     slot: Arc<Mutex<Option<Frame>>>,
+    stats: Arc<Mutex<SourceStats>>,
     #[allow(dead_code)]
     name: String,
 }
@@ -33,6 +34,8 @@ impl NdiSource {
         };
         let slot = Arc::new(Mutex::new(None));
         let slot2 = slot.clone();
+        let stats = Arc::new(Mutex::new(SourceStats::new()));
+        let stats2 = stats.clone();
         let thread_name = name.clone();
         let bandwidth = cfg.bandwidth;
         let color_format = cfg.color_format;
@@ -86,6 +89,7 @@ impl NdiSource {
                                 _ => (w as usize) * bpp,
                             };
                             let expected = (w as usize) * (h as usize) * bpp;
+                            let t0 = Instant::now();
                             let data = if stride == (w as usize) * bpp {
                                 frame.data().to_vec()
                             } else {
@@ -99,6 +103,12 @@ impl NdiSource {
                                 }
                                 packed
                             };
+                            let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
+                            {
+                                let mut s = stats2.lock().unwrap();
+                                s.record_frame(w, h, fmt.label(), 0.0);
+                                s.record_copy_time(copy_ms);
+                            }
                             *slot2.lock().unwrap() = Some(Frame::Cpu(CpuFrame {
                                 data: Arc::new(data),
                                 w,
@@ -115,7 +125,7 @@ impl NdiSource {
                 }
             })
             .expect("spawn ndi-recv");
-        Self { slot, name }
+        Self { slot, stats, name }
     }
 }
 
@@ -126,5 +136,9 @@ impl VideoSource for NdiSource {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn stats(&self) -> Arc<Mutex<SourceStats>> {
+        self.stats.clone()
     }
 }
