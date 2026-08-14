@@ -25,6 +25,18 @@ fn test_settings_ui(cfg: &mut TestConfig, ui: &mut egui::Ui) -> bool {
     cfg.width != old_w || cfg.height != old_h
 }
 
+fn color_format_label(cf: grafton_ndi::ReceiverColorFormat) -> String {
+    match cf {
+        grafton_ndi::ReceiverColorFormat::BGRX_BGRA => "BGRX/BGRA".to_string(),
+        grafton_ndi::ReceiverColorFormat::UYVY_BGRA => "UYVY/BGRA".to_string(),
+        grafton_ndi::ReceiverColorFormat::RGBX_RGBA => "RGBX/RGBA".to_string(),
+        grafton_ndi::ReceiverColorFormat::UYVY_RGBA => "UYVY/RGBA".to_string(),
+        grafton_ndi::ReceiverColorFormat::Fastest => "Fastest".to_string(),
+        grafton_ndi::ReceiverColorFormat::Best => "Best".to_string(),
+        _ => format!("{:?}", cf),
+    }
+}
+
 fn ndi_settings_ui(cfg: &mut NdiConfig, ui: &mut egui::Ui) -> bool {
     let old_bw = cfg.bandwidth;
     let old_cf = cfg.color_format;
@@ -48,18 +60,18 @@ fn ndi_settings_ui(cfg: &mut NdiConfig, ui: &mut egui::Ui) -> bool {
     ui.horizontal(|ui| {
         ui.label("Color");
         egui::ComboBox::from_id_salt("ndi_color")
-             .selected_text(format!("{:?}", cfg.color_format))
+            .selected_text(color_format_label(cfg.color_format))
             .show_ui(ui, |ui| {
-                ui.selectable_value(
-                    &mut cfg.color_format,
+                for variant in [
+                    grafton_ndi::ReceiverColorFormat::BGRX_BGRA,
+                    grafton_ndi::ReceiverColorFormat::UYVY_BGRA,
                     grafton_ndi::ReceiverColorFormat::RGBX_RGBA,
-                    "RGBX/RGBA",
-                );
-                ui.selectable_value(
-                    &mut cfg.color_format,
                     grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
-                    "UYVY/RGBA",
-                );
+                    // grafton_ndi::ReceiverColorFormat::Fastest, // TODO: support UYVY+A format
+                    // grafton_ndi::ReceiverColorFormat::Best,    // TODO: support PA16 and P216 formats
+                ] {
+                    ui.selectable_value(&mut cfg.color_format, variant, color_format_label(variant));
+                }
             });
     });
     cfg.bandwidth != old_bw || cfg.color_format != old_cf

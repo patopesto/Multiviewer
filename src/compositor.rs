@@ -113,6 +113,7 @@ struct SourceTex {
     bg: Arc<wgpu::BindGroup>,
     w: u32,
     h: u32,
+    tex_w: u32,
     seq: u64,
     format: wgpu::TextureFormat,
 }
@@ -433,7 +434,7 @@ impl Compositor {
         let stale = self
             .textures
             .get(name)
-            .map(|t| t.w != f.w || t.h != f.h || t.format != format)
+            .map(|t| t.w != f.w || t.h != f.h || t.format != format || t.tex_w != tex_w)
             .unwrap_or(false);
         if stale {
             self.textures.remove(name);
@@ -475,7 +476,7 @@ impl Compositor {
                     wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniform, offset: 0, size: None }) },
                 ],
             }));
-            SourceTex { _tex: tex, _uniform: uniform, bg, w: f.w, h: f.h, seq: u64::MAX, format }
+            SourceTex { _tex: tex, _uniform: uniform, bg, w: f.w, h: f.h, tex_w, seq: u64::MAX, format }
         });
         if st.seq != f.seq {
             let t0 = std::time::Instant::now();

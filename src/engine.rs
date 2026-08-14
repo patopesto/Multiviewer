@@ -1,9 +1,8 @@
 use crate::compositor::{self, Compositor, Draw, Rect};
 use crate::config::{Config, Layer, Protocol, TextureMode};
-use crate::sources::decklink::Discovery as DecklinkDiscovery;
-use crate::sources::ndi::Discovery;
 use crate::sources::Registry;
-
+use crate::sources::ndi::Discovery as NdiDiscovery;
+use crate::sources::decklink::Discovery as DecklinkDiscovery;
 #[cfg(target_os = "macos")]
 use crate::sources::syphon::Discovery as SyphonDiscovery;
 
@@ -25,7 +24,7 @@ impl ViewState {
 pub struct Engine {
     pub cfg: Config,
     pub registry: Registry,
-    pub ndi: Option<Discovery>,
+    pub ndi: Option<NdiDiscovery>,
     pub decklink: Option<DecklinkDiscovery>,
     #[cfg(target_os = "macos")]
     pub syphon: Option<SyphonDiscovery>,
@@ -43,7 +42,7 @@ impl Engine {
         let mut dirty = false;
 
         // Start NDI discovery before restoring sources
-        let ndi = Discovery::start();
+        let ndi = NdiDiscovery::start();
 
         // Start DeckLink discovery
         let decklink = DecklinkDiscovery::start();
