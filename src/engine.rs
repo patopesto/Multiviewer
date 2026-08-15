@@ -8,6 +8,8 @@ use crate::sources::syphon::Discovery as SyphonDiscovery;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 10.0;
+pub const SNAP_THRESHOLD: f32 = 2.0;
+pub const SNAP_BREAK_THRESHOLD: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ViewState {
@@ -56,6 +58,17 @@ pub enum DragState {
     },
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SnapGuides {
+    pub x: Option<f32>,
+    pub y: Option<f32>,
+}
+
+pub struct SnapCandidates {
+    pub x: Vec<f32>,
+    pub y: Vec<f32>,
+}
+
 pub struct Engine {
     pub cfg: Config,
     pub registry: Registry,
@@ -67,6 +80,7 @@ pub struct Engine {
     pub dirty: bool,
     pub selected_layer_id: Option<String>,
     pub drag_state: DragState,
+    pub snap_guides: SnapGuides,
     pub view: ViewState,
 }
 
@@ -141,6 +155,7 @@ impl Engine {
             dirty,
             selected_layer_id: None,
             drag_state: DragState::None,
+            snap_guides: SnapGuides::default(),
             view: ViewState::new(),
         }
     }
@@ -278,10 +293,56 @@ impl Engine {
 
     pub fn drag_layer(&mut self, uuid: &str, delta: (f32, f32), panel_rect: &Rect) {
         let (scale, _, _) = self.display_transform(panel_rect);
+        let snap_threshold = SNAP_THRESHOLD / scale;
+        let break_threshold = SNAP_BREAK_THRESHOLD / scale;
+        let candidates = self.snap_candidates(uuid);
+
         if let Some(layer) = self.cfg.canvas.layers.iter_mut().find(|l| &l.uuid == uuid) {
             let (dx, dy) = delta;
-            layer.x += (dx / scale).round();
-            layer.y += (dy / scale).round();
+            let proposed_x = layer.x + dx / scale;
+            let proposed_y = layer.y + dy / scale;
+
+            let left = proposed_x;
+            let right = proposed_x + layer.width as f32;
+            let top = proposed_y;
+            let bottom = proposed_y + layer.height as f32;
+
+            let current_x = self.snap_guides.x;
+            let current_y = self.snap_guides.y;
+            let snap_left = Self::snap_value(left, &candidates.x, snap_threshold, break_threshold, current_x);
+            let snap_right = Self::snap_value(right, &candidates.x, snap_threshold, break_threshold, current_x);
+            let snap_top = Self::snap_value(top, &candidates.y, snap_threshold, break_threshold, current_y);
+            let snap_bottom = Self::snap_value(bottom, &candidates.y, snap_threshold, break_threshold, current_y);
+
+            let (x_offset, guide_x) = match (snap_left, snap_right) {
+                (Some(l), Some(r)) => {
+                    if (l - left).abs() < (r - right).abs() {
+                        (l - left, l)
+                    } else {
+                        (r - right, r)
+                    }
+                }
+                (Some(l), None) => (l - left, l),
+                (None, Some(r)) => (r - right, r),
+                (None, None) => (0.0, 0.0),
+            };
+            let (y_offset, guide_y) = match (snap_top, snap_bottom) {
+                (Some(t), Some(b)) => {
+                    if (t - top).abs() < (b - bottom).abs() {
+                        (t - top, t)
+                    } else {
+                        (b - bottom, b)
+                    }
+                }
+                (Some(t), None) => (t - top, t),
+                (None, Some(b)) => (b - bottom, b),
+                (None, None) => (0.0, 0.0),
+            };
+
+            layer.x = (proposed_x + x_offset).round();
+            layer.y = (proposed_y + y_offset).round();
+            self.snap_guides.x = if x_offset != 0.0 { Some(guide_x) } else { None };
+            self.snap_guides.y = if y_offset != 0.0 { Some(guide_y) } else { None };
             self.dirty = true;
         }
     }
@@ -291,6 +352,52 @@ impl Engine {
             .iter()
             .find(|l| &l.uuid == uuid)
             .map(|l| WorldRect { x: l.x, y: l.y, w: l.width as f32, h: l.height as f32 })
+    }
+
+    pub fn snap_candidates(&self, exclude_uuid: &str) -> SnapCandidates {
+        let canvas = &self.cfg.canvas;
+        let mut x = vec![0.0, canvas.width as f32];
+        let mut y = vec![0.0, canvas.height as f32];
+        for layer in &canvas.layers {
+            if layer.uuid == exclude_uuid {
+                continue;
+            }
+            x.push(layer.x);
+            x.push(layer.x + layer.width as f32);
+            y.push(layer.y);
+            y.push(layer.y + layer.height as f32);
+        }
+        SnapCandidates { x, y }
+    }
+
+    fn snap_value(
+        value: f32,
+        candidates: &[f32],
+        snap_threshold: f32,
+        break_threshold: f32,
+        current: Option<f32>,
+    ) -> Option<f32> {
+        let mut best = None;
+        let mut best_dist = f32::INFINITY;
+        for &c in candidates {
+            let dist = (c - value).abs();
+            if dist < best_dist {
+                best_dist = dist;
+                best = Some(c);
+            }
+        }
+        if best_dist < snap_threshold {
+            return best;
+        }
+        // Hysteresis: stay snapped to the current guide until the mouse moves
+        // past the larger break threshold.
+        if let Some(curr) = current {
+            let dist = (curr - value).abs();
+            if dist < break_threshold {
+                return Some(curr);
+            }
+        }
+        None
     }
 
     pub fn hit_test_resize_handle(
@@ -354,41 +461,72 @@ impl Engine {
         let (scale, _, _) = self.display_transform(panel_rect);
         let dx = delta_screen.0 / scale;
         let dy = delta_screen.1 / scale;
+        let snap_threshold = SNAP_THRESHOLD / scale;
+        let break_threshold = SNAP_BREAK_THRESHOLD / scale;
+        let candidates = self.snap_candidates(uuid);
 
         if let Some(layer) = self.cfg.canvas.layers.iter_mut().find(|l| &l.uuid == uuid) {
             let mut x = start.x;
             let mut y = start.y;
             let mut w = start.w;
             let mut h = start.h;
+            let mut guide_x = None;
+            let mut guide_y = None;
 
             match handle {
                 ResizeHandle::Left => {
-                    let new_x = x + dx;
-                    let new_w = (x + w) - new_x;
-                    if new_w >= 1.0 {
-                        x = new_x;
-                        w = new_w;
-                    } else {
-                        x = x + w - 1.0;
-                        w = 1.0;
+                    let proposed = x + dx;
+                if let Some(snap) = Self::snap_value(proposed, &candidates.x, snap_threshold, break_threshold, self.snap_guides.x) {
+                    guide_x = Some(snap);
+                    x = snap.min(start.x + start.w - 1.0);
+                    w = (start.x + start.w) - x;
+                } else {
+                        let new_x = x + dx;
+                        let new_w = (x + w) - new_x;
+                        if new_w >= 1.0 {
+                            x = new_x;
+                            w = new_w;
+                        } else {
+                            x = x + w - 1.0;
+                            w = 1.0;
+                        }
                     }
                 }
                 ResizeHandle::Right => {
-                    w = (w + dx).max(1.0);
+                    let proposed = x + w + dx;
+                if let Some(snap) = Self::snap_value(proposed, &candidates.x, snap_threshold, break_threshold, self.snap_guides.x) {
+                    guide_x = Some(snap);
+                    w = (snap - x).max(1.0);
+                } else {
+                        w = (w + dx).max(1.0);
+                    }
                 }
                 ResizeHandle::Top => {
-                    let new_y = y + dy;
-                    let new_h = (y + h) - new_y;
-                    if new_h >= 1.0 {
-                        y = new_y;
-                        h = new_h;
-                    } else {
-                        y = y + h - 1.0;
-                        h = 1.0;
+                    let proposed = y + dy;
+                if let Some(snap) = Self::snap_value(proposed, &candidates.y, snap_threshold, break_threshold, self.snap_guides.y) {
+                    guide_y = Some(snap);
+                    y = snap.min(start.y + start.h - 1.0);
+                    h = (start.y + start.h) - y;
+                } else {
+                        let new_y = y + dy;
+                        let new_h = (y + h) - new_y;
+                        if new_h >= 1.0 {
+                            y = new_y;
+                            h = new_h;
+                        } else {
+                            y = y + h - 1.0;
+                            h = 1.0;
+                        }
                     }
                 }
                 ResizeHandle::Bottom => {
-                    h = (h + dy).max(1.0);
+                    let proposed = y + h + dy;
+                if let Some(snap) = Self::snap_value(proposed, &candidates.y, snap_threshold, break_threshold, self.snap_guides.y) {
+                    guide_y = Some(snap);
+                    h = (snap - y).max(1.0);
+                } else {
+                        h = (h + dy).max(1.0);
+                    }
                 }
                 _ => {
                     // Corner drag: preserve aspect ratio by projecting the moving
@@ -402,16 +540,47 @@ impl Engine {
                         ResizeHandle::BottomLeft => (x + w, y),
                         _ => unreachable!(),
                     };
-                    let mx0 = x + w - (fx - x); // start moving corner x
-                    let my0 = y + h - (fy - y); // start moving corner y
+                    let mx0 = start.x + start.w - (fx - start.x); // start moving corner x
+                    let my0 = start.y + start.h - (fy - start.y); // start moving corner y
                     let diag_x = mx0 - fx;
                     let diag_y = my0 - fy;
                     let denom = diag_x * diag_x + diag_y * diag_y;
                     if denom > 0.0 {
                         let t = ((mx0 + dx - fx) * diag_x + (my0 + dy - fy) * diag_y) / denom;
-                        let min_t = (1.0 / w).max(1.0 / h);
+                        let min_t = (1.0 / start.w).max(1.0 / start.h);
                         let t = t.max(min_t);
-                        let new_w = (t * w).round().max(1.0);
+                        let mut mx = fx + t * diag_x;
+                        let mut my = fy + t * diag_y;
+
+                        // Snap the moving corner to candidates, preferring the closer axis.
+                        let snap_mx = Self::snap_value(mx, &candidates.x, snap_threshold, break_threshold, self.snap_guides.x);
+                        let snap_my = Self::snap_value(my, &candidates.y, snap_threshold, break_threshold, self.snap_guides.y);
+                        let dist_x = snap_mx.map(|v| (v - mx).abs());
+                        let dist_y = snap_my.map(|v| (v - my).abs());
+                        match (dist_x, dist_y) {
+                            (Some(dx_), Some(dy_)) => {
+                                if dx_ < dy_ {
+                                    mx = snap_mx.unwrap();
+                                    guide_x = Some(mx);
+                                } else {
+                                    my = snap_my.unwrap();
+                                    mx = fx + (my - fy) * diag_x / diag_y;
+                                    guide_y = Some(my);
+                                }
+                            }
+                            (Some(_), None) => {
+                                mx = snap_mx.unwrap();
+                                guide_x = Some(mx);
+                            }
+                            (None, Some(_)) => {
+                                my = snap_my.unwrap();
+                                mx = fx + (my - fy) * diag_x / diag_y;
+                                guide_y = Some(my);
+                            }
+                            (None, None) => {}
+                        }
+
+                        let new_w = (mx - fx).abs().round().max(1.0);
                         let new_h = (new_w * start.h / start.w).round().max(1.0);
                         x = match handle {
                             ResizeHandle::TopLeft | ResizeHandle::BottomLeft => fx - new_w,
@@ -431,6 +600,7 @@ impl Engine {
             layer.y = y.round();
             layer.width = w.max(1.0).round() as u32;
             layer.height = h.max(1.0).round() as u32;
+            self.snap_guides = SnapGuides { x: guide_x, y: guide_y };
             self.dirty = true;
         }
     }
@@ -527,6 +697,7 @@ mod tests {
             dirty: false,
             selected_layer_id: None,
             drag_state: DragState::None,
+            snap_guides: SnapGuides::default(),
             view: ViewState::new(),
         }
     }
@@ -640,5 +811,107 @@ mod tests {
         assert!((aspect - 230.0 / 120.0).abs() < 0.02, "aspect should be preserved, got {aspect}");
         assert_eq!(layer.x, 100.0);
         assert_eq!(layer.y, 80.0);
+    }
+
+    #[test]
+    fn drag_layer_snaps_to_canvas_edge() {
+        let mut canvas = crate::config::Canvas { width: 1920, height: 1080, layers: vec![] };
+        canvas.layers.push(Layer::new_v4(
+            "L1".into(),
+            Protocol::Test,
+            None,
+            15.0,
+            100.0,
+            100,
+            100,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+        let mut engine = test_engine(canvas);
+        let panel = Rect { x: 0.0, y: 0.0, w: 1920.0, h: 1080.0 };
+        let uuid = engine.cfg.canvas.layers[0].uuid.clone();
+        // Drag left by 14 px: left edge moves from 15 to 1, within the 2 px snap threshold of 0.
+        engine.drag_layer(&uuid, (-14.0, 0.0), &panel);
+        let layer = &engine.cfg.canvas.layers[0];
+        assert_eq!(layer.x, 0.0);
+        assert!(engine.snap_guides.x.is_some());
+    }
+
+    #[test]
+    fn resize_layer_snaps_to_other_layer_edge() {
+        let mut canvas = crate::config::Canvas { width: 1920, height: 1080, layers: vec![] };
+        canvas.layers.push(Layer::new_v4(
+            "L1".into(),
+            Protocol::Test,
+            None,
+            100.0,
+            100.0,
+            100,
+            100,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+        canvas.layers.push(Layer::new_v4(
+            "L2".into(),
+            Protocol::Test,
+            None,
+            300.0,
+            100.0,
+            100,
+            100,
+            1,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+        let mut engine = test_engine(canvas);
+        let panel = Rect { x: 0.0, y: 0.0, w: 1920.0, h: 1080.0 };
+        let uuid = engine.cfg.canvas.layers[0].uuid.clone();
+        let start = engine.layer_rect_world(&uuid).unwrap();
+        // Drag L1's right edge to 299: should snap to L2's left edge at 300.
+        engine.resize_layer(&uuid, ResizeHandle::Right, start, (99.0, 0.0), &panel);
+        let layer = &engine.cfg.canvas.layers[0];
+        assert_eq!(layer.width, 200);
+        assert!(engine.snap_guides.x.is_some());
+    }
+
+    #[test]
+    fn drag_layer_hysteresis_releases_after_break_threshold() {
+        let mut canvas = crate::config::Canvas { width: 1920, height: 1080, layers: vec![] };
+        canvas.layers.push(Layer::new_v4(
+            "L1".into(),
+            Protocol::Test,
+            None,
+            15.0,
+            100.0,
+            100,
+            100,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+        let mut engine = test_engine(canvas);
+        let panel = Rect { x: 0.0, y: 0.0, w: 1920.0, h: 1080.0 };
+        let uuid = engine.cfg.canvas.layers[0].uuid.clone();
+
+        // Snap left edge to the canvas edge at 0.
+        engine.drag_layer(&uuid, (-14.0, 0.0), &panel);
+        assert_eq!(engine.cfg.canvas.layers[0].x, 0.0);
+        assert!(engine.snap_guides.x.is_some());
+
+        // Move 1 px back: stays snapped within the 20 px break threshold.
+        engine.drag_layer(&uuid, (1.0, 0.0), &panel);
+        assert_eq!(engine.cfg.canvas.layers[0].x, 0.0);
+        assert!(engine.snap_guides.x.is_some());
+
+        // Move 25 px past the snap point: breaks free.
+        engine.drag_layer(&uuid, (25.0, 0.0), &panel);
+        assert_eq!(engine.cfg.canvas.layers[0].x, 25.0);
+        assert!(engine.snap_guides.x.is_none());
     }
 }

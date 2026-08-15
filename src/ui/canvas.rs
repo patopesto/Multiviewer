@@ -64,6 +64,7 @@ pub fn update(
     let primary_down = ctx.input(|i| i.pointer.primary_down());
     if !primary_down {
         engine.drag_state = DragState::None;
+        engine.snap_guides = crate::engine::SnapGuides::default();
     } else if pressed && response.hovered() && let Some(pos) = response.interact_pointer_pos() {
         if let Some((uuid, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
             let start = engine.layer_rect_world(&uuid).expect("selected layer exists");
@@ -151,7 +152,7 @@ pub fn update(
         },
     ));
 
-    draw_overlays(&engine.cfg.canvas, &panel_rect, &painter, &engine.selected_layer_id, transform);
+    draw_overlays(&engine.cfg.canvas, &panel_rect, &painter, engine, transform);
 
     let btn_icon = asset_image!("compress.svg");
     let btn_image = egui::Image::new(btn_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
@@ -178,7 +179,7 @@ fn draw_overlays(
     canvas: &crate::config::Canvas,
     panel_rect: &Rect,
     painter: &egui::Painter,
-    selected: &Option<String>,
+    engine: &Engine,
     transform: (f32, f32, f32),
 ) {
     let (scale, offset_x, offset_y) = transform;
@@ -194,7 +195,7 @@ fn draw_overlays(
         egui::StrokeKind::Inside,
     );
 
-    let selected_uuid = match selected {
+    let selected_uuid = match &engine.selected_layer_id {
         Some(uuid) => uuid,
         None => return,
     };
@@ -240,4 +241,15 @@ fn draw_overlays(
     //         egui::Color32::YELLOW,
     //     );
     // }
+
+    // Snap guides.
+    let guide_stroke = egui::Stroke::new(1.0, egui::Color32::CYAN);
+    if let Some(gx) = engine.snap_guides.x {
+        let sx = cx + gx * scale;
+        painter.vline(sx, panel_rect.y..=panel_rect.y + panel_rect.h, guide_stroke);
+    }
+    if let Some(gy) = engine.snap_guides.y {
+        let sy = cy + gy * scale;
+        painter.hline(panel_rect.x..=panel_rect.x + panel_rect.w, sy, guide_stroke);
+    }
 }
