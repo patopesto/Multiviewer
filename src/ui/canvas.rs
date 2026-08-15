@@ -3,6 +3,13 @@ use crate::engine::Engine;
 use eframe::egui_wgpu;
 use std::sync::Arc;
 
+// Macro to load from the assets directory
+macro_rules! asset_image {
+    ($file:expr) => {
+        egui::include_image!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/", $file))
+    };
+}
+
 pub struct CanvasCallback {
     rect_px: [f32; 4], // x, y, w, h (physical pixels, origin top-left)
     shared: Arc<compositor::Shared>,
@@ -117,11 +124,14 @@ pub fn update(
 
     draw_overlays(&engine.cfg.canvas, &panel_rect, &painter, &engine.selected_layer_id, transform);
 
+    let btn_icon = asset_image!("compress.svg");
+    let btn_image = egui::Image::new(btn_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
     let btn_rect = egui::Rect::from_min_size(
-        egui::pos2(rect.max.x - 100.0, rect.min.y + 10.0),
-        egui::vec2(90.0, 24.0),
+        egui::pos2(rect.max.x - 40.0, rect.min.y + 10.0),
+        egui::vec2(30.0, 30.0),
     );
-    if ui.put(btn_rect, egui::Button::new("Recenter")).clicked() {
+    let btn = egui::Button::image(btn_image).corner_radius(5.0);
+    if ui.put(btn_rect, btn).on_hover_text("Re-center view").clicked() {
         engine.recenter_view(&panel_rect);
     }
 }

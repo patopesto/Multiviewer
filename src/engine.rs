@@ -245,8 +245,8 @@ impl Engine {
         let (scale, _, _) = self.display_transform(panel_rect);
         if let Some(layer) = self.cfg.canvas.layers.iter_mut().find(|l| &l.uuid == uuid) {
             let (dx, dy) = delta;
-            layer.x += dx / scale;
-            layer.y += dy / scale;
+            layer.x += (dx / scale).round();
+            layer.y += (dy / scale).round();
             self.dirty = true;
         }
     }
@@ -269,7 +269,7 @@ impl Engine {
         let sid = self.registry.add_test();
         let num = self.cfg.canvas.layers.len() + 1;
         let layer = Layer::new_v4(
-            format!("Layer {num}"),
+            format!("Source {num}"),
             Protocol::Test,
             Some(sid),
             self.cfg.canvas.width as f32 * 0.25,
@@ -292,6 +292,17 @@ impl Engine {
         if self.selected_layer_id.as_deref() == Some(uuid) {
             self.selected_layer_id = None;
         }
+        self.dirty = true;
+    }
+
+    pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
+        let len = self.cfg.canvas.layers.len();
+        if from_index == to_index || from_index >= len || to_index >= len {
+            return;
+        }
+        let layer = self.cfg.canvas.layers.remove(from_index);
+        let insert_at = if to_index > from_index { to_index } else { to_index };
+        self.cfg.canvas.layers.insert(insert_at, layer);
         self.dirty = true;
     }
 
