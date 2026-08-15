@@ -1,5 +1,5 @@
 use crate::compositor::{self, Rect, Vert};
-use crate::engine::Engine;
+use crate::engine::{DragState, Engine, ResizeHandle};
 use eframe::egui_wgpu;
 use std::sync::Arc;
 
@@ -63,19 +63,48 @@ pub fn update(
     let pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
     let primary_down = ctx.input(|i| i.pointer.primary_down());
     if !primary_down {
-        engine.dragging_uuid = None;
+        engine.drag_state = DragState::None;
     } else if pressed && response.hovered() && let Some(pos) = response.interact_pointer_pos() {
-        let hit = engine.hit_test(&panel_rect, (pos.x, pos.y));
-        engine.selected_layer_id = hit.clone();
-        engine.dragging_uuid = hit;
+        if let Some((uuid, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
+            let start = engine.layer_rect_world(&uuid).expect("selected layer exists");
+            engine.selected_layer_id = Some(uuid.clone());
+            engine.drag_state = DragState::Resize {
+                uuid,
+                handle,
+                start,
+                start_screen: (pos.x, pos.y),
+            };
+        } else {
+            let hit = engine.hit_test(&panel_rect, (pos.x, pos.y));
+            engine.selected_layer_id = hit.clone();
+            engine.drag_state = hit.map(|uuid| DragState::Move { uuid }).unwrap_or_default();
+        }
     }
 
     if response.dragged() {
-        if let Some(uuid) = engine.dragging_uuid.clone() {
-            engine.drag_layer(&uuid, (response.drag_delta().x, response.drag_delta().y), &panel_rect);
-        } else {
-            // Primary-drag on empty canvas pans the view.
-            engine.view.pan += response.drag_delta();
+        match engine.drag_state.clone() {
+            DragState::Move { uuid } => {
+                engine.drag_layer(&uuid, (response.drag_delta().x, response.drag_delta().y), &panel_rect);
+            }
+            DragState::Resize { uuid, handle, start, start_screen } => {
+                if let Some(pos) = response.interact_pointer_pos() {
+                    let delta = (pos.x - start_screen.0, pos.y - start_screen.1);
+                    engine.resize_layer(&uuid, handle, start, delta, &panel_rect);
+                }
+            }
+            DragState::None => {
+                // Primary-drag on empty canvas pans the view.
+                engine.view.pan += response.drag_delta();
+            }
+        }
+    }
+
+    // Cursor feedback when hovering a resize handle.
+    if response.hovered() && !primary_down {
+        if let Some(pos) = response.hover_pos() {
+            if let Some((_, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
+                ui.output_mut(|o| o.cursor_icon = cursor_for_handle(handle));
+            }
         }
     }
 
@@ -136,6 +165,15 @@ pub fn update(
     }
 }
 
+fn cursor_for_handle(handle: ResizeHandle) -> egui::CursorIcon {
+    match handle {
+        ResizeHandle::Top | ResizeHandle::Bottom => egui::CursorIcon::ResizeVertical,
+        ResizeHandle::Left | ResizeHandle::Right => egui::CursorIcon::ResizeHorizontal,
+        ResizeHandle::TopLeft | ResizeHandle::BottomRight => egui::CursorIcon::ResizeNwSe,
+        ResizeHandle::TopRight | ResizeHandle::BottomLeft => egui::CursorIcon::ResizeNeSw,
+    }
+}
+
 fn draw_overlays(
     canvas: &crate::config::Canvas,
     panel_rect: &Rect,
@@ -172,4 +210,34 @@ fn draw_overlays(
         egui::Stroke::new(2.0_f32, egui::Color32::YELLOW),
         egui::StrokeKind::Inside,
     );
+
+    // Draw resize handles: corners and edge midpoints.
+    // const HANDLE_SIZE: f32 = 6.0;
+    // let hs = egui::vec2(HANDLE_SIZE, HANDLE_SIZE);
+    // let corners = [
+    //     egui::pos2(lx, ly),
+    //     egui::pos2(lx + lw, ly),
+    //     egui::pos2(lx + lw, ly + lh),
+    //     egui::pos2(lx, ly + lh),
+    // ];
+    // for p in corners {
+    //     painter.rect_filled(
+    //         egui::Rect::from_center_size(p, hs),
+    //         0.0,
+    //         egui::Color32::YELLOW,
+    //     );
+    // }
+    // let edges = [
+    //     egui::pos2(lx + lw / 2.0, ly),
+    //     egui::pos2(lx + lw, ly + lh / 2.0),
+    //     egui::pos2(lx + lw / 2.0, ly + lh),
+    //     egui::pos2(lx, ly + lh / 2.0),
+    // ];
+    // for p in edges {
+    //     painter.rect_filled(
+    //         egui::Rect::from_center_size(p, hs),
+    //         0.0,
+    //         egui::Color32::YELLOW,
+    //     );
+    // }
 }

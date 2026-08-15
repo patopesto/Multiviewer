@@ -21,6 +21,41 @@ impl ViewState {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ResizeHandle {
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct WorldRect {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+}
+
+#[derive(Clone, Debug, Default)]
+pub enum DragState {
+    #[default]
+    None,
+    Move {
+        uuid: String,
+    },
+    Resize {
+        uuid: String,
+        handle: ResizeHandle,
+        start: WorldRect,
+        start_screen: (f32, f32),
+    },
+}
+
 pub struct Engine {
     pub cfg: Config,
     pub registry: Registry,
@@ -31,7 +66,7 @@ pub struct Engine {
     comp: Option<Compositor>,
     pub dirty: bool,
     pub selected_layer_id: Option<String>,
-    pub dragging_uuid: Option<String>,
+    pub drag_state: DragState,
     pub view: ViewState,
 }
 
@@ -105,7 +140,7 @@ impl Engine {
             comp: None,
             dirty,
             selected_layer_id: None,
-            dragging_uuid: None,
+            drag_state: DragState::None,
             view: ViewState::new(),
         }
     }
@@ -251,6 +286,155 @@ impl Engine {
         }
     }
 
+    pub fn layer_rect_world(&self, uuid: &str) -> Option<WorldRect> {
+        self.cfg.canvas.layers
+            .iter()
+            .find(|l| &l.uuid == uuid)
+            .map(|l| WorldRect { x: l.x, y: l.y, w: l.width as f32, h: l.height as f32 })
+    }
+
+    pub fn hit_test_resize_handle(
+        &self,
+        panel_rect: &Rect,
+        pos: (f32, f32),
+    ) -> Option<(String, ResizeHandle)> {
+        let uuid = self.selected_layer_id.as_ref()?;
+        let layer = self.cfg.canvas.layers.iter().find(|l| &l.uuid == uuid)?;
+        let (scale, offset_x, offset_y) = self.display_transform(panel_rect);
+        let cx = panel_rect.x + offset_x;
+        let cy = panel_rect.y + offset_y;
+        let lx = cx + layer.x * scale;
+        let ly = cy + layer.y * scale;
+        let lw = layer.width as f32 * scale;
+        let lh = layer.height as f32 * scale;
+        let right = lx + lw;
+        let bottom = ly + lh;
+        let (px, py) = pos;
+        const H: f32 = 8.0; // hit radius in screen points
+
+        // Corners take priority over edges.
+        if (px - lx).abs() <= H && (py - ly).abs() <= H {
+            return Some((uuid.clone(), ResizeHandle::TopLeft));
+        }
+        if (px - right).abs() <= H && (py - ly).abs() <= H {
+            return Some((uuid.clone(), ResizeHandle::TopRight));
+        }
+        if (px - lx).abs() <= H && (py - bottom).abs() <= H {
+            return Some((uuid.clone(), ResizeHandle::BottomLeft));
+        }
+        if (px - right).abs() <= H && (py - bottom).abs() <= H {
+            return Some((uuid.clone(), ResizeHandle::BottomRight));
+        }
+
+        // Edges.
+        if (py - ly).abs() <= H && px >= lx && px <= right {
+            return Some((uuid.clone(), ResizeHandle::Top));
+        }
+        if (py - bottom).abs() <= H && px >= lx && px <= right {
+            return Some((uuid.clone(), ResizeHandle::Bottom));
+        }
+        if (px - lx).abs() <= H && py >= ly && py <= bottom {
+            return Some((uuid.clone(), ResizeHandle::Left));
+        }
+        if (px - right).abs() <= H && py >= ly && py <= bottom {
+            return Some((uuid.clone(), ResizeHandle::Right));
+        }
+
+        None
+    }
+
+    pub fn resize_layer(
+        &mut self,
+        uuid: &str,
+        handle: ResizeHandle,
+        start: WorldRect,
+        delta_screen: (f32, f32),
+        panel_rect: &Rect,
+    ) {
+        let (scale, _, _) = self.display_transform(panel_rect);
+        let dx = delta_screen.0 / scale;
+        let dy = delta_screen.1 / scale;
+
+        if let Some(layer) = self.cfg.canvas.layers.iter_mut().find(|l| &l.uuid == uuid) {
+            let mut x = start.x;
+            let mut y = start.y;
+            let mut w = start.w;
+            let mut h = start.h;
+
+            match handle {
+                ResizeHandle::Left => {
+                    let new_x = x + dx;
+                    let new_w = (x + w) - new_x;
+                    if new_w >= 1.0 {
+                        x = new_x;
+                        w = new_w;
+                    } else {
+                        x = x + w - 1.0;
+                        w = 1.0;
+                    }
+                }
+                ResizeHandle::Right => {
+                    w = (w + dx).max(1.0);
+                }
+                ResizeHandle::Top => {
+                    let new_y = y + dy;
+                    let new_h = (y + h) - new_y;
+                    if new_h >= 1.0 {
+                        y = new_y;
+                        h = new_h;
+                    } else {
+                        y = y + h - 1.0;
+                        h = 1.0;
+                    }
+                }
+                ResizeHandle::Bottom => {
+                    h = (h + dy).max(1.0);
+                }
+                _ => {
+                    // Corner drag: preserve aspect ratio by projecting the moving
+                    // corner onto the diagonal from the fixed opposite corner, then
+                    // round width and derive height from the original aspect so the
+                    // integer dimensions stay proportional.
+                    let (fx, fy) = match handle {
+                        ResizeHandle::TopLeft => (x + w, y + h),
+                        ResizeHandle::TopRight => (x, y + h),
+                        ResizeHandle::BottomRight => (x, y),
+                        ResizeHandle::BottomLeft => (x + w, y),
+                        _ => unreachable!(),
+                    };
+                    let mx0 = x + w - (fx - x); // start moving corner x
+                    let my0 = y + h - (fy - y); // start moving corner y
+                    let diag_x = mx0 - fx;
+                    let diag_y = my0 - fy;
+                    let denom = diag_x * diag_x + diag_y * diag_y;
+                    if denom > 0.0 {
+                        let t = ((mx0 + dx - fx) * diag_x + (my0 + dy - fy) * diag_y) / denom;
+                        let min_t = (1.0 / w).max(1.0 / h);
+                        let t = t.max(min_t);
+                        let new_w = (t * w).round().max(1.0);
+                        let new_h = (new_w * start.h / start.w).round().max(1.0);
+                        x = match handle {
+                            ResizeHandle::TopLeft | ResizeHandle::BottomLeft => fx - new_w,
+                            _ => fx,
+                        };
+                        y = match handle {
+                            ResizeHandle::TopLeft | ResizeHandle::TopRight => fy - new_h,
+                            _ => fy,
+                        };
+                        w = new_w;
+                        h = new_h;
+                    }
+                }
+            }
+
+            layer.x = x.round();
+            layer.y = y.round();
+            layer.width = w.max(1.0).round() as u32;
+            layer.height = h.max(1.0).round() as u32;
+            self.dirty = true;
+        }
+    }
+
     pub fn save_if_dirty(&mut self) {
         if self.dirty {
             self.cfg.save();
@@ -342,7 +526,7 @@ mod tests {
             comp: None,
             dirty: false,
             selected_layer_id: None,
-            dragging_uuid: None,
+            drag_state: DragState::None,
             view: ViewState::new(),
         }
     }
@@ -407,5 +591,54 @@ mod tests {
         let bbox_h = 350.0;
         let expected_scale = (panel.w / bbox_w).min(panel.h / bbox_h) * 0.9;
         assert!((scale - expected_scale).abs() < 1e-3);
+    }
+
+    #[test]
+    fn resize_layer_handles_corners_and_edges() {
+        let mut canvas = crate::config::Canvas { width: 1920, height: 1080, layers: vec![] };
+        canvas.layers.push(Layer::new_v4(
+            "L1".into(),
+            Protocol::Test,
+            None,
+            100.0,
+            100.0,
+            200,
+            100,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+        let mut engine = test_engine(canvas);
+        let panel = Rect { x: 0.0, y: 0.0, w: 1920.0, h: 1080.0 };
+        let uuid = engine.cfg.canvas.layers[0].uuid.clone();
+        let start = engine.layer_rect_world(&uuid).unwrap();
+
+        // Edge resize: drag right edge 30 px to the right.
+        engine.resize_layer(&uuid, ResizeHandle::Right, start, (30.0, 0.0), &panel);
+        let layer = &engine.cfg.canvas.layers[0];
+        assert_eq!(layer.x, 100.0);
+        assert_eq!(layer.y, 100.0);
+        assert_eq!(layer.width, 230);
+        assert_eq!(layer.height, 100);
+
+        // Edge resize: drag top edge 20 px up.
+        let start = engine.layer_rect_world(&uuid).unwrap();
+        engine.resize_layer(&uuid, ResizeHandle::Top, start, (0.0, -20.0), &panel);
+        let layer = &engine.cfg.canvas.layers[0];
+        assert_eq!(layer.x, 100.0);
+        assert_eq!(layer.y, 80.0);
+        assert_eq!(layer.width, 230);
+        assert_eq!(layer.height, 120);
+
+        // Corner resize: drag bottom-right along the diagonal.
+        let start = engine.layer_rect_world(&uuid).unwrap();
+        engine.resize_layer(&uuid, ResizeHandle::BottomRight, start, (50.0, 50.0 * 120.0 / 230.0), &panel);
+        let layer = &engine.cfg.canvas.layers[0];
+        let aspect = layer.width as f32 / layer.height as f32;
+        // Integer dimensions can't match the exact float aspect; allow ~1% rounding error.
+        assert!((aspect - 230.0 / 120.0).abs() < 0.02, "aspect should be preserved, got {aspect}");
+        assert_eq!(layer.x, 100.0);
+        assert_eq!(layer.y, 80.0);
     }
 }
