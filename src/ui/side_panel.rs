@@ -376,12 +376,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                     for port in &discovered {
                                         let name = &port.name;
                                         if !decklink_ids.iter().any(|id| id == name) {
-                                            let label = if port.connections.is_empty() {
-                                                name.clone()
-                                            } else {
-                                                format!("{} ({})", name, port.connections)
-                                            };
-                                            if ui.selectable_label(current == name, label).clicked()
+                                            if ui.selectable_label(current == name, name).clicked()
                                             {
                                                 new_decklink_connect = Some(name.clone());
                                                 selected_source = Some(name.clone());

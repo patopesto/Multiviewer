@@ -192,7 +192,7 @@ impl Engine {
                                 self.registry.add_decklink(
                                     name.clone(),
                                     name.clone(),
-                                    Some(port.connections.clone()),
+                                    Some(port.connections),
                                 );
                                 self.dirty = true;
                             }
@@ -221,6 +221,8 @@ impl Engine {
                 }
             }
         }
+
+        self.registry.apply_pending_restarts();
     }
 
     pub fn ensure_compositor(

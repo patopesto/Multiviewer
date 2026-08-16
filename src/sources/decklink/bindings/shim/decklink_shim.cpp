@@ -13,14 +13,6 @@
 #include <CoreVideo/CoreVideo.h>
 #endif
 
-/* ── pixel format identifiers passed to Rust ─────────────────────────── */
-
-enum class DecklinkPixelFormatOut : int {
-    Rgba8 = 1,   // legacy fallback
-    Bgra8 = 2,
-    Uyvy422 = 3,
-};
-
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
 #ifdef __APPLE__
@@ -66,44 +58,15 @@ static std::string get_model_name(IDeckLink* decklink)
 #endif
 }
 
-static std::string connections_to_string(int64_t mask)
-{
-    std::string s;
-    if (mask & bmdVideoConnectionSDI)             { if (!s.empty()) s += ","; s += "SDI"; }
-    if (mask & bmdVideoConnectionHDMI)            { if (!s.empty()) s += ","; s += "HDMI"; }
-    if (mask & bmdVideoConnectionOpticalSDI)      { if (!s.empty()) s += ","; s += "Optical SDI"; }
-    if (mask & bmdVideoConnectionComponent)       { if (!s.empty()) s += ","; s += "Component"; }
-    if (mask & bmdVideoConnectionComposite)       { if (!s.empty()) s += ","; s += "Composite"; }
-    if (mask & bmdVideoConnectionSVideo)          { if (!s.empty()) s += ","; s += "S-Video"; }
-    if (mask & bmdVideoConnectionEthernet)        { if (!s.empty()) s += ","; s += "Ethernet"; }
-    if (mask & bmdVideoConnectionOpticalEthernet) { if (!s.empty()) s += ","; s += "Optical Ethernet"; }
-    if (mask & bmdVideoConnectionInternal)        { if (!s.empty()) s += ","; s += "Internal"; }
-    return s;
-}
-
-static BMDVideoConnection parse_connection(const char* name)
-{
-    if (!name) return 0;
-    if (strcmp(name, "SDI") == 0)              return bmdVideoConnectionSDI;
-    if (strcmp(name, "HDMI") == 0)             return bmdVideoConnectionHDMI;
-    if (strcmp(name, "Optical SDI") == 0)      return bmdVideoConnectionOpticalSDI;
-    if (strcmp(name, "Component") == 0)        return bmdVideoConnectionComponent;
-    if (strcmp(name, "Composite") == 0)        return bmdVideoConnectionComposite;
-    if (strcmp(name, "S-Video") == 0)          return bmdVideoConnectionSVideo;
-    if (strcmp(name, "Ethernet") == 0)         return bmdVideoConnectionEthernet;
-    if (strcmp(name, "Optical Ethernet") == 0) return bmdVideoConnectionOpticalEthernet;
-    if (strcmp(name, "Internal") == 0)         return bmdVideoConnectionInternal;
-    return 0;
-}
-
 /* ── forward declarations ──────────────────────────────────────────── */
 
 class CaptureCallback;
 
 struct DecklinkSource {
     std::string target_name;
-    char connection[32] = {};  // e.g. "SDI", "HDMI"
+    uint32_t connection = 0;
     IDeckLinkInput* input = nullptr;
+    IDeckLinkConfiguration* config = nullptr;
     CaptureCallback* callback = nullptr;
 };
 
@@ -147,11 +110,11 @@ public:
 
     ULONG STDMETHODCALLTYPE Release(void) override
     {
-        // ponytail: intentionally never delete — BMD may call Release while
-        // the object is still in flight on its callback thread.  Leaking one
-        // small object per source creation is safer than a use-after-free
-        // that corrupts the driver and breaks all subsequent capture.
-        return --ref_count_;
+        ULONG count = --ref_count_;
+        if (count == 0) {
+            delete this;
+        }
+        return count;
     }
 
     HRESULT STDMETHODCALLTYPE VideoInputFormatChanged(
@@ -162,15 +125,11 @@ public:
         if (!source_ || !newDisplayMode) return S_OK;
         if (stopping_.load()) return S_OK;
 
-        // BMD serializes callbacks; do NOT hold the app mutex across
-        // StopStreams()/StartStreams() to avoid deadlock with decklink_source_stop.
         IDeckLinkInput* input = source_->input;
         if (!input) return S_OK;
 
         BMDDisplayMode newMode = newDisplayMode->GetDisplayMode();
 
-        // Skip restart if mode hasn't actually changed — prevents loop when
-        // the device hasn't locked yet and keeps reporting the same mode.
         if (newMode == last_mode_) return S_OK;
 
         long w = newDisplayMode->GetWidth();
@@ -183,7 +142,6 @@ public:
             nominal_fps_ = static_cast<double>(time_scale) / static_cast<double>(frame_duration);
         }
 
-        // Determine pixel format from detected signal flags.
         BMDPixelFormat pixelFormat = bmdFormat8BitYUV;
         if (notificationEvents & bmdVideoInputColorspaceChanged) {
             if (detectedSignalFlags & bmdDetectedVideoInputRGB444) {
@@ -193,9 +151,6 @@ public:
             }
         }
 
-        // BMD sample sequence: Pause -> Enable (keep detection ON) -> Flush -> Start.
-        // Do NOT call StopStreams() or DisableVideoInput() here — they can deadlock
-        // because this method runs on the BMD callback thread.
         input->PauseStreams();
 
         HRESULT hr = input->EnableVideoInput(newMode, pixelFormat, bmdVideoInputEnableFormatDetection);
@@ -276,7 +231,6 @@ public:
             return S_OK;
         }
 
-        // Determine frame size and validate the pre-allocated buffer before copying.
         size_t frame_size = 0;
         if (fmt == bmdFormat8BitBGRA) {
             frame_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
@@ -287,7 +241,6 @@ public:
             return S_OK;
         }
 
-        // Write into the back buffer, then swap front/back under the lock.
         int back = back_idx_.load(std::memory_order_relaxed);
         uint8_t* dst = buffer_[back].data();
         if (frame_size > buffer_[back].size()) {
@@ -296,7 +249,6 @@ public:
         }
 
         if (fmt == bmdFormat8BitBGRA) {
-            // Phase 2: pass BGRA through untouched — wgpu will use Bgra8Unorm.
             if (row_bytes == w * 4) {
                 memcpy(dst, src, frame_size);
             } else {
@@ -305,7 +257,6 @@ public:
                 }
             }
         } else if (fmt == bmdFormat8BitYUV) {
-            // Phase 3: pass UYVY 4:2:2 through untouched; conversion happens on the GPU.
             if (row_bytes == w * 2) {
                 memcpy(dst, src, frame_size);
             } else {
@@ -331,7 +282,7 @@ public:
     }
 
 public:
-    bool poll(uint8_t* out, size_t out_size, int* w, int* h, uint64_t* seq, int* fmt_out, double* nominal_fps_out)
+    bool poll(uint8_t* out, size_t out_size, int* w, int* h, uint64_t* seq, uint32_t* fmt_out, double* nominal_fps_out)
     {
         std::lock_guard<std::mutex> lock(mutex_);
         if (frame_size_ == 0) return false;
@@ -342,13 +293,7 @@ public:
         *h = height_;
         *seq = seq_;
         *nominal_fps_out = nominal_fps_;
-        if (format_ == bmdFormat8BitBGRA) {
-            *fmt_out = static_cast<int>(DecklinkPixelFormatOut::Bgra8);
-        } else if (format_ == bmdFormat8BitYUV) {
-            *fmt_out = static_cast<int>(DecklinkPixelFormatOut::Uyvy422);
-        } else {
-            *fmt_out = static_cast<int>(DecklinkPixelFormatOut::Rgba8);
-        }
+        *fmt_out = static_cast<uint32_t>(format_);
         return true;
     }
 
@@ -378,7 +323,7 @@ public:
 struct DiscoveredPort {
     std::string display_name;
     bool has_signal;
-    std::string connections; // comma-separated, e.g. "SDI,HDMI"
+    uint32_t connections;
 };
 
 struct DecklinkDiscovery {
@@ -394,7 +339,6 @@ DecklinkDiscovery* decklink_discovery_new(void)
 
     IDeckLink* decklink = nullptr;
     while (iterator->Next(&decklink) == S_OK) {
-        // Skip devices that don't expose video input
         IDeckLinkInput* input = nullptr;
         if (decklink->QueryInterface(IID_IDeckLinkInput, (void**)&input) != S_OK) {
             decklink->Release();
@@ -423,12 +367,12 @@ DecklinkDiscovery* decklink_discovery_new(void)
             status->Release();
         }
 
-        std::string connections;
+        uint32_t connections = 0;
         attr = nullptr;
         if (decklink->QueryInterface(IID_IDeckLinkProfileAttributes, (void**)&attr) == S_OK) {
             int64_t conn_mask = 0;
             if (attr->GetInt(BMDDeckLinkVideoInputConnections, &conn_mask) == S_OK) {
-                connections = connections_to_string(conn_mask);
+                connections = static_cast<uint32_t>(conn_mask);
             }
             attr->Release();
         }
@@ -458,20 +402,19 @@ int decklink_discovery_count(DecklinkDiscovery* d)
     return static_cast<int>(d->ports.size());
 }
 
-void decklink_discovery_get(DecklinkDiscovery* d, int idx, char* name, size_t name_len, bool* has_signal, char* connections, size_t conn_len)
+void decklink_discovery_get(DecklinkDiscovery* d, int idx, char* name, size_t name_len, bool* has_signal, uint32_t* connections)
 {
     if (idx < 0 || idx >= static_cast<int>(d->ports.size())) {
         if (name_len > 0) name[0] = '\0';
-        if (conn_len > 0) connections[0] = '\0';
         *has_signal = false;
+        *connections = 0;
         return;
     }
     const auto& p = d->ports[idx];
     strncpy(name, p.display_name.c_str(), name_len - 1);
     name[name_len - 1] = '\0';
-    strncpy(connections, p.connections.c_str(), conn_len - 1);
-    connections[conn_len - 1] = '\0';
     *has_signal = p.has_signal;
+    *connections = p.connections;
 }
 
 /* ── Source ──────────────────────────────────────────────────────────── */
@@ -490,15 +433,10 @@ void decklink_source_free(DecklinkSource* s)
     delete s;
 }
 
-void decklink_source_set_connection(DecklinkSource* s, const char* connection)
+void decklink_source_set_connection(DecklinkSource* s, uint32_t connection)
 {
     if (!s) return;
-    if (connection) {
-        strncpy(s->connection, connection, sizeof(s->connection) - 1);
-        s->connection[sizeof(s->connection) - 1] = '\0';
-    } else {
-        s->connection[0] = '\0';
-    }
+    s->connection = connection;
 }
 
 bool decklink_source_start(DecklinkSource* s)
@@ -546,30 +484,22 @@ bool decklink_source_start(DecklinkSource* s)
         attr->Release();
     }
 
-    // Set input connection BEFORE getting IDeckLinkInput so the mode list
-    // and subsequent EnableVideoInput reflect the selected connection.
-    if (s->connection[0] != '\0') {
-        BMDVideoConnection conn = parse_connection(s->connection);
-        if (conn == 0) {
-            fprintf(stderr, "[decklink] unknown connection '%s'\n", s->connection);
-            decklink->Release();
-            return false;
-        }
-        IDeckLinkConfiguration* config = nullptr;
-        if (decklink->QueryInterface(IID_IDeckLinkConfiguration, (void**)&config) != S_OK) {
+    // Set input connection BEFORE getting IDeckLinkInput
+    if (s->connection != 0) {
+        if (decklink->QueryInterface(IID_IDeckLinkConfiguration, (void**)&s->config) != S_OK) {
             fprintf(stderr, "[decklink] QueryInterface IID_IDeckLinkConfiguration failed\n");
             decklink->Release();
             return false;
         }
-        HRESULT hr = config->SetInt(bmdDeckLinkConfigVideoInputConnection, conn);
-        config->Release();
+        HRESULT hr = s->config->SetInt(bmdDeckLinkConfigVideoInputConnection, s->connection);
         if (hr != S_OK) {
-            fprintf(stderr, "[decklink] SetInt(connection=%s) failed: 0x%08X\n", s->connection, static_cast<unsigned int>(hr));
+            fprintf(stderr, "[decklink] SetInt(connection=0x%X) failed: 0x%08X\n", s->connection, static_cast<unsigned int>(hr));
+            s->config->Release();
+            s->config = nullptr;
             decklink->Release();
             return false;
         }
-        fprintf(stderr, "[decklink] set connection=%s ok\n", s->connection);
-        // Allow hardware mux to settle (some devices need this)
+        fprintf(stderr, "[decklink] set connection=0x%X ok\n", s->connection);
         usleep(100000);
     }
 
@@ -593,7 +523,6 @@ bool decklink_source_start(DecklinkSource* s)
     BMDPixelFormat pixelFormat = bmdFormat8BitYUV;
     HRESULT hr = E_FAIL;
 
-    // Strategy 1: Try bmdModeUnknown with format detection (YUV first).
     if (supports_fmt_detection) {
         mode = bmdModeUnknown;
         hr = s->input->EnableVideoInput(mode, bmdFormat8BitYUV, bmdVideoInputEnableFormatDetection);
@@ -605,7 +534,6 @@ bool decklink_source_start(DecklinkSource* s)
         }
     }
 
-    // Strategy 2: Fallback to a concrete mode with detection enabled.
     if (hr != S_OK) {
         mode = bmdModeHD1080p30;
         hr = s->input->EnableVideoInput(mode, bmdFormat8BitYUV, bmdVideoInputEnableFormatDetection);
@@ -626,9 +554,6 @@ bool decklink_source_start(DecklinkSource* s)
         s->input = nullptr;
         return false;
     }
-
-    // Some devices require audio to be enabled for video capture to work.
-    // s->input->EnableAudioInput(bmdAudioSampleRate48kHz, bmdAudioSampleType16bitInteger, 2);
 
     if (mode != bmdModeUnknown) {
         IDeckLinkDisplayMode* display_mode = nullptr;
@@ -665,24 +590,24 @@ void decklink_source_stop(DecklinkSource* s)
 {
     if (!s) return;
     if (s->callback) {
-        s->callback->stop();           // tell in-flight callbacks to bail out
+        s->callback->stop();
     }
     if (s->input) {
-        // BMD-recommended teardown order.
-        s->input->StopStreams();       // blocks until current callback finishes
-        s->input->FlushStreams();      // discard queued frames (prevents late callback)
+        s->input->StopStreams();
+        s->input->FlushStreams();
         s->input->SetCallback(nullptr);
         s->input->DisableVideoInput();
         s->input->DisableAudioInput();
-        // UltraStudio Recorder 3G needs time to release the input block
-        // before another app (or our next start) can re-acquire it.
         usleep(500000);
     }
     if (s->callback) {
-        // Null the back-pointer so any truly-late callback won't touch freed memory.
         s->callback->detach();
-        // Intentionally NOT calling Release() — see comment in CaptureCallback::Release().
+        s->callback->Release();
         s->callback = nullptr;
+    }
+    if (s->config) {
+        s->config->Release();
+        s->config = nullptr;
     }
     if (s->input) {
         s->input->Release();
@@ -690,7 +615,7 @@ void decklink_source_stop(DecklinkSource* s)
     }
 }
 
-bool decklink_source_poll_frame(DecklinkSource* s, uint8_t* out_rgba, size_t out_size, int* w, int* h, uint64_t* seq, int* fmt_out, double* nominal_fps_out)
+bool decklink_source_poll_frame(DecklinkSource* s, uint8_t* out_rgba, size_t out_size, int* w, int* h, uint64_t* seq, uint32_t* fmt_out, double* nominal_fps_out)
 {
     if (!s || !s->callback) return false;
     return s->callback->poll(out_rgba, out_size, w, h, seq, fmt_out, nominal_fps_out);

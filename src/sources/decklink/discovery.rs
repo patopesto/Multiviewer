@@ -1,14 +1,14 @@
+use multiviewer_decklink::VideoConnections;
+use multiviewer_decklink::{decklink_discovery_new, decklink_discovery_free, decklink_discovery_count, decklink_discovery_get};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-pub enum DecklinkDiscovery {}
 
 /// A discovered DeckLink input port.
 #[derive(Clone)]
 pub struct Port {
     pub name: String,
     pub has_signal: bool,
-    pub connections: String,
+    pub connections: VideoConnections,
 }
 
 /// Background DeckLink discovery thread.
@@ -34,29 +34,22 @@ impl Discovery {
                     let mut list = Vec::with_capacity(count as usize);
                     for i in 0..count {
                         let mut name = [0u8; 256];
-                        let mut connections = [0u8; 256];
                         let mut has_signal = false;
+                        let mut connections = 0u32;
                         decklink_discovery_get(
                             d,
                             i,
                             name.as_mut_ptr() as *mut std::ffi::c_char,
                             name.len(),
                             &mut has_signal,
-                            connections.as_mut_ptr() as *mut std::ffi::c_char,
-                            connections.len(),
+                            &mut connections,
                         );
                         let name_len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
                         let name = String::from_utf8_lossy(&name[..name_len]).to_string();
-                        let conn_len = connections
-                            .iter()
-                            .position(|&b| b == 0)
-                            .unwrap_or(connections.len());
-                        let connections =
-                            String::from_utf8_lossy(&connections[..conn_len]).to_string();
                         list.push(Port {
                             name,
                             has_signal,
-                            connections,
+                            connections: VideoConnections(connections),
                         });
                     }
                     *ports2.lock().unwrap() = list;
@@ -80,19 +73,4 @@ impl Discovery {
             .find(|p| p.name == name)
             .cloned()
     }
-}
-
-unsafe extern "C" {
-    fn decklink_discovery_new() -> *mut DecklinkDiscovery;
-    fn decklink_discovery_free(d: *mut DecklinkDiscovery);
-    fn decklink_discovery_count(d: *mut DecklinkDiscovery) -> i32;
-    fn decklink_discovery_get(
-        d: *mut DecklinkDiscovery,
-        idx: i32,
-        name: *mut std::ffi::c_char,
-        name_len: usize,
-        has_signal: *mut bool,
-        connections: *mut std::ffi::c_char,
-        conn_len: usize,
-    );
 }

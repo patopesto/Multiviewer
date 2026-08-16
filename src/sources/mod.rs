@@ -10,6 +10,7 @@ pub mod test;
 pub mod syphon;
 
 pub use decklink::source::{DecklinkConfig, DecklinkSource};
+pub use decklink::VideoConnections;
 pub use ndi::source::{NdiConfig, NdiSource};
 pub use test::{TestConfig, TestSource};
 
@@ -279,17 +280,29 @@ impl SourceKind {
     }
 }
 
+pub struct RestartResult {
+    pub id: SourceId,
+    pub kind: SourceKind,
+}
+
 /// All live sources. Owned by the UI thread; sources render on their own threads.
 pub struct Registry {
     sources: HashMap<SourceId, SourceKind>,
     next_test: u32,
+    pending_restarts: HashSet<SourceId>,
+    restart_tx: std::sync::mpsc::Sender<RestartResult>,
+    restart_rx: std::sync::mpsc::Receiver<RestartResult>,
 }
 
 impl Registry {
     pub fn new() -> Self {
+        let (tx, rx) = std::sync::mpsc::channel();
         Self {
             sources: HashMap::new(),
             next_test: 0,
+            pending_restarts: HashSet::new(),
+            restart_tx: tx,
+            restart_rx: rx,
         }
     }
 
@@ -332,15 +345,12 @@ impl Registry {
         &mut self,
         name: String,
         display_name: String,
-        supported_connections: Option<String>,
+        supported_connections: Option<VideoConnections>,
     ) -> SourceId {
-        if self.sources.contains_key(&name) {
+        if self.sources.contains_key(&name) || self.pending_restarts.contains(&name) {
             return name;
         }
-        let mut cfg = DecklinkConfig::default();
-        if let Some(conn) = supported_connections {
-            cfg.supported_connections = conn;
-        }
+        let cfg = DecklinkConfig::with_defaults(supported_connections.unwrap_or(VideoConnections::EMPTY));
         let src = DecklinkSource::spawn(name.clone(), display_name, &cfg);
         self.sources
             .insert(name.clone(), SourceKind::Decklink(src, cfg, name.clone()));
@@ -368,30 +378,66 @@ impl Registry {
     /// Restart an NDI source with its current config.
     pub fn restart_ndi(&mut self, name: &str) {
         if let Some(SourceKind::Ndi(_, cfg, source)) = self.sources.remove(name) {
-            let new = NdiSource::spawn(name.to_string(), source.clone(), &cfg);
-            self.sources
-                .insert(name.to_string(), SourceKind::Ndi(new, cfg, source));
+            self.pending_restarts.insert(name.to_string());
+            let tx = self.restart_tx.clone();
+            let id = name.to_string();
+            std::thread::Builder::new()
+                .name(format!("ndi-restart-{id}"))
+                .spawn(move || {
+                    let new = NdiSource::spawn(id.clone(), source.clone(), &cfg);
+                    let _ = tx.send(RestartResult {
+                        id: id.clone(),
+                        kind: SourceKind::Ndi(new, cfg, source),
+                    });
+                })
+                .expect("spawn ndi restart thread");
         }
     }
 
     #[cfg(target_os = "macos")]
     pub fn restart_syphon(&mut self, name: &str) {
         if let Some(SourceKind::Syphon(_, cfg, server_name)) = self.sources.remove(name) {
-            let new = SyphonSource::spawn(name.to_string(), server_name);
-            self.sources.insert(
-                name.to_string(),
-                SourceKind::Syphon(new, cfg, name.to_string()),
-            );
+            self.pending_restarts.insert(name.to_string());
+            let tx = self.restart_tx.clone();
+            let id = name.to_string();
+            let server = server_name.clone();
+            std::thread::Builder::new()
+                .name(format!("syphon-restart-{id}"))
+                .spawn(move || {
+                    let new = SyphonSource::spawn(id.clone(), server);
+                    let _ = tx.send(RestartResult {
+                        id: id.clone(),
+                        kind: SourceKind::Syphon(new, cfg, id),
+                    });
+                })
+                .expect("spawn syphon restart thread");
         }
     }
 
     pub fn restart_decklink(&mut self, name: &str) {
-        if let Some(SourceKind::Decklink(_, cfg, display_name)) = self.sources.remove(name) {
-            let new = DecklinkSource::spawn(name.to_string(), display_name, &cfg);
-            self.sources.insert(
-                name.to_string(),
-                SourceKind::Decklink(new, cfg, name.to_string()),
-            );
+        if let Some(SourceKind::Decklink(old_source, cfg, display_name)) = self.sources.remove(name)
+        {
+            self.pending_restarts.insert(name.to_string());
+            let tx = self.restart_tx.clone();
+            let id = name.to_string();
+            std::thread::Builder::new()
+                .name(format!("decklink-restart-{id}"))
+                .spawn(move || {
+                    drop(old_source);
+                    let new_source = DecklinkSource::spawn(id.clone(), display_name, &cfg);
+                    let _ = tx.send(RestartResult {
+                        id: id.clone(),
+                        kind: SourceKind::Decklink(new_source, cfg, id),
+                    });
+                })
+                .expect("spawn decklink restart thread");
+        }
+    }
+
+    pub fn apply_pending_restarts(&mut self) {
+        while let Ok(result) = self.restart_rx.try_recv() {
+            self.pending_restarts.remove(&result.id);
+            self.sources.insert(result.id, result.kind);
         }
     }
 

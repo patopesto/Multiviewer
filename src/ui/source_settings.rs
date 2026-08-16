@@ -1,4 +1,5 @@
 use crate::sources::{DecklinkConfig, NdiConfig, SourceKind, TestConfig};
+use crate::sources::decklink::VideoConnection;
 use crate::ui::side_panel::{settings_grid, settings_value};
 
 #[cfg(target_os = "macos")]
@@ -96,43 +97,23 @@ fn ndi_settings_ui(cfg: &mut NdiConfig, ui: &mut egui::Ui) -> bool {
 }
 
 fn decklink_settings_ui(cfg: &mut DecklinkConfig, ui: &mut egui::Ui) -> bool {
-    let old_conn = cfg.connection.clone();
-    let all_options = [
-        ("SDI", "SDI"),
-        ("HDMI", "HDMI"),
-        ("Optical SDI", "Optical SDI"),
-        ("Component", "Component"),
-        ("Composite", "Composite"),
-        ("S-Video", "S-Video"),
-        ("Ethernet", "Ethernet"),
-        ("Optical Ethernet", "Optical Ethernet"),
-        ("Internal", "Internal"),
-    ];
+    let old_conn = cfg.connection;
 
-    let available: Vec<(&str, &str)> = if cfg.supported_connections.is_empty() {
-        all_options.to_vec()
+    let available: Vec<VideoConnection> = if cfg.supported_connections.is_empty() {
+        VideoConnection::ALL.to_vec()
     } else {
-        all_options
-            .iter()
-            .filter(|(_, value)| cfg.supported_connections.contains(*value))
-            .cloned()
-            .collect()
+        cfg.supported_connections.iter().collect()
     };
-
-    // Default to the first available connection if none is set.
-    if cfg.connection.is_empty() && !available.is_empty() {
-        cfg.connection = available[0].1.to_string();
-    }
 
     settings_grid(ui, "decklink_settings_grid", |ui| {
         ui.label("Connection");
         settings_value(ui, |ui| {
             egui::ComboBox::from_id_salt("decklink_conn")
                 .width(ui.available_width())
-                .selected_text(cfg.connection.clone())
+                .selected_text(cfg.connection.label())
                 .show_ui(ui, |ui| {
-                    for (label, value) in &available {
-                        ui.selectable_value(&mut cfg.connection, value.to_string(), *label);
+                    for conn in &available {
+                        ui.selectable_value(&mut cfg.connection, *conn, conn.label());
                     }
                 });
         });

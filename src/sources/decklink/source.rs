@@ -1,29 +1,34 @@
 use crate::sources::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
+use multiviewer_decklink::{DecklinkPixelFormat, VideoConnection, VideoConnections};
+use multiviewer_decklink::{decklink_source_new, decklink_source_free, decklink_source_set_connection, decklink_source_start, decklink_source_stop, decklink_source_poll_frame};
 use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-// Values must match DecklinkPixelFormatOut in decklink_shim.cpp.
-#[allow(dead_code)]
-const DECKLINK_FMT_RGBA8: i32 = 1;
-const DECKLINK_FMT_BGRA8: i32 = 2;
-const DECKLINK_FMT_UYVY422: i32 = 3;
-
-pub enum DecklinkSourceHandle {}
-
 #[derive(Clone)]
 pub struct DecklinkConfig {
-    pub connection: String,
-    pub supported_connections: String,
+    pub connection: VideoConnection,
+    pub supported_connections: VideoConnections,
 }
 
 impl Default for DecklinkConfig {
     fn default() -> Self {
         Self {
-            connection: String::new(),
-            supported_connections: String::new(),
+            connection: VideoConnection::Unspecified,
+            supported_connections: VideoConnections::EMPTY,
         }
+    }
+}
+
+impl DecklinkConfig {
+    pub fn with_defaults(supported: VideoConnections) -> Self {
+        let mut cfg = Self::default();
+        cfg.supported_connections = supported;
+        if matches!(cfg.connection, VideoConnection::Unspecified) {
+            cfg.connection = supported.default_connection();
+        }
+        cfg
     }
 }
 
@@ -44,7 +49,7 @@ impl DecklinkSource {
         let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
         let name_for_thread = name.clone();
-        let connection = cfg.connection.clone();
+        let connection = cfg.connection;
         let thread = std::thread::Builder::new()
             .name(format!("decklink-{}", name))
             .spawn(move || {
@@ -64,19 +69,8 @@ impl DecklinkSource {
                         tracing::error!("DeckLink source creation failed for {}", name_for_thread);
                         return;
                     }
-                    if !connection.is_empty() {
-                        let connection_c = match CString::new(connection) {
-                            Ok(c) => c,
-                            Err(_) => {
-                                tracing::error!(
-                                    "DeckLink connection string contains null for {}",
-                                    name_for_thread
-                                );
-                                decklink_source_free(src);
-                                return;
-                            }
-                        };
-                        decklink_source_set_connection(src, connection_c.as_ptr());
+                    if !matches!(connection, VideoConnection::Unspecified) {
+                        decklink_source_set_connection(src, connection as u32);
                     }
                     if !decklink_source_start(src) {
                         tracing::error!("DeckLink source start failed for {}", name_for_thread);
@@ -95,7 +89,7 @@ impl DecklinkSource {
                         let mut w = 0;
                         let mut h = 0;
                         let mut seq = 0u64;
-                        let mut fmt = 0i32;
+                        let mut fmt = 0u32;
                         let mut nominal_fps = 0.0f64;
                         let t0 = Instant::now();
                         let got = decklink_source_poll_frame(
@@ -113,12 +107,14 @@ impl DecklinkSource {
                         // same front buffer repeatedly.
                         if got && seq != last_seq {
                             let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
-                            let (pixel_format, bpp) = if fmt == DECKLINK_FMT_BGRA8 {
-                                (PixelFormat::Bgra8, 4)
-                            } else if fmt == DECKLINK_FMT_UYVY422 {
-                                (PixelFormat::Uyvy422, 2)
-                            } else {
-                                (PixelFormat::Rgba8, 4)
+                            let pixel_format = match DecklinkPixelFormat::try_from(fmt) {
+                                Ok(DecklinkPixelFormat::Bgra8) => PixelFormat::Bgra8,
+                                Ok(DecklinkPixelFormat::Uyvy422) => PixelFormat::Uyvy422,
+                                _ => PixelFormat::Rgba8,
+                            };
+                            let bpp = match pixel_format {
+                                PixelFormat::Uyvy422 => 2,
+                                _ => 4,
                             };
                             let data_size = (w * h * bpp) as usize;
                             pool[slot].truncate(data_size);
@@ -202,25 +198,4 @@ impl VideoSource for DecklinkSource {
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
         self.stats.clone()
     }
-}
-
-unsafe extern "C" {
-    fn decklink_source_new(display_name: *const std::ffi::c_char) -> *mut DecklinkSourceHandle;
-    fn decklink_source_free(s: *mut DecklinkSourceHandle);
-    fn decklink_source_set_connection(
-        s: *mut DecklinkSourceHandle,
-        connection: *const std::ffi::c_char,
-    );
-    fn decklink_source_start(s: *mut DecklinkSourceHandle) -> bool;
-    fn decklink_source_stop(s: *mut DecklinkSourceHandle);
-    fn decklink_source_poll_frame(
-        s: *mut DecklinkSourceHandle,
-        out_rgba: *mut u8,
-        out_size: usize,
-        w: *mut i32,
-        h: *mut i32,
-        seq: *mut u64,
-        fmt_out: *mut i32,
-        nominal_fps_out: *mut f64,
-    ) -> bool;
 }
