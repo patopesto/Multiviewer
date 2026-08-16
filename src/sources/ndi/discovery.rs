@@ -52,6 +52,11 @@ impl Discovery {
 
     #[allow(dead_code)]
     pub fn find_by_name(&self, name: &str) -> Option<grafton_ndi::Source> {
-        self.sources.lock().unwrap().iter().find(|s| s.name == name).cloned()
+        self.sources
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|s| s.name == name)
+            .cloned()
     }
 }

@@ -1,6 +1,6 @@
-use syphon_core::SyphonServerDirectory;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use syphon_core::SyphonServerDirectory;
 
 /// Background Syphon server discovery.
 pub struct Discovery {
@@ -16,7 +16,8 @@ impl Discovery {
             .spawn(move || {
                 loop {
                     let list = SyphonServerDirectory::servers();
-                    let names: Vec<String> = list.iter().map(|s| s.display_name().to_string()).collect();
+                    let names: Vec<String> =
+                        list.iter().map(|s| s.display_name().to_string()).collect();
                     *servers2.lock().unwrap() = names;
                     std::thread::sleep(Duration::from_secs(2));
                 }

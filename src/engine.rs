@@ -1,8 +1,8 @@
 use crate::compositor::{self, Compositor, Draw, Rect};
 use crate::config::{Config, Layer, Protocol, TextureMode};
 use crate::sources::Registry;
-use crate::sources::ndi::Discovery as NdiDiscovery;
 use crate::sources::decklink::Discovery as DecklinkDiscovery;
+use crate::sources::ndi::Discovery as NdiDiscovery;
 #[cfg(target_os = "macos")]
 use crate::sources::syphon::Discovery as SyphonDiscovery;
 
@@ -19,7 +19,10 @@ pub struct ViewState {
 
 impl ViewState {
     pub fn new() -> Self {
-        Self { zoom: 1.0, pan: egui::Vec2::ZERO }
+        Self {
+            zoom: 1.0,
+            pan: egui::Vec2::ZERO,
+        }
     }
 }
 
@@ -186,7 +189,11 @@ impl Engine {
                     if let Some(ref name) = layer.source_id {
                         if self.registry.get(name).is_none() {
                             if let Some(port) = discovered.iter().find(|p| &p.name == name) {
-                                self.registry.add_decklink(name.clone(), name.clone(), Some(port.connections.clone()));
+                                self.registry.add_decklink(
+                                    name.clone(),
+                                    name.clone(),
+                                    Some(port.connections.clone()),
+                                );
                                 self.dirty = true;
                             }
                         }
@@ -235,12 +242,25 @@ impl Engine {
         transform: (f32, f32, f32),
     ) -> Draw {
         let comp = self.comp.as_mut().expect("compositor not initialized");
-        comp.build(device, queue, &self.cfg.canvas, self.cfg.layer_borders, &self.registry, panel_rect, transform)
+        comp.build(
+            device,
+            queue,
+            &self.cfg.canvas,
+            self.cfg.layer_borders,
+            &self.registry,
+            panel_rect,
+            transform,
+        )
     }
 
     pub fn display_transform(&self, panel_rect: &Rect) -> (f32, f32, f32) {
-        let (base_scale, base_ox, base_oy) = compositor::canvas_transform(&self.cfg.canvas, panel_rect);
-        (base_scale * self.view.zoom, base_ox + self.view.pan.x, base_oy + self.view.pan.y)
+        let (base_scale, base_ox, base_oy) =
+            compositor::canvas_transform(&self.cfg.canvas, panel_rect);
+        (
+            base_scale * self.view.zoom,
+            base_ox + self.view.pan.x,
+            base_oy + self.view.pan.y,
+        )
     }
 
     pub fn recenter_view(&mut self, panel_rect: &Rect) {
@@ -309,10 +329,34 @@ impl Engine {
 
             let current_x = self.snap_guides.x;
             let current_y = self.snap_guides.y;
-            let snap_left = Self::snap_value(left, &candidates.x, snap_threshold, break_threshold, current_x);
-            let snap_right = Self::snap_value(right, &candidates.x, snap_threshold, break_threshold, current_x);
-            let snap_top = Self::snap_value(top, &candidates.y, snap_threshold, break_threshold, current_y);
-            let snap_bottom = Self::snap_value(bottom, &candidates.y, snap_threshold, break_threshold, current_y);
+            let snap_left = Self::snap_value(
+                left,
+                &candidates.x,
+                snap_threshold,
+                break_threshold,
+                current_x,
+            );
+            let snap_right = Self::snap_value(
+                right,
+                &candidates.x,
+                snap_threshold,
+                break_threshold,
+                current_x,
+            );
+            let snap_top = Self::snap_value(
+                top,
+                &candidates.y,
+                snap_threshold,
+                break_threshold,
+                current_y,
+            );
+            let snap_bottom = Self::snap_value(
+                bottom,
+                &candidates.y,
+                snap_threshold,
+                break_threshold,
+                current_y,
+            );
 
             let (x_offset, guide_x) = match (snap_left, snap_right) {
                 (Some(l), Some(r)) => {
@@ -348,10 +392,17 @@ impl Engine {
     }
 
     pub fn layer_rect_world(&self, uuid: &str) -> Option<WorldRect> {
-        self.cfg.canvas.layers
+        self.cfg
+            .canvas
+            .layers
             .iter()
             .find(|l| &l.uuid == uuid)
-            .map(|l| WorldRect { x: l.x, y: l.y, w: l.width as f32, h: l.height as f32 })
+            .map(|l| WorldRect {
+                x: l.x,
+                y: l.y,
+                w: l.width as f32,
+                h: l.height as f32,
+            })
     }
 
     pub fn snap_candidates(&self, exclude_uuid: &str) -> SnapCandidates {
@@ -476,11 +527,17 @@ impl Engine {
             match handle {
                 ResizeHandle::Left => {
                     let proposed = x + dx;
-                if let Some(snap) = Self::snap_value(proposed, &candidates.x, snap_threshold, break_threshold, self.snap_guides.x) {
-                    guide_x = Some(snap);
-                    x = snap.min(start.x + start.w - 1.0);
-                    w = (start.x + start.w) - x;
-                } else {
+                    if let Some(snap) = Self::snap_value(
+                        proposed,
+                        &candidates.x,
+                        snap_threshold,
+                        break_threshold,
+                        self.snap_guides.x,
+                    ) {
+                        guide_x = Some(snap);
+                        x = snap.min(start.x + start.w - 1.0);
+                        w = (start.x + start.w) - x;
+                    } else {
                         let new_x = x + dx;
                         let new_w = (x + w) - new_x;
                         if new_w >= 1.0 {
@@ -494,20 +551,32 @@ impl Engine {
                 }
                 ResizeHandle::Right => {
                     let proposed = x + w + dx;
-                if let Some(snap) = Self::snap_value(proposed, &candidates.x, snap_threshold, break_threshold, self.snap_guides.x) {
-                    guide_x = Some(snap);
-                    w = (snap - x).max(1.0);
-                } else {
+                    if let Some(snap) = Self::snap_value(
+                        proposed,
+                        &candidates.x,
+                        snap_threshold,
+                        break_threshold,
+                        self.snap_guides.x,
+                    ) {
+                        guide_x = Some(snap);
+                        w = (snap - x).max(1.0);
+                    } else {
                         w = (w + dx).max(1.0);
                     }
                 }
                 ResizeHandle::Top => {
                     let proposed = y + dy;
-                if let Some(snap) = Self::snap_value(proposed, &candidates.y, snap_threshold, break_threshold, self.snap_guides.y) {
-                    guide_y = Some(snap);
-                    y = snap.min(start.y + start.h - 1.0);
-                    h = (start.y + start.h) - y;
-                } else {
+                    if let Some(snap) = Self::snap_value(
+                        proposed,
+                        &candidates.y,
+                        snap_threshold,
+                        break_threshold,
+                        self.snap_guides.y,
+                    ) {
+                        guide_y = Some(snap);
+                        y = snap.min(start.y + start.h - 1.0);
+                        h = (start.y + start.h) - y;
+                    } else {
                         let new_y = y + dy;
                         let new_h = (y + h) - new_y;
                         if new_h >= 1.0 {
@@ -521,10 +590,16 @@ impl Engine {
                 }
                 ResizeHandle::Bottom => {
                     let proposed = y + h + dy;
-                if let Some(snap) = Self::snap_value(proposed, &candidates.y, snap_threshold, break_threshold, self.snap_guides.y) {
-                    guide_y = Some(snap);
-                    h = (snap - y).max(1.0);
-                } else {
+                    if let Some(snap) = Self::snap_value(
+                        proposed,
+                        &candidates.y,
+                        snap_threshold,
+                        break_threshold,
+                        self.snap_guides.y,
+                    ) {
+                        guide_y = Some(snap);
+                        h = (snap - y).max(1.0);
+                    } else {
                         h = (h + dy).max(1.0);
                     }
                 }
@@ -553,8 +628,20 @@ impl Engine {
                         let mut my = fy + t * diag_y;
 
                         // Snap the moving corner to candidates, preferring the closer axis.
-                        let snap_mx = Self::snap_value(mx, &candidates.x, snap_threshold, break_threshold, self.snap_guides.x);
-                        let snap_my = Self::snap_value(my, &candidates.y, snap_threshold, break_threshold, self.snap_guides.y);
+                        let snap_mx = Self::snap_value(
+                            mx,
+                            &candidates.x,
+                            snap_threshold,
+                            break_threshold,
+                            self.snap_guides.x,
+                        );
+                        let snap_my = Self::snap_value(
+                            my,
+                            &candidates.y,
+                            snap_threshold,
+                            break_threshold,
+                            self.snap_guides.y,
+                        );
                         let dist_x = snap_mx.map(|v| (v - mx).abs());
                         let dist_y = snap_my.map(|v| (v - my).abs());
                         match (dist_x, dist_y) {
@@ -600,7 +687,10 @@ impl Engine {
             layer.y = y.round();
             layer.width = w.max(1.0).round() as u32;
             layer.height = h.max(1.0).round() as u32;
-            self.snap_guides = SnapGuides { x: guide_x, y: guide_y };
+            self.snap_guides = SnapGuides {
+                x: guide_x,
+                y: guide_y,
+            };
             self.dirty = true;
         }
     }
@@ -613,7 +703,11 @@ impl Engine {
     }
 
     pub fn cleanup_orphaned_sources(&mut self) {
-        let active_ids: Vec<&str> = self.cfg.canvas.layers.iter()
+        let active_ids: Vec<&str> = self
+            .cfg
+            .canvas
+            .layers
+            .iter()
             .filter_map(|l| l.source_id.as_deref())
             .collect();
         self.registry.cleanup_orphaned_sources(&active_ids);
@@ -655,7 +749,11 @@ impl Engine {
             return;
         }
         let layer = self.cfg.canvas.layers.remove(from_index);
-        let insert_at = if to_index > from_index { to_index } else { to_index };
+        let insert_at = if to_index > from_index {
+            to_index
+        } else {
+            to_index
+        };
         self.cfg.canvas.layers.insert(insert_at, layer);
         self.dirty = true;
     }
@@ -669,10 +767,13 @@ impl Engine {
     }
 
     pub fn connect_decklink(&mut self, name: &str) {
-        let connections = self.decklink.as_ref()
+        let connections = self
+            .decklink
+            .as_ref()
             .and_then(|d| d.find_by_name(name))
             .map(|p| p.connections);
-        self.registry.add_decklink(name.to_string(), name.to_string(), connections);
+        self.registry
+            .add_decklink(name.to_string(), name.to_string(), connections);
     }
 
     #[cfg(target_os = "macos")]
@@ -687,7 +788,10 @@ mod tests {
 
     fn test_engine(canvas: crate::config::Canvas) -> Engine {
         Engine {
-            cfg: crate::config::Config { canvas, ..Default::default() },
+            cfg: crate::config::Config {
+                canvas,
+                ..Default::default()
+            },
             registry: Registry::new(),
             ndi: None,
             decklink: None,
@@ -704,10 +808,20 @@ mod tests {
 
     #[test]
     fn display_transform_is_base_at_default_zoom() {
-        let engine = test_engine(crate::config::Canvas { width: 1920, height: 1080, layers: vec![] });
-        let panel = Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 };
+        let engine = test_engine(crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            layers: vec![],
+        });
+        let panel = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 800.0,
+            h: 600.0,
+        };
         let (scale, ox, oy) = engine.display_transform(&panel);
-        let (base_scale, base_ox, base_oy) = compositor::canvas_transform(&engine.cfg.canvas, &panel);
+        let (base_scale, base_ox, base_oy) =
+            compositor::canvas_transform(&engine.cfg.canvas, &panel);
         assert!((scale - base_scale).abs() < 1e-3);
         assert!((ox - base_ox).abs() < 1e-3);
         assert!((oy - base_oy).abs() < 1e-3);
@@ -715,8 +829,17 @@ mod tests {
 
     #[test]
     fn recenter_fits_canvas_with_margin() {
-        let mut engine = test_engine(crate::config::Canvas { width: 1920, height: 1080, layers: vec![] });
-        let panel = Rect { x: 0.0, y: 0.0, w: 800.0, h: 600.0 };
+        let mut engine = test_engine(crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            layers: vec![],
+        });
+        let panel = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 800.0,
+            h: 600.0,
+        };
         engine.recenter_view(&panel);
         let (scale, ox, oy) = engine.display_transform(&panel);
         let expected_scale = (panel.w / 1920.0).min(panel.h / 1080.0) * 0.9;
@@ -727,7 +850,11 @@ mod tests {
 
     #[test]
     fn recenter_expands_to_include_layers() {
-        let mut canvas = crate::config::Canvas { width: 100, height: 100, layers: vec![] };
+        let mut canvas = crate::config::Canvas {
+            width: 100,
+            height: 100,
+            layers: vec![],
+        };
         canvas.layers.push(Layer::new_v4(
             "L1".into(),
             Protocol::Test,
@@ -755,7 +882,12 @@ mod tests {
             false,
         ));
         let mut engine = test_engine(canvas);
-        let panel = Rect { x: 0.0, y: 0.0, w: 400.0, h: 400.0 };
+        let panel = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 400.0,
+            h: 400.0,
+        };
         engine.recenter_view(&panel);
         let (scale, _ox, _oy) = engine.display_transform(&panel);
         let bbox_w = 350.0;
@@ -766,7 +898,11 @@ mod tests {
 
     #[test]
     fn resize_layer_handles_corners_and_edges() {
-        let mut canvas = crate::config::Canvas { width: 1920, height: 1080, layers: vec![] };
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            layers: vec![],
+        };
         canvas.layers.push(Layer::new_v4(
             "L1".into(),
             Protocol::Test,
@@ -781,7 +917,12 @@ mod tests {
             false,
         ));
         let mut engine = test_engine(canvas);
-        let panel = Rect { x: 0.0, y: 0.0, w: 1920.0, h: 1080.0 };
+        let panel = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 1920.0,
+            h: 1080.0,
+        };
         let uuid = engine.cfg.canvas.layers[0].uuid.clone();
         let start = engine.layer_rect_world(&uuid).unwrap();
 
@@ -804,18 +945,31 @@ mod tests {
 
         // Corner resize: drag bottom-right along the diagonal.
         let start = engine.layer_rect_world(&uuid).unwrap();
-        engine.resize_layer(&uuid, ResizeHandle::BottomRight, start, (50.0, 50.0 * 120.0 / 230.0), &panel);
+        engine.resize_layer(
+            &uuid,
+            ResizeHandle::BottomRight,
+            start,
+            (50.0, 50.0 * 120.0 / 230.0),
+            &panel,
+        );
         let layer = &engine.cfg.canvas.layers[0];
         let aspect = layer.width as f32 / layer.height as f32;
         // Integer dimensions can't match the exact float aspect; allow ~1% rounding error.
-        assert!((aspect - 230.0 / 120.0).abs() < 0.02, "aspect should be preserved, got {aspect}");
+        assert!(
+            (aspect - 230.0 / 120.0).abs() < 0.02,
+            "aspect should be preserved, got {aspect}"
+        );
         assert_eq!(layer.x, 100.0);
         assert_eq!(layer.y, 80.0);
     }
 
     #[test]
     fn drag_layer_snaps_to_canvas_edge() {
-        let mut canvas = crate::config::Canvas { width: 1920, height: 1080, layers: vec![] };
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            layers: vec![],
+        };
         canvas.layers.push(Layer::new_v4(
             "L1".into(),
             Protocol::Test,
@@ -830,7 +984,12 @@ mod tests {
             false,
         ));
         let mut engine = test_engine(canvas);
-        let panel = Rect { x: 0.0, y: 0.0, w: 1920.0, h: 1080.0 };
+        let panel = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 1920.0,
+            h: 1080.0,
+        };
         let uuid = engine.cfg.canvas.layers[0].uuid.clone();
         // Drag left by 14 px: left edge moves from 15 to 1, within the 2 px snap threshold of 0.
         engine.drag_layer(&uuid, (-14.0, 0.0), &panel);
@@ -841,7 +1000,11 @@ mod tests {
 
     #[test]
     fn resize_layer_snaps_to_other_layer_edge() {
-        let mut canvas = crate::config::Canvas { width: 1920, height: 1080, layers: vec![] };
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            layers: vec![],
+        };
         canvas.layers.push(Layer::new_v4(
             "L1".into(),
             Protocol::Test,
@@ -869,7 +1032,12 @@ mod tests {
             false,
         ));
         let mut engine = test_engine(canvas);
-        let panel = Rect { x: 0.0, y: 0.0, w: 1920.0, h: 1080.0 };
+        let panel = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 1920.0,
+            h: 1080.0,
+        };
         let uuid = engine.cfg.canvas.layers[0].uuid.clone();
         let start = engine.layer_rect_world(&uuid).unwrap();
         // Drag L1's right edge to 299: should snap to L2's left edge at 300.
@@ -881,7 +1049,11 @@ mod tests {
 
     #[test]
     fn drag_layer_hysteresis_releases_after_break_threshold() {
-        let mut canvas = crate::config::Canvas { width: 1920, height: 1080, layers: vec![] };
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            layers: vec![],
+        };
         canvas.layers.push(Layer::new_v4(
             "L1".into(),
             Protocol::Test,
@@ -896,7 +1068,12 @@ mod tests {
             false,
         ));
         let mut engine = test_engine(canvas);
-        let panel = Rect { x: 0.0, y: 0.0, w: 1920.0, h: 1080.0 };
+        let panel = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 1920.0,
+            h: 1080.0,
+        };
         let uuid = engine.cfg.canvas.layers[0].uuid.clone();
 
         // Snap left edge to the canvas edge at 0.

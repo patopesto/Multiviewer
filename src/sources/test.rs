@@ -10,7 +10,10 @@ pub struct TestConfig {
 
 impl Default for TestConfig {
     fn default() -> Self {
-        Self { width: 1280, height: 720 }
+        Self {
+            width: 1280,
+            height: 720,
+        }
     }
 }
 

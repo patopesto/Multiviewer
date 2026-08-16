@@ -132,7 +132,11 @@ pub struct Draw {
 }
 
 impl Compositor {
-    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, target_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target_format: wgpu::TextureFormat,
+    ) -> Self {
         let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("cell"),
             entries: &[
@@ -242,7 +246,13 @@ impl Compositor {
         ));
 
         Self {
-            shared: Arc::new(Shared { pipeline, placeholder_bg, border_bg, vb, ib }),
+            shared: Arc::new(Shared {
+                pipeline,
+                placeholder_bg,
+                border_bg,
+                vb,
+                ib,
+            }),
             bind_layout,
             sampler,
             textures: HashMap::new(),
@@ -264,7 +274,8 @@ impl Compositor {
         let cx = panel_rect.x + offset_x;
         let cy = panel_rect.y + offset_y;
 
-        let mut seen: HashMap<&str, Option<(Arc<wgpu::BindGroup>, f32, bool, bool)>> = HashMap::new();
+        let mut seen: HashMap<&str, Option<(Arc<wgpu::BindGroup>, f32, bool, bool)>> =
+            HashMap::new();
 
         let mut layers: Vec<_> = canvas.layers.iter().collect();
         layers.sort_by_key(|l| l.z);
@@ -344,10 +355,22 @@ impl Compositor {
             let hy = (y0 - y1) / 2.0 * sy;
 
             verts.extend_from_slice(&[
-                Vert { pos: [cx_ - hx, cy_ + hy], uv: [u0, v0] },
-                Vert { pos: [cx_ + hx, cy_ + hy], uv: [u1, v0] },
-                Vert { pos: [cx_ + hx, cy_ - hy], uv: [u1, v1] },
-                Vert { pos: [cx_ - hx, cy_ - hy], uv: [u0, v1] },
+                Vert {
+                    pos: [cx_ - hx, cy_ + hy],
+                    uv: [u0, v0],
+                },
+                Vert {
+                    pos: [cx_ + hx, cy_ + hy],
+                    uv: [u1, v0],
+                },
+                Vert {
+                    pos: [cx_ + hx, cy_ - hy],
+                    uv: [u1, v1],
+                },
+                Vert {
+                    pos: [cx_ - hx, cy_ - hy],
+                    uv: [u0, v1],
+                },
             ]);
             draws.push((first_index, bg));
             first_index += 6;
@@ -364,47 +387,98 @@ impl Compositor {
 
                 // Top edge (inside layer bounds).
                 verts.extend_from_slice(&[
-                    Vert { pos: [x0, y0], uv: [0.0, 0.0] },
-                    Vert { pos: [x1, y0], uv: [1.0, 0.0] },
-                    Vert { pos: [x1, y0 - dy], uv: [1.0, 1.0] },
-                    Vert { pos: [x0, y0 - dy], uv: [0.0, 1.0] },
+                    Vert {
+                        pos: [x0, y0],
+                        uv: [0.0, 0.0],
+                    },
+                    Vert {
+                        pos: [x1, y0],
+                        uv: [1.0, 0.0],
+                    },
+                    Vert {
+                        pos: [x1, y0 - dy],
+                        uv: [1.0, 1.0],
+                    },
+                    Vert {
+                        pos: [x0, y0 - dy],
+                        uv: [0.0, 1.0],
+                    },
                 ]);
                 draws.push((first_index, self.shared.border_bg.clone()));
                 first_index += 6;
 
                 // Bottom edge (inside layer bounds).
                 verts.extend_from_slice(&[
-                    Vert { pos: [x0, y1 + dy], uv: [0.0, 0.0] },
-                    Vert { pos: [x1, y1 + dy], uv: [1.0, 0.0] },
-                    Vert { pos: [x1, y1], uv: [1.0, 1.0] },
-                    Vert { pos: [x0, y1], uv: [0.0, 1.0] },
+                    Vert {
+                        pos: [x0, y1 + dy],
+                        uv: [0.0, 0.0],
+                    },
+                    Vert {
+                        pos: [x1, y1 + dy],
+                        uv: [1.0, 0.0],
+                    },
+                    Vert {
+                        pos: [x1, y1],
+                        uv: [1.0, 1.0],
+                    },
+                    Vert {
+                        pos: [x0, y1],
+                        uv: [0.0, 1.0],
+                    },
                 ]);
                 draws.push((first_index, self.shared.border_bg.clone()));
                 first_index += 6;
 
                 // Left edge (inside layer bounds).
                 verts.extend_from_slice(&[
-                    Vert { pos: [x0, y0], uv: [0.0, 0.0] },
-                    Vert { pos: [x0 + dx, y0], uv: [1.0, 0.0] },
-                    Vert { pos: [x0 + dx, y1], uv: [1.0, 1.0] },
-                    Vert { pos: [x0, y1], uv: [0.0, 1.0] },
+                    Vert {
+                        pos: [x0, y0],
+                        uv: [0.0, 0.0],
+                    },
+                    Vert {
+                        pos: [x0 + dx, y0],
+                        uv: [1.0, 0.0],
+                    },
+                    Vert {
+                        pos: [x0 + dx, y1],
+                        uv: [1.0, 1.0],
+                    },
+                    Vert {
+                        pos: [x0, y1],
+                        uv: [0.0, 1.0],
+                    },
                 ]);
                 draws.push((first_index, self.shared.border_bg.clone()));
                 first_index += 6;
 
                 // Right edge (inside layer bounds).
                 verts.extend_from_slice(&[
-                    Vert { pos: [x1 - dx, y0], uv: [0.0, 0.0] },
-                    Vert { pos: [x1, y0], uv: [1.0, 0.0] },
-                    Vert { pos: [x1, y1], uv: [1.0, 1.0] },
-                    Vert { pos: [x1 - dx, y1], uv: [0.0, 1.0] },
+                    Vert {
+                        pos: [x1 - dx, y0],
+                        uv: [0.0, 0.0],
+                    },
+                    Vert {
+                        pos: [x1, y0],
+                        uv: [1.0, 0.0],
+                    },
+                    Vert {
+                        pos: [x1, y1],
+                        uv: [1.0, 1.0],
+                    },
+                    Vert {
+                        pos: [x1 - dx, y1],
+                        uv: [0.0, 1.0],
+                    },
                 ]);
                 draws.push((first_index, self.shared.border_bg.clone()));
                 first_index += 6;
             }
         }
 
-        Draw { verts: Arc::new(verts), draws }
+        Draw {
+            verts: Arc::new(verts),
+            draws,
+        }
     }
 
     fn ensure_texture(
@@ -417,8 +491,18 @@ impl Compositor {
     ) -> &SourceTex {
         use crate::sources::PixelFormat;
         let (format, tex_w, bpp, mode) = match f.fmt {
-            PixelFormat::Rgba8 => (wgpu::TextureFormat::Rgba8Unorm, f.w, 4, ConvMode::Passthrough),
-            PixelFormat::Bgra8 => (wgpu::TextureFormat::Bgra8Unorm, f.w, 4, ConvMode::Passthrough),
+            PixelFormat::Rgba8 => (
+                wgpu::TextureFormat::Rgba8Unorm,
+                f.w,
+                4,
+                ConvMode::Passthrough,
+            ),
+            PixelFormat::Bgra8 => (
+                wgpu::TextureFormat::Bgra8Unorm,
+                f.w,
+                4,
+                ConvMode::Passthrough,
+            ),
             // UYVY 4:2:2 is packed as Rgba8 at half width; shader does YUV→RGB.
             PixelFormat::Uyvy422 => {
                 if f.w % 2 != 0 {
@@ -427,7 +511,11 @@ impl Compositor {
                         f.w
                     );
                 }
-                let mode = if f.h <= 576 { ConvMode::UyvyBt601 } else { ConvMode::UyvyBt709 };
+                let mode = if f.h <= 576 {
+                    ConvMode::UyvyBt601
+                } else {
+                    ConvMode::UyvyBt709
+                };
                 (wgpu::TextureFormat::Rgba8Unorm, f.w / 2, 2, mode)
             }
         };
@@ -442,7 +530,11 @@ impl Compositor {
         let st = self.textures.entry(name.to_string()).or_insert_with(|| {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(name),
-                size: wgpu::Extent3d { width: tex_w, height: f.h, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d {
+                    width: tex_w,
+                    height: f.h,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -457,26 +549,48 @@ impl Compositor {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
-                queue.write_buffer(
-                    &uniform,
-                    0,
-                    bytemuck::cast_slice(&[ConvUniform {
-                        mode: mode as u32,
-                        width: f.w as f32,
-                        height: f.h as f32,
-                        _pad: 0.0,
-                    }]),
-                );
+            queue.write_buffer(
+                &uniform,
+                0,
+                bytemuck::cast_slice(&[ConvUniform {
+                    mode: mode as u32,
+                    width: f.w as f32,
+                    height: f.h as f32,
+                    _pad: 0.0,
+                }]),
+            );
             let bg = Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(name),
                 layout: &self.bind_layout,
                 entries: &[
-                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
-                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&self.sampler) },
-                    wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniform, offset: 0, size: None }) },
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &uniform,
+                            offset: 0,
+                            size: None,
+                        }),
+                    },
                 ],
             }));
-            SourceTex { _tex: tex, _uniform: uniform, bg, w: f.w, h: f.h, tex_w, seq: u64::MAX, format }
+            SourceTex {
+                _tex: tex,
+                _uniform: uniform,
+                bg,
+                w: f.w,
+                h: f.h,
+                tex_w,
+                seq: u64::MAX,
+                format,
+            }
         });
         if st.seq != f.seq {
             let t0 = std::time::Instant::now();
@@ -493,7 +607,11 @@ impl Compositor {
                     bytes_per_row: Some(f.w * bpp),
                     rows_per_image: Some(f.h),
                 },
-                wgpu::Extent3d { width: tex_w, height: f.h, depth_or_array_layers: 1 },
+                wgpu::Extent3d {
+                    width: tex_w,
+                    height: f.h,
+                    depth_or_array_layers: 1,
+                },
             );
             let upload_ms = t0.elapsed().as_secs_f32() * 1000.0;
             if let Some(stats) = stats {
@@ -529,7 +647,11 @@ fn placeholder(
 ) -> wgpu::BindGroup {
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("placeholder"),
-        size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -547,15 +669,33 @@ fn placeholder(
     queue.write_buffer(
         &uniform,
         0,
-        bytemuck::cast_slice(&[ConvUniform { mode: ConvMode::Passthrough as u32, width: 1.0, height: 1.0, _pad: 0.0 }]),
+        bytemuck::cast_slice(&[ConvUniform {
+            mode: ConvMode::Passthrough as u32,
+            width: 1.0,
+            height: 1.0,
+            _pad: 0.0,
+        }]),
     );
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("placeholder"),
         layout,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniform, offset: 0, size: None }) },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &uniform,
+                    offset: 0,
+                    size: None,
+                }),
+            },
         ],
     })
 }
@@ -569,7 +709,11 @@ fn solid_bind_group(
 ) -> wgpu::BindGroup {
     let tex = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("solid-border"),
-        size: wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        size: wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -591,7 +735,11 @@ fn solid_bind_group(
             bytes_per_row: Some(4),
             rows_per_image: Some(1),
         },
-        wgpu::Extent3d { width: 1, height: 1, depth_or_array_layers: 1 },
+        wgpu::Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        },
     );
     let uniform = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("solid-border-conv"),
@@ -602,15 +750,33 @@ fn solid_bind_group(
     queue.write_buffer(
         &uniform,
         0,
-        bytemuck::cast_slice(&[ConvUniform { mode: ConvMode::Passthrough as u32, width: 1.0, height: 1.0, _pad: 0.0 }]),
+        bytemuck::cast_slice(&[ConvUniform {
+            mode: ConvMode::Passthrough as u32,
+            width: 1.0,
+            height: 1.0,
+            _pad: 0.0,
+        }]),
     );
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("solid-border"),
         layout,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) },
-            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) },
-            wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &uniform, offset: 0, size: None }) },
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &uniform,
+                    offset: 0,
+                    size: None,
+                }),
+            },
         ],
     })
 }
@@ -671,7 +837,10 @@ mod tests {
                 let expected = ref_uyvy_to_rgb(u, y, v, hd);
                 let actual = shader_uyvy_to_rgb(u, y, v, hd);
                 assert!(
-                    expected.iter().zip(&actual).all(|(e, a)| e.abs_diff(*a) <= 1),
+                    expected
+                        .iter()
+                        .zip(&actual)
+                        .all(|(e, a)| e.abs_diff(*a) <= 1),
                     "mismatch for U={u} Y={y} V={v} hd={hd}: expected {expected:?}, got {actual:?}"
                 );
             }

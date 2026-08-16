@@ -45,14 +45,17 @@ impl DecklinkSource {
         let running2 = running.clone();
         let name_for_thread = name.clone();
         let connection = cfg.connection.clone();
-            let thread = std::thread::Builder::new()
+        let thread = std::thread::Builder::new()
             .name(format!("decklink-{}", name))
             .spawn(move || {
                 unsafe {
                     let display_name_c = match CString::new(display_name) {
                         Ok(c) => c,
                         Err(_) => {
-                            tracing::error!("DeckLink display name contains null for {}", name_for_thread);
+                            tracing::error!(
+                                "DeckLink display name contains null for {}",
+                                name_for_thread
+                            );
                             return;
                         }
                     };
@@ -65,7 +68,10 @@ impl DecklinkSource {
                         let connection_c = match CString::new(connection) {
                             Ok(c) => c,
                             Err(_) => {
-                                tracing::error!("DeckLink connection string contains null for {}", name_for_thread);
+                                tracing::error!(
+                                    "DeckLink connection string contains null for {}",
+                                    name_for_thread
+                                );
                                 decklink_source_free(src);
                                 return;
                             }
@@ -119,7 +125,12 @@ impl DecklinkSource {
 
                             {
                                 let mut s = stats2.lock().unwrap();
-                                s.record_frame(w as u32, h as u32, pixel_format.label(), nominal_fps);
+                                s.record_frame(
+                                    w as u32,
+                                    h as u32,
+                                    pixel_format.label(),
+                                    nominal_fps,
+                                );
                                 s.record_copy_time(copy_ms);
                                 if last_seq != 0 && seq > last_seq + 1 {
                                     s.record_dropped(seq - last_seq - 1);
@@ -177,7 +188,11 @@ impl Drop for DecklinkSource {
 
 impl VideoSource for DecklinkSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
-        self.latest.lock().unwrap().as_ref().map(|f| Frame::Cpu(f.clone()))
+        self.latest
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|f| Frame::Cpu(f.clone()))
     }
 
     fn name(&self) -> &str {
@@ -192,7 +207,10 @@ impl VideoSource for DecklinkSource {
 unsafe extern "C" {
     fn decklink_source_new(display_name: *const std::ffi::c_char) -> *mut DecklinkSourceHandle;
     fn decklink_source_free(s: *mut DecklinkSourceHandle);
-    fn decklink_source_set_connection(s: *mut DecklinkSourceHandle, connection: *const std::ffi::c_char);
+    fn decklink_source_set_connection(
+        s: *mut DecklinkSourceHandle,
+        connection: *const std::ffi::c_char,
+    );
     fn decklink_source_start(s: *mut DecklinkSourceHandle) -> bool;
     fn decklink_source_stop(s: *mut DecklinkSourceHandle);
     fn decklink_source_poll_frame(

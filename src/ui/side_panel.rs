@@ -1,7 +1,7 @@
-use egui::{Align, InnerResponse, Layout, Ui};
 use crate::config::{BorderVisibility, LayerBorderVisibility, Protocol, TextureMode};
 use crate::engine::Engine;
 use crate::sources::SourceStats;
+use egui::{Align, Grid, InnerResponse, Layout, ScrollArea, Ui};
 
 pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
     egui::Panel::left("panel")
@@ -9,21 +9,24 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
         .min_size(200.0)
         .max_size(400.0)
         .show(ui, |ui| {
-            ui.heading("Global Settings");
-            draw_global_section(ui, engine);
+            ScrollArea::vertical().show(ui, |ui| {
+                collapsable_section(ui, "Global Settings", |ui| {
+                    draw_global_section(ui, engine);
+                });
 
-            ui.separator();
-            ui.heading("Sources");
-            draw_sources_section(ui, engine);
+                ui.separator();
+                collapsable_section(ui, "Sources", |ui| {
+                    draw_sources_section(ui, engine);
+                });
 
-            if let Some(selected_uuid) = engine.selected_layer_id.clone() {
-                draw_source_properties_section(ui, engine, &selected_uuid);
-            }
+                if let Some(selected_uuid) = engine.selected_layer_id.clone() {
+                    draw_source_properties_section(ui, engine, &selected_uuid);
+                }
 
-            // Cleanup all orphaned sources (Test, NDI, DeckLink)
-            engine.cleanup_orphaned_sources();
-        }
-    );
+                // Cleanup all orphaned sources (Test, NDI, DeckLink)
+                engine.cleanup_orphaned_sources();
+            });
+        });
 }
 
 fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
@@ -32,11 +35,17 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
         settings_value(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("W");
-                if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.width).range(100..=7680)).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut engine.cfg.canvas.width).range(100..=7680))
+                    .changed()
+                {
                     engine.dirty = true;
                 }
                 ui.label("H");
-                if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.height).range(100..=7680)).changed() {
+                if ui
+                    .add(egui::DragValue::new(&mut engine.cfg.canvas.height).range(100..=7680))
+                    .changed()
+                {
                     engine.dirty = true;
                 }
             });
@@ -49,10 +58,24 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 .width(ui.available_width())
                 .selected_text(engine.cfg.layer_borders.label())
                 .show_ui(ui, |ui| {
-                    if ui.selectable_value(&mut engine.cfg.layer_borders, BorderVisibility::Show, "Show").clicked() {
+                    if ui
+                        .selectable_value(
+                            &mut engine.cfg.layer_borders,
+                            BorderVisibility::Show,
+                            "Show",
+                        )
+                        .clicked()
+                    {
                         engine.dirty = true;
                     }
-                    if ui.selectable_value(&mut engine.cfg.layer_borders, BorderVisibility::Hide, "Hide").clicked() {
+                    if ui
+                        .selectable_value(
+                            &mut engine.cfg.layer_borders,
+                            BorderVisibility::Hide,
+                            "Hide",
+                        )
+                        .clicked()
+                    {
                         engine.dirty = true;
                     }
                 });
@@ -62,90 +85,110 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
 }
 
 fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
-    // Scrollable sources list with drag-and-drop reordering.
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        let rows: Vec<(usize, String, String)> = engine.cfg.canvas.layers
-            .iter()
-            .enumerate()
-            .map(|(i, l)| (i, l.uuid.clone(), l.name.clone()))
-            .collect();
+    // Sources list with drag-and-drop reordering.
+    let rows: Vec<(usize, String, String)> = engine
+        .cfg
+        .canvas
+        .layers
+        .iter()
+        .enumerate()
+        .map(|(i, l)| (i, l.uuid.clone(), l.name.clone()))
+        .collect();
 
-        for (index, uuid, name) in rows {
-            // Use a plain frame as the drop zone so egui doesn't tint other rows while dragging.
-            let drop_zone_response = egui::Frame::new().show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // Custom drag handle (drawn, not a font glyph) so it always renders.
-                    ui.dnd_drag_source(
-                        egui::Id::new("layer_drag").with(&uuid),
-                        uuid.clone(),
-                        |ui| {
-                            let size = egui::vec2(12.0, 16.0);
-                            let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
-                            let painter = ui.painter();
-                            let color = ui.visuals().text_color();
-                            let center_y = rect.center().y;
-                            for dy in [-3.0_f32, 0.0, 3.0] {
-                                let y = center_y + dy;
-                                let x_range = rect.x_range().shrink(2.0);
-                                painter.hline(x_range, y, egui::Stroke::new(1.5, color));
-                            }
-                            response.on_hover_cursor(egui::CursorIcon::Grab)
-                        },
-                    );
+    const MAX_VISIBLE_SOURCE_ROWS: f32 = 18.0;
+    let row_height = ui.spacing().interact_size.y;
+    egui::ScrollArea::vertical()
+        .max_height(row_height * MAX_VISIBLE_SOURCE_ROWS)
+        .show(ui, |ui| {
+            for (index, uuid, name) in rows {
+                // Use a plain frame as the drop zone so egui doesn't tint other rows while dragging.
+                let drop_zone_response = egui::Frame::new().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        // Custom drag handle (drawn, not a font glyph) so it always renders.
+                        ui.dnd_drag_source(
+                            egui::Id::new("layer_drag").with(&uuid),
+                            uuid.clone(),
+                            |ui| {
+                                let size = egui::vec2(12.0, 16.0);
+                                let (rect, response) =
+                                    ui.allocate_exact_size(size, egui::Sense::hover());
+                                let painter = ui.painter();
+                                let color = ui.visuals().text_color();
+                                let center_y = rect.center().y;
+                                for dy in [-3.0_f32, 0.0, 3.0] {
+                                    let y = center_y + dy;
+                                    let x_range = rect.x_range().shrink(2.0);
+                                    painter.hline(x_range, y, egui::Stroke::new(1.5, color));
+                                }
+                                response.on_hover_cursor(egui::CursorIcon::Grab)
+                            },
+                        );
 
-                    // Full-width, left-aligned selectable label.
-                    let selected = engine.selected_layer_id.as_deref() == Some(&uuid);
-                    let available_width = ui.available_width();
-                    let label = egui::Button::selectable(selected, name.to_string())
-                        .min_size(egui::vec2(available_width, 0.0))
-                        .right_text("");
-                    if ui.add(label).clicked() {
-                        engine.selected_layer_id = Some(uuid.clone());
-                    }
+                        // Full-width, left-aligned selectable label.
+                        let selected = engine.selected_layer_id.as_deref() == Some(&uuid);
+                        let available_width = ui.available_width();
+                        let label = egui::Button::selectable(selected, name.to_string())
+                            .min_size(egui::vec2(available_width, 0.0))
+                            .right_text("")
+                            .truncate();
+                        if ui.add(label).clicked() {
+                            engine.selected_layer_id = Some(uuid.clone());
+                        }
+                    });
                 });
-            });
 
-            let dropped = drop_zone_response.response.dnd_release_payload::<String>();
-            let row_rect = drop_zone_response.response.rect;
+                let dropped = drop_zone_response.response.dnd_release_payload::<String>();
+                let row_rect = drop_zone_response.response.rect;
 
-            // Drop-line indicator while dragging over this row.
-            if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
-                if row_rect.contains(pointer_pos) {
-                    if let Some(payload) = egui::DragAndDrop::payload::<String>(ui.ctx()) {
-                        if payload.as_ref() != &uuid {
-                            let line_y = if pointer_pos.y < row_rect.center().y {
-                                row_rect.top()
+                // Drop-line indicator while dragging over this row.
+                if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
+                    if row_rect.contains(pointer_pos) {
+                        if let Some(payload) = egui::DragAndDrop::payload::<String>(ui.ctx()) {
+                            if payload.as_ref() != &uuid {
+                                let line_y = if pointer_pos.y < row_rect.center().y {
+                                    row_rect.top()
+                                } else {
+                                    row_rect.bottom()
+                                };
+                                ui.painter().hline(
+                                    row_rect.x_range(),
+                                    line_y,
+                                    egui::Stroke::new(2.0, ui.visuals().selection.bg_fill),
+                                );
+                            }
+                        }
+                    }
+                }
+
+                if let Some(payload) = dropped {
+                    if payload.as_ref() != &uuid {
+                        if let Some(from_index) = engine
+                            .cfg
+                            .canvas
+                            .layers
+                            .iter()
+                            .position(|l| l.uuid == *payload)
+                        {
+                            let pointer_y = ui
+                                .ctx()
+                                .pointer_interact_pos()
+                                .map(|p| p.y)
+                                .unwrap_or(row_rect.center().y);
+                            let to_index = if pointer_y < row_rect.center().y {
+                                if from_index < index {
+                                    index.saturating_sub(1)
+                                } else {
+                                    index
+                                }
                             } else {
-                                row_rect.bottom()
+                                if from_index < index { index } else { index + 1 }
                             };
-                            ui.painter().hline(
-                                row_rect.x_range(),
-                                line_y,
-                                egui::Stroke::new(2.0, ui.visuals().selection.bg_fill),
-                            );
+                            engine.move_layer(from_index, to_index);
                         }
                     }
                 }
             }
-
-            if let Some(payload) = dropped {
-                if payload.as_ref() != &uuid {
-                    if let Some(from_index) = engine.cfg.canvas.layers.iter().position(|l| l.uuid == *payload) {
-                        let pointer_y = ui.ctx()
-                            .pointer_interact_pos()
-                            .map(|p| p.y)
-                            .unwrap_or(row_rect.center().y);
-                        let to_index = if pointer_y < row_rect.center().y {
-                            if from_index < index { index.saturating_sub(1) } else { index }
-                        } else {
-                            if from_index < index { index } else { index + 1 }
-                        };
-                        engine.move_layer(from_index, to_index);
-                    }
-                }
-            }
-        }
-    });
+        });
 
     ui.horizontal(|ui| {
         if ui.button("+ Add Source").clicked() {
@@ -153,7 +196,10 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
             engine.selected_layer_id = Some(uuid);
         }
         let is_layer_selected = engine.selected_layer_id.is_some();
-        if ui.add_enabled(is_layer_selected, egui::Button::new("- Delete Source")).clicked() {
+        if ui
+            .add_enabled(is_layer_selected, egui::Button::new("- Delete Source"))
+            .clicked()
+        {
             if let Some(uuid) = engine.selected_layer_id.take() {
                 engine.remove_layer(&uuid);
             }
@@ -173,231 +219,326 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
     #[cfg(target_os = "macos")]
     let mut syphon_restart_sid: Option<String> = None;
 
-    if let Some(layer) = engine.cfg.canvas.layers.iter_mut().find(|l| l.uuid == selected_uuid) {
+    if let Some(layer) = engine
+        .cfg
+        .canvas
+        .layers
+        .iter_mut()
+        .find(|l| l.uuid == selected_uuid)
+    {
         ui.separator();
-        ui.heading("Properties");
-
-        // Properties
-        settings_grid(ui, "layer_properties_grid", |ui| {
-            ui.label("Name");
-            settings_value(ui, |ui| {
-                if ui.text_edit_singleline(&mut layer.name).changed() {
-                    engine.dirty = true;
-                }
-            });
-            ui.end_row();
-
-            ui.label("Protocol");
-            settings_value(ui, |ui| {
-                egui::ComboBox::from_id_salt("layer_protocol")
-                    .width(ui.available_width())
-                    .selected_text(layer.protocol.label())
-                    .show_ui(ui, |ui| {
-                        if ui.selectable_value(&mut layer.protocol, Protocol::Test, "Test").clicked() {
-                            protocol_changed = true;
-                        }
-                        if ui.selectable_value(&mut layer.protocol, Protocol::Ndi, "NDI").clicked() {
-                            protocol_changed = true;
-                        }
-                        if ui.selectable_value(&mut layer.protocol, Protocol::Decklink, "DeckLink").clicked() {
-                            protocol_changed = true;
-                        }
-                        #[cfg(target_os = "macos")]
-                        if ui.selectable_value(&mut layer.protocol, Protocol::Syphon, "Syphon").clicked() {
-                            protocol_changed = true;
-                        }
-                    });
-            });
-            ui.end_row();
-
-            // Source dropdown
-            ui.label("Source");
-            settings_value(ui, |ui| {
-                match layer.protocol {
-                    Protocol::Test => {
-                        let test_ids: Vec<String> = engine.registry.list_test_sources()
-                            .into_iter().map(|(id, _)| id.clone()).collect();
-                        let current = layer.source_id.as_deref().unwrap_or("");
-                        egui::ComboBox::from_id_salt("test_source")
-                            .width(ui.available_width())
-                            .selected_text(current.to_string()).truncate()
-                            .show_ui(ui, |ui| {
-                                for id in &test_ids {
-                                    if ui.selectable_label(current == id, id).clicked() {
-                                        selected_source = Some(id.clone());
-                                    }
-                                }
-                                if ui.selectable_label(false, "+ New Test Source").clicked() {
-                                    new_test_source = true;
-                                }
-                            });
-                    }
-                    Protocol::Ndi => {
-                        let ndi_ids: Vec<String> = engine.registry.list_ndi_sources()
-                            .into_iter().map(|(id, _)| id.clone()).collect();
-                        let current = layer.source_id.as_deref().unwrap_or("");
-                        let discovered = engine.ndi.as_ref().map(|d| d.list()).unwrap_or_default();
-                        egui::ComboBox::from_id_salt("ndi_source")
-                            .width(ui.available_width())
-                            .selected_text(current.to_string()).truncate()
-                            .show_ui(ui, |ui| {
-                                // Already connected NDI sources
-                                for id in &ndi_ids {
-                                    if ui.selectable_label(current == id, id).clicked() {
-                                        selected_source = Some(id.clone());
-                                    }
-                                }
-                                // Discovered sources not yet connected (auto-connect on select)
-                                for src in &discovered {
-                                    let name = &src.name;
-                                    if !ndi_ids.iter().any(|id| id == name) {
-                                        if ui.selectable_label(current == name, format!("{name}")).clicked() {
-                                            new_ndi_connect = Some(name.clone());
-                                            selected_source = Some(name.clone());
-                                        }
-                                    }
-                                }
-                                if ndi_ids.is_empty() && discovered.is_empty() {
-                                    ui.weak("(scanning...)");
-                                }
-                            });
-                    }
-                    Protocol::Decklink => {
-                        let decklink_ids: Vec<String> = engine.registry.list_decklink_sources()
-                            .into_iter().map(|(id, _)| id.clone()).collect();
-                        let current = layer.source_id.as_deref().unwrap_or("");
-                        let discovered = engine.decklink.as_ref().map(|d| d.list()).unwrap_or_default();
-                        egui::ComboBox::from_id_salt("decklink_source")
-                            .width(ui.available_width())
-                            .selected_text(current.to_string()).truncate()
-                            .show_ui(ui, |ui| {
-                                // Already connected DeckLink sources
-                                for id in &decklink_ids {
-                                    if ui.selectable_label(current == id, id).clicked() {
-                                        selected_source = Some(id.clone());
-                                    }
-                                }
-                                // Discovered ports not yet connected (auto-connect on select)
-                                for port in &discovered {
-                                    let name = &port.name;
-                                    if !decklink_ids.iter().any(|id| id == name) {
-                                        let label = if port.connections.is_empty() {
-                                            name.clone()
-                                        } else {
-                                            format!("{} ({})", name, port.connections)
-                                        };
-                                        if ui.selectable_label(current == name, label).clicked() {
-                                            new_decklink_connect = Some(name.clone());
-                                            selected_source = Some(name.clone());
-                                        }
-                                    }
-                                }
-                                if decklink_ids.is_empty() && discovered.is_empty() {
-                                    ui.weak("(scanning...)");
-                                }
-                            });
-                    }
-                    #[cfg(target_os = "macos")]
-                    Protocol::Syphon => {
-                        let syphon_ids: Vec<String> = engine.registry.list_syphon_sources()
-                            .into_iter().map(|(id, _)| id.clone()).collect();
-                        let current = layer.source_id.as_deref().unwrap_or("");
-                        let discovered = engine.syphon.as_ref().map(|d| d.list()).unwrap_or_default();
-                        egui::ComboBox::from_id_salt("syphon_source")
-                            .width(ui.available_width())
-                            .selected_text(current.to_string()).truncate()
-                            .show_ui(ui, |ui| {
-                                for id in &syphon_ids {
-                                    if ui.selectable_label(current == id, id).clicked() {
-                                        selected_source = Some(id.clone());
-                                    }
-                                }
-                                for name in &discovered {
-                                    if !syphon_ids.iter().any(|id| id == name) {
-                                        if ui.selectable_label(current == name, name).clicked() {
-                                            new_syphon_connect = Some(name.clone());
-                                            selected_source = Some(name.clone());
-                                        }
-                                    }
-                                }
-                                if syphon_ids.is_empty() && discovered.is_empty() {
-                                    ui.weak("(scanning...)");
-                                }
-                            });
-                    }
-                }
-            });
-            ui.end_row();
-
-            ui.label("Position");
-            settings_value(ui, |ui| {
-                ui.label("X");
-                if ui.add(egui::DragValue::new(&mut layer.x)).changed() { engine.dirty = true; }
-                ui.label("Y");
-                if ui.add(egui::DragValue::new(&mut layer.y)).changed() { engine.dirty = true; }
-            });
-            ui.end_row();
-
-            ui.label("Size");
-            settings_value(ui, |ui| {
-                ui.label("W");
-                if ui.add(egui::DragValue::new(&mut layer.width).range(1..=7680)).changed() { engine.dirty = true; }
-                ui.label("H");
-                if ui.add(egui::DragValue::new(&mut layer.height).range(1..=7680)).changed() { engine.dirty = true; }
-            });
-            ui.end_row();
-
-            ui.label("Order");
-            settings_value(ui, |ui| {
-                ui.label("Z");
-                if ui.add(egui::DragValue::new(&mut layer.z)).changed() { engine.dirty = true; }
-            });
-            ui.end_row();
-
-            ui.label("Mode");
-            settings_value(ui, |ui| {
-                egui::ComboBox::from_id_salt("tex_mode")
-                    .width(ui.available_width())
-                    .selected_text(layer.mode.label())
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut layer.mode, TextureMode::Fit, "Fit");
-                        ui.selectable_value(&mut layer.mode, TextureMode::Fill, "Fill");
-                        ui.selectable_value(&mut layer.mode, TextureMode::Stretch, "Stretch");
-                    });
-            });
-            ui.end_row();
-
-            ui.label("Borders");
-            settings_value(ui, |ui| {
-                egui::ComboBox::from_id_salt("layer_border_visibility")
-                    .width(ui.available_width())
-                    .selected_text(layer.border_visibility.label())
-                    .show_ui(ui, |ui| {
-                        if ui.selectable_value(&mut layer.border_visibility, LayerBorderVisibility::Inherit, "Inherit").clicked() {
-                            engine.dirty = true;
-                        }
-                        if ui.selectable_value(&mut layer.border_visibility, LayerBorderVisibility::Hide, "Always hide").clicked() {
-                            engine.dirty = true;
-                        }
-                        if ui.selectable_value(&mut layer.border_visibility, LayerBorderVisibility::Show, "Always show").clicked() {
-                            engine.dirty = true;
-                        }
-                    });
-            });
-            ui.end_row();
-
-            ui.label("Flip");
-            settings_value(ui, |ui| {
-                ui.horizontal(|ui| {
-                    if ui.checkbox(&mut layer.flip_h, "Flip H").changed() {
-                        engine.dirty = true;
-                    }
-                    if ui.checkbox(&mut layer.flip_v, "Flip V").changed() {
+        collapsable_section(ui, "Properties", |ui| {
+            // Properties
+            settings_grid(ui, "layer_properties_grid", |ui| {
+                ui.label("Name");
+                settings_value(ui, |ui| {
+                    let text_edit = egui::TextEdit::singleline(&mut layer.name)
+                        .desired_width(ui.available_width());
+                    if ui.add(text_edit).changed() {
                         engine.dirty = true;
                     }
                 });
+                ui.end_row();
+
+                ui.label("Protocol");
+                settings_value(ui, |ui| {
+                    egui::ComboBox::from_id_salt("layer_protocol")
+                        .width(ui.available_width())
+                        .selected_text(layer.protocol.label())
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_value(&mut layer.protocol, Protocol::Test, "Test")
+                                .clicked()
+                            {
+                                protocol_changed = true;
+                            }
+                            if ui
+                                .selectable_value(&mut layer.protocol, Protocol::Ndi, "NDI")
+                                .clicked()
+                            {
+                                protocol_changed = true;
+                            }
+                            if ui
+                                .selectable_value(
+                                    &mut layer.protocol,
+                                    Protocol::Decklink,
+                                    "DeckLink",
+                                )
+                                .clicked()
+                            {
+                                protocol_changed = true;
+                            }
+                            #[cfg(target_os = "macos")]
+                            if ui
+                                .selectable_value(&mut layer.protocol, Protocol::Syphon, "Syphon")
+                                .clicked()
+                            {
+                                protocol_changed = true;
+                            }
+                        });
+                });
+                ui.end_row();
+
+                // Source dropdown
+                ui.label("Source");
+                settings_value(ui, |ui| {
+                    match layer.protocol {
+                        Protocol::Test => {
+                            let test_ids: Vec<String> = engine
+                                .registry
+                                .list_test_sources()
+                                .into_iter()
+                                .map(|(id, _)| id.clone())
+                                .collect();
+                            let current = layer.source_id.as_deref().unwrap_or("");
+                            egui::ComboBox::from_id_salt("test_source")
+                                .width(ui.available_width())
+                                .selected_text(current.to_string())
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    for id in &test_ids {
+                                        if ui.selectable_label(current == id, id).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    if ui.selectable_label(false, "+ New Test Source").clicked() {
+                                        new_test_source = true;
+                                    }
+                                });
+                        }
+                        Protocol::Ndi => {
+                            let ndi_ids: Vec<String> = engine
+                                .registry
+                                .list_ndi_sources()
+                                .into_iter()
+                                .map(|(id, _)| id.clone())
+                                .collect();
+                            let current = layer.source_id.as_deref().unwrap_or("");
+                            let discovered =
+                                engine.ndi.as_ref().map(|d| d.list()).unwrap_or_default();
+                            egui::ComboBox::from_id_salt("ndi_source")
+                                .width(ui.available_width())
+                                .selected_text(current.to_string())
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    // Already connected NDI sources
+                                    for id in &ndi_ids {
+                                        if ui.selectable_label(current == id, id).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    // Discovered sources not yet connected (auto-connect on select)
+                                    for src in &discovered {
+                                        let name = &src.name;
+                                        if !ndi_ids.iter().any(|id| id == name) {
+                                            if ui
+                                                .selectable_label(
+                                                    current == name,
+                                                    format!("{name}"),
+                                                )
+                                                .clicked()
+                                            {
+                                                new_ndi_connect = Some(name.clone());
+                                                selected_source = Some(name.clone());
+                                            }
+                                        }
+                                    }
+                                    if ndi_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        }
+                        Protocol::Decklink => {
+                            let decklink_ids: Vec<String> = engine
+                                .registry
+                                .list_decklink_sources()
+                                .into_iter()
+                                .map(|(id, _)| id.clone())
+                                .collect();
+                            let current = layer.source_id.as_deref().unwrap_or("");
+                            let discovered = engine
+                                .decklink
+                                .as_ref()
+                                .map(|d| d.list())
+                                .unwrap_or_default();
+                            egui::ComboBox::from_id_salt("decklink_source")
+                                .width(ui.available_width())
+                                .selected_text(current.to_string())
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    // Already connected DeckLink sources
+                                    for id in &decklink_ids {
+                                        if ui.selectable_label(current == id, id).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    // Discovered ports not yet connected (auto-connect on select)
+                                    for port in &discovered {
+                                        let name = &port.name;
+                                        if !decklink_ids.iter().any(|id| id == name) {
+                                            let label = if port.connections.is_empty() {
+                                                name.clone()
+                                            } else {
+                                                format!("{} ({})", name, port.connections)
+                                            };
+                                            if ui.selectable_label(current == name, label).clicked()
+                                            {
+                                                new_decklink_connect = Some(name.clone());
+                                                selected_source = Some(name.clone());
+                                            }
+                                        }
+                                    }
+                                    if decklink_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        }
+                        #[cfg(target_os = "macos")]
+                        Protocol::Syphon => {
+                            let syphon_ids: Vec<String> = engine
+                                .registry
+                                .list_syphon_sources()
+                                .into_iter()
+                                .map(|(id, _)| id.clone())
+                                .collect();
+                            let current = layer.source_id.as_deref().unwrap_or("");
+                            let discovered =
+                                engine.syphon.as_ref().map(|d| d.list()).unwrap_or_default();
+                            egui::ComboBox::from_id_salt("syphon_source")
+                                .width(ui.available_width())
+                                .selected_text(current.to_string())
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    for id in &syphon_ids {
+                                        if ui.selectable_label(current == id, id).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    for name in &discovered {
+                                        if !syphon_ids.iter().any(|id| id == name) {
+                                            if ui.selectable_label(current == name, name).clicked()
+                                            {
+                                                new_syphon_connect = Some(name.clone());
+                                                selected_source = Some(name.clone());
+                                            }
+                                        }
+                                    }
+                                    if syphon_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        }
+                    }
+                });
+                ui.end_row();
+
+                ui.label("Position");
+                settings_value(ui, |ui| {
+                    ui.label("X");
+                    if ui.add(egui::DragValue::new(&mut layer.x)).changed() {
+                        engine.dirty = true;
+                    }
+                    ui.label("Y");
+                    if ui.add(egui::DragValue::new(&mut layer.y)).changed() {
+                        engine.dirty = true;
+                    }
+                });
+                ui.end_row();
+
+                ui.label("Size");
+                settings_value(ui, |ui| {
+                    ui.label("W");
+                    if ui
+                        .add(egui::DragValue::new(&mut layer.width).range(1..=7680))
+                        .changed()
+                    {
+                        engine.dirty = true;
+                    }
+                    ui.label("H");
+                    if ui
+                        .add(egui::DragValue::new(&mut layer.height).range(1..=7680))
+                        .changed()
+                    {
+                        engine.dirty = true;
+                    }
+                });
+                ui.end_row();
+
+                ui.label("Order");
+                settings_value(ui, |ui| {
+                    ui.label("Z");
+                    if ui.add(egui::DragValue::new(&mut layer.z)).changed() {
+                        engine.dirty = true;
+                    }
+                });
+                ui.end_row();
+
+                ui.label("Mode");
+                settings_value(ui, |ui| {
+                    egui::ComboBox::from_id_salt("tex_mode")
+                        .width(ui.available_width())
+                        .selected_text(layer.mode.label())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut layer.mode, TextureMode::Fit, "Fit");
+                            ui.selectable_value(&mut layer.mode, TextureMode::Fill, "Fill");
+                            ui.selectable_value(&mut layer.mode, TextureMode::Stretch, "Stretch");
+                        });
+                });
+                ui.end_row();
+
+                ui.label("Borders");
+                settings_value(ui, |ui| {
+                    egui::ComboBox::from_id_salt("layer_border_visibility")
+                        .width(ui.available_width())
+                        .selected_text(layer.border_visibility.label())
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_value(
+                                    &mut layer.border_visibility,
+                                    LayerBorderVisibility::Inherit,
+                                    "Inherit",
+                                )
+                                .clicked()
+                            {
+                                engine.dirty = true;
+                            }
+                            if ui
+                                .selectable_value(
+                                    &mut layer.border_visibility,
+                                    LayerBorderVisibility::Hide,
+                                    "Always hide",
+                                )
+                                .clicked()
+                            {
+                                engine.dirty = true;
+                            }
+                            if ui
+                                .selectable_value(
+                                    &mut layer.border_visibility,
+                                    LayerBorderVisibility::Show,
+                                    "Always show",
+                                )
+                                .clicked()
+                            {
+                                engine.dirty = true;
+                            }
+                        });
+                });
+                ui.end_row();
+
+                ui.label("Flip");
+                settings_value(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut layer.flip_h, "Flip H").changed() {
+                            engine.dirty = true;
+                        }
+                        if ui.checkbox(&mut layer.flip_v, "Flip V").changed() {
+                            engine.dirty = true;
+                        }
+                    });
+                });
+                ui.end_row();
             });
-            ui.end_row();
         });
 
         if protocol_changed {
@@ -415,29 +556,31 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
             engine.dirty = true;
         }
 
-        // Source-specific settings
+        // Source-specific settings and stats
         if let Some(ref sid) = layer.source_id {
             if let Some(source) = engine.registry.get_mut(sid) {
                 ui.separator();
-                ui.heading("Source Settings");
-                if super::source_settings::render_source_settings(source, ui) {
-                    // Config changed — NDI/DeckLink/Syphon need restart
-                    if source.is_decklink() {
-                        decklink_restart_sid = Some(sid.clone());
-                    } else if !source.is_test() {
-                        ndi_restart_sid = Some(sid.clone());
+                collapsable_section(ui, "Source Settings", |ui| {
+                    if super::source_settings::render_source_settings(source, ui) {
+                        // Config changed — NDI/DeckLink/Syphon need restart
+                        if source.is_decklink() {
+                            decklink_restart_sid = Some(sid.clone());
+                        } else if !source.is_test() {
+                            ndi_restart_sid = Some(sid.clone());
+                        }
+                        #[cfg(target_os = "macos")]
+                        if source.is_syphon() {
+                            syphon_restart_sid = Some(sid.clone());
+                        }
                     }
-                    #[cfg(target_os = "macos")]
-                    if source.is_syphon() {
-                        syphon_restart_sid = Some(sid.clone());
-                    }
-                }
+                });
 
                 ui.separator();
-                ui.heading("Source Stats");
-                let stats_arc = source.stats();
-                let stats = stats_arc.lock().unwrap();
-                draw_source_stats_section(&*stats, ui);
+                collapsable_section(ui, "Source Stats", |ui| {
+                    let stats_arc = source.stats();
+                    let stats = stats_arc.lock().unwrap();
+                    draw_source_stats_section(&*stats, ui);
+                });
             }
         }
     }
@@ -529,12 +672,21 @@ pub fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
 const SETTINGS_GRID_SPACING: [f32; 2] = [8.0, 4.0];
 const SETTINGS_GRID_LEFT_MIN_WIDTH: f32 = 120.0;
 
+pub fn collapsable_section<R>(ui: &mut Ui, title: &str, contents: impl FnOnce(&mut Ui) -> R) {
+    let id = ui.make_persistent_id(title);
+    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
+        .show_header(ui, |ui| {
+            ui.heading(title);
+        })
+        .body_unindented(contents);
+}
+
 pub fn settings_grid<R>(
     ui: &mut Ui,
     id: &str,
     contents: impl FnOnce(&mut Ui) -> R,
 ) -> InnerResponse<R> {
-    egui::Grid::new(id)
+    Grid::new(id)
         .num_columns(2)
         .spacing(SETTINGS_GRID_SPACING)
         .min_col_width(SETTINGS_GRID_LEFT_MIN_WIDTH)
@@ -544,5 +696,3 @@ pub fn settings_grid<R>(
 pub fn settings_value(ui: &mut Ui, contents: impl FnOnce(&mut Ui)) {
     ui.with_layout(Layout::left_to_right(Align::Center), contents);
 }
-
-

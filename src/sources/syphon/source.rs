@@ -1,5 +1,6 @@
-use super::super::{Frame, VideoSource, PixelFormat, ConvUniform, SourceStats};
-use std::sync::{Arc, Mutex, atomic::{AtomicU64, Ordering}};
+use super::super::{ConvUniform, Frame, PixelFormat, SourceStats, VideoSource};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct SyphonConfig {}

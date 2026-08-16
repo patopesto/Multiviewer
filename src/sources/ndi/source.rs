@@ -29,9 +29,7 @@ pub struct NdiSource {
 
 impl NdiSource {
     pub fn spawn(name: String, source: grafton_ndi::Source, cfg: &NdiConfig) -> Self {
-        use grafton_ndi::{
-            LineStrideOrSize, NDI, Receiver, ReceiverOptions,
-        };
+        use grafton_ndi::{LineStrideOrSize, NDI, Receiver, ReceiverOptions};
         let slot = Arc::new(Mutex::new(None));
         let slot2 = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));

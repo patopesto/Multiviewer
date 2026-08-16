@@ -82,7 +82,11 @@ fn ndi_settings_ui(cfg: &mut NdiConfig, ui: &mut egui::Ui) -> bool {
                         // grafton_ndi::ReceiverColorFormat::Fastest, // TODO: support UYVY+A format
                         // grafton_ndi::ReceiverColorFormat::Best,    // TODO: support PA16 and P216 formats
                     ] {
-                        ui.selectable_value(&mut cfg.color_format, variant, color_format_label(variant));
+                        ui.selectable_value(
+                            &mut cfg.color_format,
+                            variant,
+                            color_format_label(variant),
+                        );
                     }
                 });
         });
@@ -108,7 +112,8 @@ fn decklink_settings_ui(cfg: &mut DecklinkConfig, ui: &mut egui::Ui) -> bool {
     let available: Vec<(&str, &str)> = if cfg.supported_connections.is_empty() {
         all_options.to_vec()
     } else {
-        all_options.iter()
+        all_options
+            .iter()
             .filter(|(_, value)| cfg.supported_connections.contains(*value))
             .cloned()
             .collect()

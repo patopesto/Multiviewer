@@ -174,7 +174,7 @@ pub trait VideoSource: Send + Sync {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ConvUniform {
-    pub mode: u32,    // 0 = passthrough, 1 = UYVY BT.601, 2 = UYVY BT.709
+    pub mode: u32, // 0 = passthrough, 1 = UYVY BT.601, 2 = UYVY BT.709
     pub width: f32,
     pub height: f32,
     pub _pad: f32,
@@ -287,7 +287,10 @@ pub struct Registry {
 
 impl Registry {
     pub fn new() -> Self {
-        Self { sources: HashMap::new(), next_test: 0 }
+        Self {
+            sources: HashMap::new(),
+            next_test: 0,
+        }
     }
 
     /// Create a dedicated test source for a layer.
@@ -296,7 +299,8 @@ impl Registry {
         let letter = (b'A' + (self.next_test as u8 - 1) % 26) as char;
         let id = format!("Test {letter}");
         let src = TestSource::spawn(id.clone(), self.next_test);
-        self.sources.insert(id.clone(), SourceKind::Test(src, TestConfig::default()));
+        self.sources
+            .insert(id.clone(), SourceKind::Test(src, TestConfig::default()));
         id
     }
 
@@ -306,7 +310,8 @@ impl Registry {
         }
         let cfg = NdiConfig::default();
         let src = NdiSource::spawn(name.clone(), source.clone(), &cfg);
-        self.sources.insert(name.clone(), SourceKind::Ndi(src, cfg, source));
+        self.sources
+            .insert(name.clone(), SourceKind::Ndi(src, cfg, source));
         name
     }
 
@@ -316,11 +321,19 @@ impl Registry {
             return name;
         }
         let src = SyphonSource::spawn(name.clone(), server_name);
-        self.sources.insert(name.clone(), SourceKind::Syphon(src, SyphonConfig::default(), name.clone()));
+        self.sources.insert(
+            name.clone(),
+            SourceKind::Syphon(src, SyphonConfig::default(), name.clone()),
+        );
         name
     }
 
-    pub fn add_decklink(&mut self, name: String, display_name: String, supported_connections: Option<String>) -> SourceId {
+    pub fn add_decklink(
+        &mut self,
+        name: String,
+        display_name: String,
+        supported_connections: Option<String>,
+    ) -> SourceId {
         if self.sources.contains_key(&name) {
             return name;
         }
@@ -329,7 +342,8 @@ impl Registry {
             cfg.supported_connections = conn;
         }
         let src = DecklinkSource::spawn(name.clone(), display_name, &cfg);
-        self.sources.insert(name.clone(), SourceKind::Decklink(src, cfg, name.clone()));
+        self.sources
+            .insert(name.clone(), SourceKind::Decklink(src, cfg, name.clone()));
         name
     }
 
@@ -355,7 +369,8 @@ impl Registry {
     pub fn restart_ndi(&mut self, name: &str) {
         if let Some(SourceKind::Ndi(_, cfg, source)) = self.sources.remove(name) {
             let new = NdiSource::spawn(name.to_string(), source.clone(), &cfg);
-            self.sources.insert(name.to_string(), SourceKind::Ndi(new, cfg, source));
+            self.sources
+                .insert(name.to_string(), SourceKind::Ndi(new, cfg, source));
         }
     }
 
@@ -363,21 +378,28 @@ impl Registry {
     pub fn restart_syphon(&mut self, name: &str) {
         if let Some(SourceKind::Syphon(_, cfg, server_name)) = self.sources.remove(name) {
             let new = SyphonSource::spawn(name.to_string(), server_name);
-            self.sources.insert(name.to_string(), SourceKind::Syphon(new, cfg, name.to_string()));
+            self.sources.insert(
+                name.to_string(),
+                SourceKind::Syphon(new, cfg, name.to_string()),
+            );
         }
     }
 
     pub fn restart_decklink(&mut self, name: &str) {
         if let Some(SourceKind::Decklink(_, cfg, display_name)) = self.sources.remove(name) {
             let new = DecklinkSource::spawn(name.to_string(), display_name, &cfg);
-            self.sources.insert(name.to_string(), SourceKind::Decklink(new, cfg, name.to_string()));
+            self.sources.insert(
+                name.to_string(),
+                SourceKind::Decklink(new, cfg, name.to_string()),
+            );
         }
     }
 
     /// Remove all sources not referenced by any layer.
     pub fn cleanup_orphaned_sources(&mut self, active_source_ids: &[&str]) {
         let active: HashSet<&str> = active_source_ids.iter().copied().collect();
-        let to_remove: Vec<String> = self.sources
+        let to_remove: Vec<String> = self
+            .sources
             .iter()
             .filter(|(id, _)| !active.contains(id.as_str()))
             .map(|(id, _)| id.clone())
@@ -392,16 +414,25 @@ impl Registry {
     }
 
     pub fn list_ndi_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
-        self.sources.iter().filter(|(_, sk)| !sk.is_test() && !sk.is_syphon() && !sk.is_decklink()).collect()
+        self.sources
+            .iter()
+            .filter(|(_, sk)| !sk.is_test() && !sk.is_syphon() && !sk.is_decklink())
+            .collect()
     }
 
     #[cfg(target_os = "macos")]
     pub fn list_syphon_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
-        self.sources.iter().filter(|(_, sk)| sk.is_syphon()).collect()
+        self.sources
+            .iter()
+            .filter(|(_, sk)| sk.is_syphon())
+            .collect()
     }
 
     pub fn list_decklink_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
-        self.sources.iter().filter(|(_, sk)| sk.is_decklink()).collect()
+        self.sources
+            .iter()
+            .filter(|(_, sk)| sk.is_decklink())
+            .collect()
     }
 }
 

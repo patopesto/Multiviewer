@@ -56,7 +56,12 @@ pub fn update(
     frame: &mut eframe::Frame,
 ) {
     let rect = ui.available_rect_before_wrap();
-    let panel_rect = Rect { x: rect.min.x, y: rect.min.y, w: rect.width(), h: rect.height() };
+    let panel_rect = Rect {
+        x: rect.min.x,
+        y: rect.min.y,
+        w: rect.width(),
+        h: rect.height(),
+    };
     let (response, painter) = ui.allocate_painter(rect.size(), egui::Sense::click_and_drag());
 
     // Only start a drag if the press actually happened on the canvas.
@@ -65,9 +70,14 @@ pub fn update(
     if !primary_down {
         engine.drag_state = DragState::None;
         engine.snap_guides = crate::engine::SnapGuides::default();
-    } else if pressed && response.hovered() && let Some(pos) = response.interact_pointer_pos() {
+    } else if pressed
+        && response.hovered()
+        && let Some(pos) = response.interact_pointer_pos()
+    {
         if let Some((uuid, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
-            let start = engine.layer_rect_world(&uuid).expect("selected layer exists");
+            let start = engine
+                .layer_rect_world(&uuid)
+                .expect("selected layer exists");
             engine.selected_layer_id = Some(uuid.clone());
             engine.drag_state = DragState::Resize {
                 uuid,
@@ -85,9 +95,18 @@ pub fn update(
     if response.dragged() {
         match engine.drag_state.clone() {
             DragState::Move { uuid } => {
-                engine.drag_layer(&uuid, (response.drag_delta().x, response.drag_delta().y), &panel_rect);
+                engine.drag_layer(
+                    &uuid,
+                    (response.drag_delta().x, response.drag_delta().y),
+                    &panel_rect,
+                );
             }
-            DragState::Resize { uuid, handle, start, start_screen } => {
+            DragState::Resize {
+                uuid,
+                handle,
+                start,
+                start_screen,
+            } => {
                 if let Some(pos) = response.interact_pointer_pos() {
                     let delta = (pos.x - start_screen.0, pos.y - start_screen.1);
                     engine.resize_layer(&uuid, handle, start, delta, &panel_rect);
@@ -117,7 +136,8 @@ pub fn update(
                 compositor::canvas_transform(&engine.cfg.canvas, &panel_rect);
             let old_zoom = engine.view.zoom;
             let factor = 1.1_f32.powf(scroll / 50.0);
-            let new_zoom = (old_zoom * factor).clamp(crate::engine::MIN_ZOOM, crate::engine::MAX_ZOOM);
+            let new_zoom =
+                (old_zoom * factor).clamp(crate::engine::MIN_ZOOM, crate::engine::MAX_ZOOM);
             let center = egui::vec2(panel_rect.w / 2.0, panel_rect.h / 2.0);
             let world_c = (center
                 - egui::vec2(base_ox + engine.view.pan.x, base_oy + engine.view.pan.y))
@@ -130,7 +150,9 @@ pub fn update(
         }
     }
 
-    let Some(rs) = frame.wgpu_render_state() else { return };
+    let Some(rs) = frame.wgpu_render_state() else {
+        return;
+    };
     engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
 
     let transform = engine.display_transform(&panel_rect);
@@ -161,7 +183,11 @@ pub fn update(
         egui::vec2(30.0, 30.0),
     );
     let btn = egui::Button::image(btn_image).corner_radius(5.0);
-    if ui.put(btn_rect, btn).on_hover_text("Re-center view").clicked() {
+    if ui
+        .put(btn_rect, btn)
+        .on_hover_text("Re-center view")
+        .clicked()
+    {
         engine.recenter_view(&panel_rect);
     }
 }
@@ -191,7 +217,10 @@ fn draw_overlays(
     painter.rect_stroke(
         egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(cw, ch)),
         0.0,
-        egui::Stroke::new(2.0_f32, egui::Color32::from_rgba_unmultiplied(60, 60, 60, 120)),
+        egui::Stroke::new(
+            2.0_f32,
+            egui::Color32::from_rgba_unmultiplied(60, 60, 60, 120),
+        ),
         egui::StrokeKind::Inside,
     );
 
@@ -200,7 +229,9 @@ fn draw_overlays(
         None => return,
     };
 
-    let Some(layer) = canvas.layers.iter().find(|l| &l.uuid == selected_uuid) else { return };
+    let Some(layer) = canvas.layers.iter().find(|l| &l.uuid == selected_uuid) else {
+        return;
+    };
     let lx = cx + layer.x * scale;
     let ly = cy + layer.y * scale;
     let lw = layer.width as f32 * scale;
