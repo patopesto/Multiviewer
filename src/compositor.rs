@@ -1,5 +1,5 @@
-use crate::config::{BorderVisibility, Canvas, LayerBorderVisibility, TextureMode};
-use crate::sources::{ConvUniform, Frame, Registry};
+use crate::config::{BorderVisibility, Canvas, SourceBorderVisibility, TextureMode};
+use crate::sources::{ConvUniform, Frame, SourceRegistry};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -123,11 +123,17 @@ pub struct Compositor {
     bind_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     textures: HashMap<String, SourceTex>,
+    canvas_texture: Option<wgpu::Texture>,
+    canvas_view: Option<wgpu::TextureView>,
+    canvas_vb: wgpu::Buffer,
+    canvas_pipeline: wgpu::RenderPipeline,
+    canvas_w: u32,
+    canvas_h: u32,
 }
 
 pub struct Draw {
     pub verts: Arc<Vec<Vert>>,
-    /// (first_index, bind group) per layer, in z-order
+    /// (first_index, bind group) per source, in z-order
     pub draws: Vec<(u32, Arc<wgpu::BindGroup>)>,
 }
 
@@ -215,7 +221,7 @@ impl Compositor {
             cache: None,
         });
 
-        // One content quad + up to four border edge quads per layer.
+        // One content quad + up to four border edge quads per source.
         const QUADS_PER_LAYER: usize = 5;
         let vb = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("cells-vb"),
@@ -245,6 +251,43 @@ impl Compositor {
             [180, 180, 180, 255],
         ));
 
+        let canvas_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("compositor-canvas"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Vert>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: wgpu::TextureFormat::Bgra8Unorm,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let canvas_vb = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("canvas-vb"),
+            size: (MAX_LAYERS * QUADS_PER_LAYER * 4 * std::mem::size_of::<Vert>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         Self {
             shared: Arc::new(Shared {
                 pipeline,
@@ -256,17 +299,22 @@ impl Compositor {
             bind_layout,
             sampler,
             textures: HashMap::new(),
+            canvas_texture: None,
+            canvas_view: None,
+            canvas_vb,
+            canvas_pipeline,
+            canvas_w: 0,
+            canvas_h: 0,
         }
     }
 
-    /// Per-frame: upload changed source textures, build quads for all layers.
+    /// Per-frame: upload changed source textures, build quads for all sources.
     pub fn build(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         canvas: &Canvas,
-        global_borders: crate::config::BorderVisibility,
-        registry: &Registry,
+        registry: &SourceRegistry,
         panel_rect: &Rect,
         transform: (f32, f32, f32),
     ) -> Draw {
@@ -277,15 +325,15 @@ impl Compositor {
         let mut seen: HashMap<&str, Option<(Arc<wgpu::BindGroup>, f32, bool, bool)>> =
             HashMap::new();
 
-        let mut layers: Vec<_> = canvas.layers.iter().collect();
-        layers.sort_by_key(|l| l.z);
+        let mut sources: Vec<_> = canvas.sources.iter().collect();
+        sources.sort_by_key(|l| l.z);
 
-        let mut verts = Vec::with_capacity(layers.len() * 5 * 4);
-        let mut draws = Vec::with_capacity(layers.len() * 5);
+        let mut verts = Vec::with_capacity(sources.len() * 5 * 4);
+        let mut draws = Vec::with_capacity(sources.len() * 5);
 
         let mut first_index = 0u32;
-        for layer in layers {
-            let entry = layer.source_id.as_deref().and_then(|sid| {
+        for source in sources {
+            let entry = source.source_id.as_deref().and_then(|sid| {
                 seen.entry(sid)
                     .or_insert_with(|| {
                         let src = registry.get(&sid.to_string())?;
@@ -307,13 +355,13 @@ impl Compositor {
                 Some(e) => e,
                 None => (self.shared.placeholder_bg.clone(), 16.0 / 9.0, false, false),
             };
-            let flip_h = src_flip_h ^ layer.flip_h;
-            let flip_v = src_flip_v ^ layer.flip_v;
+            let flip_h = src_flip_h ^ source.flip_h;
+            let flip_v = src_flip_v ^ source.flip_v;
 
-            let lx = cx + layer.x * scale;
-            let ly = cy + layer.y * scale;
-            let lw = layer.width as f32 * scale;
-            let lh = layer.height as f32 * scale;
+            let lx = cx + source.x * scale;
+            let ly = cy + source.y * scale;
+            let lw = source.width as f32 * scale;
+            let lh = source.height as f32 * scale;
 
             let x0 = (lx - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
             let x1 = (lx + lw - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
@@ -322,7 +370,7 @@ impl Compositor {
 
             let layer_aspect = if lh > 0.0 { lw / lh } else { 1.0 };
 
-            let (sx, sy, u0, u1, v0, v1) = match layer.mode {
+            let (sx, sy, u0, u1, v0, v1) = match source.mode {
                 TextureMode::Fit => {
                     if aspect > layer_aspect {
                         let sy = layer_aspect / aspect;
@@ -375,17 +423,18 @@ impl Compositor {
             draws.push((first_index, bg));
             first_index += 6;
 
-            let border_visible = match layer.border_visibility {
-                LayerBorderVisibility::Show => true,
-                LayerBorderVisibility::Hide => false,
-                LayerBorderVisibility::Inherit => global_borders == BorderVisibility::Show,
+            let global_borders = canvas.border_visibility;
+            let border_visible = match source.border_visibility {
+                SourceBorderVisibility::Show => true,
+                SourceBorderVisibility::Hide => false,
+                SourceBorderVisibility::Inherit => global_borders == BorderVisibility::Show,
             };
             if border_visible {
                 const BORDER_PX: f32 = 1.0;
                 let dx = 2.0 * BORDER_PX / panel_rect.width();
                 let dy = 2.0 * BORDER_PX / panel_rect.height();
 
-                // Top edge (inside layer bounds).
+                // Top edge (inside source bounds).
                 verts.extend_from_slice(&[
                     Vert {
                         pos: [x0, y0],
@@ -407,7 +456,7 @@ impl Compositor {
                 draws.push((first_index, self.shared.border_bg.clone()));
                 first_index += 6;
 
-                // Bottom edge (inside layer bounds).
+                // Bottom edge (inside source bounds).
                 verts.extend_from_slice(&[
                     Vert {
                         pos: [x0, y1 + dy],
@@ -429,7 +478,7 @@ impl Compositor {
                 draws.push((first_index, self.shared.border_bg.clone()));
                 first_index += 6;
 
-                // Left edge (inside layer bounds).
+                // Left edge (inside source bounds).
                 verts.extend_from_slice(&[
                     Vert {
                         pos: [x0, y0],
@@ -451,7 +500,7 @@ impl Compositor {
                 draws.push((first_index, self.shared.border_bg.clone()));
                 first_index += 6;
 
-                // Right edge (inside layer bounds).
+                // Right edge (inside source bounds).
                 verts.extend_from_slice(&[
                     Vert {
                         pos: [x1 - dx, y0],
@@ -479,6 +528,101 @@ impl Compositor {
             verts: Arc::new(verts),
             draws,
         }
+    }
+
+    pub fn render_canvas(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        canvas: &Canvas,
+        registry: &crate::sources::SourceRegistry,
+    ) {
+        let canvas_w = canvas.width;
+        let canvas_h = canvas.height;
+
+        if self.canvas_texture.is_none()
+            || self.canvas_w != canvas_w
+            || self.canvas_h != canvas_h
+        {
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("canvas-output"),
+                size: wgpu::Extent3d {
+                    width: canvas_w,
+                    height: canvas_h,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Bgra8Unorm,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&Default::default());
+            self.canvas_texture = Some(texture);
+            self.canvas_view = Some(view);
+            self.canvas_w = canvas_w;
+            self.canvas_h = canvas_h;
+        }
+
+        let panel_rect = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: canvas_w as f32,
+            h: canvas_h as f32,
+        };
+        let transform = (1.0, 0.0, 0.0);
+        let draw = self.build(
+            device,
+            queue,
+            canvas,
+            registry,
+            &panel_rect,
+            transform,
+        );
+
+        queue.write_buffer(&self.canvas_vb, 0, bytemuck::cast_slice(&draw.verts));
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("canvas-output"),
+        });
+
+        {
+            let view = self.canvas_view.as_ref().unwrap();
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("canvas-output"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view,
+                    resolve_target: None,
+                    depth_slice: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+
+            rpass.set_viewport(0.0, 0.0, canvas_w as f32, canvas_h as f32, 0.0, 1.0);
+            rpass.set_pipeline(&self.canvas_pipeline);
+            rpass.set_vertex_buffer(0, self.canvas_vb.slice(..));
+            rpass.set_index_buffer(self.shared.ib.slice(..), wgpu::IndexFormat::Uint16);
+            for (first, bg) in &draw.draws {
+                rpass.set_bind_group(0, &**bg, &[]);
+                rpass.draw_indexed(*first..*first + 6, 0, 0..1);
+            }
+        }
+
+        queue.submit(Some(encoder.finish()));
+    }
+
+    pub fn canvas_texture(&self) -> Option<(&wgpu::Texture, u32, u32)> {
+        self.canvas_texture
+            .as_ref()
+            .map(|t| (t, self.canvas_w, self.canvas_h))
     }
 
     fn ensure_texture(

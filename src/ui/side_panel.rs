@@ -1,4 +1,4 @@
-use crate::config::{BorderVisibility, LayerBorderVisibility, Protocol, TextureMode};
+use crate::config::{BorderVisibility, SourceBorderVisibility, Protocol, TextureMode};
 use crate::engine::Engine;
 use crate::sources::SourceStats;
 use egui::{Align, Grid, InnerResponse, Layout, ScrollArea, Ui};
@@ -56,11 +56,11 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
         settings_value(ui, |ui| {
             egui::ComboBox::from_id_salt("global_layer_borders")
                 .width(ui.available_width())
-                .selected_text(engine.cfg.layer_borders.label())
+                .selected_text(engine.cfg.canvas.border_visibility.label())
                 .show_ui(ui, |ui| {
                     if ui
                         .selectable_value(
-                            &mut engine.cfg.layer_borders,
+                            &mut engine.cfg.canvas.border_visibility,
                             BorderVisibility::Show,
                             "Show",
                         )
@@ -70,7 +70,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     }
                     if ui
                         .selectable_value(
-                            &mut engine.cfg.layer_borders,
+                            &mut engine.cfg.canvas.border_visibility,
                             BorderVisibility::Hide,
                             "Hide",
                         )
@@ -89,7 +89,7 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
     let rows: Vec<(usize, String, String)> = engine
         .cfg
         .canvas
-        .layers
+        .sources
         .iter()
         .enumerate()
         .map(|(i, l)| (i, l.uuid.clone(), l.name.clone()))
@@ -165,7 +165,7 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         if let Some(from_index) = engine
                             .cfg
                             .canvas
-                            .layers
+                            .sources
                             .iter()
                             .position(|l| l.uuid == *payload)
                         {
@@ -219,20 +219,19 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
     #[cfg(target_os = "macos")]
     let mut syphon_restart_sid: Option<String> = None;
 
-    if let Some(layer) = engine
+    if let Some(source) = engine
         .cfg
         .canvas
-        .layers
+        .sources
         .iter_mut()
         .find(|l| l.uuid == selected_uuid)
     {
         ui.separator();
         collapsable_section(ui, "Properties", |ui| {
-            // Properties
             settings_grid(ui, "layer_properties_grid", |ui| {
                 ui.label("Name");
                 settings_value(ui, |ui| {
-                    let text_edit = egui::TextEdit::singleline(&mut layer.name)
+                    let text_edit = egui::TextEdit::singleline(&mut source.name)
                         .desired_width(ui.available_width());
                     if ui.add(text_edit).changed() {
                         engine.dirty = true;
@@ -244,23 +243,23 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 settings_value(ui, |ui| {
                     egui::ComboBox::from_id_salt("layer_protocol")
                         .width(ui.available_width())
-                        .selected_text(layer.protocol.label())
+                        .selected_text(source.protocol.label())
                         .show_ui(ui, |ui| {
                             if ui
-                                .selectable_value(&mut layer.protocol, Protocol::Test, "Test")
+                                .selectable_value(&mut source.protocol, Protocol::Test, "Test")
                                 .clicked()
                             {
                                 protocol_changed = true;
                             }
                             if ui
-                                .selectable_value(&mut layer.protocol, Protocol::Ndi, "NDI")
+                                .selectable_value(&mut source.protocol, Protocol::Ndi, "NDI")
                                 .clicked()
                             {
                                 protocol_changed = true;
                             }
                             if ui
                                 .selectable_value(
-                                    &mut layer.protocol,
+                                    &mut source.protocol,
                                     Protocol::Decklink,
                                     "DeckLink",
                                 )
@@ -270,7 +269,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             }
                             #[cfg(target_os = "macos")]
                             if ui
-                                .selectable_value(&mut layer.protocol, Protocol::Syphon, "Syphon")
+                                .selectable_value(&mut source.protocol, Protocol::Syphon, "Syphon")
                                 .clicked()
                             {
                                 protocol_changed = true;
@@ -282,7 +281,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 // Source dropdown
                 ui.label("Source");
                 settings_value(ui, |ui| {
-                    match layer.protocol {
+                    match source.protocol {
                         Protocol::Test => {
                             let test_ids: Vec<String> = engine
                                 .registry
@@ -290,7 +289,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .into_iter()
                                 .map(|(id, _)| id.clone())
                                 .collect();
-                            let current = layer.source_id.as_deref().unwrap_or("");
+                            let current = source.source_id.as_deref().unwrap_or("");
                             egui::ComboBox::from_id_salt("test_source")
                                 .width(ui.available_width())
                                 .selected_text(current.to_string())
@@ -313,7 +312,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .into_iter()
                                 .map(|(id, _)| id.clone())
                                 .collect();
-                            let current = layer.source_id.as_deref().unwrap_or("");
+                            let current = source.source_id.as_deref().unwrap_or("");
                             let discovered =
                                 engine.ndi.as_ref().map(|d| d.list()).unwrap_or_default();
                             egui::ComboBox::from_id_salt("ndi_source")
@@ -355,7 +354,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .into_iter()
                                 .map(|(id, _)| id.clone())
                                 .collect();
-                            let current = layer.source_id.as_deref().unwrap_or("");
+                            let current = source.source_id.as_deref().unwrap_or("");
                             let discovered = engine
                                 .decklink
                                 .as_ref()
@@ -396,7 +395,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .into_iter()
                                 .map(|(id, _)| id.clone())
                                 .collect();
-                            let current = layer.source_id.as_deref().unwrap_or("");
+                            let current = source.source_id.as_deref().unwrap_or("");
                             let discovered =
                                 engine.syphon.as_ref().map(|d| d.list()).unwrap_or_default();
                             egui::ComboBox::from_id_salt("syphon_source")
@@ -430,11 +429,11 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 ui.label("Position");
                 settings_value(ui, |ui| {
                     ui.label("X");
-                    if ui.add(egui::DragValue::new(&mut layer.x)).changed() {
+                    if ui.add(egui::DragValue::new(&mut source.x)).changed() {
                         engine.dirty = true;
                     }
                     ui.label("Y");
-                    if ui.add(egui::DragValue::new(&mut layer.y)).changed() {
+                    if ui.add(egui::DragValue::new(&mut source.y)).changed() {
                         engine.dirty = true;
                     }
                 });
@@ -444,14 +443,14 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 settings_value(ui, |ui| {
                     ui.label("W");
                     if ui
-                        .add(egui::DragValue::new(&mut layer.width).range(1..=7680))
+                        .add(egui::DragValue::new(&mut source.width).range(1..=7680))
                         .changed()
                     {
                         engine.dirty = true;
                     }
                     ui.label("H");
                     if ui
-                        .add(egui::DragValue::new(&mut layer.height).range(1..=7680))
+                        .add(egui::DragValue::new(&mut source.height).range(1..=7680))
                         .changed()
                     {
                         engine.dirty = true;
@@ -462,7 +461,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 ui.label("Order");
                 settings_value(ui, |ui| {
                     ui.label("Z");
-                    if ui.add(egui::DragValue::new(&mut layer.z)).changed() {
+                    if ui.add(egui::DragValue::new(&mut source.z)).changed() {
                         engine.dirty = true;
                     }
                 });
@@ -472,11 +471,11 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 settings_value(ui, |ui| {
                     egui::ComboBox::from_id_salt("tex_mode")
                         .width(ui.available_width())
-                        .selected_text(layer.mode.label())
+                        .selected_text(source.mode.label())
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut layer.mode, TextureMode::Fit, "Fit");
-                            ui.selectable_value(&mut layer.mode, TextureMode::Fill, "Fill");
-                            ui.selectable_value(&mut layer.mode, TextureMode::Stretch, "Stretch");
+                            ui.selectable_value(&mut source.mode, TextureMode::Fit, "Fit");
+                            ui.selectable_value(&mut source.mode, TextureMode::Fill, "Fill");
+                            ui.selectable_value(&mut source.mode, TextureMode::Stretch, "Stretch");
                         });
                 });
                 ui.end_row();
@@ -485,12 +484,12 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 settings_value(ui, |ui| {
                     egui::ComboBox::from_id_salt("layer_border_visibility")
                         .width(ui.available_width())
-                        .selected_text(layer.border_visibility.label())
+                        .selected_text(source.border_visibility.label())
                         .show_ui(ui, |ui| {
                             if ui
                                 .selectable_value(
-                                    &mut layer.border_visibility,
-                                    LayerBorderVisibility::Inherit,
+                                    &mut source.border_visibility,
+                                    SourceBorderVisibility::Inherit,
                                     "Inherit",
                                 )
                                 .clicked()
@@ -499,9 +498,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             }
                             if ui
                                 .selectable_value(
-                                    &mut layer.border_visibility,
-                                    LayerBorderVisibility::Hide,
-                                    "Always hide",
+                                    &mut source.border_visibility,
+                                    SourceBorderVisibility::Show,
+                                    "Always show",
                                 )
                                 .clicked()
                             {
@@ -509,9 +508,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             }
                             if ui
                                 .selectable_value(
-                                    &mut layer.border_visibility,
-                                    LayerBorderVisibility::Show,
-                                    "Always show",
+                                    &mut source.border_visibility,
+                                    SourceBorderVisibility::Hide,
+                                    "Always hide",
                                 )
                                 .clicked()
                             {
@@ -524,10 +523,10 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 ui.label("Flip");
                 settings_value(ui, |ui| {
                     ui.horizontal(|ui| {
-                        if ui.checkbox(&mut layer.flip_h, "Flip H").changed() {
+                        if ui.checkbox(&mut source.flip_h, "Flip H").changed() {
                             engine.dirty = true;
                         }
-                        if ui.checkbox(&mut layer.flip_v, "Flip V").changed() {
+                        if ui.checkbox(&mut source.flip_v, "Flip V").changed() {
                             engine.dirty = true;
                         }
                     });
@@ -537,34 +536,34 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         });
 
         if protocol_changed {
-            layer.source_id = None;
+            source.source_id = None;
             engine.dirty = true;
         }
 
         // Apply source selection (outside the closure to avoid borrow issues)
         if selected_source.is_some() {
-            layer.source_id = selected_source;
+            source.source_id = selected_source;
             engine.dirty = true;
         }
         if new_test_source {
-            layer.source_id = Some(engine.registry.add_test());
+            source.source_id = Some(engine.registry.add_test());
             engine.dirty = true;
         }
 
         // Source-specific settings and stats
-        if let Some(ref sid) = layer.source_id {
+        if let Some(ref sid) = source.source_id {
             if let Some(source) = engine.registry.get_mut(sid) {
                 ui.separator();
-                collapsable_section(ui, "Source Settings", |ui| {
+                collapsable_section(ui, "Protocol Settings", |ui| {
                     if super::source_settings::render_source_settings(source, ui) {
                         // Config changed — NDI/DeckLink/Syphon need restart
-                        if source.is_decklink() {
+                        if source.protocol() == Protocol::Decklink {
                             decklink_restart_sid = Some(sid.clone());
-                        } else if !source.is_test() {
+                        } else if source.protocol() != Protocol::Test {
                             ndi_restart_sid = Some(sid.clone());
                         }
                         #[cfg(target_os = "macos")]
-                        if source.is_syphon() {
+                        if source.protocol() == Protocol::Syphon {
                             syphon_restart_sid = Some(sid.clone());
                         }
                     }

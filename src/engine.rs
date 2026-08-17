@@ -1,6 +1,7 @@
 use crate::compositor::{self, Compositor, Draw, Rect};
-use crate::config::{Config, Layer, Protocol, TextureMode};
-use crate::sources::Registry;
+use crate::config::{Config, Source, Protocol, TextureMode};
+use crate::sources::SourceRegistry;
+use crate::sources::OutputRegistry;
 use crate::sources::decklink::Discovery as DecklinkDiscovery;
 use crate::sources::ndi::Discovery as NdiDiscovery;
 #[cfg(target_os = "macos")]
@@ -74,7 +75,8 @@ pub struct SnapCandidates {
 
 pub struct Engine {
     pub cfg: Config,
-    pub registry: Registry,
+    pub registry: SourceRegistry,
+    pub output_registry: OutputRegistry,
     pub ndi: Option<NdiDiscovery>,
     pub decklink: Option<DecklinkDiscovery>,
     #[cfg(target_os = "macos")]
@@ -90,7 +92,8 @@ pub struct Engine {
 impl Engine {
     pub fn new() -> Self {
         let mut cfg = Config::load();
-        let mut registry = Registry::new();
+        let mut registry = SourceRegistry::new();
+        let mut output_registry = OutputRegistry::new();
         let mut dirty = false;
 
         // Start NDI discovery before restoring sources
@@ -103,35 +106,35 @@ impl Engine {
         #[cfg(target_os = "macos")]
         let syphon = Some(SyphonDiscovery::start());
 
-        // Restore Test sources for all Test layers in the loaded config.
-        // Each Test layer gets a fresh dedicated test source.
-        for (i, layer) in cfg.canvas.layers.iter_mut().enumerate() {
-            if layer.uuid.is_empty() {
-                layer.uuid = uuid::Uuid::new_v4().to_string();
+        // Restore Test sources for all Test sources in the loaded config.
+        // Each Test source gets a fresh dedicated test source.
+        for (i, source) in cfg.canvas.sources.iter_mut().enumerate() {
+            if source.uuid.is_empty() {
+                source.uuid = uuid::Uuid::new_v4().to_string();
                 dirty = true;
             }
-            if layer.name.is_empty() {
-                layer.name = format!("Layer {}", i + 1);
+            if source.name.is_empty() {
+                source.name = format!("Source {}", i + 1);
                 dirty = true;
             }
-            if layer.protocol == Protocol::Test {
+            if source.protocol == Protocol::Test {
                 let sid = registry.add_test();
-                layer.source_id = Some(sid);
+                source.source_id = Some(sid);
                 dirty = true;
             }
-            // NDI and Syphon layers keep their source_id; auto-connect happens in update()
+            // NDI and Syphon sources keep their source_id; auto-connect happens in update()
         }
 
         // Seed demo layout if nothing was loaded
-        if cfg.canvas.layers.is_empty() {
+        if cfg.canvas.sources.is_empty() {
             let w = cfg.canvas.width as f32;
             let h = cfg.canvas.height as f32;
             for i in 0..2 {
                 let sid = registry.add_test();
                 let col = i % 2;
                 let row = i / 2;
-                cfg.canvas.layers.push(Layer::new_v4(
-                    format!("Layer {}", i + 1),
+                cfg.canvas.sources.push(Source::new_v4(
+                    format!("Source {}", i + 1),
                     Protocol::Test,
                     Some(sid),
                     col as f32 * w / 2.0,
@@ -147,9 +150,11 @@ impl Engine {
             dirty = true;
         }
 
+        let outputs = cfg.canvas.outputs.clone();
         Self {
             cfg,
             registry,
+            output_registry,
             ndi: Some(ndi),
             decklink: Some(decklink),
             #[cfg(target_os = "macos")]
@@ -167,9 +172,9 @@ impl Engine {
         // Auto-connect pending NDI sources when they appear in discovery
         if let Some(ref ndi) = self.ndi {
             let discovered = ndi.list();
-            for layer in &self.cfg.canvas.layers {
-                if layer.protocol == Protocol::Ndi {
-                    if let Some(ref name) = layer.source_id {
+            for source in &self.cfg.canvas.sources {
+                if source.protocol == Protocol::Ndi {
+                    if let Some(ref name) = source.source_id {
                         if self.registry.get(name).is_none() {
                             if let Some(src) = discovered.iter().find(|s| &s.name == name) {
                                 self.registry.add_ndi(name.clone(), src.clone());
@@ -184,9 +189,9 @@ impl Engine {
         // Auto-connect pending DeckLink sources when they appear in discovery
         if let Some(ref decklink) = self.decklink {
             let discovered = decklink.list();
-            for layer in &self.cfg.canvas.layers {
-                if layer.protocol == Protocol::Decklink {
-                    if let Some(ref name) = layer.source_id {
+            for source in &self.cfg.canvas.sources {
+                if source.protocol == Protocol::Decklink {
+                    if let Some(ref name) = source.source_id {
                         if self.registry.get(name).is_none() {
                             if let Some(port) = discovered.iter().find(|p| &p.name == name) {
                                 self.registry.add_decklink(
@@ -207,9 +212,9 @@ impl Engine {
         {
             if let Some(ref syphon) = self.syphon {
                 let discovered = syphon.list();
-                for layer in &self.cfg.canvas.layers {
-                    if layer.protocol == Protocol::Syphon {
-                        if let Some(ref name) = layer.source_id {
+                for source in &self.cfg.canvas.sources {
+                    if source.protocol == Protocol::Syphon {
+                        if let Some(ref name) = source.source_id {
                             if self.registry.get(name).is_none() {
                                 if discovered.iter().any(|s| s == name) {
                                     self.registry.add_syphon(name.clone(), name.clone());
@@ -244,15 +249,25 @@ impl Engine {
         transform: (f32, f32, f32),
     ) -> Draw {
         let comp = self.comp.as_mut().expect("compositor not initialized");
-        comp.build(
+        let draw = comp.build(
             device,
             queue,
             &self.cfg.canvas,
-            self.cfg.layer_borders,
             &self.registry,
             panel_rect,
             transform,
-        )
+        );
+
+        if self.output_registry.any_enabled() {
+            comp.render_canvas(
+                device,
+                queue,
+                &self.cfg.canvas,
+                &self.registry,
+            );
+        }
+
+        draw
     }
 
     pub fn display_transform(&self, panel_rect: &Rect) -> (f32, f32, f32) {
@@ -269,11 +284,11 @@ impl Engine {
         let canvas = &self.cfg.canvas;
         let (mut min_x, mut min_y) = (0.0_f32, 0.0_f32);
         let (mut max_x, mut max_y) = (canvas.width as f32, canvas.height as f32);
-        for layer in &canvas.layers {
-            min_x = min_x.min(layer.x).min(layer.x + layer.width as f32);
-            min_y = min_y.min(layer.y).min(layer.y + layer.height as f32);
-            max_x = max_x.max(layer.x).max(layer.x + layer.width as f32);
-            max_y = max_y.max(layer.y).max(layer.y + layer.height as f32);
+        for source in &canvas.sources {
+            min_x = min_x.min(source.x).min(source.x + source.width as f32);
+            min_y = min_y.min(source.y).min(source.y + source.height as f32);
+            max_x = max_x.max(source.x).max(source.x + source.width as f32);
+            max_y = max_y.max(source.y).max(source.y + source.height as f32);
         }
         let bbox_w = (max_x - min_x).max(1.0);
         let bbox_h = (max_y - min_y).max(1.0);
@@ -297,17 +312,17 @@ impl Engine {
         let cx = panel_rect.x + offset_x;
         let cy = panel_rect.y + offset_y;
 
-        let mut layers: Vec<_> = canvas.layers.iter().collect();
-        layers.sort_by_key(|l| -l.z);
+        let mut sources: Vec<_> = canvas.sources.iter().collect();
+        sources.sort_by_key(|l| -l.z);
 
         let (px, py) = pos;
-        for layer in layers {
-            let lx = cx + layer.x * scale;
-            let ly = cy + layer.y * scale;
-            let lw = layer.width as f32 * scale;
-            let lh = layer.height as f32 * scale;
+        for source in sources {
+            let lx = cx + source.x * scale;
+            let ly = cy + source.y * scale;
+            let lw = source.width as f32 * scale;
+            let lh = source.height as f32 * scale;
             if px >= lx && px <= lx + lw && py >= ly && py <= ly + lh {
-                return Some(layer.uuid.clone());
+                return Some(source.uuid.clone());
             }
         }
         None
@@ -319,15 +334,15 @@ impl Engine {
         let break_threshold = SNAP_BREAK_THRESHOLD / scale;
         let candidates = self.snap_candidates(uuid);
 
-        if let Some(layer) = self.cfg.canvas.layers.iter_mut().find(|l| &l.uuid == uuid) {
+        if let Some(source) = self.cfg.canvas.sources.iter_mut().find(|l| &l.uuid == uuid) {
             let (dx, dy) = delta;
-            let proposed_x = layer.x + dx / scale;
-            let proposed_y = layer.y + dy / scale;
+            let proposed_x = source.x + dx / scale;
+            let proposed_y = source.y + dy / scale;
 
             let left = proposed_x;
-            let right = proposed_x + layer.width as f32;
+            let right = proposed_x + source.width as f32;
             let top = proposed_y;
-            let bottom = proposed_y + layer.height as f32;
+            let bottom = proposed_y + source.height as f32;
 
             let current_x = self.snap_guides.x;
             let current_y = self.snap_guides.y;
@@ -385,8 +400,8 @@ impl Engine {
                 (None, None) => (0.0, 0.0),
             };
 
-            layer.x = (proposed_x + x_offset).round();
-            layer.y = (proposed_y + y_offset).round();
+            source.x = (proposed_x + x_offset).round();
+            source.y = (proposed_y + y_offset).round();
             self.snap_guides.x = if x_offset != 0.0 { Some(guide_x) } else { None };
             self.snap_guides.y = if y_offset != 0.0 { Some(guide_y) } else { None };
             self.dirty = true;
@@ -396,7 +411,7 @@ impl Engine {
     pub fn layer_rect_world(&self, uuid: &str) -> Option<WorldRect> {
         self.cfg
             .canvas
-            .layers
+            .sources
             .iter()
             .find(|l| &l.uuid == uuid)
             .map(|l| WorldRect {
@@ -411,14 +426,14 @@ impl Engine {
         let canvas = &self.cfg.canvas;
         let mut x = vec![0.0, canvas.width as f32];
         let mut y = vec![0.0, canvas.height as f32];
-        for layer in &canvas.layers {
-            if layer.uuid == exclude_uuid {
+        for source in &canvas.sources {
+            if source.uuid == exclude_uuid {
                 continue;
             }
-            x.push(layer.x);
-            x.push(layer.x + layer.width as f32);
-            y.push(layer.y);
-            y.push(layer.y + layer.height as f32);
+            x.push(source.x);
+            x.push(source.x + source.width as f32);
+            y.push(source.y);
+            y.push(source.y + source.height as f32);
         }
         SnapCandidates { x, y }
     }
@@ -459,14 +474,14 @@ impl Engine {
         pos: (f32, f32),
     ) -> Option<(String, ResizeHandle)> {
         let uuid = self.selected_layer_id.as_ref()?;
-        let layer = self.cfg.canvas.layers.iter().find(|l| &l.uuid == uuid)?;
+        let source = self.cfg.canvas.sources.iter().find(|l| &l.uuid == uuid)?;
         let (scale, offset_x, offset_y) = self.display_transform(panel_rect);
         let cx = panel_rect.x + offset_x;
         let cy = panel_rect.y + offset_y;
-        let lx = cx + layer.x * scale;
-        let ly = cy + layer.y * scale;
-        let lw = layer.width as f32 * scale;
-        let lh = layer.height as f32 * scale;
+        let lx = cx + source.x * scale;
+        let ly = cy + source.y * scale;
+        let lw = source.width as f32 * scale;
+        let lh = source.height as f32 * scale;
         let right = lx + lw;
         let bottom = ly + lh;
         let (px, py) = pos;
@@ -518,7 +533,7 @@ impl Engine {
         let break_threshold = SNAP_BREAK_THRESHOLD / scale;
         let candidates = self.snap_candidates(uuid);
 
-        if let Some(layer) = self.cfg.canvas.layers.iter_mut().find(|l| &l.uuid == uuid) {
+        if let Some(source) = self.cfg.canvas.sources.iter_mut().find(|l| &l.uuid == uuid) {
             let mut x = start.x;
             let mut y = start.y;
             let mut w = start.w;
@@ -685,10 +700,10 @@ impl Engine {
                 }
             }
 
-            layer.x = x.round();
-            layer.y = y.round();
-            layer.width = w.max(1.0).round() as u32;
-            layer.height = h.max(1.0).round() as u32;
+            source.x = x.round();
+            source.y = y.round();
+            source.width = w.max(1.0).round() as u32;
+            source.height = h.max(1.0).round() as u32;
             self.snap_guides = SnapGuides {
                 x: guide_x,
                 y: guide_y,
@@ -708,7 +723,7 @@ impl Engine {
         let active_ids: Vec<&str> = self
             .cfg
             .canvas
-            .layers
+            .sources
             .iter()
             .filter_map(|l| l.source_id.as_deref())
             .collect();
@@ -717,8 +732,8 @@ impl Engine {
 
     pub fn add_layer(&mut self) -> String {
         let sid = self.registry.add_test();
-        let num = self.cfg.canvas.layers.len() + 1;
-        let layer = Layer::new_v4(
+        let num = self.cfg.canvas.sources.len() + 1;
+        let source = Source::new_v4(
             format!("Source {num}"),
             Protocol::Test,
             Some(sid),
@@ -726,19 +741,19 @@ impl Engine {
             self.cfg.canvas.height as f32 * 0.25,
             self.cfg.canvas.width / 2,
             self.cfg.canvas.height / 2,
-            self.cfg.canvas.layers.len() as i32,
+            self.cfg.canvas.sources.len() as i32,
             TextureMode::Fit,
             false,
             false,
         );
-        let uuid = layer.uuid.clone();
-        self.cfg.canvas.layers.push(layer);
+        let uuid = source.uuid.clone();
+        self.cfg.canvas.sources.push(source);
         self.dirty = true;
         uuid
     }
 
     pub fn remove_layer(&mut self, uuid: &str) {
-        self.cfg.canvas.layers.retain(|l| l.uuid != uuid);
+        self.cfg.canvas.sources.retain(|l| l.uuid != uuid);
         if self.selected_layer_id.as_deref() == Some(uuid) {
             self.selected_layer_id = None;
         }
@@ -746,17 +761,17 @@ impl Engine {
     }
 
     pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
-        let len = self.cfg.canvas.layers.len();
+        let len = self.cfg.canvas.sources.len();
         if from_index == to_index || from_index >= len || to_index >= len {
             return;
         }
-        let layer = self.cfg.canvas.layers.remove(from_index);
+        let source = self.cfg.canvas.sources.remove(from_index);
         let insert_at = if to_index > from_index {
             to_index
         } else {
             to_index
         };
-        self.cfg.canvas.layers.insert(insert_at, layer);
+        self.cfg.canvas.sources.insert(insert_at, source);
         self.dirty = true;
     }
 
@@ -794,7 +809,8 @@ mod tests {
                 canvas,
                 ..Default::default()
             },
-            registry: Registry::new(),
+            registry: SourceRegistry::new(),
+            output_registry: OutputRegistry::new(),
             ndi: None,
             decklink: None,
             #[cfg(target_os = "macos")]
@@ -813,7 +829,8 @@ mod tests {
         let engine = test_engine(crate::config::Canvas {
             width: 1920,
             height: 1080,
-            layers: vec![],
+            sources: vec![],
+            outputs: Vec::new(),
         });
         let panel = Rect {
             x: 0.0,
@@ -834,7 +851,8 @@ mod tests {
         let mut engine = test_engine(crate::config::Canvas {
             width: 1920,
             height: 1080,
-            layers: vec![],
+            sources: vec![],
+            outputs: Vec::new(),
         });
         let panel = Rect {
             x: 0.0,
@@ -855,9 +873,10 @@ mod tests {
         let mut canvas = crate::config::Canvas {
             width: 100,
             height: 100,
-            layers: vec![],
+            sources: vec![],
+            outputs: Vec::new(),
         };
-        canvas.layers.push(Layer::new_v4(
+        canvas.sources.push(Source::new_v4(
             "L1".into(),
             Protocol::Test,
             None,
@@ -870,7 +889,7 @@ mod tests {
             false,
             false,
         ));
-        canvas.layers.push(Layer::new_v4(
+        canvas.sources.push(Source::new_v4(
             "L2".into(),
             Protocol::Test,
             None,
@@ -903,9 +922,10 @@ mod tests {
         let mut canvas = crate::config::Canvas {
             width: 1920,
             height: 1080,
-            layers: vec![],
+            sources: vec![],
+            outputs: Vec::new(),
         };
-        canvas.layers.push(Layer::new_v4(
+        canvas.sources.push(Source::new_v4(
             "L1".into(),
             Protocol::Test,
             None,
@@ -925,25 +945,25 @@ mod tests {
             w: 1920.0,
             h: 1080.0,
         };
-        let uuid = engine.cfg.canvas.layers[0].uuid.clone();
+        let uuid = engine.cfg.canvas.sources[0].uuid.clone();
         let start = engine.layer_rect_world(&uuid).unwrap();
 
         // Edge resize: drag right edge 30 px to the right.
         engine.resize_layer(&uuid, ResizeHandle::Right, start, (30.0, 0.0), &panel);
-        let layer = &engine.cfg.canvas.layers[0];
-        assert_eq!(layer.x, 100.0);
-        assert_eq!(layer.y, 100.0);
-        assert_eq!(layer.width, 230);
-        assert_eq!(layer.height, 100);
+        let source = &engine.cfg.canvas.sources[0];
+        assert_eq!(source.x, 100.0);
+        assert_eq!(source.y, 100.0);
+        assert_eq!(source.width, 230);
+        assert_eq!(source.height, 100);
 
         // Edge resize: drag top edge 20 px up.
         let start = engine.layer_rect_world(&uuid).unwrap();
         engine.resize_layer(&uuid, ResizeHandle::Top, start, (0.0, -20.0), &panel);
-        let layer = &engine.cfg.canvas.layers[0];
-        assert_eq!(layer.x, 100.0);
-        assert_eq!(layer.y, 80.0);
-        assert_eq!(layer.width, 230);
-        assert_eq!(layer.height, 120);
+        let source = &engine.cfg.canvas.sources[0];
+        assert_eq!(source.x, 100.0);
+        assert_eq!(source.y, 80.0);
+        assert_eq!(source.width, 230);
+        assert_eq!(source.height, 120);
 
         // Corner resize: drag bottom-right along the diagonal.
         let start = engine.layer_rect_world(&uuid).unwrap();
@@ -954,15 +974,15 @@ mod tests {
             (50.0, 50.0 * 120.0 / 230.0),
             &panel,
         );
-        let layer = &engine.cfg.canvas.layers[0];
-        let aspect = layer.width as f32 / layer.height as f32;
+        let source = &engine.cfg.canvas.sources[0];
+        let aspect = source.width as f32 / source.height as f32;
         // Integer dimensions can't match the exact float aspect; allow ~1% rounding error.
         assert!(
             (aspect - 230.0 / 120.0).abs() < 0.02,
             "aspect should be preserved, got {aspect}"
         );
-        assert_eq!(layer.x, 100.0);
-        assert_eq!(layer.y, 80.0);
+        assert_eq!(source.x, 100.0);
+        assert_eq!(source.y, 80.0);
     }
 
     #[test]
@@ -970,9 +990,10 @@ mod tests {
         let mut canvas = crate::config::Canvas {
             width: 1920,
             height: 1080,
-            layers: vec![],
+            sources: vec![],
+            outputs: Vec::new(),
         };
-        canvas.layers.push(Layer::new_v4(
+        canvas.sources.push(Source::new_v4(
             "L1".into(),
             Protocol::Test,
             None,
@@ -992,11 +1013,11 @@ mod tests {
             w: 1920.0,
             h: 1080.0,
         };
-        let uuid = engine.cfg.canvas.layers[0].uuid.clone();
+        let uuid = engine.cfg.canvas.sources[0].uuid.clone();
         // Drag left by 14 px: left edge moves from 15 to 1, within the 2 px snap threshold of 0.
         engine.drag_layer(&uuid, (-14.0, 0.0), &panel);
-        let layer = &engine.cfg.canvas.layers[0];
-        assert_eq!(layer.x, 0.0);
+        let source = &engine.cfg.canvas.sources[0];
+        assert_eq!(source.x, 0.0);
         assert!(engine.snap_guides.x.is_some());
     }
 
@@ -1005,9 +1026,10 @@ mod tests {
         let mut canvas = crate::config::Canvas {
             width: 1920,
             height: 1080,
-            layers: vec![],
+            sources: vec![],
+            outputs: Vec::new(),
         };
-        canvas.layers.push(Layer::new_v4(
+        canvas.sources.push(Source::new_v4(
             "L1".into(),
             Protocol::Test,
             None,
@@ -1020,7 +1042,7 @@ mod tests {
             false,
             false,
         ));
-        canvas.layers.push(Layer::new_v4(
+        canvas.sources.push(Source::new_v4(
             "L2".into(),
             Protocol::Test,
             None,
@@ -1040,12 +1062,12 @@ mod tests {
             w: 1920.0,
             h: 1080.0,
         };
-        let uuid = engine.cfg.canvas.layers[0].uuid.clone();
+        let uuid = engine.cfg.canvas.sources[0].uuid.clone();
         let start = engine.layer_rect_world(&uuid).unwrap();
         // Drag L1's right edge to 299: should snap to L2's left edge at 300.
         engine.resize_layer(&uuid, ResizeHandle::Right, start, (99.0, 0.0), &panel);
-        let layer = &engine.cfg.canvas.layers[0];
-        assert_eq!(layer.width, 200);
+        let source = &engine.cfg.canvas.sources[0];
+        assert_eq!(source.width, 200);
         assert!(engine.snap_guides.x.is_some());
     }
 
@@ -1054,9 +1076,10 @@ mod tests {
         let mut canvas = crate::config::Canvas {
             width: 1920,
             height: 1080,
-            layers: vec![],
+            sources: vec![],
+            outputs: Vec::new(),
         };
-        canvas.layers.push(Layer::new_v4(
+        canvas.sources.push(Source::new_v4(
             "L1".into(),
             Protocol::Test,
             None,
@@ -1076,21 +1099,21 @@ mod tests {
             w: 1920.0,
             h: 1080.0,
         };
-        let uuid = engine.cfg.canvas.layers[0].uuid.clone();
+        let uuid = engine.cfg.canvas.sources[0].uuid.clone();
 
         // Snap left edge to the canvas edge at 0.
         engine.drag_layer(&uuid, (-14.0, 0.0), &panel);
-        assert_eq!(engine.cfg.canvas.layers[0].x, 0.0);
+        assert_eq!(engine.cfg.canvas.sources[0].x, 0.0);
         assert!(engine.snap_guides.x.is_some());
 
         // Move 1 px back: stays snapped within the 20 px break threshold.
         engine.drag_layer(&uuid, (1.0, 0.0), &panel);
-        assert_eq!(engine.cfg.canvas.layers[0].x, 0.0);
+        assert_eq!(engine.cfg.canvas.sources[0].x, 0.0);
         assert!(engine.snap_guides.x.is_some());
 
         // Move 25 px past the snap point: breaks free.
         engine.drag_layer(&uuid, (25.0, 0.0), &panel);
-        assert_eq!(engine.cfg.canvas.layers[0].x, 25.0);
+        assert_eq!(engine.cfg.canvas.sources[0].x, 25.0);
         assert!(engine.snap_guides.x.is_none());
     }
 }

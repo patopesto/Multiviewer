@@ -77,7 +77,7 @@ pub fn update(
         if let Some((uuid, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
             let start = engine
                 .layer_rect_world(&uuid)
-                .expect("selected layer exists");
+                .expect("selected source exists");
             engine.selected_layer_id = Some(uuid.clone());
             engine.drag_state = DragState::Resize {
                 uuid,
@@ -229,13 +229,13 @@ fn draw_overlays(
         None => return,
     };
 
-    let Some(layer) = canvas.layers.iter().find(|l| &l.uuid == selected_uuid) else {
+    let Some(source) = canvas.sources.iter().find(|l| &l.uuid == selected_uuid) else {
         return;
     };
-    let lx = cx + layer.x * scale;
-    let ly = cy + layer.y * scale;
-    let lw = layer.width as f32 * scale;
-    let lh = layer.height as f32 * scale;
+    let lx = cx + source.x * scale;
+    let ly = cy + source.y * scale;
+    let lw = source.width as f32 * scale;
+    let lh = source.height as f32 * scale;
     painter.rect_stroke(
         egui::Rect::from_min_size(egui::pos2(lx, ly), egui::vec2(lw, lh)),
         0.0,
