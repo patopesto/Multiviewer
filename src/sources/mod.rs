@@ -7,19 +7,25 @@ pub mod test;
 #[cfg(target_os = "macos")]
 pub mod syphon;
 
+#[allow(unused_imports)]
 pub use source::{
     ConvUniform, CpuFrame, Frame, PixelFormat, RestartResult, SourceId, SourceKind, SourceRegistry,
     SourceStats, SyphonFrame, VideoSource,
 };
+#[allow(unused_imports)]
 pub use output::{
     OutputId, OutputKind, OutputRegistry, OutputStats,
 };
+
+#[allow(unused_imports)]
 pub use decklink::source::{DecklinkConfig, DecklinkSource};
+#[allow(unused_imports)]
 pub use decklink::VideoConnections;
-pub use ndi::source::{NdiConfig, NdiSource};
+#[allow(unused_imports)]
+pub use ndi::{NdiSource, NdiSourceConfig, NdiOutput, NdiOutputConfig};
+#[allow(unused_imports)]
 pub use test::{TestConfig, TestSource};
 
 #[cfg(target_os = "macos")]
-pub use syphon::source::{SyphonSource, SyphonSourceConfig};
-#[cfg(target_os = "macos")]
-pub use syphon::output::{SyphonOutput, SyphonOutputConfig};
+#[allow(unused_imports)]
+pub use syphon::{SyphonSource, SyphonSourceConfig, SyphonOutput, SyphonOutputConfig};

@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::sources::syphon::SyphonOutputConfig;
+use crate::sources::ndi::NdiOutputConfig;
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
@@ -144,9 +145,10 @@ impl Output {
 /// Protocol-specific output configuration stored in the config file.
 /// New protocols (NDI, DeckLink, ...) add variants here.
 #[derive(Serialize, Deserialize, Clone)]
-#[serde(untagged)]
+#[serde(tag = "protocol")]
 pub enum OutputConfig {
     Syphon(SyphonOutputConfig),
+    Ndi(NdiOutputConfig),
 }
 
 impl Default for OutputConfig {
@@ -246,6 +248,7 @@ mod tests {
         assert!(parsed.enabled);
         match parsed.config {
             OutputConfig::Syphon(cfg) => assert_eq!(cfg.server_name, "MyServer"),
+            _ => panic!("expected Syphon config"),
         }
     }
 
@@ -256,6 +259,26 @@ mod tests {
         assert_eq!(parsed.protocol, Protocol::Syphon);
         match parsed.config {
             OutputConfig::Syphon(cfg) => assert!(cfg.server_name.is_empty()),
+            _ => panic!("expected Syphon config"),
+        }
+    }
+
+    #[test]
+    fn ndi_output_config_round_trips() {
+        let output = Output::new_v4(
+            "My NDI".into(),
+            Protocol::Ndi,
+            true,
+            OutputConfig::Ndi(NdiOutputConfig {
+                sender_name: "Studio".into(),
+            }),
+        );
+        let json = serde_json::to_string(&output).unwrap();
+        let parsed: Output = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed.config, OutputConfig::Ndi(_)));
+        match parsed.config {
+            OutputConfig::Ndi(c) => assert_eq!(c.sender_name, "Studio"),
+            _ => panic!("expected Ndi config"),
         }
     }
 }

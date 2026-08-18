@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::config::Protocol;
+use super::ndi::{NdiOutput, NdiOutputConfig};
+#[cfg(target_os = "macos")]
 use super::syphon::{SyphonOutput, SyphonOutputConfig};
 
 
@@ -16,13 +18,12 @@ pub struct OutputStats {
     pub send_time_ms: f32,
 }
 
-#[cfg(target_os = "macos")]
+#[allow(dead_code)]
 pub enum OutputKind {
+    Ndi(NdiOutput, NdiOutputConfig),
+    #[cfg(target_os = "macos")]
     Syphon(SyphonOutput, SyphonOutputConfig),
 }
-
-#[cfg(not(target_os = "macos"))]
-pub enum OutputKind {}
 
 impl OutputKind {
     pub fn present(
@@ -34,6 +35,7 @@ impl OutputKind {
         queue: &wgpu::Queue,
     ) {
         match self {
+            OutputKind::Ndi(s, _) => s.present(texture, device, queue),
             #[cfg(target_os = "macos")]
             OutputKind::Syphon(s, _) => s.present(texture, width, height, device, queue),
         }
@@ -42,6 +44,7 @@ impl OutputKind {
     #[allow(dead_code)]
     pub fn name(&self) -> &str {
         match self {
+            OutputKind::Ndi(s, _) => s.name(),
             #[cfg(target_os = "macos")]
             OutputKind::Syphon(s, _) => s.name(),
         }
@@ -49,6 +52,7 @@ impl OutputKind {
 
     pub fn enabled(&self) -> bool {
         match self {
+            OutputKind::Ndi(s, _) => s.enabled(),
             #[cfg(target_os = "macos")]
             OutputKind::Syphon(s, _) => s.enabled(),
         }
@@ -56,20 +60,25 @@ impl OutputKind {
 
     pub fn set_enabled(&mut self, enabled: bool) {
         match self {
+            OutputKind::Ndi(s, _) => s.set_enabled(enabled),
             #[cfg(target_os = "macos")]
             OutputKind::Syphon(s, _) => s.set_enabled(enabled),
         }
     }
 
+    #[allow(dead_code)]
     pub fn stats(&self) -> Arc<Mutex<OutputStats>> {
         match self {
+            OutputKind::Ndi(s, _) => s.stats(),
             #[cfg(target_os = "macos")]
             OutputKind::Syphon(s, _) => s.stats(),
         }
     }
 
+    #[allow(dead_code)]
     pub fn protocol(&self) -> Protocol {
         match self {
+            OutputKind::Ndi(_, _) => Protocol::Ndi,
             #[cfg(target_os = "macos")]
             OutputKind::Syphon(_, _) => Protocol::Syphon,
         }
@@ -87,12 +96,27 @@ impl OutputRegistry {
         }
     }
 
-    #[cfg(target_os = "macos")]
-    pub fn add_syphon(&mut self, id: OutputId, config: SyphonOutputConfig) -> OutputId {
+    pub fn add_ndi(
+        &mut self,
+        id: OutputId,
+        name: String,
+        config: NdiOutputConfig,
+        enabled: bool,
+    ) -> OutputId {
         if self.outputs.contains_key(&id) {
             return id;
         }
-        let output = SyphonOutput::new(id.clone(), &config);
+        let output = NdiOutput::new(id.clone(), name, config.clone(), enabled);
+        self.outputs.insert(id.clone(), OutputKind::Ndi(output, config));
+        id
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn add_syphon(&mut self, id: OutputId, name: String, config: SyphonOutputConfig, enabled: bool) -> OutputId {
+        if self.outputs.contains_key(&id) {
+            return id;
+        }
+        let output = SyphonOutput::new(id.clone(), name, config.clone(), enabled);
         self.outputs.insert(id.clone(), OutputKind::Syphon(output, config));
         id
     }

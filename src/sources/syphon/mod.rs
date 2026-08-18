@@ -5,4 +5,5 @@ pub mod source;
 pub use discovery::Discovery;
 #[allow(unused_imports)]
 pub use source::{SyphonSource, SyphonSourceConfig};
+#[allow(unused_imports)]
 pub use output::{SyphonOutput, SyphonOutputConfig};

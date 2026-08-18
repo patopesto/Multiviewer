@@ -4,12 +4,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Clone)]
-pub struct NdiConfig {
+pub struct NdiSourceConfig {
     pub bandwidth: grafton_ndi::ReceiverBandwidth,
     pub color_format: grafton_ndi::ReceiverColorFormat,
 }
 
-impl Default for NdiConfig {
+impl Default for NdiSourceConfig {
     fn default() -> Self {
         Self {
             bandwidth: grafton_ndi::ReceiverBandwidth::Lowest,
@@ -28,7 +28,7 @@ pub struct NdiSource {
 }
 
 impl NdiSource {
-    pub fn spawn(name: String, source: grafton_ndi::Source, cfg: &NdiConfig) -> Self {
+    pub fn spawn(name: String, source: grafton_ndi::Source, cfg: &NdiSourceConfig) -> Self {
         use grafton_ndi::{LineStrideOrSize, NDI, Receiver, ReceiverOptions};
         let slot = Arc::new(Mutex::new(None));
         let slot2 = slot.clone();

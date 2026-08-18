@@ -6,10 +6,11 @@ use crate::sources::SourceRegistry;
 use crate::sources::OutputRegistry;
 use crate::sources::decklink::Discovery as DecklinkDiscovery;
 use crate::sources::ndi::Discovery as NdiDiscovery;
+use crate::sources::ndi::NdiOutputConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::syphon::Discovery as SyphonDiscovery;
 #[cfg(target_os = "macos")]
-use crate::sources::syphon::{SyphonOutput, SyphonOutputConfig};
+use crate::sources::syphon::SyphonOutputConfig;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 10.0;
@@ -162,22 +163,35 @@ impl Engine {
                 output.uuid = uuid::Uuid::new_v4().to_string();
                 dirty = true;
             }
-            #[cfg(target_os = "macos")]
-            if output.protocol == Protocol::Syphon {
-                let id = output.uuid.clone();
-                let syphon_config = match &output.config {
-                    OutputConfig::Syphon(c) => SyphonOutputConfig {
-                        server_name: if c.server_name.is_empty() {
-                            output.name.clone()
-                        } else {
-                            c.server_name.clone()
-                        },
-                    },
-                };
-                output_registry.add_syphon(id, syphon_config);
-                if let Some(out) = output_registry.get_mut(&output.uuid) {
-                    out.set_enabled(output.enabled);
+            match output.protocol {
+                Protocol::Ndi => {
+                    let id = output.uuid.clone();
+                    let ndi_config = match &output.config {
+                        OutputConfig::Ndi(c) => c.clone(),
+                        _ => NdiOutputConfig::default(),
+                    };
+                    let name = if ndi_config.sender_name.is_empty() {
+                        output.name.clone()
+                    } else {
+                        ndi_config.sender_name.clone()
+                    };
+                    output_registry.add_ndi(id, name, ndi_config, output.enabled);
                 }
+                #[cfg(target_os = "macos")]
+                Protocol::Syphon => {
+                    let id = output.uuid.clone();
+                    let syphon_config = match &output.config {
+                        OutputConfig::Syphon(c) => c.clone(),
+                        _ => SyphonOutputConfig::default(),
+                    };
+                    let name = if syphon_config.server_name.is_empty() {
+                        output.name.clone()
+                    } else {
+                        syphon_config.server_name.clone()
+                    };
+                    output_registry.add_syphon(id, name, syphon_config, output.enabled);
+                }
+                _ => {}
             }
         }
 
@@ -315,6 +329,7 @@ impl Engine {
         }
     }
 
+    #[allow(dead_code)]
     pub fn outputs_enabled(&self) -> bool {
         self.output_registry.any_enabled()
     }

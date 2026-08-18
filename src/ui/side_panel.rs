@@ -113,10 +113,10 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         } else {
                             let uuid = uuid::Uuid::new_v4().to_string();
                             let name = "Syphon Output".to_string();
-                            let syphon_config = crate::sources::syphon::SyphonOutputConfig {
+                            let syphon_config = crate::sources::SyphonOutputConfig {
                                 server_name: name.clone(),
                             };
-                            engine.output_registry.add_syphon(uuid.clone(), syphon_config.clone());
+                            engine.output_registry.add_syphon(uuid.clone(), name.clone(), syphon_config.clone(), true);
                             engine
                                 .cfg
                                 .canvas
@@ -142,6 +142,69 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
             });
             ui.end_row();
         }
+
+        ui.label("NDI Output");
+        settings_value(ui, |ui| {
+            let ndi_index = engine
+                .cfg
+                .canvas
+                .outputs
+                .iter()
+                .position(|o| o.protocol == Protocol::Ndi);
+            let registry_id = ndi_index
+                .as_ref()
+                .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
+            let mut enabled = registry_id
+                .as_ref()
+                .and_then(|id| engine.output_registry.get(id))
+                .map(|ok| ok.enabled())
+                .unwrap_or(false);
+
+            if ui.checkbox(&mut enabled, "Enable").changed() {
+                if enabled {
+                    if let Some(id) = registry_id {
+                        if let Some(out) = engine.output_registry.get_mut(&id) {
+                            out.set_enabled(true);
+                        }
+                        if let Some(idx) = ndi_index {
+                            engine.cfg.canvas.outputs[idx].enabled = true;
+                        }
+                    } else {
+                        let uuid = uuid::Uuid::new_v4().to_string();
+                        let name = "NDI Output".to_string();
+                        let ndi_config = crate::sources::NdiOutputConfig {
+                            sender_name: "Multiviewer".to_string(),
+                        };
+                        engine.output_registry.add_ndi(
+                            uuid.clone(),
+                            name.clone(),
+                            ndi_config.clone(),
+                            true,
+                        );
+                        engine
+                            .cfg
+                            .canvas
+                            .outputs
+                            .push(crate::config::Output::new_v4(
+                                name,
+                                Protocol::Ndi,
+                                true,
+                                crate::config::OutputConfig::Ndi(ndi_config),
+                            ));
+                        if let Some(last) = engine.cfg.canvas.outputs.last_mut() {
+                            last.uuid = uuid;
+                        }
+                    }
+                } else if let Some(id) = registry_id {
+                    engine.output_registry.remove(&id);
+                    if let Some(idx) = ndi_index {
+                        engine.cfg.canvas.outputs.remove(idx);
+                    }
+                }
+                engine.dirty = true;
+            }
+        });
+        ui.end_row();
     });
 }
 

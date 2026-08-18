@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 
-use super::super::output::OutputStats;
+use super::super::output::{OutputId, OutputStats};
 
 const FLIP_SHADER: &str = r#"
 struct VertexOutput {
@@ -62,6 +62,7 @@ pub struct SyphonOutputConfig {
 }
 
 pub struct SyphonOutput {
+    id: OutputId,
     name: String,
     config: SyphonOutputConfig,
     output: Mutex<Option<syphon_wgpu::SyphonWgpuOutput>>,
@@ -81,14 +82,15 @@ pub struct SyphonOutput {
 }
 
 impl SyphonOutput {
-    pub fn new(name: String, config: &SyphonOutputConfig) -> Self {
+    pub fn new(id: OutputId, name: String, config: SyphonOutputConfig, enabled: bool) -> Self {
         Self {
+            id,
             name,
-            config: config.clone(),
+            config,
             output: Mutex::new(None),
             width: AtomicU32::new(0),
             height: AtomicU32::new(0),
-            enabled: AtomicBool::new(true),
+            enabled: AtomicBool::new(enabled),
             stats: Arc::new(Mutex::new(OutputStats::default())),
             flip_bind_layout: OnceLock::new(),
             flip_sampler: OnceLock::new(),

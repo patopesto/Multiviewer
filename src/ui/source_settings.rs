@@ -1,4 +1,4 @@
-use crate::sources::{DecklinkConfig, NdiConfig, SourceKind, TestConfig};
+use crate::sources::{DecklinkConfig, NdiSourceConfig, SourceKind, TestConfig};
 use crate::sources::decklink::VideoConnection;
 use crate::ui::side_panel::{settings_grid, settings_value};
 
@@ -45,7 +45,7 @@ fn color_format_label(cf: grafton_ndi::ReceiverColorFormat) -> String {
     }
 }
 
-fn ndi_settings_ui(cfg: &mut NdiConfig, ui: &mut egui::Ui) -> bool {
+fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
     let old_bw = cfg.bandwidth;
     let old_cf = cfg.color_format;
     settings_grid(ui, "ndi_settings_grid", |ui| {
