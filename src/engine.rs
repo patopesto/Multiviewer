@@ -1,11 +1,15 @@
+use std::sync::Arc;
+
 use crate::compositor::{self, Compositor, Draw, Rect};
-use crate::config::{Config, Source, Protocol, TextureMode};
+use crate::config::{Config, Source, Protocol, TextureMode, OutputConfig};
 use crate::sources::SourceRegistry;
 use crate::sources::OutputRegistry;
 use crate::sources::decklink::Discovery as DecklinkDiscovery;
 use crate::sources::ndi::Discovery as NdiDiscovery;
 #[cfg(target_os = "macos")]
 use crate::sources::syphon::Discovery as SyphonDiscovery;
+#[cfg(target_os = "macos")]
+use crate::sources::syphon::{SyphonOutput, SyphonOutputConfig};
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 10.0;
@@ -82,6 +86,8 @@ pub struct Engine {
     #[cfg(target_os = "macos")]
     pub syphon: Option<SyphonDiscovery>,
     comp: Option<Compositor>,
+    device: Option<Arc<wgpu::Device>>,
+    queue: Option<Arc<wgpu::Queue>>,
     pub dirty: bool,
     pub selected_layer_id: Option<String>,
     pub drag_state: DragState,
@@ -150,7 +156,31 @@ impl Engine {
             dirty = true;
         }
 
-        let outputs = cfg.canvas.outputs.clone();
+        // Load outputs from config.
+        for output in &mut cfg.canvas.outputs {
+            if output.uuid.is_empty() {
+                output.uuid = uuid::Uuid::new_v4().to_string();
+                dirty = true;
+            }
+            #[cfg(target_os = "macos")]
+            if output.protocol == Protocol::Syphon {
+                let id = output.uuid.clone();
+                let syphon_config = match &output.config {
+                    OutputConfig::Syphon(c) => SyphonOutputConfig {
+                        server_name: if c.server_name.is_empty() {
+                            output.name.clone()
+                        } else {
+                            c.server_name.clone()
+                        },
+                    },
+                };
+                output_registry.add_syphon(id, syphon_config);
+                if let Some(out) = output_registry.get_mut(&output.uuid) {
+                    out.set_enabled(output.enabled);
+                }
+            }
+        }
+
         Self {
             cfg,
             registry,
@@ -160,6 +190,8 @@ impl Engine {
             #[cfg(target_os = "macos")]
             syphon,
             comp: None,
+            device: None,
+            queue: None,
             dirty,
             selected_layer_id: None,
             drag_state: DragState::None,
@@ -239,6 +271,12 @@ impl Engine {
         if self.comp.is_none() {
             self.comp = Some(Compositor::new(device, queue, target_format));
         }
+        if self.device.is_none() {
+            self.device = Some(Arc::new(device.clone()));
+        }
+        if self.queue.is_none() {
+            self.queue = Some(Arc::new(queue.clone()));
+        }
     }
 
     pub fn build_frame(
@@ -249,25 +287,36 @@ impl Engine {
         transform: (f32, f32, f32),
     ) -> Draw {
         let comp = self.comp.as_mut().expect("compositor not initialized");
-        let draw = comp.build(
+        comp.build(
             device,
             queue,
             &self.cfg.canvas,
             &self.registry,
             panel_rect,
             transform,
-        );
+        )
+    }
 
-        if self.output_registry.any_enabled() {
-            comp.render_canvas(
-                device,
-                queue,
-                &self.cfg.canvas,
-                &self.registry,
-            );
+    pub fn render_outputs(&mut self) {
+        if !self.output_registry.any_enabled() {
+            return;
         }
+        let Some(ref device) = self.device else {
+            return;
+        };
+        let Some(ref queue) = self.queue else {
+            return;
+        };
+        let comp = self.comp.as_mut().expect("compositor not initialized");
+        comp.render_canvas(device, queue, &self.cfg.canvas, &self.registry);
+        if let Some((texture, w, h)) = comp.canvas_texture() {
+            self.output_registry
+                .present_all(texture, w, h, device, queue);
+        }
+    }
 
-        draw
+    pub fn outputs_enabled(&self) -> bool {
+        self.output_registry.any_enabled()
     }
 
     pub fn display_transform(&self, panel_rect: &Rect) -> (f32, f32, f32) {
@@ -816,6 +865,8 @@ mod tests {
             #[cfg(target_os = "macos")]
             syphon: None,
             comp: None,
+            device: None,
+            queue: None,
             dirty: false,
             selected_layer_id: None,
             drag_state: DragState::None,
@@ -831,6 +882,7 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
+            border_visibility: Default::default(),
         });
         let panel = Rect {
             x: 0.0,
@@ -853,6 +905,7 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
+            border_visibility: Default::default(),
         });
         let panel = Rect {
             x: 0.0,
@@ -875,6 +928,7 @@ mod tests {
             height: 100,
             sources: vec![],
             outputs: Vec::new(),
+            border_visibility: Default::default(),
         };
         canvas.sources.push(Source::new_v4(
             "L1".into(),
@@ -924,6 +978,7 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
+            border_visibility: Default::default(),
         };
         canvas.sources.push(Source::new_v4(
             "L1".into(),
@@ -992,6 +1047,7 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
+            border_visibility: Default::default(),
         };
         canvas.sources.push(Source::new_v4(
             "L1".into(),
@@ -1028,6 +1084,7 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
+            border_visibility: Default::default(),
         };
         canvas.sources.push(Source::new_v4(
             "L1".into(),
@@ -1078,6 +1135,7 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
+            border_visibility: Default::default(),
         };
         canvas.sources.push(Source::new_v4(
             "L1".into(),

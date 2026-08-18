@@ -81,6 +81,67 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 });
         });
         ui.end_row();
+
+        #[cfg(target_os = "macos")]
+        {
+            ui.label("Syphon Output");
+            settings_value(ui, |ui| {
+                let syphon_index = engine
+                    .cfg
+                    .canvas
+                    .outputs
+                    .iter()
+                    .position(|o| o.protocol == Protocol::Syphon);
+                let registry_id = syphon_index
+                    .as_ref()
+                    .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
+                let mut enabled = registry_id
+                    .as_ref()
+                    .and_then(|id| engine.output_registry.get(id))
+                    .map(|ok| ok.enabled())
+                    .unwrap_or(false);
+
+                if ui.checkbox(&mut enabled, "Enable").changed() {
+                    if enabled {
+                        if let Some(id) = registry_id {
+                            if let Some(out) = engine.output_registry.get_mut(&id) {
+                                out.set_enabled(true);
+                            }
+                            if let Some(idx) = syphon_index {
+                                engine.cfg.canvas.outputs[idx].enabled = true;
+                            }
+                        } else {
+                            let uuid = uuid::Uuid::new_v4().to_string();
+                            let name = "Syphon Output".to_string();
+                            let syphon_config = crate::sources::syphon::SyphonOutputConfig {
+                                server_name: name.clone(),
+                            };
+                            engine.output_registry.add_syphon(uuid.clone(), syphon_config.clone());
+                            engine
+                                .cfg
+                                .canvas
+                                .outputs
+                                .push(crate::config::Output::new_v4(
+                                    name,
+                                    Protocol::Syphon,
+                                    true,
+                                    crate::config::OutputConfig::Syphon(syphon_config),
+                                ));
+                            if let Some(last) = engine.cfg.canvas.outputs.last_mut() {
+                                last.uuid = uuid;
+                            }
+                        }
+                    } else if let Some(id) = registry_id {
+                        engine.output_registry.remove(&id);
+                        if let Some(idx) = syphon_index {
+                            engine.cfg.canvas.outputs.remove(idx);
+                        }
+                    }
+                    engine.dirty = true;
+                }
+            });
+            ui.end_row();
+        }
     });
 }
 
@@ -292,6 +353,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             let current = source.source_id.as_deref().unwrap_or("");
                             egui::ComboBox::from_id_salt("test_source")
                                 .width(ui.available_width())
+                                .height(1000.0)
                                 .selected_text(current.to_string())
                                 .truncate()
                                 .show_ui(ui, |ui| {
@@ -317,6 +379,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 engine.ndi.as_ref().map(|d| d.list()).unwrap_or_default();
                             egui::ComboBox::from_id_salt("ndi_source")
                                 .width(ui.available_width())
+                                .height(1000.0)
                                 .selected_text(current.to_string())
                                 .truncate()
                                 .show_ui(ui, |ui| {
@@ -362,6 +425,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .unwrap_or_default();
                             egui::ComboBox::from_id_salt("decklink_source")
                                 .width(ui.available_width())
+                                .height(1000.0)
                                 .selected_text(current.to_string())
                                 .truncate()
                                 .show_ui(ui, |ui| {
@@ -400,6 +464,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 engine.syphon.as_ref().map(|d| d.list()).unwrap_or_default();
                             egui::ComboBox::from_id_salt("syphon_source")
                                 .width(ui.available_width())
+                                .height(1000.0)
                                 .selected_text(current.to_string())
                                 .truncate()
                                 .show_ui(ui, |ui| {

@@ -3,7 +3,7 @@ use crate::sources::decklink::VideoConnection;
 use crate::ui::side_panel::{settings_grid, settings_value};
 
 #[cfg(target_os = "macos")]
-use crate::sources::SyphonConfig;
+use crate::sources::SyphonSourceConfig;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
     match source {
@@ -123,7 +123,7 @@ fn decklink_settings_ui(cfg: &mut DecklinkConfig, ui: &mut egui::Ui) -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn syphon_settings_ui(_cfg: &mut SyphonConfig, _ui: &mut egui::Ui) -> bool {
+fn syphon_settings_ui(_cfg: &mut SyphonSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
     false
 }

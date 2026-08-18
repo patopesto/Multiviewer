@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::sources::syphon::SyphonOutputConfig;
+
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
@@ -118,6 +120,8 @@ pub struct Output {
     pub name: String,
     pub protocol: Protocol,
     pub enabled: bool,
+    #[serde(default)]
+    pub config: OutputConfig,
 }
 
 impl Output {
@@ -125,13 +129,29 @@ impl Output {
         name: String,
         protocol: Protocol,
         enabled: bool,
+        config: OutputConfig,
     ) -> Self {
         Self {
             uuid: uuid::Uuid::new_v4().to_string(),
             name,
             protocol,
             enabled,
+            config,
         }
+    }
+}
+
+/// Protocol-specific output configuration stored in the config file.
+/// New protocols (NDI, DeckLink, ...) add variants here.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum OutputConfig {
+    Syphon(SyphonOutputConfig),
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        OutputConfig::Syphon(SyphonOutputConfig::default())
     }
 }
 
@@ -201,6 +221,41 @@ impl SourceBorderVisibility {
             SourceBorderVisibility::Inherit => "Inherit",
             SourceBorderVisibility::Show => "Always show",
             SourceBorderVisibility::Hide => "Always hide",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn output_config_round_trips() {
+        let output = Output::new_v4(
+            "Multiviewer".to_string(),
+            Protocol::Syphon,
+            true,
+            OutputConfig::Syphon(SyphonOutputConfig {
+                server_name: "MyServer".to_string(),
+            }),
+        );
+        let json = serde_json::to_string(&output).unwrap();
+        let parsed: Output = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name, "Multiviewer");
+        assert_eq!(parsed.protocol, Protocol::Syphon);
+        assert!(parsed.enabled);
+        match parsed.config {
+            OutputConfig::Syphon(cfg) => assert_eq!(cfg.server_name, "MyServer"),
+        }
+    }
+
+    #[test]
+    fn output_config_deserializes_missing_config() {
+        let json = r#"{"uuid":"abc","name":"Test","protocol":"Syphon","enabled":true}"#;
+        let parsed: Output = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.protocol, Protocol::Syphon);
+        match parsed.config {
+            OutputConfig::Syphon(cfg) => assert!(cfg.server_name.is_empty()),
         }
     }
 }

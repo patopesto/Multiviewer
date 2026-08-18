@@ -12,7 +12,7 @@ pub use source::{
     SourceStats, SyphonFrame, VideoSource,
 };
 pub use output::{
-    VideoOutput, OutputRegistry,
+    OutputId, OutputKind, OutputRegistry, OutputStats,
 };
 pub use decklink::source::{DecklinkConfig, DecklinkSource};
 pub use decklink::VideoConnections;
@@ -20,4 +20,6 @@ pub use ndi::source::{NdiConfig, NdiSource};
 pub use test::{TestConfig, TestSource};
 
 #[cfg(target_os = "macos")]
-pub use syphon::source::{SyphonConfig, SyphonSource};
+pub use syphon::source::{SyphonSource, SyphonSourceConfig};
+#[cfg(target_os = "macos")]
+pub use syphon::output::{SyphonOutput, SyphonOutputConfig};

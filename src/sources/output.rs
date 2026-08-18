@@ -1,49 +1,13 @@
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use crate::config::Protocol;
+use super::syphon::{SyphonOutput, SyphonOutputConfig};
+
+
 pub type OutputId = String;
 
-pub trait VideoOutput: Send + Sync {
-    fn present(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    );
-    #[allow(dead_code)]
-    fn name(&self) -> &str;
-    fn enabled(&self) -> &bool;
-    fn stats(&self) -> Arc<Mutex<OutputStats>>;
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub enum OutputKind {
-    Ndi(NdiOutputConfig),
-    Syphon(SyphonOutputConfig),
-    Decklink(DecklinkOutputConfig),
-}
-
-#[derive(Serialize, Deserialize, Clone, Default)]
-pub struct NdiOutputConfig {
-    pub sender_name: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Default)]
-pub struct SyphonOutputConfig {
-    pub server_name: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Default)]
-pub struct DecklinkOutputConfig {
-    pub display_name: String,
-    pub display_mode: u32,
-    pub pixel_format: u32,
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct OutputStats {
     pub width: u32,
     pub height: u32,
@@ -52,14 +16,62 @@ pub struct OutputStats {
     pub send_time_ms: f32,
 }
 
-impl Default for OutputStats {
-    fn default() -> Self {
-        Self {
-            width: 0,
-            height: 0,
-            frames_sent: 0,
-            frames_dropped: 0,
-            send_time_ms: 0.0,
+#[cfg(target_os = "macos")]
+pub enum OutputKind {
+    Syphon(SyphonOutput, SyphonOutputConfig),
+}
+
+#[cfg(not(target_os = "macos"))]
+pub enum OutputKind {}
+
+impl OutputKind {
+    pub fn present(
+        &self,
+        texture: &wgpu::Texture,
+        width: u32,
+        height: u32,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) {
+        match self {
+            #[cfg(target_os = "macos")]
+            OutputKind::Syphon(s, _) => s.present(texture, width, height, device, queue),
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn name(&self) -> &str {
+        match self {
+            #[cfg(target_os = "macos")]
+            OutputKind::Syphon(s, _) => s.name(),
+        }
+    }
+
+    pub fn enabled(&self) -> bool {
+        match self {
+            #[cfg(target_os = "macos")]
+            OutputKind::Syphon(s, _) => s.enabled(),
+        }
+    }
+
+    pub fn set_enabled(&mut self, enabled: bool) {
+        match self {
+            #[cfg(target_os = "macos")]
+            OutputKind::Syphon(s, _) => s.set_enabled(enabled),
+        }
+    }
+
+    pub fn stats(&self) -> Arc<Mutex<OutputStats>> {
+        match self {
+            #[cfg(target_os = "macos")]
+            OutputKind::Syphon(s, _) => s.stats(),
+        }
+    }
+
+    pub fn protocol(&self) -> Protocol {
+        match self {
+            #[cfg(target_os = "macos")]
+            OutputKind::Syphon(_, _) => Protocol::Syphon,
         }
     }
 }
@@ -73,6 +85,16 @@ impl OutputRegistry {
         Self {
             outputs: HashMap::new(),
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn add_syphon(&mut self, id: OutputId, config: SyphonOutputConfig) -> OutputId {
+        if self.outputs.contains_key(&id) {
+            return id;
+        }
+        let output = SyphonOutput::new(id.clone(), &config);
+        self.outputs.insert(id.clone(), OutputKind::Syphon(output, config));
+        id
     }
 
     pub fn get(&self, id: &OutputId) -> Option<&OutputKind> {
@@ -94,7 +116,21 @@ impl OutputRegistry {
     }
 
     pub fn any_enabled(&self) -> bool {
-        false
-        // self.outputs.iter().any(|(_, ok)| ok.enabled())
+        self.outputs.iter().any(|(_, ok)| ok.enabled())
+    }
+
+    pub fn present_all(
+        &self,
+        texture: &wgpu::Texture,
+        width: u32,
+        height: u32,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) {
+        for (_, output) in &self.outputs {
+            if output.enabled() {
+                output.present(texture, width, height, device, queue);
+            }
+        }
     }
 }

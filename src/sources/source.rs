@@ -74,10 +74,10 @@ pub struct ConvUniform {
 
 pub enum SourceKind {
     Test(test::TestSource, test::TestConfig),
-    Ndi(ndi::source::NdiSource, ndi::source::NdiConfig, grafton_ndi::Source),
+    Ndi(ndi::NdiSource, ndi::NdiConfig, grafton_ndi::Source),
     #[cfg(target_os = "macos")]
-    Syphon(syphon::source::SyphonSource, syphon::source::SyphonConfig, String),
-    Decklink(decklink::source::DecklinkSource, decklink::source::DecklinkConfig, String),
+    Syphon(syphon::SyphonSource, syphon::SyphonSourceConfig, String),
+    Decklink(decklink::DecklinkSource, decklink::DecklinkConfig, String),
 }
 
 impl SourceKind {
@@ -129,7 +129,7 @@ impl SourceKind {
     }
 
     #[allow(dead_code)]
-    pub fn syphon_config_mut(&mut self) -> Option<&mut syphon::source::SyphonConfig> {
+    pub fn syphon_config_mut(&mut self) -> Option<&mut syphon::source::SyphonSourceConfig> {
         #[cfg(target_os = "macos")]
         {
             match self {
@@ -328,7 +328,7 @@ impl SourceRegistry {
         let src = syphon::source::SyphonSource::spawn(name.clone(), server_name);
         self.sources.insert(
             name.clone(),
-            SourceKind::Syphon(src, syphon::source::SyphonConfig::default(), name.clone()),
+            SourceKind::Syphon(src, syphon::source::SyphonSourceConfig::default(), name.clone()),
         );
         name
     }

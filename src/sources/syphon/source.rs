@@ -3,9 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
-pub struct SyphonConfig {}
+pub struct SyphonSourceConfig {}
 
-impl Default for SyphonConfig {
+impl Default for SyphonSourceConfig {
     fn default() -> Self {
         Self {}
     }

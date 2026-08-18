@@ -15,13 +15,20 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         if !self.image_loaders_installed {
             egui_extras::install_image_loaders(ctx);
             self.image_loaders_installed = true;
         }
         self.engine.update();
         self.engine.save_if_dirty();
+
+        if let Some(rs) = frame.wgpu_render_state() {
+            self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
+            self.engine.render_outputs();
+        }
+
+        // Keep the UI rendering continuously; without this egui only repaints on input events.
         ctx.request_repaint();
     }
 
