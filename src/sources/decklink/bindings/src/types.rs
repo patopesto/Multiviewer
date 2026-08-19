@@ -2,20 +2,24 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     bmdFormat10BitRGB, bmdFormat10BitYUV, bmdFormat12BitRGB, bmdFormat12BitRGBLE,
-    bmdFormat8BitARGB, bmdFormat8BitBGRA, bmdFormat8BitYUV, bmdFormatDNxHR, bmdFormatH265,
-    bmdMode2K2398, bmdMode2K24, bmdMode2K25, bmdMode2KDCI2398, bmdMode2KDCI24, bmdMode2KDCI25,
-    bmdMode2KDCI2997, bmdMode2KDCI30, bmdMode2KDCI4800, bmdMode2KDCI50, bmdMode2KDCI5994,
-    bmdMode2KDCI60, bmdMode4K2160p2398, bmdMode4K2160p24, bmdMode4K2160p25, bmdMode4K2160p2997,
-    bmdMode4K2160p30, bmdMode4K2160p4800, bmdMode4K2160p50, bmdMode4K2160p5994, bmdMode4K2160p60,
-    bmdMode4KDCI2398, bmdMode4KDCI24, bmdMode4KDCI25, bmdMode4KDCI2997, bmdMode4KDCI30,
-    bmdMode4KDCI4800, bmdMode4KDCI50, bmdMode4KDCI5994, bmdMode4KDCI60, bmdMode640x480p60,
-    bmdMode800x600p60, bmdMode8K4320p2398, bmdMode8K4320p24, bmdMode8K4320p25, bmdMode8K4320p2997,
-    bmdMode8K4320p30, bmdMode8K4320p4800, bmdMode8K4320p50, bmdMode8K4320p5994, bmdMode8K4320p60,
-    bmdMode8KDCI2398, bmdMode8KDCI24, bmdMode8KDCI25, bmdMode8KDCI2997, bmdMode8KDCI30,
-    bmdMode8KDCI4800, bmdMode8KDCI50, bmdMode8KDCI5994, bmdMode8KDCI60, bmdModeHD1080p2398,
-    bmdModeHD1080p24, bmdModeHD1080p25, bmdModeHD1080p2997, bmdModeHD1080p30, bmdModeHD1080p4800,
-    bmdModeHD1080p50, bmdModeHD1080p5994, bmdModeHD1080p6000, bmdModeHD720p50, bmdModeHD720p5994,
+    bmdFormat8BitARGB, bmdFormat8BitBGRA, bmdFormat8BitYUV, bmdFormatDNxHR, bmdFormatH265
+};
+use crate::{
+    bmdMode2k2398, bmdMode2k24, bmdMode2k25, bmdMode2kDCI2398, bmdMode2kDCI24, bmdMode2kDCI25,
+    bmdMode2kDCI2997, bmdMode2kDCI30, bmdMode2kDCI48, bmdMode2kDCI50, bmdMode2kDCI5994,
+    bmdMode2kDCI60, bmdMode2kDCI9590, bmdMode2kDCI96, bmdMode2kDCI100, bmdMode2kDCI11988, bmdMode2kDCI120, bmdMode4K2160p2398, bmdMode4K2160p24, bmdMode4K2160p25, bmdMode4K2160p2997,
+    bmdMode4K2160p30, bmdMode4K2160p48, bmdMode4K2160p50, bmdMode4K2160p5994, bmdMode4K2160p60, bmdMode4K2160p9590, bmdMode4K2160p96, bmdMode4K2160p100, bmdMode4K2160p11988, bmdMode4K2160p120,
+    bmdMode4kDCI2398, bmdMode4kDCI24, bmdMode4kDCI25, bmdMode4kDCI2997, bmdMode4kDCI30,
+    bmdMode4kDCI48, bmdMode4kDCI50, bmdMode4kDCI5994, bmdMode4kDCI60, bmdMode4kDCI9590, bmdMode4kDCI96, bmdMode4kDCI100, bmdMode4kDCI11988, bmdMode4kDCI120, bmdMode8K4320p2398, bmdMode8K4320p24, bmdMode8K4320p25, bmdMode8K4320p2997,
+    bmdMode8K4320p30, bmdMode8K4320p48, bmdMode8K4320p50, bmdMode8K4320p5994, bmdMode8K4320p60,
+    bmdMode8kDCI2398, bmdMode8kDCI24, bmdMode8kDCI25, bmdMode8kDCI2997, bmdMode8kDCI30,
+    bmdMode8kDCI48, bmdMode8kDCI50, bmdMode8kDCI5994, bmdMode8kDCI60, bmdModeHD1080p2398,
+    bmdModeHD1080p24, bmdModeHD1080p25, bmdModeHD1080p2997, bmdModeHD1080p30, bmdModeHD1080p48,
+    bmdModeHD1080p50, bmdModeHD1080p5994, bmdModeHD1080p6000, bmdModeHD1080p9590, bmdModeHD1080p96, bmdModeHD1080p100, bmdModeHD1080p11988, bmdModeHD1080p120, bmdModeHD1080i50, bmdModeHD1080i5994, bmdModeHD1080i6000, bmdModeHD720p50, bmdModeHD720p5994,
     bmdModeHD720p60, bmdModeNTSC, bmdModeNTSC2398, bmdModeNTSCp, bmdModePAL, bmdModePALp,
+    bmdMode640x480p60, bmdMode800x600p60, bmdMode1440x900p50, bmdMode1440x900p60, bmdMode1440x1080p50, bmdMode1440x1080p60, bmdMode1600x1200p50, bmdMode1600x1200p60, bmdMode1920x1200p50, bmdMode1920x1200p60, bmdMode1920x1440p50, bmdMode1920x1440p60, bmdMode2560x1440p50, bmdMode2560x1440p60, bmdMode2560x1600p50, bmdMode2560x1600p60
+ };
+use crate::{
     bmdVideoConnectionComponent, bmdVideoConnectionComposite, bmdVideoConnectionEthernet,
     bmdVideoConnectionHDMI, bmdVideoConnectionInternal, bmdVideoConnectionOpticalEthernet,
     bmdVideoConnectionOpticalSDI, bmdVideoConnectionSDI, bmdVideoConnectionSVideo,
@@ -163,7 +167,7 @@ impl TryFrom<u32> for DecklinkPixelFormat {
 }
 
 #[allow(dead_code)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[repr(u32)]
 pub enum DisplayMode {
     // SD Modes
@@ -179,10 +183,19 @@ pub enum DisplayMode {
     Hd1080p25 = bmdModeHD1080p25,
     Hd1080p2997 = bmdModeHD1080p2997,
     Hd1080p30 = bmdModeHD1080p30,
-    Hd1080p4800 = bmdModeHD1080p4800,
+    Hd1080p48 = bmdModeHD1080p48,
     Hd1080p50 = bmdModeHD1080p50,
     Hd1080p5994 = bmdModeHD1080p5994,
+    #[default]
     Hd1080p6000 = bmdModeHD1080p6000,
+    Hd1080p9590 = bmdModeHD1080p9590,
+    Hd1080p96 = bmdModeHD1080p96,
+    Hd1080p100 = bmdModeHD1080p100,
+    Hd1080p11988 = bmdModeHD1080p11988,
+    Hd1080p120 = bmdModeHD1080p120,
+    Hd1080i50 = bmdModeHD1080i50,
+    Hd1080i5994 = bmdModeHD1080i5994,
+    Hd1080i6000 = bmdModeHD1080i6000,
 
     // HD 720 Modes
     Hd720p50 = bmdModeHD720p50,
@@ -190,20 +203,25 @@ pub enum DisplayMode {
     Hd720p60 = bmdModeHD720p60,
 
     // 2K Modes
-    Mode2k2398 = bmdMode2K2398,
-    Mode2k24 = bmdMode2K24,
-    Mode2k25 = bmdMode2K25,
+    Mode2k2398 = bmdMode2k2398,
+    Mode2k24 = bmdMode2k24,
+    Mode2k25 = bmdMode2k25,
 
     // 2K DCI Modes
-    Mode2kDCI2398 = bmdMode2KDCI2398,
-    Mode2kDCI24 = bmdMode2KDCI24,
-    Mode2kDCI25 = bmdMode2KDCI25,
-    Mode2kDCI2997 = bmdMode2KDCI2997,
-    Mode2kDCI30 = bmdMode2KDCI30,
-    Mode2kDCI4800 = bmdMode2KDCI4800,
-    Mode2kDCI50 = bmdMode2KDCI50,
-    Mode2kDCI5994 = bmdMode2KDCI5994,
-    Mode2kDCI60 = bmdMode2KDCI60,
+    Mode2kDCI2398 = bmdMode2kDCI2398,
+    Mode2kDCI24 = bmdMode2kDCI24,
+    Mode2kDCI25 = bmdMode2kDCI25,
+    Mode2kDCI2997 = bmdMode2kDCI2997,
+    Mode2kDCI30 = bmdMode2kDCI30,
+    Mode2kDCI48 = bmdMode2kDCI48,
+    Mode2kDCI50 = bmdMode2kDCI50,
+    Mode2kDCI5994 = bmdMode2kDCI5994,
+    Mode2kDCI60 = bmdMode2kDCI60,
+    Mode2kDCI9590 = bmdMode2kDCI9590,
+    Mode2kDCI96 = bmdMode2kDCI96,
+    Mode2kDCI100 = bmdMode2kDCI100,
+    Mode2kDCI11988 = bmdMode2kDCI11988,
+    Mode2kDCI120 = bmdMode2kDCI120,
 
     // 4K UHD Modes
     Mode4K2160p2398 = bmdMode4K2160p2398,
@@ -211,21 +229,31 @@ pub enum DisplayMode {
     Mode4K2160p25 = bmdMode4K2160p25,
     Mode4K2160p2997 = bmdMode4K2160p2997,
     Mode4K2160p30 = bmdMode4K2160p30,
-    Mode4K2160p4800 = bmdMode4K2160p4800,
+    Mode4K2160p48 = bmdMode4K2160p48,
     Mode4K2160p50 = bmdMode4K2160p50,
     Mode4K2160p5994 = bmdMode4K2160p5994,
     Mode4K2160p60 = bmdMode4K2160p60,
+    Mode4K2160p9590 = bmdMode4K2160p9590,
+    Mode4K2160p96 = bmdMode4K2160p96,
+    Mode4K2160p100 = bmdMode4K2160p100,
+    Mode4K2160p11988 = bmdMode4K2160p11988,
+    Mode4K2160p120 = bmdMode4K2160p120,
 
     // 4K DCI Modes
-    Mode4kDCI2398 = bmdMode4KDCI2398,
-    Mode4kDCI24 = bmdMode4KDCI24,
-    Mode4kDCI25 = bmdMode4KDCI25,
-    Mode4kDCI2997 = bmdMode4KDCI2997,
-    Mode4kDCI30 = bmdMode4KDCI30,
-    Mode4kDCI4800 = bmdMode4KDCI4800,
-    Mode4kDCI50 = bmdMode4KDCI50,
-    Mode4kDCI5994 = bmdMode4KDCI5994,
-    Mode4kDCI60 = bmdMode4KDCI60,
+    Mode4kDCI2398 = bmdMode4kDCI2398,
+    Mode4kDCI24 = bmdMode4kDCI24,
+    Mode4kDCI25 = bmdMode4kDCI25,
+    Mode4kDCI2997 = bmdMode4kDCI2997,
+    Mode4kDCI30 = bmdMode4kDCI30,
+    Mode4kDCI48 = bmdMode4kDCI48,
+    Mode4kDCI50 = bmdMode4kDCI50,
+    Mode4kDCI5994 = bmdMode4kDCI5994,
+    Mode4kDCI60 = bmdMode4kDCI60,
+    Mode4kDCI9590 = bmdMode4kDCI9590,
+    Mode4kDCI96 = bmdMode4kDCI96,
+    Mode4kDCI100 = bmdMode4kDCI100,
+    Mode4kDCI11988 = bmdMode4kDCI11988,
+    Mode4kDCI120 = bmdMode4kDCI120,
 
     // 8K UHD Modes
     Mode8K4320p2398 = bmdMode8K4320p2398,
@@ -233,25 +261,39 @@ pub enum DisplayMode {
     Mode8K4320p25 = bmdMode8K4320p25,
     Mode8K4320p2997 = bmdMode8K4320p2997,
     Mode8K4320p30 = bmdMode8K4320p30,
-    Mode8K4320p4800 = bmdMode8K4320p4800,
+    Mode8K4320p48 = bmdMode8K4320p48,
     Mode8K4320p50 = bmdMode8K4320p50,
     Mode8K4320p5994 = bmdMode8K4320p5994,
     Mode8K4320p60 = bmdMode8K4320p60,
 
     // 8K DCI Modes
-    Mode8kDCI2398 = bmdMode8KDCI2398,
-    Mode8kDCI24 = bmdMode8KDCI24,
-    Mode8kDCI25 = bmdMode8KDCI25,
-    Mode8kDCI2997 = bmdMode8KDCI2997,
-    Mode8kDCI30 = bmdMode8KDCI30,
-    Mode8kDCI4800 = bmdMode8KDCI4800,
-    Mode8kDCI50 = bmdMode8KDCI50,
-    Mode8kDCI5994 = bmdMode8KDCI5994,
-    Mode8kDCI60 = bmdMode8KDCI60,
+    Mode8kDCI2398 = bmdMode8kDCI2398,
+    Mode8kDCI24 = bmdMode8kDCI24,
+    Mode8kDCI25 = bmdMode8kDCI25,
+    Mode8kDCI2997 = bmdMode8kDCI2997,
+    Mode8kDCI30 = bmdMode8kDCI30,
+    Mode8kDCI48 = bmdMode8kDCI48,
+    Mode8kDCI50 = bmdMode8kDCI50,
+    Mode8kDCI5994 = bmdMode8kDCI5994,
+    Mode8kDCI60 = bmdMode8kDCI60,
 
     // PC Modes
     Mode640x480p60 = bmdMode640x480p60,
     Mode800x600p60 = bmdMode800x600p60,
+    Mode1440x900p50 = bmdMode1440x900p50,
+    Mode1440x900p60 = bmdMode1440x900p60,
+    Mode1440x1080p50 = bmdMode1440x1080p50,
+    Mode1440x1080p60 = bmdMode1440x1080p60,
+    Mode1600x1200p50 = bmdMode1600x1200p50,
+    Mode1600x1200p60 = bmdMode1600x1200p60,
+    Mode1920x1200p50 = bmdMode1920x1200p50,
+    Mode1920x1200p60 = bmdMode1920x1200p60,
+    Mode1920x1440p50 = bmdMode1920x1440p50,
+    Mode1920x1440p60 = bmdMode1920x1440p60,
+    Mode2560x1440p50 = bmdMode2560x1440p50,
+    Mode2560x1440p60 = bmdMode2560x1440p60,
+    Mode2560x1600p50 = bmdMode2560x1600p50,
+    Mode2560x1600p60 = bmdMode2560x1600p60,
 
     Unknown = 0x69756E6B,
 }
@@ -259,6 +301,20 @@ pub enum DisplayMode {
 impl From<DisplayMode> for u32 {
     fn from(mode: DisplayMode) -> Self {
         mode as u32
+    }
+}
+
+impl serde::Serialize for DisplayMode {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u32(*self as u32)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for DisplayMode {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = u32::deserialize(deserializer)?;
+        DisplayMode::try_from(value)
+            .map_err(|_| serde::de::Error::custom(format!("unknown display mode {value}")))
     }
 }
 
@@ -272,68 +328,114 @@ impl TryFrom<u32> for DisplayMode {
             v if v == bmdModePAL => Ok(DisplayMode::Pal),
             v if v == bmdModeNTSCp => Ok(DisplayMode::NtscP),
             v if v == bmdModePALp => Ok(DisplayMode::PalP),
+
             v if v == bmdModeHD1080p2398 => Ok(DisplayMode::Hd1080p2398),
             v if v == bmdModeHD1080p24 => Ok(DisplayMode::Hd1080p24),
             v if v == bmdModeHD1080p25 => Ok(DisplayMode::Hd1080p25),
             v if v == bmdModeHD1080p2997 => Ok(DisplayMode::Hd1080p2997),
             v if v == bmdModeHD1080p30 => Ok(DisplayMode::Hd1080p30),
-            v if v == bmdModeHD1080p4800 => Ok(DisplayMode::Hd1080p4800),
+            v if v == bmdModeHD1080p48 => Ok(DisplayMode::Hd1080p48),
             v if v == bmdModeHD1080p50 => Ok(DisplayMode::Hd1080p50),
             v if v == bmdModeHD1080p5994 => Ok(DisplayMode::Hd1080p5994),
             v if v == bmdModeHD1080p6000 => Ok(DisplayMode::Hd1080p6000),
+            v if v == bmdModeHD1080p9590 => Ok(DisplayMode::Hd1080p9590),
+            v if v == bmdModeHD1080p96 => Ok(DisplayMode::Hd1080p96),
+            v if v == bmdModeHD1080p100 => Ok(DisplayMode::Hd1080p100),
+            v if v == bmdModeHD1080p11988 => Ok(DisplayMode::Hd1080p11988),
+            v if v == bmdModeHD1080p120 => Ok(DisplayMode::Hd1080p120),
+            v if v == bmdModeHD1080i50 => Ok(DisplayMode::Hd1080i50),
+            v if v == bmdModeHD1080i5994 => Ok(DisplayMode::Hd1080i5994),
+            v if v == bmdModeHD1080i6000 => Ok(DisplayMode::Hd1080i6000),
+
             v if v == bmdModeHD720p50 => Ok(DisplayMode::Hd720p50),
             v if v == bmdModeHD720p5994 => Ok(DisplayMode::Hd720p5994),
             v if v == bmdModeHD720p60 => Ok(DisplayMode::Hd720p60),
-            v if v == bmdMode2K2398 => Ok(DisplayMode::Mode2k2398),
-            v if v == bmdMode2K24 => Ok(DisplayMode::Mode2k24),
-            v if v == bmdMode2K25 => Ok(DisplayMode::Mode2k25),
-            v if v == bmdMode2KDCI2398 => Ok(DisplayMode::Mode2kDCI2398),
-            v if v == bmdMode2KDCI24 => Ok(DisplayMode::Mode2kDCI24),
-            v if v == bmdMode2KDCI25 => Ok(DisplayMode::Mode2kDCI25),
-            v if v == bmdMode2KDCI2997 => Ok(DisplayMode::Mode2kDCI2997),
-            v if v == bmdMode2KDCI30 => Ok(DisplayMode::Mode2kDCI30),
-            v if v == bmdMode2KDCI4800 => Ok(DisplayMode::Mode2kDCI4800),
-            v if v == bmdMode2KDCI50 => Ok(DisplayMode::Mode2kDCI50),
-            v if v == bmdMode2KDCI5994 => Ok(DisplayMode::Mode2kDCI5994),
-            v if v == bmdMode2KDCI60 => Ok(DisplayMode::Mode2kDCI60),
+
+            v if v == bmdMode2k2398 => Ok(DisplayMode::Mode2k2398),
+            v if v == bmdMode2k24 => Ok(DisplayMode::Mode2k24),
+            v if v == bmdMode2k25 => Ok(DisplayMode::Mode2k25),
+
+            v if v == bmdMode2kDCI2398 => Ok(DisplayMode::Mode2kDCI2398),
+            v if v == bmdMode2kDCI24 => Ok(DisplayMode::Mode2kDCI24),
+            v if v == bmdMode2kDCI25 => Ok(DisplayMode::Mode2kDCI25),
+            v if v == bmdMode2kDCI2997 => Ok(DisplayMode::Mode2kDCI2997),
+            v if v == bmdMode2kDCI30 => Ok(DisplayMode::Mode2kDCI30),
+            v if v == bmdMode2kDCI48 => Ok(DisplayMode::Mode2kDCI48),
+            v if v == bmdMode2kDCI50 => Ok(DisplayMode::Mode2kDCI50),
+            v if v == bmdMode2kDCI5994 => Ok(DisplayMode::Mode2kDCI5994),
+            v if v == bmdMode2kDCI60 => Ok(DisplayMode::Mode2kDCI60),
+            v if v == bmdMode2kDCI9590 => Ok(DisplayMode::Mode2kDCI9590),
+            v if v == bmdMode2kDCI96 => Ok(DisplayMode::Mode2kDCI96),
+            v if v == bmdMode2kDCI100 => Ok(DisplayMode::Mode2kDCI100),
+            v if v == bmdMode2kDCI11988 => Ok(DisplayMode::Mode2kDCI11988),
+            v if v == bmdMode2kDCI120 => Ok(DisplayMode::Mode2kDCI120),
+
             v if v == bmdMode4K2160p2398 => Ok(DisplayMode::Mode4K2160p2398),
             v if v == bmdMode4K2160p24 => Ok(DisplayMode::Mode4K2160p24),
             v if v == bmdMode4K2160p25 => Ok(DisplayMode::Mode4K2160p25),
             v if v == bmdMode4K2160p2997 => Ok(DisplayMode::Mode4K2160p2997),
             v if v == bmdMode4K2160p30 => Ok(DisplayMode::Mode4K2160p30),
-            v if v == bmdMode4K2160p4800 => Ok(DisplayMode::Mode4K2160p4800),
+            v if v == bmdMode4K2160p48 => Ok(DisplayMode::Mode4K2160p48),
             v if v == bmdMode4K2160p50 => Ok(DisplayMode::Mode4K2160p50),
             v if v == bmdMode4K2160p5994 => Ok(DisplayMode::Mode4K2160p5994),
             v if v == bmdMode4K2160p60 => Ok(DisplayMode::Mode4K2160p60),
-            v if v == bmdMode4KDCI2398 => Ok(DisplayMode::Mode4kDCI2398),
-            v if v == bmdMode4KDCI24 => Ok(DisplayMode::Mode4kDCI24),
-            v if v == bmdMode4KDCI25 => Ok(DisplayMode::Mode4kDCI25),
-            v if v == bmdMode4KDCI2997 => Ok(DisplayMode::Mode4kDCI2997),
-            v if v == bmdMode4KDCI30 => Ok(DisplayMode::Mode4kDCI30),
-            v if v == bmdMode4KDCI4800 => Ok(DisplayMode::Mode4kDCI4800),
-            v if v == bmdMode4KDCI50 => Ok(DisplayMode::Mode4kDCI50),
-            v if v == bmdMode4KDCI5994 => Ok(DisplayMode::Mode4kDCI5994),
-            v if v == bmdMode4KDCI60 => Ok(DisplayMode::Mode4kDCI60),
+            v if v == bmdMode4K2160p9590 => Ok(DisplayMode::Mode4K2160p9590),
+            v if v == bmdMode4K2160p96 => Ok(DisplayMode::Mode4K2160p96),
+            v if v == bmdMode4K2160p100 => Ok(DisplayMode::Mode4K2160p100),
+            v if v == bmdMode4K2160p11988 => Ok(DisplayMode::Mode4K2160p11988),
+            v if v == bmdMode4K2160p120 => Ok(DisplayMode::Mode4K2160p120),
+
+            v if v == bmdMode4kDCI2398 => Ok(DisplayMode::Mode4kDCI2398),
+            v if v == bmdMode4kDCI24 => Ok(DisplayMode::Mode4kDCI24),
+            v if v == bmdMode4kDCI25 => Ok(DisplayMode::Mode4kDCI25),
+            v if v == bmdMode4kDCI2997 => Ok(DisplayMode::Mode4kDCI2997),
+            v if v == bmdMode4kDCI30 => Ok(DisplayMode::Mode4kDCI30),
+            v if v == bmdMode4kDCI48 => Ok(DisplayMode::Mode4kDCI48),
+            v if v == bmdMode4kDCI50 => Ok(DisplayMode::Mode4kDCI50),
+            v if v == bmdMode4kDCI5994 => Ok(DisplayMode::Mode4kDCI5994),
+            v if v == bmdMode4kDCI60 => Ok(DisplayMode::Mode4kDCI60),
+            v if v == bmdMode4kDCI9590 => Ok(DisplayMode::Mode4kDCI9590),
+            v if v == bmdMode4kDCI96 => Ok(DisplayMode::Mode4kDCI96),
+            v if v == bmdMode4kDCI100 => Ok(DisplayMode::Mode4kDCI100),
+            v if v == bmdMode4kDCI11988 => Ok(DisplayMode::Mode4kDCI11988),
+            v if v == bmdMode4kDCI120 => Ok(DisplayMode::Mode4kDCI120),
+
             v if v == bmdMode8K4320p2398 => Ok(DisplayMode::Mode8K4320p2398),
             v if v == bmdMode8K4320p24 => Ok(DisplayMode::Mode8K4320p24),
             v if v == bmdMode8K4320p25 => Ok(DisplayMode::Mode8K4320p25),
             v if v == bmdMode8K4320p2997 => Ok(DisplayMode::Mode8K4320p2997),
             v if v == bmdMode8K4320p30 => Ok(DisplayMode::Mode8K4320p30),
-            v if v == bmdMode8K4320p4800 => Ok(DisplayMode::Mode8K4320p4800),
+            v if v == bmdMode8K4320p48 => Ok(DisplayMode::Mode8K4320p48),
             v if v == bmdMode8K4320p50 => Ok(DisplayMode::Mode8K4320p50),
             v if v == bmdMode8K4320p5994 => Ok(DisplayMode::Mode8K4320p5994),
             v if v == bmdMode8K4320p60 => Ok(DisplayMode::Mode8K4320p60),
-            v if v == bmdMode8KDCI2398 => Ok(DisplayMode::Mode8kDCI2398),
-            v if v == bmdMode8KDCI24 => Ok(DisplayMode::Mode8kDCI24),
-            v if v == bmdMode8KDCI25 => Ok(DisplayMode::Mode8kDCI25),
-            v if v == bmdMode8KDCI2997 => Ok(DisplayMode::Mode8kDCI2997),
-            v if v == bmdMode8KDCI30 => Ok(DisplayMode::Mode8kDCI30),
-            v if v == bmdMode8KDCI4800 => Ok(DisplayMode::Mode8kDCI4800),
-            v if v == bmdMode8KDCI50 => Ok(DisplayMode::Mode8kDCI50),
-            v if v == bmdMode8KDCI5994 => Ok(DisplayMode::Mode8kDCI5994),
-            v if v == bmdMode8KDCI60 => Ok(DisplayMode::Mode8kDCI60),
+
+            v if v == bmdMode8kDCI2398 => Ok(DisplayMode::Mode8kDCI2398),
+            v if v == bmdMode8kDCI24 => Ok(DisplayMode::Mode8kDCI24),
+            v if v == bmdMode8kDCI25 => Ok(DisplayMode::Mode8kDCI25),
+            v if v == bmdMode8kDCI2997 => Ok(DisplayMode::Mode8kDCI2997),
+            v if v == bmdMode8kDCI30 => Ok(DisplayMode::Mode8kDCI30),
+            v if v == bmdMode8kDCI48 => Ok(DisplayMode::Mode8kDCI48),
+            v if v == bmdMode8kDCI50 => Ok(DisplayMode::Mode8kDCI50),
+            v if v == bmdMode8kDCI5994 => Ok(DisplayMode::Mode8kDCI5994),
+            v if v == bmdMode8kDCI60 => Ok(DisplayMode::Mode8kDCI60),
+
             v if v == bmdMode640x480p60 => Ok(DisplayMode::Mode640x480p60),
             v if v == bmdMode800x600p60 => Ok(DisplayMode::Mode800x600p60),
+            v if v == bmdMode1440x900p50 => Ok(DisplayMode::Mode1440x900p50),
+            v if v == bmdMode1440x900p60 => Ok(DisplayMode::Mode1440x900p60),
+            v if v == bmdMode1440x1080p50 => Ok(DisplayMode::Mode1440x1080p50),
+            v if v == bmdMode1440x1080p60 => Ok(DisplayMode::Mode1440x1080p60),
+            v if v == bmdMode1600x1200p50 => Ok(DisplayMode::Mode1600x1200p50),
+            v if v == bmdMode1600x1200p60 => Ok(DisplayMode::Mode1600x1200p60),
+            v if v == bmdMode1920x1200p50 => Ok(DisplayMode::Mode1920x1200p50),
+            v if v == bmdMode1920x1200p60 => Ok(DisplayMode::Mode1920x1200p60),
+            v if v == bmdMode1920x1440p50 => Ok(DisplayMode::Mode1920x1440p50),
+            v if v == bmdMode1920x1440p60 => Ok(DisplayMode::Mode1920x1440p60),
+            v if v == bmdMode2560x1440p50 => Ok(DisplayMode::Mode2560x1440p50),
+            v if v == bmdMode2560x1440p60 => Ok(DisplayMode::Mode2560x1440p60),
+            v if v == bmdMode2560x1600p50 => Ok(DisplayMode::Mode2560x1600p50),
+            v if v == bmdMode2560x1600p60 => Ok(DisplayMode::Mode2560x1600p60),
             _ => Err(()),
         }
     }

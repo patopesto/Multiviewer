@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use crate::sources::syphon::SyphonOutputConfig;
 use crate::sources::ndi::NdiOutputConfig;
+use crate::sources::decklink::DecklinkOutputConfig;
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
@@ -149,6 +150,7 @@ impl Output {
 pub enum OutputConfig {
     Syphon(SyphonOutputConfig),
     Ndi(NdiOutputConfig),
+    Decklink(DecklinkOutputConfig),
 }
 
 impl Default for OutputConfig {
@@ -260,6 +262,33 @@ mod tests {
         match parsed.config {
             OutputConfig::Syphon(cfg) => assert!(cfg.server_name.is_empty()),
             _ => panic!("expected Syphon config"),
+        }
+    }
+
+    #[test]
+    fn decklink_output_config_round_trips() {
+        use multiviewer_decklink::DisplayMode;
+        let output = Output::new_v4(
+            "My DeckLink".into(),
+            Protocol::Decklink,
+            true,
+            OutputConfig::Decklink(crate::sources::DecklinkOutputConfig {
+                device_name: "DeckLink Mini Monitor".into(),
+                display_mode: DisplayMode::Hd1080p6000,
+                width: 1920,
+                height: 1080,
+            }),
+        );
+        let json = serde_json::to_string(&output).unwrap();
+        assert!(json.contains("\"display_mode\":1215313456"));
+        let parsed: Output = serde_json::from_str(&json).unwrap();
+        assert!(matches!(parsed.config, OutputConfig::Decklink(_)));
+        match parsed.config {
+            OutputConfig::Decklink(c) => {
+                assert_eq!(c.device_name, "DeckLink Mini Monitor");
+                assert_eq!(c.display_mode, DisplayMode::Hd1080p6000);
+            }
+            _ => panic!("expected Decklink config"),
         }
     }
 

@@ -14,11 +14,13 @@ pub use source::{
 };
 #[allow(unused_imports)]
 pub use output::{
-    OutputId, OutputKind, OutputRegistry, OutputStats,
+    OutputId, OutputKind, OutputRegistry, OutputStats, VideoOutput,
 };
 
 #[allow(unused_imports)]
 pub use decklink::source::{DecklinkConfig, DecklinkSource};
+#[allow(unused_imports)]
+pub use decklink::output::{DecklinkOutput, DecklinkOutputConfig};
 #[allow(unused_imports)]
 pub use decklink::VideoConnections;
 #[allow(unused_imports)]

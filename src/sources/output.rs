@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::config::Protocol;
+use super::decklink::{DecklinkOutput, DecklinkOutputConfig};
 use super::ndi::{NdiOutput, NdiOutputConfig};
 #[cfg(target_os = "macos")]
 use super::syphon::{SyphonOutput, SyphonOutputConfig};
@@ -63,6 +64,20 @@ impl OutputRegistry {
         let output = NdiOutput::new(id.clone(), name, config, enabled);
         self.outputs.insert(id.clone(), Box::new(output));
         id
+    }
+
+    pub fn add_decklink(
+        &mut self,
+        id: OutputId,
+        name: String,
+        config: DecklinkOutputConfig,
+        enabled: bool,
+    ) -> OutputId {
+        if self.outputs.contains_key(&id) {
+            return id;
+        }
+        let output = DecklinkOutput::new(id.clone(), name, config, enabled);
+        self.outputs.insert(id.clone(), Box::new(output));
         id
     }
 

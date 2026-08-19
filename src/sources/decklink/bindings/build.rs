@@ -39,20 +39,24 @@ fn main() {
         build.include("shim/");
 
         if cfg!(target_os = "macos") {
-            build.file("shim/decklink_shim.cpp");
+            build.file("shim/decklink_input.cpp");
+            build.file("shim/decklink_output.cpp");
             build.file(sdk_include.join("DeckLinkAPIDispatch.cpp"));
             println!("cargo:rustc-link-lib=framework=CoreFoundation");
             println!("cargo:rustc-link-lib=framework=CoreVideo");
         } else if cfg!(target_os = "linux") {
-            build.file("shim/decklink_shim.cpp");
+            build.file("shim/decklink_input.cpp");
+            build.file("shim/decklink_output.cpp");
             build.file(sdk_include.join("DeckLinkAPIDispatch.cpp"));
             println!("cargo:rustc-link-lib=dl");
         }
 
         build.compile("decklink_shim");
 
-        println!("cargo:rerun-if-changed=shim/decklink_shim.cpp");
-        println!("cargo:rerun-if-changed=shim/decklink_shim.h");
+        println!("cargo:rerun-if-changed=shim/decklink_input.cpp");
+        println!("cargo:rerun-if-changed=shim/decklink_input.h");
+        println!("cargo:rerun-if-changed=shim/decklink_output.cpp");
+        println!("cargo:rerun-if-changed=shim/decklink_output.h");
         println!("cargo:rerun-if-changed=include/decklink_sdk_enums.h");
     }
 }

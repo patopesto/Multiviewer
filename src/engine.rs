@@ -5,6 +5,7 @@ use crate::config::{Config, Source, Protocol, TextureMode, OutputConfig};
 use crate::sources::SourceRegistry;
 use crate::sources::OutputRegistry;
 use crate::sources::decklink::Discovery as DecklinkDiscovery;
+use crate::sources::decklink::DecklinkOutputConfig;
 use crate::sources::ndi::Discovery as NdiDiscovery;
 use crate::sources::ndi::NdiOutputConfig;
 #[cfg(target_os = "macos")]
@@ -176,6 +177,19 @@ impl Engine {
                         ndi_config.sender_name.clone()
                     };
                     output_registry.add_ndi(id, name, ndi_config, output.enabled);
+                }
+                Protocol::Decklink => {
+                    let id = output.uuid.clone();
+                    let decklink_config = match &output.config {
+                        OutputConfig::Decklink(c) => c.clone(),
+                        _ => DecklinkOutputConfig::default(),
+                    };
+                    let name = if decklink_config.device_name.is_empty() {
+                        output.name.clone()
+                    } else {
+                        decklink_config.device_name.clone()
+                    };
+                    output_registry.add_decklink(id, name, decklink_config, output.enabled);
                 }
                 #[cfg(target_os = "macos")]
                 Protocol::Syphon => {

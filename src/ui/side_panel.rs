@@ -1,4 +1,5 @@
-use crate::config::{BorderVisibility, SourceBorderVisibility, Protocol, TextureMode};
+use crate::config::{BorderVisibility, OutputConfig, SourceBorderVisibility, Protocol, TextureMode};
+use crate::sources::decklink::DisplayMode;
 use crate::engine::Engine;
 use crate::sources::SourceStats;
 use egui::{Align, Grid, InnerResponse, Layout, ScrollArea, Ui};
@@ -10,12 +11,12 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
         .max_size(400.0)
         .show(ui, |ui| {
             ScrollArea::vertical().show(ui, |ui| {
-                collapsable_section(ui, "Global Settings", |ui| {
+                collapsable_section(ui, "Global Settings", true, |ui| {
                     draw_global_section(ui, engine);
                 });
 
                 ui.separator();
-                collapsable_section(ui, "Sources", |ui| {
+                collapsable_section(ui, "Sources", true, |ui| {
                     draw_sources_section(ui, engine);
                 });
 
@@ -30,6 +31,8 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
 }
 
 fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
+    let mut decklink_restart_idx: Option<usize> = None;
+
     settings_grid(ui, "global_settings_grid", |ui| {
         ui.label("Canvas");
         settings_value(ui, |ui| {
@@ -81,18 +84,80 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 });
         });
         ui.end_row();
+    });
 
-        #[cfg(target_os = "macos")]
-        {
-            ui.label("Syphon Output");
+    collapsable_section(ui, "Output", false, |ui| {
+        settings_grid(ui, "output_grid", |ui| {
+            #[cfg(target_os = "macos")]
+            {
+                ui.label("Syphon Output");
+                settings_value(ui, |ui| {
+                    let syphon_index = engine
+                        .cfg
+                        .canvas
+                        .outputs
+                        .iter()
+                        .position(|o| o.protocol == Protocol::Syphon);
+                    let registry_id = syphon_index
+                        .as_ref()
+                        .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
+                    let mut enabled = registry_id
+                        .as_ref()
+                        .and_then(|id| engine.output_registry.get(id))
+                        .map(|ok| ok.enabled())
+                        .unwrap_or(false);
+
+                    if ui.checkbox(&mut enabled, "Enable").changed() {
+                        if enabled {
+                            if let Some(id) = registry_id {
+                                if let Some(out) = engine.output_registry.get_mut(&id) {
+                                    out.set_enabled(true);
+                                }
+                                if let Some(idx) = syphon_index {
+                                    engine.cfg.canvas.outputs[idx].enabled = true;
+                                }
+                            } else {
+                                let uuid = uuid::Uuid::new_v4().to_string();
+                                let name = "Syphon Output".to_string();
+                                let syphon_config = crate::sources::SyphonOutputConfig {
+                                    server_name: name.clone(),
+                                };
+                                engine.output_registry.add_syphon(uuid.clone(), name.clone(), syphon_config.clone(), true);
+                                engine
+                                    .cfg
+                                    .canvas
+                                    .outputs
+                                    .push(crate::config::Output::new_v4(
+                                        name,
+                                        Protocol::Syphon,
+                                        true,
+                                        crate::config::OutputConfig::Syphon(syphon_config),
+                                    ));
+                                if let Some(last) = engine.cfg.canvas.outputs.last_mut() {
+                                    last.uuid = uuid;
+                                }
+                            }
+                        } else if let Some(id) = registry_id {
+                            engine.output_registry.remove(&id);
+                            if let Some(idx) = syphon_index {
+                                engine.cfg.canvas.outputs.remove(idx);
+                            }
+                        }
+                        engine.dirty = true;
+                    }
+                });
+                ui.end_row();
+            }
+
+            ui.label("NDI Output");
             settings_value(ui, |ui| {
-                let syphon_index = engine
+                let ndi_index = engine
                     .cfg
                     .canvas
                     .outputs
                     .iter()
-                    .position(|o| o.protocol == Protocol::Syphon);
-                let registry_id = syphon_index
+                    .position(|o| o.protocol == Protocol::Ndi);
+                let registry_id = ndi_index
                     .as_ref()
                     .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
                 let mut enabled = registry_id
@@ -107,25 +172,30 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             if let Some(out) = engine.output_registry.get_mut(&id) {
                                 out.set_enabled(true);
                             }
-                            if let Some(idx) = syphon_index {
+                            if let Some(idx) = ndi_index {
                                 engine.cfg.canvas.outputs[idx].enabled = true;
                             }
                         } else {
                             let uuid = uuid::Uuid::new_v4().to_string();
-                            let name = "Syphon Output".to_string();
-                            let syphon_config = crate::sources::SyphonOutputConfig {
-                                server_name: name.clone(),
+                            let name = "NDI Output".to_string();
+                            let ndi_config = crate::sources::NdiOutputConfig {
+                                sender_name: "Multiviewer".to_string(),
                             };
-                            engine.output_registry.add_syphon(uuid.clone(), name.clone(), syphon_config.clone(), true);
+                            engine.output_registry.add_ndi(
+                                uuid.clone(),
+                                name.clone(),
+                                ndi_config.clone(),
+                                true,
+                            );
                             engine
                                 .cfg
                                 .canvas
                                 .outputs
                                 .push(crate::config::Output::new_v4(
                                     name,
-                                    Protocol::Syphon,
+                                    Protocol::Ndi,
                                     true,
-                                    crate::config::OutputConfig::Syphon(syphon_config),
+                                    crate::config::OutputConfig::Ndi(ndi_config),
                                 ));
                             if let Some(last) = engine.cfg.canvas.outputs.last_mut() {
                                 last.uuid = uuid;
@@ -133,7 +203,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         }
                     } else if let Some(id) = registry_id {
                         engine.output_registry.remove(&id);
-                        if let Some(idx) = syphon_index {
+                        if let Some(idx) = ndi_index {
                             engine.cfg.canvas.outputs.remove(idx);
                         }
                     }
@@ -141,72 +211,183 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 }
             });
             ui.end_row();
-        }
 
-        ui.label("NDI Output");
-        settings_value(ui, |ui| {
-            let ndi_index = engine
+            ui.label("DeckLink Output");
+            settings_value(ui, |ui| {
+                let decklink_index = engine
+                    .cfg
+                    .canvas
+                    .outputs
+                    .iter()
+                    .position(|o| o.protocol == Protocol::Decklink);
+                let registry_id = decklink_index
+                    .as_ref()
+                    .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
+                let mut enabled = registry_id
+                    .as_ref()
+                    .and_then(|id| engine.output_registry.get(id))
+                    .map(|ok| ok.enabled())
+                    .unwrap_or(false);
+
+                if ui.checkbox(&mut enabled, "Enable").changed() {
+                    if enabled {
+                        if let Some(ref id) = registry_id {
+                            if let Some(out) = engine.output_registry.get_mut(id) {
+                                out.set_enabled(true);
+                            }
+                            if let Some(idx) = decklink_index {
+                                engine.cfg.canvas.outputs[idx].enabled = true;
+                            }
+                        } else {
+                            let uuid = uuid::Uuid::new_v4().to_string();
+                            let name = "DeckLink Output".to_string();
+                            let decklink_config = crate::sources::DecklinkOutputConfig::default();
+                            engine.output_registry.add_decklink(
+                                uuid.clone(),
+                                name.clone(),
+                                decklink_config.clone(),
+                                true,
+                            );
+                            engine
+                                .cfg
+                                .canvas
+                                .outputs
+                                .push(crate::config::Output::new_v4(
+                                    name,
+                                    Protocol::Decklink,
+                                    true,
+                                    crate::config::OutputConfig::Decklink(decklink_config),
+                                ));
+                            if let Some(last) = engine.cfg.canvas.outputs.last_mut() {
+                                last.uuid = uuid;
+                            }
+                        }
+                    } else if let Some(ref id) = registry_id {
+                        engine.output_registry.remove(id);
+                        if let Some(idx) = decklink_index {
+                            engine.cfg.canvas.outputs.remove(idx);
+                        }
+                    }
+                    engine.dirty = true;
+                }
+            });
+            ui.end_row();
+
+            // Device / mode selection only when a DeckLink output exists.
+            if let Some(idx) = engine
                 .cfg
                 .canvas
                 .outputs
                 .iter()
-                .position(|o| o.protocol == Protocol::Ndi);
-            let registry_id = ndi_index
-                .as_ref()
-                .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
-            let mut enabled = registry_id
-                .as_ref()
-                .and_then(|id| engine.output_registry.get(id))
-                .map(|ok| ok.enabled())
-                .unwrap_or(false);
+                .position(|o| o.protocol == Protocol::Decklink)
+            {
+                let outputs = engine
+                    .decklink
+                    .as_ref()
+                    .map(|d| d.list_outputs())
+                    .unwrap_or_default();
 
-            if ui.checkbox(&mut enabled, "Enable").changed() {
-                if enabled {
-                    if let Some(id) = registry_id {
-                        if let Some(out) = engine.output_registry.get_mut(&id) {
-                            out.set_enabled(true);
-                        }
-                        if let Some(idx) = ndi_index {
-                            engine.cfg.canvas.outputs[idx].enabled = true;
-                        }
-                    } else {
-                        let uuid = uuid::Uuid::new_v4().to_string();
-                        let name = "NDI Output".to_string();
-                        let ndi_config = crate::sources::NdiOutputConfig {
-                            sender_name: "Multiviewer".to_string(),
-                        };
-                        engine.output_registry.add_ndi(
-                            uuid.clone(),
-                            name.clone(),
-                            ndi_config.clone(),
-                            true,
-                        );
-                        engine
-                            .cfg
-                            .canvas
-                            .outputs
-                            .push(crate::config::Output::new_v4(
-                                name,
-                                Protocol::Ndi,
-                                true,
-                                crate::config::OutputConfig::Ndi(ndi_config),
-                            ));
-                        if let Some(last) = engine.cfg.canvas.outputs.last_mut() {
-                            last.uuid = uuid;
-                        }
-                    }
-                } else if let Some(id) = registry_id {
-                    engine.output_registry.remove(&id);
-                    if let Some(idx) = ndi_index {
-                        engine.cfg.canvas.outputs.remove(idx);
-                    }
-                }
-                engine.dirty = true;
+                let (current_device, current_mode) = match &engine.cfg.canvas.outputs[idx].config {
+                    OutputConfig::Decklink(c) => (c.device_name.clone(), c.display_mode),
+                    _ => (String::new(), DisplayMode::Hd1080p6000),
+                };
+
+                ui.label("Decklink Device");
+                settings_value(ui, |ui| {
+                    egui::ComboBox::from_id_salt("decklink_output_device")
+                        .width(ui.available_width())
+                        .selected_text(if current_device.is_empty() {
+                            "(select device)".to_string()
+                        } else {
+                            current_device.clone()
+                        })
+                        .show_ui(ui, |ui| {
+                            for port in &outputs {
+                                if ui
+                                    .selectable_label(current_device == port.name, &port.name)
+                                    .clicked()
+                                {
+                                    if let OutputConfig::Decklink(config) =
+                                        &mut engine.cfg.canvas.outputs[idx].config
+                                    {
+                                        config.device_name = port.name.clone();
+                                        if let Some(first) = port.modes.first() {
+                                            config.display_mode = first.mode;
+                                            config.width = first.width;
+                                            config.height = first.height;
+                                        }
+                                    }
+                                    decklink_restart_idx = Some(idx);
+                                    engine.dirty = true;
+                                }
+                            }
+                        });
+                });
+                ui.end_row();
+
+                let modes = outputs
+                    .iter()
+                    .find(|p| p.name == current_device)
+                    .map(|p| p.modes.clone())
+                    .unwrap_or_default();
+                let selected_label = modes
+                    .iter()
+                    .find(|m| m.mode == current_mode)
+                    .map(|m| format!("{}", m.name))
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                ui.label("Decklink Mode");
+                settings_value(ui, |ui| {
+                    egui::ComboBox::from_id_salt("decklink_output_mode")
+                        .width(ui.available_width())
+                        .selected_text(selected_label)
+                        .show_ui(ui, |ui| {
+                            for m in &modes {
+                                let label =
+                                    format!("{}", m.name);
+                                if ui.selectable_label(current_mode == m.mode, label).clicked() {
+                                    if let OutputConfig::Decklink(config) =
+                                        &mut engine.cfg.canvas.outputs[idx].config
+                                    {
+                                        config.display_mode = m.mode;
+                                        config.width = m.width;
+                                        config.height = m.height;
+                                    }
+                                    decklink_restart_idx = Some(idx);
+                                    engine.dirty = true;
+                                }
+                            }
+                        });
+                });
+                ui.end_row();
             }
         });
-        ui.end_row();
     });
+
+    if let Some(idx) = decklink_restart_idx {
+        let id = engine.cfg.canvas.outputs[idx].uuid.clone();
+        engine.output_registry.remove(&id);
+        let (device, cfg) = if let OutputConfig::Decklink(c) =
+            &engine.cfg.canvas.outputs[idx].config
+        {
+            (
+                if c.device_name.is_empty() {
+                    engine.cfg.canvas.outputs[idx].name.clone()
+                } else {
+                    c.device_name.clone()
+                },
+                c.clone(),
+            )
+        } else {
+            (
+                engine.cfg.canvas.outputs[idx].name.clone(),
+                crate::sources::DecklinkOutputConfig::default(),
+            )
+        };
+        engine.output_registry.add_decklink(id, device, cfg, true);
+    }
 }
+
 
 fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
     // Sources list with drag-and-drop reordering.
@@ -351,7 +532,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         .find(|l| l.uuid == selected_uuid)
     {
         ui.separator();
-        collapsable_section(ui, "Properties", |ui| {
+        collapsable_section(ui, "Properties", true, |ui| {
             settings_grid(ui, "layer_properties_grid", |ui| {
                 ui.label("Name");
                 settings_value(ui, |ui| {
@@ -682,7 +863,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         if let Some(ref sid) = source.source_id {
             if let Some(source) = engine.registry.get_mut(sid) {
                 ui.separator();
-                collapsable_section(ui, "Protocol Settings", |ui| {
+                collapsable_section(ui, "Protocol Settings", true, |ui| {
                     if super::source_settings::render_source_settings(source, ui) {
                         // Config changed — NDI/DeckLink/Syphon need restart
                         if source.protocol() == Protocol::Decklink {
@@ -698,7 +879,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 });
 
                 ui.separator();
-                collapsable_section(ui, "Source Stats", |ui| {
+                collapsable_section(ui, "Source Stats", true, |ui| {
                     let stats_arc = source.stats();
                     let stats = stats_arc.lock().unwrap();
                     draw_source_stats_section(&*stats, ui);
@@ -794,11 +975,17 @@ pub fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
 const SETTINGS_GRID_SPACING: [f32; 2] = [8.0, 4.0];
 const SETTINGS_GRID_LEFT_MIN_WIDTH: f32 = 120.0;
 
-pub fn collapsable_section<R>(ui: &mut Ui, title: &str, contents: impl FnOnce(&mut Ui) -> R) {
+pub fn collapsable_section<R>(ui: &mut Ui, title: &str, heading: bool, contents: impl FnOnce(&mut Ui) -> R) {
     let id = ui.make_persistent_id(title);
-    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
+    let default_open = heading;
+    egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open)
         .show_header(ui, |ui| {
-            ui.heading(title);
+            if heading {
+                ui.heading(title);
+            }
+            else {
+                ui.label(title);
+            }
         })
         .body_unindented(contents);
 }
