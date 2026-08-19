@@ -2,7 +2,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 
-use super::super::output::{OutputId, OutputStats};
+use crate::config::Protocol;
+use super::super::output::{OutputId, OutputStats, VideoOutput};
 
 const FLIP_SHADER: &str = r#"
 struct VertexOutput {
@@ -381,20 +382,38 @@ impl SyphonOutput {
         }
         queue.submit(Some(encoder.finish()));
     }
+}
 
-    pub fn name(&self) -> &str {
+#[cfg(target_os = "macos")]
+impl VideoOutput for SyphonOutput {
+    fn present(
+        &self,
+        texture: &wgpu::Texture,
+        width: u32,
+        height: u32,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) {
+        self.present(texture, width, height, device, queue);
+    }
+
+    fn name(&self) -> &str {
         &self.name
     }
 
-    pub fn enabled(&self) -> bool {
+    fn enabled(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
     }
 
-    pub fn set_enabled(&self, enabled: bool) {
+    fn set_enabled(&self, enabled: bool) {
         self.enabled.store(enabled, Ordering::Relaxed);
     }
 
-    pub fn stats(&self) -> Arc<Mutex<OutputStats>> {
+    fn stats(&self) -> Arc<Mutex<OutputStats>> {
         self.stats.clone()
+    }
+
+    fn protocol(&self) -> Protocol {
+        Protocol::Syphon
     }
 }

@@ -18,72 +18,26 @@ pub struct OutputStats {
     pub send_time_ms: f32,
 }
 
+/// Runtime video output. Implemented by NDI, Syphon, and DeckLink.
 #[allow(dead_code)]
-pub enum OutputKind {
-    Ndi(NdiOutput, NdiOutputConfig),
-    #[cfg(target_os = "macos")]
-    Syphon(SyphonOutput, SyphonOutputConfig),
-}
-
-impl OutputKind {
-    pub fn present(
+pub trait VideoOutput: Send {
+    fn present(
         &self,
         texture: &wgpu::Texture,
         width: u32,
         height: u32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) {
-        match self {
-            OutputKind::Ndi(s, _) => s.present(texture, device, queue),
-            #[cfg(target_os = "macos")]
-            OutputKind::Syphon(s, _) => s.present(texture, width, height, device, queue),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn name(&self) -> &str {
-        match self {
-            OutputKind::Ndi(s, _) => s.name(),
-            #[cfg(target_os = "macos")]
-            OutputKind::Syphon(s, _) => s.name(),
-        }
-    }
-
-    pub fn enabled(&self) -> bool {
-        match self {
-            OutputKind::Ndi(s, _) => s.enabled(),
-            #[cfg(target_os = "macos")]
-            OutputKind::Syphon(s, _) => s.enabled(),
-        }
-    }
-
-    pub fn set_enabled(&mut self, enabled: bool) {
-        match self {
-            OutputKind::Ndi(s, _) => s.set_enabled(enabled),
-            #[cfg(target_os = "macos")]
-            OutputKind::Syphon(s, _) => s.set_enabled(enabled),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn stats(&self) -> Arc<Mutex<OutputStats>> {
-        match self {
-            OutputKind::Ndi(s, _) => s.stats(),
-            #[cfg(target_os = "macos")]
-            OutputKind::Syphon(s, _) => s.stats(),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn protocol(&self) -> Protocol {
-        match self {
-            OutputKind::Ndi(_, _) => Protocol::Ndi,
-            #[cfg(target_os = "macos")]
-            OutputKind::Syphon(_, _) => Protocol::Syphon,
-        }
-    }
+    );
+    fn name(&self) -> &str;
+    fn enabled(&self) -> bool;
+    fn set_enabled(&self, enabled: bool);
+    fn stats(&self) -> Arc<Mutex<OutputStats>>;
+    fn protocol(&self) -> Protocol;
 }
+
+/// Type-erased output handle stored in the registry.
+pub type OutputKind = Box<dyn VideoOutput>;
 
 pub struct OutputRegistry {
     outputs: HashMap<OutputId, OutputKind>,
@@ -106,8 +60,9 @@ impl OutputRegistry {
         if self.outputs.contains_key(&id) {
             return id;
         }
-        let output = NdiOutput::new(id.clone(), name, config.clone(), enabled);
-        self.outputs.insert(id.clone(), OutputKind::Ndi(output, config));
+        let output = NdiOutput::new(id.clone(), name, config, enabled);
+        self.outputs.insert(id.clone(), Box::new(output));
+        id
         id
     }
 
@@ -116,8 +71,8 @@ impl OutputRegistry {
         if self.outputs.contains_key(&id) {
             return id;
         }
-        let output = SyphonOutput::new(id.clone(), name, config.clone(), enabled);
-        self.outputs.insert(id.clone(), OutputKind::Syphon(output, config));
+        let output = SyphonOutput::new(id.clone(), name, config, enabled);
+        self.outputs.insert(id.clone(), Box::new(output));
         id
     }
 
@@ -151,7 +106,7 @@ impl OutputRegistry {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) {
-        for (_, output) in &self.outputs {
+        for output in self.outputs.values() {
             if output.enabled() {
                 output.present(texture, width, height, device, queue);
             }

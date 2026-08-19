@@ -4,7 +4,8 @@ use std::thread;
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
 
-use crate::sources::output::{OutputId, OutputStats};
+use crate::config::Protocol;
+use crate::sources::output::{OutputId, OutputStats, VideoOutput};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct NdiOutputConfig {
@@ -14,6 +15,7 @@ pub struct NdiOutputConfig {
 
 pub struct NdiOutput {
     id: OutputId,
+    name: String,
     enabled: AtomicBool,
     width: AtomicU32,
     height: AtomicU32,
@@ -29,11 +31,12 @@ impl NdiOutput {
         let stats = Arc::new(Mutex::new(OutputStats::default()));
         let stats_clone = Arc::clone(&stats);
 
+        let thread_name = name.clone();
         let thread = thread::Builder::new()
-            .name(format!("ndi-out-{id}"))
+            .name(format!("ndi-out-{thread_name}"))
             .spawn(move || {
                 let Ok(ndi) = grafton_ndi::NDI::new() else {
-                    tracing::error!("NDI output {name}: failed to initialize NDI");
+                    tracing::error!("NDI output {thread_name}: failed to initialize NDI");
                     return;
                 };
                 let options = grafton_ndi::SenderOptions::builder(&config.sender_name)
@@ -42,7 +45,7 @@ impl NdiOutput {
                 let mut sender = match grafton_ndi::Sender::new(&ndi, &options) {
                     Ok(s) => s,
                     Err(e) => {
-                        tracing::error!("NDI output {name}: failed to create sender: {e:?}");
+                        tracing::error!("NDI output {thread_name}: failed to create sender: {e:?}");
                         return;
                     }
                 };
@@ -68,7 +71,7 @@ impl NdiOutput {
                     ) {
                         Ok(f) => f,
                         Err(e) => {
-                            tracing::error!("NDI output {name}: frame build failed: {e:?}");
+                            tracing::error!("NDI output {thread_name}: frame build failed: {e:?}");
                             continue;
                         }
                     };
@@ -93,6 +96,7 @@ impl NdiOutput {
 
         Self {
             id,
+            name,
             enabled: AtomicBool::new(enabled),
             width: AtomicU32::new(0),
             height: AtomicU32::new(0),
@@ -101,8 +105,10 @@ impl NdiOutput {
             thread: Some(thread),
         }
     }
+}
 
-    pub fn present(&self, texture: &wgpu::Texture, device: &wgpu::Device, queue: &wgpu::Queue) {
+impl VideoOutput for NdiOutput {
+    fn present(&self, texture: &wgpu::Texture, _width: u32, _height: u32,device: &wgpu::Device, queue: &wgpu::Queue) {
         if !self.enabled.load(Ordering::Relaxed) {
             return;
         }
@@ -177,20 +183,23 @@ impl NdiOutput {
         }
     }
 
-    pub fn enabled(&self) -> bool {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn enabled(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
     }
 
-    pub fn set_enabled(&self, enabled: bool) {
+    fn set_enabled(&self, enabled: bool) {
         self.enabled.store(enabled, Ordering::Relaxed);
     }
 
-    pub fn name(&self) -> &str {
-        &self.id
+    fn stats(&self) -> Arc<Mutex<OutputStats>> {
+        Arc::clone(&self.stats)
     }
 
-    #[allow(dead_code)]
-    pub fn stats(&self) -> Arc<Mutex<OutputStats>> {
-        Arc::clone(&self.stats)
+    fn protocol(&self) -> Protocol {
+        Protocol::Ndi
     }
 }
