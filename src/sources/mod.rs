@@ -31,7 +31,7 @@ pub use decklink::VideoConnections;
 #[allow(unused_imports)]
 pub use ndi::{NdiSource, NdiSourceConfig, NdiOutput, NdiOutputConfig};
 #[allow(unused_imports)]
-pub use test::{TestSource, TestSourceConfig};
+pub use test::{TestSource, TestSourceConfig, TestPattern};
 
 #[cfg(target_os = "macos")]
 #[allow(unused_imports)]

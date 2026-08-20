@@ -1,4 +1,5 @@
 use crate::sources::{DecklinkSourceConfig, NdiSourceConfig, SourceKind, TestSourceConfig};
+use crate::sources::test::{TestPattern, RadarDirection};
 use crate::sources::decklink::VideoConnection;
 use crate::ui::side_panel::{settings_grid, settings_value};
 
@@ -18,6 +19,7 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
 fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
     let old_w = cfg.width;
     let old_h = cfg.height;
+    let old_pattern = cfg.pattern.clone();
     settings_grid(ui, "test_settings_grid", |ui| {
         ui.label("Size");
         settings_value(ui, |ui| {
@@ -29,8 +31,73 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
             });
         });
         ui.end_row();
+
+        ui.label("Pattern");
+        settings_value(ui, |ui| {
+            let patterns = TestPattern::ALL.to_vec();
+            egui::ComboBox::from_id_salt("test_pattern")
+                .width(ui.available_width())
+                .selected_text(cfg.pattern.label())
+                .show_ui(ui, |ui| {
+                    for pattern in &patterns {
+                        ui.selectable_value(&mut cfg.pattern, pattern.clone(), pattern.label());
+                    }
+                });
+        });
+        ui.end_row();
+
+        if let TestPattern::UvGradient { red, green, blue } = &mut cfg.pattern {
+            ui.label("Channels");
+            settings_value(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.checkbox(red, "R");
+                    ui.checkbox(green, "G");
+                    ui.checkbox(blue, "B");
+                });
+            });
+            ui.end_row();
+        }
+
+        if let TestPattern::Grid { cols, rows } = &mut cfg.pattern {
+            ui.label("Grid");
+            settings_value(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Cols");
+                    ui.add(egui::DragValue::new(cols).range(1..=100));
+                    ui.label("Rows");
+                    ui.add(egui::DragValue::new(rows).range(1..=100));
+                });
+            });
+            ui.end_row();
+        }
+
+        if let TestPattern::Radar { width, speed, direction } = &mut cfg.pattern {
+            ui.label("Width");
+            settings_value(ui, |ui| {
+                ui.add(egui::DragValue::new(width).range(1..=cfg.width));
+            });
+            ui.end_row();
+
+            ui.label("Speed");
+            settings_value(ui, |ui| {
+                ui.add(egui::DragValue::new(speed).range(0.0..=20.0));
+            });
+            ui.end_row();
+
+            ui.label("Direction");
+            settings_value(ui, |ui| {
+                egui::ComboBox::from_id_salt("ndi_bw")
+                    .width(ui.available_width())
+                    .selected_text(format!("{:?}", direction))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(direction, RadarDirection::Horizontal, "Horizontal");
+                        ui.selectable_value(direction, RadarDirection::Vertical, "Vertical");
+                    });
+            });
+            ui.end_row();
+        }
     });
-    cfg.width != old_w || cfg.height != old_h
+    cfg.width != old_w || cfg.height != old_h || cfg.pattern != old_pattern
 }
 
 fn color_format_label(cf: grafton_ndi::ReceiverColorFormat) -> String {

@@ -248,7 +248,7 @@ impl SourceRegistry {
         let letter = (b'A' + (self.next_test as u8 - 1) % 26) as char;
         let id = format!("Test {letter}");
         let cfg = config.unwrap_or_default();
-        let src = test::TestSource::spawn(id.clone(), self.next_test, &cfg);
+            let src = test::TestSource::spawn(id.clone(), &cfg);
         self.sources
             .insert(id.clone(), SourceKind::Test(src, cfg));
         id
@@ -330,8 +330,7 @@ impl SourceRegistry {
     /// Restart a test source with its current config.
     pub fn restart_test(&mut self, id: &str) {
         if let Some(SourceKind::Test(_, cfg)) = self.sources.remove(id) {
-            let variant = 0;
-            let src = test::TestSource::spawn(id.to_string(), variant, &cfg);
+            let src = test::TestSource::spawn(id.to_string(), &cfg);
             self.sources.insert(id.to_string(), SourceKind::Test(src, cfg));
         }
     }

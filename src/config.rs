@@ -295,7 +295,11 @@ mod tests {
             TextureMode::Fit,
             false, false,
         );
-        source.config = SourceConfig::Test(TestSourceConfig { width: 1920, height: 1080 });
+        source.config = SourceConfig::Test(TestSourceConfig { 
+            width: 1920, 
+            height: 1080,
+            ..Default::default() 
+        });
         let json = serde_json::to_string(&source).unwrap();
         let parsed: Source = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.protocol, Protocol::Test);
