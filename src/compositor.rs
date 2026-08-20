@@ -102,7 +102,6 @@ fn uyvy_to_rgb(sample: vec4<f32>, x: f32, mode: u32) -> vec3<f32> {
 pub struct Shared {
     pub pipeline: wgpu::RenderPipeline,
     pub placeholder_bg: Arc<wgpu::BindGroup>,
-    pub border_bg: Arc<wgpu::BindGroup>,
     pub vb: wgpu::Buffer,
     pub ib: wgpu::Buffer,
 }
@@ -129,6 +128,8 @@ pub struct Compositor {
     canvas_pipeline: wgpu::RenderPipeline,
     canvas_w: u32,
     canvas_h: u32,
+    border_bg: Arc<wgpu::BindGroup>,
+    border_color: [u8; 4],
 }
 
 pub struct Draw {
@@ -243,13 +244,16 @@ impl Compositor {
         queue.write_buffer(&ib, 0, bytemuck::cast_slice(&indices));
 
         let placeholder_bg = Arc::new(placeholder(device, queue, &bind_layout, &sampler));
+
+        let border_color = [180, 180, 180, 255];
         let border_bg = Arc::new(solid_bind_group(
             device,
             queue,
             &bind_layout,
             &sampler,
-            [180, 180, 180, 255],
+            border_color,
         ));
+
 
         let canvas_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("compositor-canvas"),
@@ -292,7 +296,6 @@ impl Compositor {
             shared: Arc::new(Shared {
                 pipeline,
                 placeholder_bg,
-                border_bg,
                 vb,
                 ib,
             }),
@@ -305,6 +308,8 @@ impl Compositor {
             canvas_pipeline,
             canvas_w: 0,
             canvas_h: 0,
+            border_bg,
+            border_color,
         }
     }
 
@@ -321,6 +326,17 @@ impl Compositor {
         let (scale, offset_x, offset_y) = transform;
         let cx = panel_rect.x + offset_x;
         let cy = panel_rect.y + offset_y;
+
+        if self.border_color != canvas.border_color {
+            self.border_color = canvas.border_color;
+            self.border_bg = Arc::new(solid_bind_group(
+                &device,
+                &queue,
+                &self.bind_layout,
+                &self.sampler,
+                self.border_color,
+            ));
+        }
 
         let mut seen: HashMap<&str, Option<(Arc<wgpu::BindGroup>, f32, bool, bool)>> =
             HashMap::new();
@@ -430,9 +446,9 @@ impl Compositor {
                 SourceBorderVisibility::Inherit => global_borders == BorderVisibility::Show,
             };
             if border_visible {
-                const BORDER_PX: f32 = 1.0;
-                let dx = 2.0 * BORDER_PX / panel_rect.width();
-                let dy = 2.0 * BORDER_PX / panel_rect.height();
+                let border_px = canvas.border_width;
+                let dx = 2.0 * border_px / panel_rect.width();
+                let dy = 2.0 * border_px / panel_rect.height();
 
                 // Top edge (inside source bounds).
                 verts.extend_from_slice(&[
@@ -453,7 +469,7 @@ impl Compositor {
                         uv: [0.0, 1.0],
                     },
                 ]);
-                draws.push((first_index, self.shared.border_bg.clone()));
+                draws.push((first_index, self.border_bg.clone()));
                 first_index += 6;
 
                 // Bottom edge (inside source bounds).
@@ -475,7 +491,7 @@ impl Compositor {
                         uv: [0.0, 1.0],
                     },
                 ]);
-                draws.push((first_index, self.shared.border_bg.clone()));
+                draws.push((first_index, self.border_bg.clone()));
                 first_index += 6;
 
                 // Left edge (inside source bounds).
@@ -497,7 +513,7 @@ impl Compositor {
                         uv: [0.0, 1.0],
                     },
                 ]);
-                draws.push((first_index, self.shared.border_bg.clone()));
+                draws.push((first_index, self.border_bg.clone()));
                 first_index += 6;
 
                 // Right edge (inside source bounds).
@@ -519,7 +535,7 @@ impl Compositor {
                         uv: [0.0, 1.0],
                     },
                 ]);
-                draws.push((first_index, self.shared.border_bg.clone()));
+                draws.push((first_index, self.border_bg.clone()));
                 first_index += 6;
             }
         }

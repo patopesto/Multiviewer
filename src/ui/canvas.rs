@@ -214,6 +214,7 @@ fn draw_overlays(
     let cw = canvas.width as f32 * scale;
     let ch = canvas.height as f32 * scale;
 
+    // Canvas borders
     painter.rect_stroke(
         egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(cw, ch)),
         0.0,
@@ -224,6 +225,7 @@ fn draw_overlays(
         egui::StrokeKind::Inside,
     );
 
+    // Selected source borders
     let selected_uuid = match &engine.selected_layer_id {
         Some(uuid) => uuid,
         None => return,
@@ -239,7 +241,7 @@ fn draw_overlays(
     painter.rect_stroke(
         egui::Rect::from_min_size(egui::pos2(lx, ly), egui::vec2(lw, lh)),
         0.0,
-        egui::Stroke::new(2.0_f32, egui::Color32::YELLOW),
+        egui::Stroke::new(canvas.border_width, egui::Color32::YELLOW),
         egui::StrokeKind::Inside,
     );
 

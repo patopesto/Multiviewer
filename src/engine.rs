@@ -13,7 +13,7 @@ use crate::sources::syphon::Discovery as SyphonDiscovery;
 use crate::sources::syphon::SyphonOutputConfig;
 
 pub const MIN_ZOOM: f32 = 0.1;
-pub const MAX_ZOOM: f32 = 10.0;
+pub const MAX_ZOOM: f32 = 20.0;
 pub const SNAP_THRESHOLD: f32 = 2.0;
 pub const SNAP_BREAK_THRESHOLD: f32 = 2.0;
 
@@ -1024,6 +1024,7 @@ mod tests {
             sources: vec![],
             outputs: Vec::new(),
             border_visibility: Default::default(),
+            ..Default::default()
         });
         let panel = Rect {
             x: 0.0,
@@ -1047,6 +1048,7 @@ mod tests {
             sources: vec![],
             outputs: Vec::new(),
             border_visibility: Default::default(),
+            ..Default::default()
         });
         let panel = Rect {
             x: 0.0,
@@ -1070,8 +1072,10 @@ mod tests {
             sources: vec![],
             outputs: Vec::new(),
             border_visibility: Default::default(),
+            ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
+
             "L1".into(),
             Protocol::Test,
             None,
@@ -1120,8 +1124,10 @@ mod tests {
             sources: vec![],
             outputs: Vec::new(),
             border_visibility: Default::default(),
+            ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
+
             "L1".into(),
             Protocol::Test,
             None,
@@ -1189,8 +1195,10 @@ mod tests {
             sources: vec![],
             outputs: Vec::new(),
             border_visibility: Default::default(),
+            ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
+
             "L1".into(),
             Protocol::Test,
             None,
@@ -1226,8 +1234,10 @@ mod tests {
             sources: vec![],
             outputs: Vec::new(),
             border_visibility: Default::default(),
+            ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
+
             "L1".into(),
             Protocol::Test,
             None,
@@ -1277,8 +1287,10 @@ mod tests {
             sources: vec![],
             outputs: Vec::new(),
             border_visibility: Default::default(),
+            ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
+
             "L1".into(),
             Protocol::Test,
             None,

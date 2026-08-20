@@ -84,6 +84,33 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 });
         });
         ui.end_row();
+
+        ui.label("Border Color");
+        settings_value(ui, |ui| {
+            let mut color_f32 = [
+                engine.cfg.canvas.border_color[0] as f32 / 255.0,
+                engine.cfg.canvas.border_color[1] as f32 / 255.0,
+                engine.cfg.canvas.border_color[2] as f32 / 255.0,
+            ];
+            if ui.color_edit_button_rgb(&mut color_f32).changed() {
+                engine.cfg.canvas.border_color = [
+                    (color_f32[0] * 255.0) as u8,
+                    (color_f32[1] * 255.0) as u8,
+                    (color_f32[2] * 255.0) as u8,
+                    255, // lock alpha for now, until we figure out blending modes on the canvas
+                ];
+                engine.dirty = true;
+            }
+        });
+        ui.end_row();
+
+        ui.label("Border Size");
+        settings_value(ui, |ui| {
+            if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.border_width).range(0.0..=100.0)).changed() {
+                engine.dirty = true;
+            }
+        });
+        ui.end_row();
     });
 
     collapsable_section(ui, "Output", false, |ui| {

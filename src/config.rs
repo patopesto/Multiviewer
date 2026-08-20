@@ -43,6 +43,8 @@ pub struct Canvas {
     pub height: u32,
     #[serde(default)]
     pub border_visibility: BorderVisibility,
+    pub border_color: [u8; 4],
+    pub border_width: f32,
     pub sources: Vec<Source>,
     #[serde(default)]
     pub outputs: Vec<Output>,
@@ -54,6 +56,8 @@ impl Default for Canvas {
             width: 1920,
             height: 1080,
             border_visibility: BorderVisibility::default(),
+            border_color: [180, 180, 180, 255],
+            border_width: 1.0,
             sources: Vec::new(),
             outputs: Vec::new(),
         }
