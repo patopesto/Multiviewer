@@ -1,8 +1,9 @@
 use super::super::{ConvUniform, Frame, PixelFormat, SourceStats, VideoSource};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SyphonSourceConfig {}
 
 impl Default for SyphonSourceConfig {

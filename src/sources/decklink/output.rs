@@ -11,8 +11,8 @@ use multiviewer_decklink::{
     decklink_output_start, decklink_output_stop, DisplayMode,
 };
 
-use crate::config::Protocol;
-use crate::sources::output::{OutputId, OutputStats, VideoOutput};
+use super::super::Protocol;
+use super::super::output::{OutputId, OutputStats, VideoOutput};
 
 const SCALE_SHADER: &str = r#"
 struct VertexOutput {

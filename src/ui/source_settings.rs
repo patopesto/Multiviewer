@@ -1,4 +1,4 @@
-use crate::sources::{DecklinkConfig, NdiSourceConfig, SourceKind, TestConfig};
+use crate::sources::{DecklinkSourceConfig, NdiSourceConfig, SourceKind, TestSourceConfig};
 use crate::sources::decklink::VideoConnection;
 use crate::ui::side_panel::{settings_grid, settings_value};
 
@@ -15,7 +15,7 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
     }
 }
 
-fn test_settings_ui(cfg: &mut TestConfig, ui: &mut egui::Ui) -> bool {
+fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
     let old_w = cfg.width;
     let old_h = cfg.height;
     settings_grid(ui, "test_settings_grid", |ui| {
@@ -96,7 +96,7 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
     cfg.bandwidth != old_bw || cfg.color_format != old_cf
 }
 
-fn decklink_settings_ui(cfg: &mut DecklinkConfig, ui: &mut egui::Ui) -> bool {
+fn decklink_settings_ui(cfg: &mut DecklinkSourceConfig, ui: &mut egui::Ui) -> bool {
     let old_conn = cfg.connection;
 
     let available: Vec<VideoConnection> = if cfg.supported_connections.is_empty() {

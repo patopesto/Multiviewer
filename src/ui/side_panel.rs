@@ -1,7 +1,7 @@
-use crate::config::{BorderVisibility, OutputConfig, SourceBorderVisibility, Protocol, TextureMode};
+use crate::config::{BorderVisibility, SourceBorderVisibility, TextureMode};
 use crate::sources::decklink::DisplayMode;
 use crate::engine::Engine;
-use crate::sources::SourceStats;
+use crate::sources::{Protocol, SourceConfig, SourceStats, OutputConfig};
 use egui::{Align, Grid, InnerResponse, Layout, ScrollArea, Ui};
 
 pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
@@ -110,40 +110,17 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     if ui.checkbox(&mut enabled, "Enable").changed() {
                         if enabled {
                             if let Some(id) = registry_id {
-                                if let Some(out) = engine.output_registry.get_mut(&id) {
-                                    out.set_enabled(true);
-                                }
-                                if let Some(idx) = syphon_index {
-                                    engine.cfg.canvas.outputs[idx].enabled = true;
-                                }
+                                engine.set_output_enabled(&id, true);
                             } else {
-                                let uuid = uuid::Uuid::new_v4().to_string();
                                 let name = "Syphon Output".to_string();
                                 let syphon_config = crate::sources::SyphonOutputConfig {
                                     server_name: name.clone(),
                                 };
-                                engine.output_registry.add_syphon(uuid.clone(), name.clone(), syphon_config.clone(), true);
-                                engine
-                                    .cfg
-                                    .canvas
-                                    .outputs
-                                    .push(crate::config::Output::new_v4(
-                                        name,
-                                        Protocol::Syphon,
-                                        true,
-                                        crate::config::OutputConfig::Syphon(syphon_config),
-                                    ));
-                                if let Some(last) = engine.cfg.canvas.outputs.last_mut() {
-                                    last.uuid = uuid;
-                                }
+                                engine.add_output(Protocol::Syphon, name, OutputConfig::Syphon(syphon_config));
                             }
                         } else if let Some(id) = registry_id {
-                            engine.output_registry.remove(&id);
-                            if let Some(idx) = syphon_index {
-                                engine.cfg.canvas.outputs.remove(idx);
-                            }
+                            engine.remove_output(&id);
                         }
-                        engine.dirty = true;
                     }
                 });
                 ui.end_row();
@@ -169,45 +146,17 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 if ui.checkbox(&mut enabled, "Enable").changed() {
                     if enabled {
                         if let Some(id) = registry_id {
-                            if let Some(out) = engine.output_registry.get_mut(&id) {
-                                out.set_enabled(true);
-                            }
-                            if let Some(idx) = ndi_index {
-                                engine.cfg.canvas.outputs[idx].enabled = true;
-                            }
+                            engine.set_output_enabled(&id, true);
                         } else {
-                            let uuid = uuid::Uuid::new_v4().to_string();
                             let name = "NDI Output".to_string();
                             let ndi_config = crate::sources::NdiOutputConfig {
                                 sender_name: "Multiviewer".to_string(),
                             };
-                            engine.output_registry.add_ndi(
-                                uuid.clone(),
-                                name.clone(),
-                                ndi_config.clone(),
-                                true,
-                            );
-                            engine
-                                .cfg
-                                .canvas
-                                .outputs
-                                .push(crate::config::Output::new_v4(
-                                    name,
-                                    Protocol::Ndi,
-                                    true,
-                                    crate::config::OutputConfig::Ndi(ndi_config),
-                                ));
-                            if let Some(last) = engine.cfg.canvas.outputs.last_mut() {
-                                last.uuid = uuid;
-                            }
+                            engine.add_output(Protocol::Ndi, name, OutputConfig::Ndi(ndi_config));
                         }
                     } else if let Some(id) = registry_id {
-                        engine.output_registry.remove(&id);
-                        if let Some(idx) = ndi_index {
-                            engine.cfg.canvas.outputs.remove(idx);
-                        }
+                        engine.remove_output(&id);
                     }
-                    engine.dirty = true;
                 }
             });
             ui.end_row();
@@ -231,44 +180,16 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
 
                 if ui.checkbox(&mut enabled, "Enable").changed() {
                     if enabled {
-                        if let Some(ref id) = registry_id {
-                            if let Some(out) = engine.output_registry.get_mut(id) {
-                                out.set_enabled(true);
-                            }
-                            if let Some(idx) = decklink_index {
-                                engine.cfg.canvas.outputs[idx].enabled = true;
-                            }
+                        if let Some(id) = registry_id {
+                            engine.set_output_enabled(&id, true);
                         } else {
-                            let uuid = uuid::Uuid::new_v4().to_string();
                             let name = "DeckLink Output".to_string();
                             let decklink_config = crate::sources::DecklinkOutputConfig::default();
-                            engine.output_registry.add_decklink(
-                                uuid.clone(),
-                                name.clone(),
-                                decklink_config.clone(),
-                                true,
-                            );
-                            engine
-                                .cfg
-                                .canvas
-                                .outputs
-                                .push(crate::config::Output::new_v4(
-                                    name,
-                                    Protocol::Decklink,
-                                    true,
-                                    crate::config::OutputConfig::Decklink(decklink_config),
-                                ));
-                            if let Some(last) = engine.cfg.canvas.outputs.last_mut() {
-                                last.uuid = uuid;
-                            }
+                            engine.add_output(Protocol::Decklink, name, OutputConfig::Decklink(decklink_config));
                         }
-                    } else if let Some(ref id) = registry_id {
-                        engine.output_registry.remove(id);
-                        if let Some(idx) = decklink_index {
-                            engine.cfg.canvas.outputs.remove(idx);
-                        }
+                    } else if let Some(id) = registry_id {
+                        engine.remove_output(&id);
                     }
-                    engine.dirty = true;
                 }
             });
             ui.end_row();
@@ -366,25 +287,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
 
     if let Some(idx) = decklink_restart_idx {
         let id = engine.cfg.canvas.outputs[idx].uuid.clone();
-        engine.output_registry.remove(&id);
-        let (device, cfg) = if let OutputConfig::Decklink(c) =
-            &engine.cfg.canvas.outputs[idx].config
-        {
-            (
-                if c.device_name.is_empty() {
-                    engine.cfg.canvas.outputs[idx].name.clone()
-                } else {
-                    c.device_name.clone()
-                },
-                c.clone(),
-            )
-        } else {
-            (
-                engine.cfg.canvas.outputs[idx].name.clone(),
-                crate::sources::DecklinkOutputConfig::default(),
-            )
-        };
-        engine.output_registry.add_decklink(id, device, cfg, true);
+        engine.restart_output(&id);
     }
 }
 
@@ -514,15 +417,20 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
 
 fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, selected_uuid: &str) {
     let mut new_test_source = false;
-    let mut new_ndi_connect: Option<String> = None;
-    let mut new_decklink_connect: Option<String> = None;
-    let mut new_syphon_connect: Option<String> = None;
+    let mut new_connect: Option<(Protocol, String)> = None;
     let mut selected_source: Option<String> = None;
     let mut protocol_changed = false;
-    let mut ndi_restart_sid: Option<String> = None;
-    let mut decklink_restart_sid: Option<String> = None;
-    #[cfg(target_os = "macos")]
-    let mut syphon_restart_sid: Option<String> = None;
+    let mut restart_sid: Option<String> = None;
+    let mut config_sync: Option<(String, SourceConfig)> = None;
+
+    // Extract source_id early to avoid borrow issues
+    let source_id_for_sync = engine
+        .cfg
+        .canvas
+        .sources
+        .iter()
+        .find(|l| l.uuid == selected_uuid)
+        .and_then(|s| s.source_id.clone());
 
     if let Some(source) = engine
         .cfg
@@ -590,7 +498,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         Protocol::Test => {
                             let test_ids: Vec<String> = engine
                                 .registry
-                                .list_test_sources()
+                                .list_sources(Protocol::Test)
                                 .into_iter()
                                 .map(|(id, _)| id.clone())
                                 .collect();
@@ -614,7 +522,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         Protocol::Ndi => {
                             let ndi_ids: Vec<String> = engine
                                 .registry
-                                .list_ndi_sources()
+                                .list_sources(Protocol::Ndi)
                                 .into_iter()
                                 .map(|(id, _)| id.clone())
                                 .collect();
@@ -644,7 +552,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                                 )
                                                 .clicked()
                                             {
-                                                new_ndi_connect = Some(name.clone());
+                                                new_connect = Some((Protocol::Ndi, name.clone()));
                                                 selected_source = Some(name.clone());
                                             }
                                         }
@@ -657,7 +565,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         Protocol::Decklink => {
                             let decklink_ids: Vec<String> = engine
                                 .registry
-                                .list_decklink_sources()
+                                .list_sources(Protocol::Decklink)
                                 .into_iter()
                                 .map(|(id, _)| id.clone())
                                 .collect();
@@ -685,7 +593,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         if !decklink_ids.iter().any(|id| id == name) {
                                             if ui.selectable_label(current == name, name).clicked()
                                             {
-                                                new_decklink_connect = Some(name.clone());
+                                                new_connect = Some((Protocol::Decklink, name.clone()));
                                                 selected_source = Some(name.clone());
                                             }
                                         }
@@ -699,7 +607,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         Protocol::Syphon => {
                             let syphon_ids: Vec<String> = engine
                                 .registry
-                                .list_syphon_sources()
+                                .list_sources(Protocol::Syphon)
                                 .into_iter()
                                 .map(|(id, _)| id.clone())
                                 .collect();
@@ -721,7 +629,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         if !syphon_ids.iter().any(|id| id == name) {
                                             if ui.selectable_label(current == name, name).clicked()
                                             {
-                                                new_syphon_connect = Some(name.clone());
+                                                new_connect = Some((Protocol::Syphon, name.clone()));
                                                 selected_source = Some(name.clone());
                                             }
                                         }
@@ -855,26 +763,21 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
             engine.dirty = true;
         }
         if new_test_source {
-            source.source_id = Some(engine.registry.add_test());
+            source.source_id = Some(engine.registry.add_test(None));
             engine.dirty = true;
         }
 
         // Source-specific settings and stats
+        let mut config_changed = false;
+        let mut new_config = None;
         if let Some(ref sid) = source.source_id {
             if let Some(source) = engine.registry.get_mut(sid) {
                 ui.separator();
                 collapsable_section(ui, "Protocol Settings", true, |ui| {
                     if super::source_settings::render_source_settings(source, ui) {
-                        // Config changed — NDI/DeckLink/Syphon need restart
-                        if source.protocol() == Protocol::Decklink {
-                            decklink_restart_sid = Some(sid.clone());
-                        } else if source.protocol() != Protocol::Test {
-                            ndi_restart_sid = Some(sid.clone());
-                        }
-                        #[cfg(target_os = "macos")]
-                        if source.protocol() == Protocol::Syphon {
-                            syphon_restart_sid = Some(sid.clone());
-                        }
+                        config_changed = true;
+                        new_config = Some(source.to_config());
+                        restart_sid = Some(sid.clone());
                     }
                 });
 
@@ -886,33 +789,32 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 });
             }
         }
+
+        // Store config sync data for later (outside the borrow)
+        if config_changed && let Some(cfg) = new_config && let Some(sid) = source_id_for_sync.clone() {
+            config_sync = Some((sid, cfg));
+        }
     }
 
-    if let Some(name) = new_ndi_connect {
-        engine.connect_ndi(&name);
-    }
-    if let Some(name) = new_decklink_connect {
-        engine.connect_decklink(&name);
-    }
-    #[cfg(target_os = "macos")]
-    if let Some(name) = new_syphon_connect {
-        engine.connect_syphon(&name);
+    if let Some((protocol, name)) = new_connect {
+        engine.connect(protocol, &name);
     }
 
-    // Restart NDI source if its config changed
-    if let Some(sid) = ndi_restart_sid {
-        engine.registry.restart_ndi(&sid);
+    // Sync runtime config back to persisted config
+    if let Some((sid, cfg)) = config_sync {
+        if let Some(cfg_source) = engine.cfg.canvas.sources.iter_mut().find(|s| s.source_id.as_deref() == Some(sid.as_str())) {
+            cfg_source.config = cfg;
+        }
+        engine.dirty = true;
     }
-    if let Some(sid) = decklink_restart_sid {
-        engine.registry.restart_decklink(&sid);
-    }
-    #[cfg(target_os = "macos")]
-    if let Some(sid) = syphon_restart_sid {
-        engine.registry.restart_syphon(&sid);
+
+    // Restart sources if their config changed
+    if let Some(sid) = restart_sid {
+        engine.registry.restart(&sid);
     }
 }
 
-pub fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
+fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
     settings_grid(ui, "source_stats_grid", |ui| {
         ui.label("Resolution");
         settings_value(ui, |ui| {

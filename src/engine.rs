@@ -1,9 +1,8 @@
 use std::sync::Arc;
 
 use crate::compositor::{self, Compositor, Draw, Rect};
-use crate::config::{Config, Source, Protocol, TextureMode, OutputConfig};
-use crate::sources::SourceRegistry;
-use crate::sources::OutputRegistry;
+use crate::config::{Config, Source, TextureMode};
+use crate::sources::{Protocol, SourceConfig, OutputConfig, SourceRegistry, OutputRegistry};
 use crate::sources::decklink::Discovery as DecklinkDiscovery;
 use crate::sources::decklink::DecklinkOutputConfig;
 use crate::sources::ndi::Discovery as NdiDiscovery;
@@ -126,7 +125,11 @@ impl Engine {
                 dirty = true;
             }
             if source.protocol == Protocol::Test {
-                let sid = registry.add_test();
+                let test_config = match &source.config {
+                    SourceConfig::Test(c) => Some(c.clone()),
+                    _ => None,
+                };
+                let sid = registry.add_test(test_config);
                 source.source_id = Some(sid);
                 dirty = true;
             }
@@ -138,7 +141,7 @@ impl Engine {
             let w = cfg.canvas.width as f32;
             let h = cfg.canvas.height as f32;
             for i in 0..2 {
-                let sid = registry.add_test();
+                let sid = registry.add_test(None);
                 let col = i % 2;
                 let row = i / 2;
                 cfg.canvas.sources.push(Source::new_v4(
@@ -237,7 +240,11 @@ impl Engine {
                     if let Some(ref name) = source.source_id {
                         if self.registry.get(name).is_none() {
                             if let Some(src) = discovered.iter().find(|s| &s.name == name) {
-                                self.registry.add_ndi(name.clone(), src.clone());
+                                let ndi_config = match &source.config {
+                                    SourceConfig::Ndi(c) => Some(c.clone()),
+                                    _ => None,
+                                };
+                                self.registry.add_ndi(name.clone(), src.clone(), ndi_config);
                                 self.dirty = true;
                             }
                         }
@@ -254,10 +261,15 @@ impl Engine {
                     if let Some(ref name) = source.source_id {
                         if self.registry.get(name).is_none() {
                             if let Some(port) = discovered.iter().find(|p| &p.name == name) {
+                                let decklink_config = match &source.config {
+                                    SourceConfig::Decklink(c) => Some(c.clone()),
+                                    _ => None,
+                                };
                                 self.registry.add_decklink(
                                     name.clone(),
                                     name.clone(),
                                     Some(port.connections),
+                                    decklink_config,
                                 );
                                 self.dirty = true;
                             }
@@ -277,7 +289,11 @@ impl Engine {
                         if let Some(ref name) = source.source_id {
                             if self.registry.get(name).is_none() {
                                 if discovered.iter().any(|s| s == name) {
-                                    self.registry.add_syphon(name.clone(), name.clone());
+                                    let syphon_config = match &source.config {
+                                        SourceConfig::Syphon(c) => Some(c.clone()),
+                                        _ => None,
+                                    };
+                                    self.registry.add_syphon(name.clone(), name.clone(), syphon_config);
                                     self.dirty = true;
                                 }
                             }
@@ -343,11 +359,182 @@ impl Engine {
         }
     }
 
+    pub fn shared(&self) -> Option<std::sync::Arc<crate::compositor::Shared>> {
+        self.comp.as_ref().map(|c| c.shared.clone())
+    }
+
+    pub fn save_if_dirty(&mut self) {
+        if self.dirty {
+            self.cfg.save();
+            self.dirty = false;
+        }
+    }
+
+    pub fn cleanup_orphaned_sources(&mut self) {
+        let active_ids: Vec<&str> = self
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .filter_map(|l| l.source_id.as_deref())
+            .collect();
+        self.registry.cleanup_orphaned_sources(&active_ids);
+    }
+
+    pub fn add_layer(&mut self) -> String {
+        let sid = self.registry.add_test(None);
+        let num = self.cfg.canvas.sources.len() + 1;
+        let source = Source::new_v4(
+            format!("Source {num}"),
+            Protocol::Test,
+            Some(sid),
+            self.cfg.canvas.width as f32 * 0.25,
+            self.cfg.canvas.height as f32 * 0.25,
+            self.cfg.canvas.width / 2,
+            self.cfg.canvas.height / 2,
+            self.cfg.canvas.sources.len() as i32,
+            TextureMode::Fit,
+            false,
+            false,
+        );
+        let uuid = source.uuid.clone();
+        self.cfg.canvas.sources.push(source);
+        self.dirty = true;
+        uuid
+    }
+
+    pub fn remove_layer(&mut self, uuid: &str) {
+        self.cfg.canvas.sources.retain(|l| l.uuid != uuid);
+        if self.selected_layer_id.as_deref() == Some(uuid) {
+            self.selected_layer_id = None;
+        }
+        self.dirty = true;
+    }
+
+    pub fn connect(&mut self, protocol: Protocol, name: &str) {
+        match protocol {
+            Protocol::Ndi => {
+                if let Some(ref ndi) = self.ndi {
+                    if let Some(src) = ndi.find_by_name(name) {
+                        let ndi_config = self.cfg.canvas.sources.iter()
+                            .find(|s| s.source_id.as_deref() == Some(name))
+                            .and_then(|s| match &s.config {
+                                SourceConfig::Ndi(c) => Some(c.clone()),
+                                _ => None,
+                            });
+                        self.registry.add_ndi(name.to_string(), src, ndi_config);
+                    }
+                }
+            }
+            Protocol::Decklink => {
+                let connections = self
+                    .decklink
+                    .as_ref()
+                    .and_then(|d| d.find_by_name(name))
+                    .map(|p| p.connections);
+                let decklink_config = self.cfg.canvas.sources.iter()
+                    .find(|s| s.source_id.as_deref() == Some(name))
+                    .and_then(|s| match &s.config {
+                        SourceConfig::Decklink(c) => Some(c.clone()),
+                        _ => None,
+                    });
+                self.registry
+                    .add_decklink(name.to_string(), name.to_string(), connections, decklink_config);
+            }
+            #[cfg(target_os = "macos")]
+            Protocol::Syphon => {
+                let syphon_config = self.cfg.canvas.sources.iter()
+                    .find(|s| s.source_id.as_deref() == Some(name))
+                    .and_then(|s| match &s.config {
+                        SourceConfig::Syphon(c) => Some(c.clone()),
+                        _ => None,
+                    });
+                self.registry.add_syphon(name.to_string(), name.to_string(), syphon_config);
+            }
+            #[cfg(not(target_os = "macos"))]
+            Protocol::Syphon => {}
+            Protocol::Test => {}
+        }
+    }
+
+    pub fn add_output(&mut self, protocol: Protocol, name: String, config: OutputConfig) -> String {
+        let output = crate::config::Output::new_v4(name.clone(), protocol, true, config.clone());
+        let id = output.uuid.clone();
+        self.cfg.canvas.outputs.push(output);
+
+        match (protocol, config) {
+            (Protocol::Ndi, OutputConfig::Ndi(c)) => {
+                let output_name = if c.sender_name.is_empty() { name } else { c.sender_name.clone() };
+                self.output_registry.add_ndi(id.clone(), output_name, c, true);
+            }
+            (Protocol::Decklink, OutputConfig::Decklink(c)) => {
+                let output_name = if c.device_name.is_empty() { name } else { c.device_name.clone() };
+                self.output_registry.add_decklink(id.clone(), output_name, c, true);
+            }
+            #[cfg(target_os = "macos")]
+            (Protocol::Syphon, OutputConfig::Syphon(c)) => {
+                let output_name = if c.server_name.is_empty() { name } else { c.server_name.clone() };
+                self.output_registry.add_syphon(id.clone(), output_name, c, true);
+            }
+            _ => {}
+        }
+
+        self.dirty = true;
+        id
+    }
+
+    pub fn remove_output(&mut self, uuid: &str) {
+        self.output_registry.remove(&uuid.to_string());
+        self.cfg.canvas.outputs.retain(|o| o.uuid != uuid);
+        self.dirty = true;
+    }
+
+    pub fn set_output_enabled(&mut self, uuid: &str, enabled: bool) {
+        if let Some(output) = self.cfg.canvas.outputs.iter_mut().find(|o| o.uuid == uuid) {
+            output.enabled = enabled;
+        }
+        if let Some(out) = self.output_registry.get_mut(&uuid.to_string()) {
+            out.set_enabled(enabled);
+        }
+        self.dirty = true;
+    }
+
     #[allow(dead_code)]
     pub fn outputs_enabled(&self) -> bool {
         self.output_registry.any_enabled()
     }
 
+    pub fn restart_output(&mut self, uuid: &str) {
+        let output = match self.cfg.canvas.outputs.iter().find(|o| o.uuid == uuid) {
+            Some(o) => o.clone(),
+            None => return,
+        };
+
+        self.output_registry.remove(&uuid.to_string());
+
+        match (&output.protocol, &output.config) {
+            (Protocol::Ndi, OutputConfig::Ndi(c)) => {
+                let name = if c.sender_name.is_empty() { output.name.clone() } else { c.sender_name.clone() };
+                self.output_registry.add_ndi(uuid.to_string(), name, c.clone(), output.enabled);
+            }
+            (Protocol::Decklink, OutputConfig::Decklink(c)) => {
+                let name = if c.device_name.is_empty() { output.name.clone() } else { c.device_name.clone() };
+                self.output_registry.add_decklink(uuid.to_string(), name, c.clone(), output.enabled);
+            }
+            #[cfg(target_os = "macos")]
+            (Protocol::Syphon, OutputConfig::Syphon(c)) => {
+                let name = if c.server_name.is_empty() { output.name.clone() } else { c.server_name.clone() };
+                self.output_registry.add_syphon(uuid.to_string(), name, c.clone(), output.enabled);
+            }
+            _ => {}
+        }
+
+        self.dirty = true;
+    }
+}
+
+// UI/canvas engine methods
+impl Engine {
     pub fn display_transform(&self, panel_rect: &Rect) -> (f32, f32, f32) {
         let (base_scale, base_ox, base_oy) =
             compositor::canvas_transform(&self.cfg.canvas, panel_rect);
@@ -380,30 +567,19 @@ impl Engine {
         self.view.pan.y = panel_rect.height() / 2.0 - base_oy - cy * display_scale;
     }
 
-    pub fn shared(&self) -> Option<std::sync::Arc<crate::compositor::Shared>> {
-        self.comp.as_ref().map(|c| c.shared.clone())
-    }
-
-    pub fn hit_test(&self, panel_rect: &Rect, pos: (f32, f32)) -> Option<String> {
-        let canvas = &self.cfg.canvas;
-        let (scale, offset_x, offset_y) = self.display_transform(panel_rect);
-        let cx = panel_rect.x + offset_x;
-        let cy = panel_rect.y + offset_y;
-
-        let mut sources: Vec<_> = canvas.sources.iter().collect();
-        sources.sort_by_key(|l| -l.z);
-
-        let (px, py) = pos;
-        for source in sources {
-            let lx = cx + source.x * scale;
-            let ly = cy + source.y * scale;
-            let lw = source.width as f32 * scale;
-            let lh = source.height as f32 * scale;
-            if px >= lx && px <= lx + lw && py >= ly && py <= ly + lh {
-                return Some(source.uuid.clone());
-            }
+    pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
+        let len = self.cfg.canvas.sources.len();
+        if from_index == to_index || from_index >= len || to_index >= len {
+            return;
         }
-        None
+        let source = self.cfg.canvas.sources.remove(from_index);
+        let insert_at = if to_index > from_index {
+            to_index
+        } else {
+            to_index
+        };
+        self.cfg.canvas.sources.insert(insert_at, source);
+        self.dirty = true;
     }
 
     pub fn drag_layer(&mut self, uuid: &str, delta: (f32, f32), panel_rect: &Rect) {
@@ -541,6 +717,28 @@ impl Engine {
             let dist = (curr - value).abs();
             if dist < break_threshold {
                 return Some(curr);
+            }
+        }
+        None
+    }
+
+    pub fn hit_test(&self, panel_rect: &Rect, pos: (f32, f32)) -> Option<String> {
+        let canvas = &self.cfg.canvas;
+        let (scale, offset_x, offset_y) = self.display_transform(panel_rect);
+        let cx = panel_rect.x + offset_x;
+        let cy = panel_rect.y + offset_y;
+
+        let mut sources: Vec<_> = canvas.sources.iter().collect();
+        sources.sort_by_key(|l| -l.z);
+
+        let (px, py) = pos;
+        for source in sources {
+            let lx = cx + source.x * scale;
+            let ly = cy + source.y * scale;
+            let lw = source.width as f32 * scale;
+            let lh = source.height as f32 * scale;
+            if px >= lx && px <= lx + lw && py >= ly && py <= ly + lh {
+                return Some(source.uuid.clone());
             }
         }
         None
@@ -788,92 +986,6 @@ impl Engine {
             };
             self.dirty = true;
         }
-    }
-
-    pub fn save_if_dirty(&mut self) {
-        if self.dirty {
-            self.cfg.save();
-            self.dirty = false;
-        }
-    }
-
-    pub fn cleanup_orphaned_sources(&mut self) {
-        let active_ids: Vec<&str> = self
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .filter_map(|l| l.source_id.as_deref())
-            .collect();
-        self.registry.cleanup_orphaned_sources(&active_ids);
-    }
-
-    pub fn add_layer(&mut self) -> String {
-        let sid = self.registry.add_test();
-        let num = self.cfg.canvas.sources.len() + 1;
-        let source = Source::new_v4(
-            format!("Source {num}"),
-            Protocol::Test,
-            Some(sid),
-            self.cfg.canvas.width as f32 * 0.25,
-            self.cfg.canvas.height as f32 * 0.25,
-            self.cfg.canvas.width / 2,
-            self.cfg.canvas.height / 2,
-            self.cfg.canvas.sources.len() as i32,
-            TextureMode::Fit,
-            false,
-            false,
-        );
-        let uuid = source.uuid.clone();
-        self.cfg.canvas.sources.push(source);
-        self.dirty = true;
-        uuid
-    }
-
-    pub fn remove_layer(&mut self, uuid: &str) {
-        self.cfg.canvas.sources.retain(|l| l.uuid != uuid);
-        if self.selected_layer_id.as_deref() == Some(uuid) {
-            self.selected_layer_id = None;
-        }
-        self.dirty = true;
-    }
-
-    pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
-        let len = self.cfg.canvas.sources.len();
-        if from_index == to_index || from_index >= len || to_index >= len {
-            return;
-        }
-        let source = self.cfg.canvas.sources.remove(from_index);
-        let insert_at = if to_index > from_index {
-            to_index
-        } else {
-            to_index
-        };
-        self.cfg.canvas.sources.insert(insert_at, source);
-        self.dirty = true;
-    }
-
-    pub fn connect_ndi(&mut self, name: &str) {
-        if let Some(ref ndi) = self.ndi {
-            if let Some(src) = ndi.find_by_name(name) {
-                self.registry.add_ndi(name.to_string(), src);
-            }
-        }
-    }
-
-    pub fn connect_decklink(&mut self, name: &str) {
-        let connections = self
-            .decklink
-            .as_ref()
-            .and_then(|d| d.find_by_name(name))
-            .map(|p| p.connections);
-        self.registry
-            .add_decklink(name.to_string(), name.to_string(), connections);
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn connect_syphon(&mut self, name: &str) {
-        self.registry.add_syphon(name.to_string(), name.to_string());
     }
 }
 

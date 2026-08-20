@@ -1,57 +1,16 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use serde::{Serialize, Deserialize};
 
+use super::{Protocol, Frame};
 use super::decklink::{self, VideoConnections};
 use super::ndi;
 use super::test;
 #[cfg(target_os = "macos")]
 use super::syphon;
-use crate::config::Protocol;
 
 pub type SourceId = String;
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum PixelFormat {
-    Rgba8,
-    Bgra8,
-    /// Packed YUV 4:2:2 (UYVY), 2 bytes per pixel.
-    Uyvy422,
-}
-
-impl PixelFormat {
-    pub fn label(&self) -> &'static str {
-        match self {
-            PixelFormat::Rgba8 => "RGBA8",
-            PixelFormat::Bgra8 => "BGRA8",
-            PixelFormat::Uyvy422 => "UYVY",
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct CpuFrame {
-    pub data: Arc<Vec<u8>>,
-    pub w: u32,
-    pub h: u32,
-    pub fmt: PixelFormat,
-    /// Monotonic per-source counter; compositor uploads only when this changes.
-    pub seq: u64,
-}
-
-#[derive(Clone)]
-pub struct SyphonFrame {
-    pub bg: Arc<wgpu::BindGroup>,
-    pub w: u32,
-    pub h: u32,
-    pub seq: u64,
-}
-
-#[derive(Clone)]
-pub enum Frame {
-    Cpu(CpuFrame),
-    Syphon(SyphonFrame),
-}
 
 // Runtime video source
 pub trait VideoSource: Send + Sync {
@@ -59,6 +18,20 @@ pub trait VideoSource: Send + Sync {
     #[allow(dead_code)]
     fn name(&self) -> &str;
     fn stats(&self) -> Arc<Mutex<SourceStats>>;
+}
+
+/// Protocol-specific source configuration stored in the config file.
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+#[serde(tag = "protocol")]
+pub enum SourceConfig {
+    Test(test::TestSourceConfig),
+    Ndi(ndi::NdiSourceConfig),
+    #[cfg(target_os = "macos")]
+    Syphon(syphon::SyphonSourceConfig),
+    Decklink(decklink::DecklinkSourceConfig),
+    #[default]
+    #[serde(other)]
+    Unknown,
 }
 
 /// Uniform block consumed by the compositor's fragment shader.
@@ -73,11 +46,11 @@ pub struct ConvUniform {
 }
 
 pub enum SourceKind {
-    Test(test::TestSource, test::TestConfig),
+    Test(test::TestSource, test::TestSourceConfig),
     Ndi(ndi::NdiSource, ndi::NdiSourceConfig, grafton_ndi::Source),
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonSource, syphon::SyphonSourceConfig, String),
-    Decklink(decklink::DecklinkSource, decklink::DecklinkConfig, String),
+    Decklink(decklink::DecklinkSource, decklink::DecklinkSourceConfig, String),
 }
 
 impl SourceKind {
@@ -112,45 +85,6 @@ impl SourceKind {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn test_config_mut(&mut self) -> Option<&mut test::TestConfig> {
-        match self {
-            SourceKind::Test(_, cfg) => Some(cfg),
-            _ => None,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn ndi_config_mut(&mut self) -> Option<&mut ndi::source::NdiSourceConfig> {
-        match self {
-            SourceKind::Ndi(_, cfg, _) => Some(cfg),
-            _ => None,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn syphon_config_mut(&mut self) -> Option<&mut syphon::source::SyphonSourceConfig> {
-        #[cfg(target_os = "macos")]
-        {
-            match self {
-                SourceKind::Syphon(_, cfg, _) => Some(cfg),
-                _ => None,
-            }
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            None
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn decklink_config_mut(&mut self) -> Option<&mut decklink::source::DecklinkConfig> {
-        match self {
-            SourceKind::Decklink(_, cfg, _) => Some(cfg),
-            _ => None,
-        }
-    }
-
     pub fn protocol(&self) -> Protocol {
         match self {
             SourceKind::Test(_, _) => Protocol::Test,
@@ -158,6 +92,16 @@ impl SourceKind {
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(_, _, _) => Protocol::Syphon,
             SourceKind::Decklink(_, _, _) => Protocol::Decklink,
+        }
+    }
+
+    pub fn to_config(&self) -> SourceConfig {
+        match self {
+            SourceKind::Test(_, cfg) => SourceConfig::Test(cfg.clone()),
+            SourceKind::Ndi(_, cfg, _) => SourceConfig::Ndi(cfg.clone()),
+            #[cfg(target_os = "macos")]
+            SourceKind::Syphon(_, cfg, _) => SourceConfig::Syphon(cfg.clone()),
+            SourceKind::Decklink(_, cfg, _) => SourceConfig::Decklink(cfg.clone()),
         }
     }
 }
@@ -299,36 +243,37 @@ impl SourceRegistry {
     }
 
     /// Create a dedicated test source.
-    pub fn add_test(&mut self) -> SourceId {
+    pub fn add_test(&mut self, config: Option<test::TestSourceConfig>) -> SourceId {
         self.next_test += 1;
         let letter = (b'A' + (self.next_test as u8 - 1) % 26) as char;
         let id = format!("Test {letter}");
-        let src = test::TestSource::spawn(id.clone(), self.next_test);
+        let cfg = config.unwrap_or_default();
+        let src = test::TestSource::spawn(id.clone(), self.next_test, &cfg);
         self.sources
-            .insert(id.clone(), SourceKind::Test(src, test::TestConfig::default()));
+            .insert(id.clone(), SourceKind::Test(src, cfg));
         id
     }
 
-    pub fn add_ndi(&mut self, name: String, source: grafton_ndi::Source) -> SourceId {
+    pub fn add_ndi(&mut self, name: String, source: grafton_ndi::Source, config: Option<ndi::NdiSourceConfig>) -> SourceId {
         if self.sources.contains_key(&name) {
             return name;
         }
-        let cfg = ndi::source::NdiSourceConfig::default();
-        let src = ndi::source::NdiSource::spawn(name.clone(), source.clone(), &cfg);
+        let cfg = config.unwrap_or_default();
+        let src = ndi::NdiSource::spawn(name.clone(), source.clone(), &cfg);
         self.sources
             .insert(name.clone(), SourceKind::Ndi(src, cfg, source));
         name
     }
 
     #[cfg(target_os = "macos")]
-    pub fn add_syphon(&mut self, name: String, server_name: String) -> SourceId {
+    pub fn add_syphon(&mut self, name: String, server_name: String, _config: Option<syphon::SyphonSourceConfig>) -> SourceId {
         if self.sources.contains_key(&name) {
             return name;
         }
-        let src = syphon::source::SyphonSource::spawn(name.clone(), server_name);
+        let src = syphon::SyphonSource::spawn(name.clone(), server_name);
         self.sources.insert(
             name.clone(),
-            SourceKind::Syphon(src, syphon::source::SyphonSourceConfig::default(), name.clone()),
+            SourceKind::Syphon(src, syphon::SyphonSourceConfig::default(), name.clone()),
         );
         name
     }
@@ -338,12 +283,15 @@ impl SourceRegistry {
         name: String,
         display_name: String,
         supported_connections: Option<VideoConnections>,
+        config: Option<decklink::DecklinkSourceConfig>,
     ) -> SourceId {
         if self.sources.contains_key(&name) || self.pending_restarts.contains(&name) {
             return name;
         }
-        let cfg = decklink::source::DecklinkConfig::with_defaults(supported_connections.unwrap_or(VideoConnections::EMPTY));
-        let src = decklink::source::DecklinkSource::spawn(name.clone(), display_name, &cfg);
+        let supported = supported_connections.unwrap_or(VideoConnections::EMPTY);
+        let mut cfg = config.unwrap_or_default();
+        cfg.supported_connections = supported;
+        let src = decklink::DecklinkSource::spawn(name.clone(), display_name, &cfg);
         self.sources
             .insert(name.clone(), SourceKind::Decklink(src, cfg, name.clone()));
         name
@@ -367,6 +315,27 @@ impl SourceRegistry {
         self.sources.remove(id);
     }
 
+     pub fn restart(&mut self, id: &str) {
+        let protocol = self.sources.get(id).map(|s| s.protocol());
+        match protocol {
+            Some(Protocol::Test) => self.restart_test(id),
+            Some(Protocol::Ndi) => self.restart_ndi(id),
+            Some(Protocol::Decklink) => self.restart_decklink(id),
+            #[cfg(target_os = "macos")]
+            Some(Protocol::Syphon) => self.restart_syphon(id),
+            None => {}
+        }
+    }
+
+    /// Restart a test source with its current config.
+    pub fn restart_test(&mut self, id: &str) {
+        if let Some(SourceKind::Test(_, cfg)) = self.sources.remove(id) {
+            let variant = 0;
+            let src = test::TestSource::spawn(id.to_string(), variant, &cfg);
+            self.sources.insert(id.to_string(), SourceKind::Test(src, cfg));
+        }
+    }
+
     /// Restart an NDI source with its current config.
     pub fn restart_ndi(&mut self, name: &str) {
         if let Some(SourceKind::Ndi(_, cfg, source)) = self.sources.remove(name) {
@@ -376,7 +345,7 @@ impl SourceRegistry {
             std::thread::Builder::new()
                 .name(format!("ndi-restart-{id}"))
                 .spawn(move || {
-                    let new = ndi::source::NdiSource::spawn(id.clone(), source.clone(), &cfg);
+                    let new = ndi::NdiSource::spawn(id.clone(), source.clone(), &cfg);
                     let _ = tx.send(RestartResult {
                         id: id.clone(),
                         kind: SourceKind::Ndi(new, cfg, source),
@@ -396,7 +365,7 @@ impl SourceRegistry {
             std::thread::Builder::new()
                 .name(format!("syphon-restart-{id}"))
                 .spawn(move || {
-                    let new = syphon::source::SyphonSource::spawn(id.clone(), server);
+                    let new = syphon::SyphonSource::spawn(id.clone(), server);
                     let _ = tx.send(RestartResult {
                         id: id.clone(),
                         kind: SourceKind::Syphon(new, cfg, id),
@@ -407,8 +376,7 @@ impl SourceRegistry {
     }
 
     pub fn restart_decklink(&mut self, name: &str) {
-        if let Some(SourceKind::Decklink(old_source, cfg, display_name)) = self.sources.remove(name)
-        {
+        if let Some(SourceKind::Decklink(old_source, cfg, display_name)) = self.sources.remove(name) {
             self.pending_restarts.insert(name.to_string());
             let tx = self.restart_tx.clone();
             let id = name.to_string();
@@ -416,7 +384,7 @@ impl SourceRegistry {
                 .name(format!("decklink-restart-{id}"))
                 .spawn(move || {
                     drop(old_source);
-                    let new_source = decklink::source::DecklinkSource::spawn(id.clone(), display_name, &cfg);
+                    let new_source = decklink::DecklinkSource::spawn(id.clone(), display_name, &cfg);
                     let _ = tx.send(RestartResult {
                         id: id.clone(),
                         kind: SourceKind::Decklink(new_source, cfg, id),
@@ -433,7 +401,7 @@ impl SourceRegistry {
         }
     }
 
-    /// Remove all sources not referenced by any source.
+    /// Remove all sources not referenced anymore.
     pub fn cleanup_orphaned_sources(&mut self, active_source_ids: &[&str]) {
         let active: HashSet<&str> = active_source_ids.iter().copied().collect();
         let to_remove: Vec<String> = self
@@ -447,29 +415,10 @@ impl SourceRegistry {
         }
     }
 
-    pub fn list_test_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
-        self.sources.iter().filter(|(_, sk)| sk.protocol() == Protocol::Test).collect()
-    }
-
-    pub fn list_ndi_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
+    pub fn list_sources(&self, protocol: Protocol) -> Vec<(&SourceId, &SourceKind)> {
         self.sources
             .iter()
-            .filter(|(_, sk)| sk.protocol() == Protocol::Ndi)
-            .collect()
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn list_syphon_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
-        self.sources
-            .iter()
-            .filter(|(_, sk)| sk.protocol() == Protocol::Syphon)
-            .collect()
-    }
-
-    pub fn list_decklink_sources(&self) -> Vec<(&SourceId, &SourceKind)> {
-        self.sources
-            .iter()
-            .filter(|(_, sk)| sk.protocol() == Protocol::Decklink)
+            .filter(|(_, sk)| sk.protocol() == protocol)
             .collect()
     }
 }

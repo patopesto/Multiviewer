@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-use crate::sources::syphon::SyphonOutputConfig;
-use crate::sources::ndi::NdiOutputConfig;
-use crate::sources::decklink::DecklinkOutputConfig;
+use crate::sources::{Protocol, SourceConfig, OutputConfig};
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
@@ -81,6 +79,8 @@ pub struct Source {
     pub flip_v: bool,
     #[serde(default)]
     pub border_visibility: SourceBorderVisibility,
+    #[serde(default)]
+    pub config: SourceConfig,
 }
 
 impl Source {
@@ -111,6 +111,7 @@ impl Source {
             flip_h,
             flip_v,
             border_visibility: SourceBorderVisibility::default(),
+            config: SourceConfig::default(),
         }
     }
 }
@@ -139,41 +140,6 @@ impl Output {
             protocol,
             enabled,
             config,
-        }
-    }
-}
-
-/// Protocol-specific output configuration stored in the config file.
-/// New protocols (NDI, DeckLink, ...) add variants here.
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(tag = "protocol")]
-pub enum OutputConfig {
-    Syphon(SyphonOutputConfig),
-    Ndi(NdiOutputConfig),
-    Decklink(DecklinkOutputConfig),
-}
-
-impl Default for OutputConfig {
-    fn default() -> Self {
-        OutputConfig::Syphon(SyphonOutputConfig::default())
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Protocol {
-    Test,
-    Ndi,
-    Syphon,
-    Decklink,
-}
-
-impl Protocol {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Protocol::Test => "Test",
-            Protocol::Ndi => "NDI",
-            Protocol::Syphon => "Syphon",
-            Protocol::Decklink => "DeckLink",
         }
     }
 }
@@ -232,6 +198,10 @@ impl SourceBorderVisibility {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    use crate::sources::syphon::SyphonOutputConfig;
+    use crate::sources::{NdiSourceConfig, NdiOutputConfig, DecklinkSourceConfig, DecklinkOutputConfig, TestSourceConfig};
+    use crate::sources::decklink::{VideoConnection, VideoConnections};
 
     #[test]
     fn output_config_round_trips() {
@@ -260,8 +230,8 @@ mod tests {
         let parsed: Output = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.protocol, Protocol::Syphon);
         match parsed.config {
-            OutputConfig::Syphon(cfg) => assert!(cfg.server_name.is_empty()),
-            _ => panic!("expected Syphon config"),
+            OutputConfig::Unknown => {} // Expected: missing config defaults to Unknown
+            _ => panic!("expected Unknown config"),
         }
     }
 
@@ -272,7 +242,7 @@ mod tests {
             "My DeckLink".into(),
             Protocol::Decklink,
             true,
-            OutputConfig::Decklink(crate::sources::DecklinkOutputConfig {
+            OutputConfig::Decklink(DecklinkOutputConfig {
                 device_name: "DeckLink Mini Monitor".into(),
                 display_mode: DisplayMode::Hd1080p6000,
                 width: 1920,
@@ -308,6 +278,78 @@ mod tests {
         match parsed.config {
             OutputConfig::Ndi(c) => assert_eq!(c.sender_name, "Studio"),
             _ => panic!("expected Ndi config"),
+        }
+    }
+
+    #[test]
+    fn test_source_config_round_trips() {
+        let mut source = Source::new_v4(
+            "Test".to_string(),
+            Protocol::Test,
+            Some("test-1".to_string()),
+            0.0, 0.0, 1280, 720, 0,
+            TextureMode::Fit,
+            false, false,
+        );
+        source.config = SourceConfig::Test(TestSourceConfig { width: 1920, height: 1080 });
+        let json = serde_json::to_string(&source).unwrap();
+        let parsed: Source = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.protocol, Protocol::Test);
+        match parsed.config {
+            SourceConfig::Test(c) => {
+                assert_eq!(c.width, 1920);
+                assert_eq!(c.height, 1080);
+            }
+            _ => panic!("expected Test source config"),
+        }
+    }
+
+    #[test]
+    fn ndi_source_config_round_trips() {
+        let mut source = Source::new_v4(
+            "NDI".to_string(),
+            Protocol::Ndi,
+            Some("ndi-1".to_string()),
+            0.0, 0.0, 1920, 1080, 0,
+            TextureMode::Fit,
+            false, false,
+        );
+        source.config = SourceConfig::Ndi(NdiSourceConfig {
+            bandwidth: grafton_ndi::ReceiverBandwidth::Highest,
+            color_format: grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
+        });
+        let json = serde_json::to_string(&source).unwrap();
+        let parsed: Source = serde_json::from_str(&json).unwrap();
+        match parsed.config {
+            SourceConfig::Ndi(c) => {
+                assert_eq!(c.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
+                assert_eq!(c.color_format, grafton_ndi::ReceiverColorFormat::UYVY_RGBA);
+            }
+            _ => panic!("expected Ndi source config"),
+        }
+    }
+
+    #[test]
+    fn decklink_source_config_round_trips() {
+        let mut source = Source::new_v4(
+            "DeckLink".to_string(),
+            Protocol::Decklink,
+            Some("decklink-1".to_string()),
+            0.0, 0.0, 1920, 1080, 0,
+            TextureMode::Fit,
+            false, false,
+        );
+        source.config = SourceConfig::Decklink(DecklinkSourceConfig {
+            connection: VideoConnection::Hdmi,
+            supported_connections: VideoConnections::EMPTY,
+        });
+        let json = serde_json::to_string(&source).unwrap();
+        let parsed: Source = serde_json::from_str(&json).unwrap();
+        match parsed.config {
+            SourceConfig::Decklink(c) => {
+                assert_eq!(c.connection, VideoConnection::Hdmi);
+            }
+            _ => panic!("expected Decklink source config"),
         }
     }
 }

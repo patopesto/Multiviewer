@@ -4,8 +4,8 @@ use std::thread;
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
 
-use crate::config::Protocol;
-use crate::sources::output::{OutputId, OutputStats, VideoOutput};
+use super::super::Protocol;
+use super::super::output::{OutputId, OutputStats, VideoOutput};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct NdiOutputConfig {

@@ -1,14 +1,15 @@
 use super::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use serde::{Serialize, Deserialize};
 
-#[derive(Clone)]
-pub struct TestConfig {
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TestSourceConfig {
     pub width: u32,
     pub height: u32,
 }
 
-impl Default for TestConfig {
+impl Default for TestSourceConfig {
     fn default() -> Self {
         Self {
             width: 1280,
@@ -26,31 +27,33 @@ pub struct TestSource {
 }
 
 impl TestSource {
-    pub fn spawn(name: String, variant: u32) -> Self {
+    pub fn spawn(name: String, variant: u32, cfg: &TestSourceConfig) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let writer = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let stats2 = stats.clone();
+        let width = cfg.width;
+        let height = cfg.height;
         std::thread::Builder::new()
             .name(format!("src-{name}"))
             .spawn(move || {
-                const W: u32 = 1280;
-                const H: u32 = 720;
+                let w = width;
+                let h = height;
                 let mut seq = 0u64;
                 loop {
                     let t0 = Instant::now();
-                    let mut buf = vec![0u8; (W * H * 4) as usize];
-                    bars(&mut buf, W, H, variant, seq);
+                    let mut buf = vec![0u8; (w * h * 4) as usize];
+                    bars(&mut buf, w, h, variant, seq);
                     let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
                     {
                         let mut s = stats2.lock().unwrap();
-                        s.record_frame(W, H, PixelFormat::Rgba8.label(), 30.0);
+                        s.record_frame(w, h, PixelFormat::Rgba8.label(), 30.0);
                         s.record_copy_time(copy_ms);
                     }
                     *writer.lock().unwrap() = Some(Frame::Cpu(CpuFrame {
                         data: Arc::new(buf),
-                        w: W,
-                        h: H,
+                        w,
+                        h,
                         fmt: PixelFormat::Rgba8,
                         seq,
                     }));

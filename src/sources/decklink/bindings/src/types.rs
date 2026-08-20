@@ -26,9 +26,10 @@ use crate::{
     bmdVideoConnectionUnspecified,
 };
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u32)]
 pub enum VideoConnection {
+    #[default]
     Unspecified = bmdVideoConnectionUnspecified,
     Sdi = bmdVideoConnectionSDI,
     Hdmi = bmdVideoConnectionHDMI,
@@ -96,7 +97,7 @@ impl TryFrom<u32> for VideoConnection {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct VideoConnections(pub u32);
 
 impl VideoConnections {

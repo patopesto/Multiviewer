@@ -2,11 +2,66 @@ use super::super::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use serde::{Deserialize, Serialize, Deserializer, Serializer};
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NdiSourceConfig {
     pub bandwidth: grafton_ndi::ReceiverBandwidth,
     pub color_format: grafton_ndi::ReceiverColorFormat,
+}
+
+impl Serialize for NdiSourceConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("NdiSourceConfig", 2)?;
+        let bandwidth_str = match self.bandwidth {
+            grafton_ndi::ReceiverBandwidth::Highest => "Highest",
+            _ => "Lowest",
+        };
+        let color_format_str = match self.color_format {
+            grafton_ndi::ReceiverColorFormat::BGRX_BGRA => "BGRX_BGRA",
+            grafton_ndi::ReceiverColorFormat::UYVY_BGRA => "UYVY_BGRA",
+            grafton_ndi::ReceiverColorFormat::RGBX_RGBA => "RGBX_RGBA",
+            grafton_ndi::ReceiverColorFormat::UYVY_RGBA => "UYVY_RGBA",
+            grafton_ndi::ReceiverColorFormat::Fastest => "Fastest",
+            grafton_ndi::ReceiverColorFormat::Best => "Best",
+            _ => "UYVY_RGBA",
+        };
+        state.serialize_field("bandwidth", bandwidth_str)?;
+        state.serialize_field("color_format", color_format_str)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for NdiSourceConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            bandwidth: String,
+            color_format: String,
+        }
+        let helper = Helper::deserialize(deserializer)?;
+        let bandwidth = match helper.bandwidth.as_str() {
+            "Highest" => grafton_ndi::ReceiverBandwidth::Highest,
+            _ => grafton_ndi::ReceiverBandwidth::Lowest,
+        };
+        let color_format = match helper.color_format.as_str() {
+            "BGRX_BGRA" => grafton_ndi::ReceiverColorFormat::BGRX_BGRA,
+            "UYVY_BGRA" => grafton_ndi::ReceiverColorFormat::UYVY_BGRA,
+            "RGBX_RGBA" => grafton_ndi::ReceiverColorFormat::RGBX_RGBA,
+            "UYVY_RGBA" => grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
+            "Fastest" => grafton_ndi::ReceiverColorFormat::Fastest,
+            "Best" => grafton_ndi::ReceiverColorFormat::Best,
+            _ => grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
+        };
+        Ok(NdiSourceConfig { bandwidth, color_format })
+    }
 }
 
 impl Default for NdiSourceConfig {

@@ -5,14 +5,45 @@ use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use serde::{Deserialize, Serialize, Deserializer, Serializer};
 
-#[derive(Clone)]
-pub struct DecklinkConfig {
+#[derive(Clone, Debug, PartialEq)]
+pub struct DecklinkSourceConfig {
     pub connection: VideoConnection,
     pub supported_connections: VideoConnections,
 }
 
-impl Default for DecklinkConfig {
+impl Serialize for DecklinkSourceConfig {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeStruct;
+        let mut state = serializer.serialize_struct("DecklinkSourceConfig", 1)?;
+        state.serialize_field("connection", &self.connection)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for DecklinkSourceConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            #[serde(default)]
+            connection: VideoConnection,
+        }
+        let helper = Helper::deserialize(deserializer)?;
+        Ok(DecklinkSourceConfig {
+            connection: helper.connection,
+            supported_connections: VideoConnections::EMPTY,
+        })
+    }
+}
+
+impl Default for DecklinkSourceConfig {
     fn default() -> Self {
         Self {
             connection: VideoConnection::Unspecified,
@@ -21,7 +52,7 @@ impl Default for DecklinkConfig {
     }
 }
 
-impl DecklinkConfig {
+impl DecklinkSourceConfig {
     pub fn with_defaults(supported: VideoConnections) -> Self {
         let mut cfg = Self::default();
         cfg.supported_connections = supported;
@@ -41,7 +72,7 @@ pub struct DecklinkSource {
 }
 
 impl DecklinkSource {
-    pub fn spawn(name: String, display_name: String, cfg: &DecklinkConfig) -> Self {
+    pub fn spawn(name: String, display_name: String, cfg: &DecklinkSourceConfig) -> Self {
         let latest = Arc::new(Mutex::new(None));
         let latest2 = latest.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));

@@ -1,24 +1,29 @@
-pub mod decklink;
-pub mod output;
-pub mod ndi;
+pub mod common;
 pub mod source;
-pub mod test;
+pub mod output;
 
+pub mod test;
+pub mod decklink;
+pub mod ndi;
 #[cfg(target_os = "macos")]
 pub mod syphon;
 
 #[allow(unused_imports)]
+pub use common::{Protocol, PixelFormat, Frame, CpuFrame, SyphonFrame};
+
+#[allow(unused_imports)]
 pub use source::{
-    ConvUniform, CpuFrame, Frame, PixelFormat, RestartResult, SourceId, SourceKind, SourceRegistry,
-    SourceStats, SyphonFrame, VideoSource,
+    SourceId, SourceKind, VideoSource, SourceConfig, SourceStats,
+    SourceRegistry, RestartResult, ConvUniform,
 };
 #[allow(unused_imports)]
 pub use output::{
-    OutputId, OutputKind, OutputRegistry, OutputStats, VideoOutput,
+    OutputId, OutputKind, VideoOutput, OutputConfig, OutputStats,
+    OutputRegistry,
 };
 
 #[allow(unused_imports)]
-pub use decklink::source::{DecklinkConfig, DecklinkSource};
+pub use decklink::source::{DecklinkSource, DecklinkSourceConfig};
 #[allow(unused_imports)]
 pub use decklink::output::{DecklinkOutput, DecklinkOutputConfig};
 #[allow(unused_imports)]
@@ -26,7 +31,7 @@ pub use decklink::VideoConnections;
 #[allow(unused_imports)]
 pub use ndi::{NdiSource, NdiSourceConfig, NdiOutput, NdiOutputConfig};
 #[allow(unused_imports)]
-pub use test::{TestConfig, TestSource};
+pub use test::{TestSource, TestSourceConfig};
 
 #[cfg(target_os = "macos")]
 #[allow(unused_imports)]

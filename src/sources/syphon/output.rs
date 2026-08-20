@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 
-use crate::config::Protocol;
+use super::super::Protocol;
 use super::super::output::{OutputId, OutputStats, VideoOutput};
 
 const FLIP_SHADER: &str = r#"
