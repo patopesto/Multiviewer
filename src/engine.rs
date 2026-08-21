@@ -91,6 +91,7 @@ pub struct Engine {
     queue: Option<Arc<wgpu::Queue>>,
     pub dirty: bool,
     pub selected_layer_id: Option<String>,
+    pub expanded_source_id: Option<String>,
     pub drag_state: DragState,
     pub snap_guides: SnapGuides,
     pub view: ViewState,
@@ -225,6 +226,7 @@ impl Engine {
             queue: None,
             dirty,
             selected_layer_id: None,
+            expanded_source_id: None,
             drag_state: DragState::None,
             snap_guides: SnapGuides::default(),
             view: ViewState::new(),
@@ -338,6 +340,7 @@ impl Engine {
             &self.registry,
             panel_rect,
             transform,
+            self.expanded_source_id.as_deref(),
         )
     }
 
@@ -352,7 +355,13 @@ impl Engine {
             return;
         };
         let comp = self.comp.as_mut().expect("compositor not initialized");
-        comp.render_canvas(device, queue, &self.cfg.canvas, &self.registry);
+        comp.render_canvas(
+            device,
+            queue,
+            &self.cfg.canvas,
+            &self.registry,
+            self.expanded_source_id.as_deref(),
+        );
         if let Some((texture, w, h)) = comp.canvas_texture() {
             self.output_registry
                 .present_all(texture, w, h, device, queue);
@@ -407,6 +416,9 @@ impl Engine {
         self.cfg.canvas.sources.retain(|l| l.uuid != uuid);
         if self.selected_layer_id.as_deref() == Some(uuid) {
             self.selected_layer_id = None;
+        }
+        if self.expanded_source_id.as_deref() == Some(uuid) {
+            self.expanded_source_id = None;
         }
         self.dirty = true;
     }
@@ -565,6 +577,18 @@ impl Engine {
         let cy = (min_y + max_y) / 2.0;
         self.view.pan.x = panel_rect.width() / 2.0 - base_ox - cx * display_scale;
         self.view.pan.y = panel_rect.height() / 2.0 - base_oy - cy * display_scale;
+    }
+
+    pub fn expand_source(&mut self, uuid: String) {
+        self.expanded_source_id = Some(uuid);
+    }
+
+    pub fn clear_expanded_source(&mut self) {
+        self.expanded_source_id = None;
+    }
+
+    pub fn expanded_source_id(&self) -> Option<&str> {
+        self.expanded_source_id.as_deref()
     }
 
     pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
@@ -1010,10 +1034,75 @@ mod tests {
             queue: None,
             dirty: false,
             selected_layer_id: None,
+            expanded_source_id: None,
             drag_state: DragState::None,
             snap_guides: SnapGuides::default(),
             view: ViewState::new(),
         }
+    }
+
+    #[test]
+    fn expand_and_clear_source() {
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            sources: vec![],
+            outputs: Vec::new(),
+            border_visibility: Default::default(),
+            ..Default::default()
+        };
+        canvas.sources.push(Source::new_v4(
+            "L1".into(),
+            Protocol::Test,
+            None,
+            100.0,
+            100.0,
+            100,
+            100,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+        let mut engine = test_engine(canvas);
+        let uuid = engine.cfg.canvas.sources[0].uuid.clone();
+
+        assert!(engine.expanded_source_id().is_none());
+        engine.expand_source(uuid.clone());
+        assert_eq!(engine.expanded_source_id(), Some(uuid.as_str()));
+        engine.clear_expanded_source();
+        assert!(engine.expanded_source_id().is_none());
+    }
+
+    #[test]
+    fn removing_expanded_source_clears_it() {
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            sources: vec![],
+            outputs: Vec::new(),
+            border_visibility: Default::default(),
+            ..Default::default()
+        };
+        canvas.sources.push(Source::new_v4(
+            "L1".into(),
+            Protocol::Test,
+            None,
+            100.0,
+            100.0,
+            100,
+            100,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+        let mut engine = test_engine(canvas);
+        let uuid = engine.cfg.canvas.sources[0].uuid.clone();
+        engine.expand_source(uuid.clone());
+
+        engine.remove_layer(&uuid);
+        assert!(engine.expanded_source_id().is_none());
     }
 
     #[test]

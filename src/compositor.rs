@@ -314,6 +314,7 @@ impl Compositor {
     }
 
     /// Per-frame: upload changed source textures, build quads for all sources.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         &mut self,
         device: &wgpu::Device,
@@ -322,10 +323,13 @@ impl Compositor {
         registry: &SourceRegistry,
         panel_rect: &Rect,
         transform: (f32, f32, f32),
+        expanded_source: Option<&str>,
     ) -> Draw {
         let (scale, offset_x, offset_y) = transform;
         let cx = panel_rect.x + offset_x;
         let cy = panel_rect.y + offset_y;
+        let cw = canvas.width as f32 * scale;
+        let ch = canvas.height as f32 * scale;
 
         if self.border_color != canvas.border_color {
             self.border_color = canvas.border_color;
@@ -349,6 +353,11 @@ impl Compositor {
 
         let mut first_index = 0u32;
         for source in sources {
+            let is_expanded_source = expanded_source == Some(source.uuid.as_str());
+            if expanded_source.is_some() && !is_expanded_source {
+                continue;
+            }
+
             let entry = source.source_id.as_deref().and_then(|sid| {
                 seen.entry(sid)
                     .or_insert_with(|| {
@@ -374,10 +383,16 @@ impl Compositor {
             let flip_h = src_flip_h ^ source.flip_h;
             let flip_v = src_flip_v ^ source.flip_v;
 
-            let lx = cx + source.x * scale;
-            let ly = cy + source.y * scale;
-            let lw = source.width as f32 * scale;
-            let lh = source.height as f32 * scale;
+            let (lx, ly, lw, lh) = if is_expanded_source {
+                (cx, cy, cw, ch)
+            } else {
+                (
+                    cx + source.x * scale,
+                    cy + source.y * scale,
+                    source.width as f32 * scale,
+                    source.height as f32 * scale,
+                )
+            };
 
             let x0 = (lx - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
             let x1 = (lx + lw - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
@@ -445,7 +460,7 @@ impl Compositor {
                 SourceBorderVisibility::Hide => false,
                 SourceBorderVisibility::Inherit => global_borders == BorderVisibility::Show,
             };
-            if border_visible {
+            if border_visible && !is_expanded_source {
                 let border_px = canvas.border_width;
                 let dx = 2.0 * border_px / panel_rect.width();
                 let dy = 2.0 * border_px / panel_rect.height();
@@ -552,6 +567,7 @@ impl Compositor {
         queue: &wgpu::Queue,
         canvas: &Canvas,
         registry: &crate::sources::SourceRegistry,
+        expanded_source: Option<&str>,
     ) {
         let canvas_w = canvas.width;
         let canvas_h = canvas.height;
@@ -597,6 +613,7 @@ impl Compositor {
             registry,
             &panel_rect,
             transform,
+            expanded_source,
         );
 
         queue.write_buffer(&self.canvas_vb, 0, bytemuck::cast_slice(&draw.verts));

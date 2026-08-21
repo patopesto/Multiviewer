@@ -74,7 +74,10 @@ pub fn update(
         && response.hovered()
         && let Some(pos) = response.interact_pointer_pos()
     {
-        if let Some((uuid, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
+        if engine.expanded_source_id().is_some() {
+            // While a source is expanded, the canvas is used for panning only.
+            engine.drag_state = DragState::None;
+        } else if let Some((uuid, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
             let start = engine
                 .layer_rect_world(&uuid)
                 .expect("selected source exists");
@@ -120,12 +123,13 @@ pub fn update(
     }
 
     // Cursor feedback when hovering a resize handle.
-    if response.hovered() && !primary_down {
-        if let Some(pos) = response.hover_pos() {
-            if let Some((_, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
-                ui.output_mut(|o| o.cursor_icon = cursor_for_handle(handle));
-            }
-        }
+    if response.hovered()
+        && !primary_down
+        && engine.expanded_source_id().is_none()
+        && let Some(pos) = response.hover_pos()
+        && let Some((_, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y))
+    {
+        ui.output_mut(|o| o.cursor_icon = cursor_for_handle(handle));
     }
 
     // Zoom toward the center of the view.
@@ -176,6 +180,39 @@ pub fn update(
 
     draw_overlays(&engine.cfg.canvas, &panel_rect, &painter, engine, transform);
 
+    // Context menu on sources
+    response.context_menu(|ui| {
+        ui.set_min_width(100.0);
+        if engine.expanded_source_id().is_some() {
+            if ui.button("Exit expanded view").clicked() {
+                engine.clear_expanded_source();
+                ui.close();
+            }
+        } else if let Some(pos) = ui.input(|i| i.pointer.latest_pos())
+            && let Some(uuid) = engine.hit_test(&panel_rect, (pos.x, pos.y))
+        {
+            engine.selected_layer_id = Some(uuid.clone());
+            if ui.button("Expand to full canvas").clicked() {
+                engine.expand_source(uuid);
+                ui.close();
+            }
+        }
+    });
+
+    // Buttons
+    if engine.expanded_source_id().is_some() {
+        let close_icon = asset_image!("close.svg");
+        let close_image = egui::Image::new(close_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
+        let close_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.max.x - 80.0, rect.min.y + 10.0),
+            egui::vec2(30.0, 30.0),
+        );
+        let close_btn = egui::Button::image(close_image).corner_radius(5.0);
+        if ui.put(close_rect, close_btn).on_hover_text("Exit expanded view").clicked() {
+            engine.clear_expanded_source();
+        }
+    }
+
     let btn_icon = asset_image!("compress.svg");
     let btn_image = egui::Image::new(btn_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
     let btn_rect = egui::Rect::from_min_size(
@@ -183,11 +220,7 @@ pub fn update(
         egui::vec2(30.0, 30.0),
     );
     let btn = egui::Button::image(btn_image).corner_radius(5.0);
-    if ui
-        .put(btn_rect, btn)
-        .on_hover_text("Re-center view")
-        .clicked()
-    {
+    if ui.put(btn_rect, btn).on_hover_text("Re-center view").clicked() {
         engine.recenter_view(&panel_rect);
     }
 }
@@ -224,6 +257,11 @@ fn draw_overlays(
         ),
         egui::StrokeKind::Inside,
     );
+
+    // Hide selection overlays while a source is expanded.
+    if engine.expanded_source_id().is_some() {
+        return;
+    }
 
     // Selected source borders
     let selected_uuid = match &engine.selected_layer_id {
