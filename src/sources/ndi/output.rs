@@ -33,7 +33,7 @@ impl NdiOutput {
 
         let thread_name = name.clone();
         let thread = thread::Builder::new()
-            .name(format!("ndi-out-{thread_name}"))
+            .name(format!("ndi-out-{id}"))
             .spawn(move || {
                 let Ok(ndi) = grafton_ndi::NDI::new() else {
                     tracing::error!("NDI output {thread_name}: failed to initialize NDI");

@@ -248,53 +248,47 @@ impl SourceRegistry {
         let letter = (b'A' + (self.next_test as u8 - 1) % 26) as char;
         let id = format!("Test {letter}");
         let cfg = config.unwrap_or_default();
-            let src = test::TestSource::spawn(id.clone(), &cfg);
-        self.sources
-            .insert(id.clone(), SourceKind::Test(src, cfg));
-        id
+        let src = test::TestSource::spawn(id.clone(), &cfg);
+        self.sources.insert(id.clone(), SourceKind::Test(src, cfg));
+        return id;
     }
 
-    pub fn add_ndi(&mut self, name: String, source: grafton_ndi::Source, config: Option<ndi::NdiSourceConfig>) -> SourceId {
-        if self.sources.contains_key(&name) {
-            return name;
+    pub fn add_ndi(&mut self, id: SourceId, source: grafton_ndi::Source, config: Option<ndi::NdiSourceConfig>) -> SourceId {
+        if self.sources.contains_key(&id) {
+            return id;
         }
         let cfg = config.unwrap_or_default();
-        let src = ndi::NdiSource::spawn(name.clone(), source.clone(), &cfg);
-        self.sources
-            .insert(name.clone(), SourceKind::Ndi(src, cfg, source));
-        name
+        let src = ndi::NdiSource::spawn(id.clone(), source.clone(), &cfg);
+        self.sources.insert(id.clone(), SourceKind::Ndi(src, cfg, source));
+        return id;
     }
 
     #[cfg(target_os = "macos")]
-    pub fn add_syphon(&mut self, name: String, server_name: String, _config: Option<syphon::SyphonSourceConfig>) -> SourceId {
-        if self.sources.contains_key(&name) {
-            return name;
+    pub fn add_syphon(&mut self, id: SourceId, server_name: String, _config: Option<syphon::SyphonSourceConfig>) -> SourceId {
+        if self.sources.contains_key(&id) {
+            return id;
         }
-        let src = syphon::SyphonSource::spawn(name.clone(), server_name);
-        self.sources.insert(
-            name.clone(),
-            SourceKind::Syphon(src, syphon::SyphonSourceConfig::default(), name.clone()),
-        );
-        name
+        let src = syphon::SyphonSource::spawn(id.clone(), server_name);
+        self.sources.insert(id.clone(), SourceKind::Syphon(src, syphon::SyphonSourceConfig::default(), id.clone()));
+        return id;
     }
 
     pub fn add_decklink(
         &mut self,
-        name: String,
+        id: SourceId,
         display_name: String,
         supported_connections: Option<VideoConnections>,
         config: Option<decklink::DecklinkSourceConfig>,
     ) -> SourceId {
-        if self.sources.contains_key(&name) || self.pending_restarts.contains(&name) {
-            return name;
+        if self.sources.contains_key(&id) || self.pending_restarts.contains(&id) {
+            return id;
         }
         let supported = supported_connections.unwrap_or(VideoConnections::EMPTY);
         let mut cfg = config.unwrap_or_default();
         cfg.supported_connections = supported;
-        let src = decklink::DecklinkSource::spawn(name.clone(), display_name, &cfg);
-        self.sources
-            .insert(name.clone(), SourceKind::Decklink(src, cfg, name.clone()));
-        name
+        let src = decklink::DecklinkSource::spawn(id.clone(), display_name, &cfg);
+        self.sources.insert(id.clone(), SourceKind::Decklink(src, cfg, id.clone()));
+        return id;
     }
 
     pub fn get(&self, id: &SourceId) -> Option<&SourceKind> {
@@ -336,11 +330,11 @@ impl SourceRegistry {
     }
 
     /// Restart an NDI source with its current config.
-    pub fn restart_ndi(&mut self, name: &str) {
-        if let Some(SourceKind::Ndi(_, cfg, source)) = self.sources.remove(name) {
-            self.pending_restarts.insert(name.to_string());
+    pub fn restart_ndi(&mut self, id: &str) {
+        if let Some(SourceKind::Ndi(_, cfg, source)) = self.sources.remove(id) {
+            self.pending_restarts.insert(id.to_string());
             let tx = self.restart_tx.clone();
-            let id = name.to_string();
+            let id = id.to_string();
             std::thread::Builder::new()
                 .name(format!("ndi-restart-{id}"))
                 .spawn(move || {
@@ -355,11 +349,11 @@ impl SourceRegistry {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn restart_syphon(&mut self, name: &str) {
-        if let Some(SourceKind::Syphon(_, cfg, server_name)) = self.sources.remove(name) {
-            self.pending_restarts.insert(name.to_string());
+    pub fn restart_syphon(&mut self, id: &str) {
+        if let Some(SourceKind::Syphon(_, cfg, server_name)) = self.sources.remove(id) {
+            self.pending_restarts.insert(id.to_string());
             let tx = self.restart_tx.clone();
-            let id = name.to_string();
+            let id = id.to_string();
             let server = server_name.clone();
             std::thread::Builder::new()
                 .name(format!("syphon-restart-{id}"))
@@ -374,11 +368,11 @@ impl SourceRegistry {
         }
     }
 
-    pub fn restart_decklink(&mut self, name: &str) {
-        if let Some(SourceKind::Decklink(old_source, cfg, display_name)) = self.sources.remove(name) {
-            self.pending_restarts.insert(name.to_string());
+    pub fn restart_decklink(&mut self, id: &str) {
+        if let Some(SourceKind::Decklink(old_source, cfg, display_name)) = self.sources.remove(id) {
+            self.pending_restarts.insert(id.to_string());
             let tx = self.restart_tx.clone();
-            let id = name.to_string();
+            let id = id.to_string();
             std::thread::Builder::new()
                 .name(format!("decklink-restart-{id}"))
                 .spawn(move || {

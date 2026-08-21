@@ -64,6 +64,8 @@ impl DecklinkSourceConfig {
 }
 
 pub struct DecklinkSource {
+    #[allow(dead_code)]
+    id: String,
     name: String,
     latest: Arc<Mutex<Option<CpuFrame>>>,
     stats: Arc<Mutex<SourceStats>>,
@@ -72,17 +74,18 @@ pub struct DecklinkSource {
 }
 
 impl DecklinkSource {
-    pub fn spawn(name: String, display_name: String, cfg: &DecklinkSourceConfig) -> Self {
+    pub fn spawn(id: String, display_name: String, cfg: &DecklinkSourceConfig) -> Self {
         let latest = Arc::new(Mutex::new(None));
         let latest2 = latest.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let stats2 = stats.clone();
         let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
+        let name = id.clone();
         let name_for_thread = name.clone();
         let connection = cfg.connection;
         let thread = std::thread::Builder::new()
-            .name(format!("decklink-{}", name))
+            .name(format!("decklink-in-{}", id))
             .spawn(move || {
                 unsafe {
                     let display_name_c = match CString::new(display_name) {
@@ -193,6 +196,7 @@ impl DecklinkSource {
             })
             .expect("spawn decklink source");
         Self {
+            id,
             name,
             latest,
             stats,
@@ -205,10 +209,10 @@ impl DecklinkSource {
 impl Drop for DecklinkSource {
     fn drop(&mut self) {
         self.running.store(false, Ordering::Relaxed);
-        if let Some(t) = self.thread.take() {
-            if let Err(e) = t.join() {
-                tracing::error!("DeckLink thread join failed for {}: {:?}", self.name, e);
-            }
+        if let Some(t) = self.thread.take()
+            && let Err(e) = t.join()
+        {
+            tracing::error!("DeckLink thread join failed for {}: {:?}", self.name, e);
         }
     }
 }

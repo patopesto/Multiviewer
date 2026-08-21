@@ -1,4 +1,5 @@
 use super::super::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
@@ -75,11 +76,14 @@ pub struct TestSource {
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     #[allow(dead_code)]
+    id: String,
     name: String,
+    running: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl TestSource {
-    pub fn spawn(name: String, cfg: &TestSourceConfig) -> Self {
+    pub fn spawn(id: String, cfg: &TestSourceConfig) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let writer = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
@@ -87,13 +91,16 @@ impl TestSource {
         let width = cfg.width;
         let height = cfg.height;
         let pattern = cfg.pattern.clone();
-        std::thread::Builder::new()
-            .name(format!("src-{name}"))
+        let running = Arc::new(AtomicBool::new(true));
+        let running2 = running.clone();
+        let name = id.clone();
+        let thread = std::thread::Builder::new()
+            .name(format!("test-in-{id}"))
             .spawn(move || {
                 let w = width;
                 let h = height;
                 let mut seq = 0u64;
-                loop {
+                while running2.load(Ordering::Relaxed) {
                     let t0 = Instant::now();
                     let mut buf = vec![0u8; (w * h * 4) as usize];
                     generate_pattern(&mut buf, w, h, &pattern, seq);
@@ -115,7 +122,18 @@ impl TestSource {
                 }
             })
             .expect("spawn test source");
-        Self { slot, stats, name }
+        Self { slot, stats, id, name, running, thread: Some(thread) }
+    }
+}
+
+impl Drop for TestSource {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::Relaxed);
+        if let Some(t) = self.thread.take()
+            && let Err(e) = t.join()
+        {
+            tracing::error!("Test source {} thread join failed: {:?}", self.name, e);
+        }
     }
 }
 

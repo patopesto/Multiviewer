@@ -1,5 +1,6 @@
 use super::super::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
@@ -79,26 +80,32 @@ pub struct NdiSource {
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     #[allow(dead_code)]
+    id: String,
     name: String,
+    running: Arc<AtomicBool>,
+    thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl NdiSource {
-    pub fn spawn(name: String, source: grafton_ndi::Source, cfg: &NdiSourceConfig) -> Self {
+    pub fn spawn(id: String, source: grafton_ndi::Source, cfg: &NdiSourceConfig) -> Self {
         use grafton_ndi::{LineStrideOrSize, NDI, Receiver, ReceiverOptions};
         let slot = Arc::new(Mutex::new(None));
         let slot2 = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let stats2 = stats.clone();
-        let thread_name = name.clone();
+        let name = id.clone();
+        let name_for_thread = name.clone();
         let bandwidth = cfg.bandwidth;
         let color_format = cfg.color_format;
-        std::thread::Builder::new()
-            .name(format!("ndi-recv-{thread_name}"))
+        let running = Arc::new(AtomicBool::new(true));
+        let running2 = running.clone();
+        let thread = std::thread::Builder::new()
+            .name(format!("ndi-in-{id}"))
             .spawn(move || {
                 let ndi = match NDI::new() {
                     Ok(n) => n,
                     Err(e) => {
-                        tracing::error!("NDI init failed for {thread_name}: {e}");
+                        tracing::error!("NDI init failed for {name_for_thread}: {e}");
                         return;
                     }
                 };
@@ -109,14 +116,14 @@ impl NdiSource {
                 let receiver = match Receiver::new(&ndi, &options) {
                     Ok(r) => r,
                     Err(e) => {
-                        tracing::error!("NDI Receiver failed for {thread_name}: {e}");
+                        tracing::error!("NDI Receiver failed for {name_for_thread}: {e}");
                         return;
                     }
                 };
                 let mut seq = 0u64;
                 let mut warned_formats: HashSet<u32> = HashSet::new();
-                loop {
-                    match receiver.video().capture(Duration::from_millis(500)) {
+                while running2.load(Ordering::Relaxed) {
+                    match receiver.video().capture(Duration::from_millis(100)) {
                         Ok(frame) => {
                             let w = frame.width() as u32;
                             let h = frame.height() as u32;
@@ -131,7 +138,7 @@ impl NdiSource {
                                 pf => {
                                     if warned_formats.insert(pf as u32) {
                                         tracing::warn!(
-                                            "NDI source {thread_name}: unsupported pixel format {pf:?}, frame dropped"
+                                            "NDI source {name_for_thread}: unsupported pixel format {pf:?}, frame dropped"
                                         );
                                     }
                                     continue;
@@ -172,13 +179,24 @@ impl NdiSource {
                             seq += 1;
                         }
                         Err(e) => {
-                            tracing::trace!("NDI capture timeout for {thread_name}: {e}");
+                            tracing::trace!("NDI capture timeout for {name_for_thread}: {e}");
                         }
                     }
                 }
             })
             .expect("spawn ndi-recv");
-        Self { slot, stats, name }
+        Self { slot, stats, id, name, running, thread: Some(thread) }
+    }
+}
+
+impl Drop for NdiSource {
+    fn drop(&mut self) {
+        self.running.store(false, Ordering::Relaxed);
+        if let Some(t) = self.thread.take()
+            && let Err(e) = t.join()
+        {
+            tracing::error!("NDI source {} thread join failed: {:?}", self.name, e);
+        }
     }
 }
 

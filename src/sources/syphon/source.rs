@@ -26,9 +26,9 @@ pub struct SyphonSource {
 }
 
 impl SyphonSource {
-    pub fn spawn(name: String, server_name: String) -> Self {
+    pub fn spawn(id: String, server_name: String) -> Self {
         Self {
-            name,
+            name: id,
             server_name,
             input: Mutex::new(None),
             layout: Mutex::new(None),
