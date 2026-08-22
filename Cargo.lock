@@ -7,16 +7,22 @@ name = "Multiviewer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "av-foundation",
  "bytemuck",
  "cc",
- "core-foundation 0.9.4",
+ "core-foundation 0.10.1",
+ "core-media",
+ "core-video",
  "dirs",
+ "dispatch2",
  "eframe",
  "egui",
  "egui_extras",
  "grafton-ndi",
  "multiviewer-decklink",
  "objc",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
  "rfd",
  "serde",
  "serde_json",
@@ -339,6 +345,23 @@ name = "autocfg"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+
+[[package]]
+name = "av-foundation"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6803368a1eff4a2713abc60ebd57a8d14d8ac7362ad91a2805251e6a74b33992"
+dependencies = [
+ "block2 0.6.2",
+ "core-foundation 0.10.1",
+ "core-graphics2",
+ "core-media",
+ "core-video",
+ "dispatch2",
+ "libc",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
+]
 
 [[package]]
 name = "base64"
@@ -664,6 +687,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-audio-types"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9650b9f98d8bdb52688fbe26c81e4fc4b3cb911bc002fb7d52011e206f0f769"
+dependencies = [
+ "objc2-core-audio-types",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -748,6 +780,51 @@ dependencies = [
  "bitflags 2.13.1",
  "core-foundation 0.10.1",
  "libc",
+]
+
+[[package]]
+name = "core-graphics2"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b65858d95344d2711161cd92196732f67d6c5fea238cf12f994584828731a5c"
+dependencies = [
+ "bitflags 2.13.1",
+ "block",
+ "cfg-if",
+ "core-foundation 0.10.1",
+ "libc",
+ "objc2 0.6.4",
+]
+
+[[package]]
+name = "core-media"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db28ab254c42005e5c12bd2b5f6ea5670f53210455ee5aeb24f0898954942bf0"
+dependencies = [
+ "block",
+ "cfg-if",
+ "core-audio-types",
+ "core-foundation 0.10.1",
+ "core-graphics2",
+ "core-video",
+ "libc",
+ "objc2 0.6.4",
+]
+
+[[package]]
+name = "core-video"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0f83d7bc2e8fbc517a71dcf3227003db7646e6c7aa5b0b5ab3acc89bc692641"
+dependencies = [
+ "block",
+ "core-foundation 0.10.1",
+ "core-graphics2",
+ "libc",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-io-surface",
 ]
 
 [[package]]
@@ -2251,6 +2328,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "objc2-core-audio-types"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a89f2ec274a0cf4a32642b2991e8b351a404d290da87bb6a9a9d8632490bd1c"
+dependencies = [
+ "bitflags 2.13.1",
+]
+
+[[package]]
 name = "objc2-core-data"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2339,6 +2425,7 @@ checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
  "bitflags 2.13.1",
  "block2 0.6.2",
+ "libc",
  "objc2 0.6.4",
  "objc2-core-foundation",
 ]

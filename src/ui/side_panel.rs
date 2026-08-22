@@ -547,6 +547,13 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             {
                                 protocol_changed = true;
                             }
+                            #[cfg(target_os = "macos")]
+                            if ui
+                                .selectable_value(&mut source.protocol, Protocol::AvFoundation, "AVFoundation")
+                                .clicked()
+                            {
+                                protocol_changed = true;
+                            }
                         });
                 });
                 ui.end_row();
@@ -695,6 +702,47 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         }
                                     }
                                     if syphon_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        }
+                        #[cfg(target_os = "macos")]
+                        Protocol::AvFoundation => {
+                            let avf_ids: Vec<String> = engine
+                                .registry
+                                .list_sources(Protocol::AvFoundation)
+                                .into_iter()
+                                .map(|(id, _)| id.clone())
+                                .collect();
+                            let current = source.source_id.as_deref().unwrap_or("");
+                            let discovered = engine
+                                .avfoundation
+                                .as_ref()
+                                .map(|d| d.list())
+                                .unwrap_or_default();
+                            egui::ComboBox::from_id_salt("avfoundation_source")
+                                .width(ui.available_width())
+                                .height(1000.0)
+                                .selected_text(current.to_string())
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    for id in &avf_ids {
+                                        if ui.selectable_label(current == id, id).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    for device in &discovered {
+                                        if !avf_ids.iter().any(|id| id == &device.name) {
+                                            if ui
+                                                .selectable_label(current == device.name, &device.name)
+                                                .clicked()
+                                            {
+                                                new_connect = Some((Protocol::AvFoundation, device.name.clone()));
+                                                selected_source = Some(device.name.clone());
+                                            }
+                                        }
+                                    }
+                                    if avf_ids.is_empty() && discovered.is_empty() {
                                         ui.weak("(scanning...)");
                                     }
                                 });

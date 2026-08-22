@@ -5,6 +5,8 @@ use crate::ui::side_panel::{settings_grid, settings_value};
 
 #[cfg(target_os = "macos")]
 use crate::sources::SyphonSourceConfig;
+#[cfg(target_os = "macos")]
+use crate::sources::AvFoundationSourceConfig;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
     match source {
@@ -13,6 +15,8 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         SourceKind::Decklink(_, cfg, _) => decklink_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
         SourceKind::Syphon(_, cfg, _) => syphon_settings_ui(cfg, ui),
+        #[cfg(target_os = "macos")]
+        SourceKind::AvFoundation(_, cfg, _) => avfoundation_settings_ui(cfg, ui),
     }
 }
 
@@ -191,6 +195,12 @@ fn decklink_settings_ui(cfg: &mut DecklinkSourceConfig, ui: &mut egui::Ui) -> bo
 
 #[cfg(target_os = "macos")]
 fn syphon_settings_ui(_cfg: &mut SyphonSourceConfig, _ui: &mut egui::Ui) -> bool {
+    // No tunables yet
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn avfoundation_settings_ui(_cfg: &mut AvFoundationSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
     false
 }

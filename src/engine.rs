@@ -13,6 +13,8 @@ use crate::sources::ndi::NdiOutputConfig;
 use crate::sources::syphon::Discovery as SyphonDiscovery;
 #[cfg(target_os = "macos")]
 use crate::sources::syphon::SyphonOutputConfig;
+#[cfg(target_os = "macos")]
+use crate::sources::avfoundation::Discovery as AvFoundationDiscovery;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 20.0;
@@ -121,6 +123,8 @@ pub struct Engine {
     pub decklink: Option<DecklinkDiscovery>,
     #[cfg(target_os = "macos")]
     pub syphon: Option<SyphonDiscovery>,
+    #[cfg(target_os = "macos")]
+    pub avfoundation: Option<AvFoundationDiscovery>,
     comp: Option<Compositor>,
     device: Option<Arc<wgpu::Device>>,
     queue: Option<Arc<wgpu::Queue>>,
@@ -150,6 +154,10 @@ impl Engine {
         #[cfg(target_os = "macos")]
         let syphon = Some(SyphonDiscovery::start());
 
+        // Start AVFoundation device discovery on macOS
+        #[cfg(target_os = "macos")]
+        let avfoundation = Some(AvFoundationDiscovery::start());
+
         let mut engine = Self {
             cfg,
             registry,
@@ -158,6 +166,8 @@ impl Engine {
             decklink: Some(decklink),
             #[cfg(target_os = "macos")]
             syphon,
+            #[cfg(target_os = "macos")]
+            avfoundation,
             comp: None,
             device: None,
             queue: None,
@@ -393,6 +403,34 @@ impl Engine {
             }
         }
 
+        // Auto-connect pending AVFoundation sources on macOS
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(ref avf) = self.avfoundation {
+                for source in &self.cfg.canvas.sources {
+                    if source.protocol == Protocol::AvFoundation {
+                        if let Some(ref name) = source.source_id {
+                            if self.registry.get(name).is_none() {
+                                if let Some(device) = avf.find_by_name(name) {
+                                    let mut avf_config = match &source.config {
+                                        SourceConfig::AvFoundation(c) => c.clone(),
+                                        _ => crate::sources::AvFoundationSourceConfig::default(),
+                                    };
+                                    avf_config.device_unique_id = device.unique_id.clone();
+                                    self.registry.add_avfoundation(
+                                        device.name.clone(),
+                                        device.name.clone(),
+                                        Some(avf_config),
+                                    );
+                                    self.dirty = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         self.registry.apply_pending_restarts();
     }
 
@@ -546,6 +584,21 @@ impl Engine {
             }
             #[cfg(not(target_os = "macos"))]
             Protocol::Syphon => {}
+            #[cfg(target_os = "macos")]
+            Protocol::AvFoundation => {
+                if let Some(device) = self.avfoundation.as_ref().and_then(|d| d.find_by_name(name)) {
+                    let avf_config = crate::sources::AvFoundationSourceConfig {
+                        device_unique_id: device.unique_id.clone(),
+                    };
+                    self.registry.add_avfoundation(
+                        device.name.clone(),
+                        device.name.clone(),
+                        Some(avf_config),
+                    );
+                }
+            }
+            #[cfg(not(target_os = "macos"))]
+            Protocol::AvFoundation => {}
             Protocol::Test => {}
         }
     }
@@ -1110,6 +1163,8 @@ mod tests {
             decklink: None,
             #[cfg(target_os = "macos")]
             syphon: None,
+            #[cfg(target_os = "macos")]
+            avfoundation: None,
             comp: None,
             device: None,
             queue: None,

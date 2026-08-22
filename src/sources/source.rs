@@ -9,6 +9,8 @@ use super::ndi;
 use super::test;
 #[cfg(target_os = "macos")]
 use super::syphon;
+#[cfg(target_os = "macos")]
+use super::avfoundation;
 
 pub type SourceId = String;
 
@@ -29,6 +31,8 @@ pub enum SourceConfig {
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonSourceConfig),
     Decklink(decklink::DecklinkSourceConfig),
+    #[cfg(target_os = "macos")]
+    AvFoundation(avfoundation::AvFoundationSourceConfig),
     #[default]
     #[serde(other)]
     Unknown,
@@ -51,6 +55,8 @@ pub enum SourceKind {
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonSource, syphon::SyphonSourceConfig, String),
     Decklink(decklink::DecklinkSource, decklink::DecklinkSourceConfig, String),
+    #[cfg(target_os = "macos")]
+    AvFoundation(avfoundation::AvFoundationSource, avfoundation::AvFoundationSourceConfig, String),
 }
 
 impl SourceKind {
@@ -62,6 +68,8 @@ impl SourceKind {
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(s, _, _) => s.name(),
             SourceKind::Decklink(s, _, _) => s.name(),
+            #[cfg(target_os = "macos")]
+            SourceKind::AvFoundation(_, _, display_name) => display_name.as_str(),
         }
     }
 
@@ -72,6 +80,8 @@ impl SourceKind {
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(s, _, _) => s.latest(device, queue),
             SourceKind::Decklink(s, _, _) => s.latest(device, queue),
+            #[cfg(target_os = "macos")]
+            SourceKind::AvFoundation(s, _, _) => s.latest(device, queue),
         }
     }
 
@@ -82,6 +92,8 @@ impl SourceKind {
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(s, _, _) => s.stats(),
             SourceKind::Decklink(s, _, _) => s.stats(),
+            #[cfg(target_os = "macos")]
+            SourceKind::AvFoundation(s, _, _) => s.stats(),
         }
     }
 
@@ -92,6 +104,8 @@ impl SourceKind {
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(_, _, _) => Protocol::Syphon,
             SourceKind::Decklink(_, _, _) => Protocol::Decklink,
+            #[cfg(target_os = "macos")]
+            SourceKind::AvFoundation(_, _, _) => Protocol::AvFoundation,
         }
     }
 
@@ -102,6 +116,8 @@ impl SourceKind {
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(_, cfg, _) => SourceConfig::Syphon(cfg.clone()),
             SourceKind::Decklink(_, cfg, _) => SourceConfig::Decklink(cfg.clone()),
+            #[cfg(target_os = "macos")]
+            SourceKind::AvFoundation(_, cfg, _) => SourceConfig::AvFoundation(cfg.clone()),
         }
     }
 }
@@ -273,6 +289,25 @@ impl SourceRegistry {
         return id;
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn add_avfoundation(
+        &mut self,
+        id: SourceId,
+        display_name: String,
+        config: Option<avfoundation::AvFoundationSourceConfig>,
+    ) -> SourceId {
+        if self.sources.contains_key(&id) || self.pending_restarts.contains(&id) {
+            return id;
+        }
+        let cfg = config.unwrap_or_default();
+        let src = avfoundation::AvFoundationSource::spawn(id.clone(), &cfg);
+        self.sources.insert(
+            id.clone(),
+            SourceKind::AvFoundation(src, cfg, display_name),
+        );
+        id
+    }
+
     pub fn add_decklink(
         &mut self,
         id: SourceId,
@@ -317,6 +352,8 @@ impl SourceRegistry {
             Some(Protocol::Decklink) => self.restart_decklink(id),
             #[cfg(target_os = "macos")]
             Some(Protocol::Syphon) => self.restart_syphon(id),
+            #[cfg(target_os = "macos")]
+            Some(Protocol::AvFoundation) => self.restart_avfoundation(id),
             None => {}
         }
     }
@@ -365,6 +402,26 @@ impl SourceRegistry {
                     });
                 })
                 .expect("spawn syphon restart thread");
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn restart_avfoundation(&mut self, id: &str) {
+        if let Some(SourceKind::AvFoundation(_, cfg, display_name)) = self.sources.remove(id) {
+            self.pending_restarts.insert(id.to_string());
+            let tx = self.restart_tx.clone();
+            let id = id.to_string();
+            let name = display_name.clone();
+            std::thread::Builder::new()
+                .name(format!("avf-restart-{id}"))
+                .spawn(move || {
+                    let new = avfoundation::AvFoundationSource::spawn(id.clone(), &cfg);
+                    let _ = tx.send(RestartResult {
+                        id: id.clone(),
+                        kind: SourceKind::AvFoundation(new, cfg, name),
+                    });
+                })
+                .expect("spawn avfoundation restart thread");
         }
     }
 

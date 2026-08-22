@@ -5,8 +5,11 @@ use serde::{Serialize, Deserialize};
 pub enum Protocol {
     Test,
     Ndi,
+    #[cfg(target_os = "macos")]
     Syphon,
     Decklink,
+    #[cfg(target_os = "macos")]
+    AvFoundation,
 }
 
 impl Protocol {
@@ -14,8 +17,11 @@ impl Protocol {
         match self {
             Protocol::Test => "Test",
             Protocol::Ndi => "NDI",
+            #[cfg(target_os = "macos")]
             Protocol::Syphon => "Syphon",
             Protocol::Decklink => "DeckLink",
+            #[cfg(target_os = "macos")]
+            Protocol::AvFoundation => "AVFoundation",
         }
     }
 }

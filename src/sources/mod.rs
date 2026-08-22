@@ -7,6 +7,8 @@ pub mod decklink;
 pub mod ndi;
 #[cfg(target_os = "macos")]
 pub mod syphon;
+#[cfg(target_os = "macos")]
+pub mod avfoundation;
 
 #[allow(unused_imports)]
 pub use common::{Protocol, PixelFormat, Frame, CpuFrame, SyphonFrame};
@@ -36,3 +38,6 @@ pub use test::{TestSource, TestSourceConfig, TestPattern};
 #[cfg(target_os = "macos")]
 #[allow(unused_imports)]
 pub use syphon::{SyphonSource, SyphonSourceConfig, SyphonOutput, SyphonOutputConfig};
+#[cfg(target_os = "macos")]
+#[allow(unused_imports)]
+pub use avfoundation::{AvFoundationSource, AvFoundationSourceConfig};

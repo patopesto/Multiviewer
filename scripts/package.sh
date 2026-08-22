@@ -23,6 +23,7 @@ Darwin)
   <key>CFBundleVersion</key><string>0.1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSCameraUsageDescription</key><string>Multiviewer needs camera access to display live video sources.</string>
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>
