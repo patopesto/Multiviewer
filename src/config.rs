@@ -265,6 +265,7 @@ mod tests {
                 display_mode: DisplayMode::Hd1080p6000,
                 width: 1920,
                 height: 1080,
+                fps: 60.0,
             }),
         );
         let json = serde_json::to_string(&output).unwrap();

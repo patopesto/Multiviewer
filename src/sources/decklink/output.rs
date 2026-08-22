@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +54,12 @@ pub struct DecklinkOutputConfig {
     pub display_mode: DisplayMode,
     pub width: u32,
     pub height: u32,
+    #[serde(default = "default_fps")]
+    pub fps: f64,
+}
+
+fn default_fps() -> f64 {
+    60.0
 }
 
 impl Default for DecklinkOutputConfig {
@@ -63,6 +69,7 @@ impl Default for DecklinkOutputConfig {
             display_mode: DisplayMode::Hd1080p6000,
             width: 1920,
             height: 1080,
+            fps: 60.0,
         }
     }
 }
@@ -75,8 +82,7 @@ pub struct DecklinkOutput {
     width: AtomicU32,
     height: AtomicU32,
     stats: Arc<Mutex<OutputStats>>,
-    frame_tx: mpsc::SyncSender<Vec<u8>>,
-    #[allow(dead_code)]
+    frame_tx: Option<mpsc::SyncSender<Vec<u8>>>,
     thread: Option<thread::JoinHandle<()>>,
     scale_bind_layout: OnceLock<wgpu::BindGroupLayout>,
     scale_sampler: OnceLock<wgpu::Sampler>,
@@ -96,6 +102,7 @@ impl DecklinkOutput {
 
         let thread_name = name.clone();
         let thread_config = config.clone();
+        let thread_fps = config.fps;
         let thread = thread::Builder::new()
             .name(format!("decklink-out-{id}"))
             .spawn(move || {
@@ -111,6 +118,13 @@ impl DecklinkOutput {
                     tracing::error!("DeckLink output {thread_name}: failed to create output handle");
                     return;
                 }
+
+                let frame_interval = if thread_fps > 0.0 {
+                    Duration::from_secs_f64(1.0 / thread_fps)
+                } else {
+                    Duration::from_secs_f64(1.0 / 60.0)
+                };
+                let mut last_frame_time = Instant::now();
 
                 let mut started = false;
                 while let Ok(buffer) = frame_rx.recv() {
@@ -135,6 +149,13 @@ impl DecklinkOutput {
                             break;
                         }
                     }
+
+                    let now = Instant::now();
+                    let elapsed = now.duration_since(last_frame_time);
+                    if elapsed < frame_interval {
+                        std::thread::sleep(frame_interval - elapsed);
+                    }
+                    last_frame_time = Instant::now();
 
                     let start = Instant::now();
                     let ok = unsafe {
@@ -175,7 +196,7 @@ impl DecklinkOutput {
             width: AtomicU32::new(0),
             height: AtomicU32::new(0),
             stats,
-            frame_tx,
+            frame_tx: Some(frame_tx),
             thread: Some(thread),
             scale_bind_layout: OnceLock::new(),
             scale_sampler: OnceLock::new(),
@@ -281,9 +302,11 @@ impl DecklinkOutput {
         let mode_id: u32 = self.config.display_mode.into();
         buffer[8..12].copy_from_slice(&mode_id.to_le_bytes());
 
-        if self.frame_tx.try_send(buffer).is_err() {
-            let mut s = self.stats.lock().unwrap();
-            s.frames_dropped += 1;
+        if let Some(ref tx) = self.frame_tx {
+            if tx.try_send(buffer).is_err() {
+                let mut s = self.stats.lock().unwrap();
+                s.frames_dropped += 1;
+            }
         }
     }
 
@@ -562,5 +585,14 @@ impl VideoOutput for DecklinkOutput {
 
     fn protocol(&self) -> Protocol {
         Protocol::Decklink
+    }
+}
+
+impl Drop for DecklinkOutput {
+    fn drop(&mut self) {
+        drop(self.frame_tx.take());
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }

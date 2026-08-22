@@ -296,6 +296,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                                             config.display_mode = first.mode;
                                             config.width = first.width;
                                             config.height = first.height;
+                                            config.fps = first.fps;
                                         }
                                     }
                                     decklink_restart_idx = Some(idx);
@@ -333,6 +334,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                                         config.display_mode = m.mode;
                                         config.width = m.width;
                                         config.height = m.height;
+                                        config.fps = m.fps;
                                     }
                                     decklink_restart_idx = Some(idx);
                                     engine.dirty = true;
