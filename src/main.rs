@@ -4,6 +4,8 @@ mod engine;
 mod session;
 mod sources;
 mod ui;
+#[cfg(target_os = "macos")]
+mod macos_app;
 
 pub const APP_NAME: &str = "Multiviewer";
 pub const PROJECT_FILE_EXTENSION: &str = "multiviewer";
@@ -15,6 +17,9 @@ fn main() -> eframe::Result<()> {
                 .unwrap_or_else(|_| "multiviewer=info".into()),
         )
         .init();
+
+    #[cfg(target_os = "macos")]
+    macos_app::install();
 
     let session = session::Session::load();
     let startup_path = std::env::args_os()
@@ -30,6 +35,10 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         APP_NAME,
         options,
-        Box::new(move |_cc| Ok(Box::new(ui::App::new(startup_path)))),
+        Box::new(move |cc| {
+            #[cfg(target_os = "macos")]
+            macos_app::set_ctx(cc.egui_ctx.clone());
+            Ok(Box::new(ui::App::new(startup_path)))
+        }),
     )
 }

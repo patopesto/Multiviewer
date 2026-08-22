@@ -29,3 +29,5 @@ cc = "1.0"
 [target.'cfg(target_os = "macos")'.dependencies]
 syphon-wgpu = "0.3"
 syphon-core = "0.3"
+objc = "0.2"
+core-foundation = "0.9"

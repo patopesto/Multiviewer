@@ -16,5 +16,9 @@ fn main() {
             println!("cargo:rustc-link-arg=-F{}", syphon_dir.display());
             println!("cargo:rustc-link-arg=-Wl,-rpath,{}", syphon_dir.display());
         }
+
+        // Link Carbon and CoreFoundation for AppleEvent handling
+        println!("cargo:rustc-link-lib=framework=Carbon");
+        println!("cargo:rustc-link-lib=framework=CoreFoundation");
     }
 }

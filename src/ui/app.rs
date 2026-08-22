@@ -16,6 +16,7 @@ pub struct App {
 enum Confirm {
     New,
     Open,
+    OpenPath(PathBuf),
 }
 
 impl App {
@@ -61,6 +62,7 @@ impl App {
                 self.last_error = None;
             }
             Confirm::Open => self.open_dialog(),
+            Confirm::OpenPath(path) => self.open_path(&path),
         }
     }
 
@@ -117,6 +119,15 @@ impl App {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    fn handle_macos_open_files(&mut self) {
+        if let Some(path) = crate::macos_app::drain_queue() {
+            if path.extension().and_then(|e| e.to_str()) == Some(PROJECT_FILE_EXTENSION) {
+                self.confirm_or(Confirm::OpenPath(path));
+            }
+        }
+    }
+
     fn update_title(&self, ctx: &egui::Context) {
         let filename = self
             .engine
@@ -134,6 +145,7 @@ impl App {
         let title = match pending {
             Confirm::New => "New project",
             Confirm::Open => "Open project",
+            Confirm::OpenPath(_) => "Open project",
         };
         let mut open = true;
         let mut action: Option<Confirm> = None;
@@ -187,6 +199,8 @@ impl eframe::App for App {
             self.image_loaders_installed = true;
         }
         self.handle_dropped_files(ctx);
+        #[cfg(target_os = "macos")]
+        self.handle_macos_open_files();
         self.engine.update();
         self.engine.auto_save();
         self.update_title(ctx);
