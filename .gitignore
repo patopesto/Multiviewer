@@ -2,6 +2,9 @@
 target/
 dist/
 
+# App file extension
+*.multiviewer
+
 # NDI
 vendor/ndi/**/*.lib
 vendor/ndi/**/*.dylib

@@ -414,6 +414,13 @@ impl SourceRegistry {
             .filter(|(_, sk)| sk.protocol() == protocol)
             .collect()
     }
+
+    pub fn clear(&mut self) {
+        self.sources.clear();
+        self.next_test = 0;
+        self.pending_restarts.clear();
+        while self.restart_rx.try_recv().is_ok() {}
+    }
 }
 
 #[cfg(test)]

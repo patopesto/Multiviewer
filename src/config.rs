@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::Path;
 
 use crate::sources::{Protocol, SourceConfig, OutputConfig};
 
@@ -9,32 +9,46 @@ pub struct Config {
     pub canvas: Canvas,
 }
 
-impl Config {
-    pub fn load() -> Self {
-        match std::fs::read_to_string(path()) {
-            Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
-            Err(_) => Config::default(),
-        }
-    }
+#[derive(Debug)]
+pub enum ConfigError {
+    Io(std::io::Error),
+    Json(serde_json::Error),
+}
 
-    pub fn save(&self) {
-        match serde_json::to_string_pretty(self) {
-            Ok(s) => {
-                if let Err(e) = std::fs::write(path(), s) {
-                    tracing::error!("config save failed: {e}");
-                }
-            }
-            Err(e) => tracing::error!("config serialize failed: {e}"),
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::Io(e) => write!(f, "config IO error: {e}"),
+            ConfigError::Json(e) => write!(f, "config JSON error: {e}"),
         }
     }
 }
 
-pub fn path() -> PathBuf {
-    let dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-    dir.join("multiviewer.json")
+impl std::error::Error for ConfigError {}
+
+impl From<std::io::Error> for ConfigError {
+    fn from(e: std::io::Error) -> Self {
+        ConfigError::Io(e)
+    }
+}
+
+impl From<serde_json::Error> for ConfigError {
+    fn from(e: serde_json::Error) -> Self {
+        ConfigError::Json(e)
+    }
+}
+
+impl Config {
+    pub fn load_from(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
+        let s = std::fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&s)?)
+    }
+
+    pub fn save_to(&self, path: impl AsRef<Path>) -> Result<(), ConfigError> {
+        let s = serde_json::to_string_pretty(self)?;
+        std::fs::write(path, s)?;
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -359,5 +373,30 @@ mod tests {
             }
             _ => panic!("expected Decklink source config"),
         }
+    }
+
+    #[test]
+    fn config_round_trips_through_path() {
+        let dir = std::env::temp_dir().join(format!("multiviewer-config-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.multiviewer");
+
+        let mut cfg = Config::default();
+        cfg.canvas.width = 1234;
+        cfg.canvas.sources.push(Source::new_v4(
+            "Test".to_string(),
+            Protocol::Test,
+            Some("test-1".to_string()),
+            0.0, 0.0, 1280, 720, 0,
+            TextureMode::Fit,
+            false, false,
+        ));
+        cfg.save_to(&path).unwrap();
+        let loaded = Config::load_from(&path).unwrap();
+        assert_eq!(loaded.canvas.width, 1234);
+        assert_eq!(loaded.canvas.sources.len(), 1);
+        assert_eq!(loaded.canvas.sources[0].protocol, Protocol::Test);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

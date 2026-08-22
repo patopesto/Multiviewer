@@ -18,11 +18,37 @@ Darwin)
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>Multiviewer</string>
-  <key>CFBundleExecutable</key><string>multiviewer</string>
+  <key>CFBundleExecutable</key><string>Multiviewer</string>
   <key>CFBundleIdentifier</key><string>com.multiviewer.app</string>
   <key>CFBundleVersion</key><string>0.1.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>Multiviewer Project</string>
+      <key>CFBundleTypeRole</key><string>Editor</string>
+      <key>CFBundleTypeExtensions</key>
+      <array><string>multiviewer</string></array>
+      <key>LSItemContentTypes</key>
+      <array><string>com.multiviewer.project</string></array>
+      <key>LSHandlerRank</key><string>Owner</string>
+    </dict>
+  </array>
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>com.multiviewer.project</string>
+      <key>UTTypeDescription</key><string>Multiviewer Project</string>
+      <key>UTTypeConformsTo</key>
+      <array><string>public.data</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array><string>multiviewer</string></array>
+      </dict>
+    </dict>
+  </array>
 </dict></plist>
 EOF
     SDK_LIB="/Library/NDI SDK for Apple/lib/macOS/libndi.dylib"
@@ -62,8 +88,31 @@ Linux)
     else
         echo "warning: vendor/ndi/linux is empty, NDI will be unavailable" >&2
     fi
+    cat > "$OUT/multiviewer.desktop" <<'EOF'
+[Desktop Entry]
+Name=Multiviewer
+Comment=Multi-protocol video multiviewer
+Exec=multiviewer %f
+Type=Application
+Terminal=false
+Icon=multiviewer
+Categories=AudioVideo;Video;
+MimeType=application/x-multiviewer-project;
+EOF
+    cat > "$OUT/multiviewer-mime.xml" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-multiviewer-project">
+    <comment>Multiviewer Project</comment>
+    <glob pattern="*.multiviewer"/>
+  </mime-type>
+</mime-info>
+EOF
     tar -czf "dist/$APP-linux.tar.gz" -C dist "$APP-linux"
     echo "wrote dist/$APP-linux.tar.gz"
+    echo "To register the .multiviewer file association, run:"
+    echo "  xdg-mime install $OUT/multiviewer-mime.xml"
+    echo "  xdg-desktop-menu install $OUT/multiviewer.desktop"
     ;;
 *)
     echo "unsupported OS: $(uname -s) (use scripts/package.ps1 on Windows)" >&2

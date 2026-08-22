@@ -1,8 +1,12 @@
 mod compositor;
 mod config;
 mod engine;
+mod session;
 mod sources;
 mod ui;
+
+pub const APP_NAME: &str = "Multiviewer";
+pub const PROJECT_FILE_EXTENSION: &str = "multiviewer";
 
 fn main() -> eframe::Result<()> {
     tracing_subscriber::fmt()
@@ -12,14 +16,20 @@ fn main() -> eframe::Result<()> {
         )
         .init();
 
+    let session = session::Session::load();
+    let startup_path = std::env::args_os()
+        .nth(1)
+        .map(std::path::PathBuf::from)
+        .or(session.last_project);
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1600.0, 900.0]),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
     eframe::run_native(
-        "Multiviewer",
+        APP_NAME,
         options,
-        Box::new(|_cc| Ok(Box::new(ui::App::new()))),
+        Box::new(move |_cc| Ok(Box::new(ui::App::new(startup_path)))),
     )
 }

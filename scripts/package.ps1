@@ -16,4 +16,22 @@ if (Test-Path $ndi) {
 } else {
     Write-Warning "vendor/ndi/windows is empty, NDI will be unavailable"
 }
+$exe = Resolve-Path "$out\multiviewer.exe"
+$reg = @"
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Software\Classes\.multiviewer]
+@="MultiviewerProject"
+
+[HKEY_CURRENT_USER\Software\Classes\MultiviewerProject]
+@="Multiviewer Project"
+
+[HKEY_CURRENT_USER\Software\Classes\MultiviewerProject\shell\open\command]
+@="\"$($exe -replace '\\','\\\\')\" \"%1\""
+
+[HKEY_CURRENT_USER\Software\Classes\MultiviewerProject\DefaultIcon]
+@="$($exe -replace '\\','\\\\'),0"
+"@
+$reg | Out-File -Encoding utf8 "$out\register-multiviewer.reg"
+Write-Host "wrote $out\register-multiviewer.reg"
 Write-Host "wrote $out"

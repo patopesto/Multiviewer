@@ -142,4 +142,8 @@ impl OutputRegistry {
             }
         }
     }
+
+    pub fn clear(&mut self) {
+        self.outputs.clear();
+    }
 }

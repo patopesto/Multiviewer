@@ -1,4 +1,6 @@
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use crate::compositor::{self, Compositor, Draw, Rect};
 use crate::config::{Config, Source, TextureMode};
@@ -78,6 +80,39 @@ pub struct SnapCandidates {
     pub y: Vec<f32>,
 }
 
+#[derive(Debug)]
+pub enum ProjectError {
+    Config(crate::config::ConfigError),
+    Session(crate::session::SessionError),
+    NoProjectPath,
+}
+
+impl std::fmt::Display for ProjectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProjectError::Config(e) => write!(f, "{e}"),
+            ProjectError::Session(e) => write!(f, "{e}"),
+            ProjectError::NoProjectPath => write!(f, "no project path set"),
+        }
+    }
+}
+
+impl std::error::Error for ProjectError {}
+
+impl From<crate::config::ConfigError> for ProjectError {
+    fn from(e: crate::config::ConfigError) -> Self {
+        ProjectError::Config(e)
+    }
+}
+
+impl From<crate::session::SessionError> for ProjectError {
+    fn from(e: crate::session::SessionError) -> Self {
+        ProjectError::Session(e)
+    }
+}
+
+pub const AUTO_SAVE_INTERVAL: Duration = Duration::from_secs(30);
+
 pub struct Engine {
     pub cfg: Config,
     pub registry: SourceRegistry,
@@ -89,7 +124,9 @@ pub struct Engine {
     comp: Option<Compositor>,
     device: Option<Arc<wgpu::Device>>,
     queue: Option<Arc<wgpu::Queue>>,
+    pub project_path: Option<PathBuf>,
     pub dirty: bool,
+    last_saved_at: Instant,
     pub selected_layer_id: Option<String>,
     pub expanded_source_id: Option<String>,
     pub drag_state: DragState,
@@ -98,11 +135,10 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new() -> Self {
-        let mut cfg = Config::load();
-        let mut registry = SourceRegistry::new();
-        let mut output_registry = OutputRegistry::new();
-        let mut dirty = false;
+    pub fn new_project() -> Self {
+        let cfg = Config::default();
+        let registry = SourceRegistry::new();
+        let output_registry = OutputRegistry::new();
 
         // Start NDI discovery before restoring sources
         let ndi = NdiDiscovery::start();
@@ -114,38 +150,68 @@ impl Engine {
         #[cfg(target_os = "macos")]
         let syphon = Some(SyphonDiscovery::start());
 
+        let mut engine = Self {
+            cfg,
+            registry,
+            output_registry,
+            ndi: Some(ndi),
+            decklink: Some(decklink),
+            #[cfg(target_os = "macos")]
+            syphon,
+            comp: None,
+            device: None,
+            queue: None,
+            project_path: None,
+            dirty: false,
+            last_saved_at: Instant::now(),
+            selected_layer_id: None,
+            expanded_source_id: None,
+            drag_state: DragState::None,
+            snap_guides: SnapGuides::default(),
+            view: ViewState::new(),
+        };
+
+        engine.rebuild_from_config();
+        engine
+    }
+
+    fn rebuild_from_config(&mut self) {
+        self.registry.clear();
+        self.output_registry.clear();
+        self.comp = None;
+
         // Restore Test sources for all Test sources in the loaded config.
         // Each Test source gets a fresh dedicated test source.
-        for (i, source) in cfg.canvas.sources.iter_mut().enumerate() {
+        for (i, source) in self.cfg.canvas.sources.iter_mut().enumerate() {
             if source.uuid.is_empty() {
                 source.uuid = uuid::Uuid::new_v4().to_string();
-                dirty = true;
+                self.dirty = true;
             }
             if source.name.is_empty() {
                 source.name = format!("Source {}", i + 1);
-                dirty = true;
+                self.dirty = true;
             }
             if source.protocol == Protocol::Test {
                 let test_config = match &source.config {
                     SourceConfig::Test(c) => Some(c.clone()),
                     _ => None,
                 };
-                let sid = registry.add_test(test_config);
+                let sid = self.registry.add_test(test_config);
                 source.source_id = Some(sid);
-                dirty = true;
+                self.dirty = true;
             }
             // NDI and Syphon sources keep their source_id; auto-connect happens in update()
         }
 
         // Seed demo layout if nothing was loaded
-        if cfg.canvas.sources.is_empty() {
-            let w = cfg.canvas.width as f32;
-            let h = cfg.canvas.height as f32;
+        if self.cfg.canvas.sources.is_empty() {
+            let w = self.cfg.canvas.width as f32;
+            let h = self.cfg.canvas.height as f32;
             for i in 0..2 {
-                let sid = registry.add_test(None);
+                let sid = self.registry.add_test(None);
                 let col = i % 2;
                 let row = i / 2;
-                cfg.canvas.sources.push(Source::new_v4(
+                self.cfg.canvas.sources.push(Source::new_v4(
                     format!("Source {}", i + 1),
                     Protocol::Test,
                     Some(sid),
@@ -159,14 +225,14 @@ impl Engine {
                     false,
                 ));
             }
-            dirty = true;
+            self.dirty = true;
         }
 
         // Load outputs from config.
-        for output in &mut cfg.canvas.outputs {
+        for output in &mut self.cfg.canvas.outputs {
             if output.uuid.is_empty() {
                 output.uuid = uuid::Uuid::new_v4().to_string();
-                dirty = true;
+                self.dirty = true;
             }
             match output.protocol {
                 Protocol::Ndi => {
@@ -180,7 +246,7 @@ impl Engine {
                     } else {
                         ndi_config.sender_name.clone()
                     };
-                    output_registry.add_ndi(id, name, ndi_config, output.enabled);
+                    self.output_registry.add_ndi(id, name, ndi_config, output.enabled);
                 }
                 Protocol::Decklink => {
                     let id = output.uuid.clone();
@@ -193,7 +259,7 @@ impl Engine {
                     } else {
                         decklink_config.device_name.clone()
                     };
-                    output_registry.add_decklink(id, name, decklink_config, output.enabled);
+                    self.output_registry.add_decklink(id, name, decklink_config, output.enabled);
                 }
                 #[cfg(target_os = "macos")]
                 Protocol::Syphon => {
@@ -207,31 +273,53 @@ impl Engine {
                     } else {
                         syphon_config.server_name.clone()
                     };
-                    output_registry.add_syphon(id, name, syphon_config, output.enabled);
+                    self.output_registry.add_syphon(id, name, syphon_config, output.enabled);
                 }
                 _ => {}
             }
         }
+    }
 
-        Self {
-            cfg,
-            registry,
-            output_registry,
-            ndi: Some(ndi),
-            decklink: Some(decklink),
-            #[cfg(target_os = "macos")]
-            syphon,
-            comp: None,
-            device: None,
-            queue: None,
-            dirty,
-            selected_layer_id: None,
-            expanded_source_id: None,
-            drag_state: DragState::None,
-            snap_guides: SnapGuides::default(),
-            view: ViewState::new(),
+    pub fn open_project(&mut self, path: impl AsRef<std::path::Path>) -> Result<(), ProjectError> {
+        let path = path.as_ref().to_path_buf();
+        let cfg = Config::load_from(&path)?;
+        self.cfg = cfg;
+        self.dirty = false;
+        self.rebuild_from_config();
+        self.project_path = Some(path.clone());
+        self.last_saved_at = Instant::now();
+        self.dirty = false;
+        crate::session::Session::default().set_last_project(&path)?;
+        Ok(())
+    }
+
+    pub fn save_project(&mut self) -> Result<(), ProjectError> {
+        let path = self.project_path.clone().ok_or(ProjectError::NoProjectPath)?;
+        self.cfg.save_to(&path)?;
+        self.last_saved_at = Instant::now();
+        self.dirty = false;
+        Ok(())
+    }
+
+    pub fn save_project_as(&mut self, path: impl AsRef<std::path::Path>) -> Result<(), ProjectError> {
+        let path = path.as_ref().to_path_buf();
+        self.cfg.save_to(&path)?;
+        self.project_path = Some(path.clone());
+        self.last_saved_at = Instant::now();
+        self.dirty = false;
+        crate::session::Session::default().set_last_project(&path)?;
+        Ok(())
+    }
+
+    pub fn auto_save(&mut self) {
+
+        if self.dirty && self.project_path.is_some() && self.last_saved_at.elapsed() >= AUTO_SAVE_INTERVAL {
+            if let Err(e) = self.save_project() {
+                tracing::error!("auto-save failed: {e}");
+            }
         }
     }
+
 
     pub fn update(&mut self) {
         // Auto-connect pending NDI sources when they appear in discovery
@@ -370,13 +458,6 @@ impl Engine {
 
     pub fn shared(&self) -> Option<std::sync::Arc<crate::compositor::Shared>> {
         self.comp.as_ref().map(|c| c.shared.clone())
-    }
-
-    pub fn save_if_dirty(&mut self) {
-        if self.dirty {
-            self.cfg.save();
-            self.dirty = false;
-        }
     }
 
     pub fn cleanup_orphaned_sources(&mut self) {
@@ -1032,7 +1113,9 @@ mod tests {
             comp: None,
             device: None,
             queue: None,
+            project_path: None,
             dirty: false,
+            last_saved_at: Instant::now(),
             selected_layer_id: None,
             expanded_source_id: None,
             drag_state: DragState::None,
@@ -1415,5 +1498,38 @@ mod tests {
         engine.drag_layer(&uuid, (25.0, 0.0), &panel);
         assert_eq!(engine.cfg.canvas.sources[0].x, 25.0);
         assert!(engine.snap_guides.x.is_none());
+    }
+
+    fn should_auto_save(engine: &Engine, now: Instant) -> bool {
+        engine.dirty
+            && engine.project_path.is_some()
+            && now.duration_since(engine.last_saved_at) >= AUTO_SAVE_INTERVAL
+    }
+
+    #[test]
+    fn auto_save_triggers_after_interval_when_dirty() {
+        let mut engine = test_engine(crate::config::Canvas::default());
+        engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
+        engine.dirty = true;
+        engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
+        assert!(should_auto_save(&engine, Instant::now()));
+    }
+
+    #[test]
+    fn auto_save_does_not_trigger_when_clean() {
+        let mut engine = test_engine(crate::config::Canvas::default());
+        engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
+        engine.dirty = false;
+        engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
+        assert!(!should_auto_save(&engine, Instant::now()));
+    }
+
+    #[test]
+    fn auto_save_does_not_trigger_without_project_path() {
+        let mut engine = test_engine(crate::config::Canvas::default());
+        engine.project_path = None;
+        engine.dirty = true;
+        engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
+        assert!(!should_auto_save(&engine, Instant::now()));
     }
 }

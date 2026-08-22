@@ -2,15 +2,28 @@ use crate::config::{BorderVisibility, SourceBorderVisibility, TextureMode};
 use crate::sources::decklink::DisplayMode;
 use crate::engine::Engine;
 use crate::sources::{Protocol, SourceConfig, SourceStats, OutputConfig};
-use egui::{Align, Grid, InnerResponse, Layout, ScrollArea, Ui};
+use egui::{Align, Grid, Button, InnerResponse, Layout, ScrollArea, Ui};
 
-pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
+pub enum FileAction {
+    New,
+    Open,
+    Save,
+    SaveAs,
+}
+
+pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) -> Vec<FileAction> {
+    let mut actions = Vec::new();
     egui::Panel::left("panel")
         .default_size(280.0)
         .min_size(200.0)
         .max_size(400.0)
         .show(ui, |ui| {
             ScrollArea::vertical().show(ui, |ui| {
+                collapsable_section(ui, "Project", true, |ui| {
+                    draw_file_buttons(ui, engine, &mut actions);
+                });
+
+                ui.separator();
                 collapsable_section(ui, "Global Settings", true, |ui| {
                     draw_global_section(ui, engine);
                 });
@@ -28,6 +41,26 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
                 engine.cleanup_orphaned_sources();
             });
         });
+    return actions;
+}
+
+fn draw_file_buttons(ui: &mut egui::Ui, engine: &mut Engine, actions: &mut Vec<FileAction>) {
+    ui.horizontal(|ui| {
+        let size = egui::vec2(55.0, 15.0);
+        if ui.add(Button::new("New").min_size(size)).clicked() {
+            actions.push(FileAction::New);
+        }
+        if ui.add(Button::new("Open…").min_size(size)).clicked() {
+            actions.push(FileAction::Open);
+        }
+        let enabled = engine.project_path.is_some();
+        if ui.add_enabled(enabled, Button::new("Save").min_size(size)).clicked() {
+            actions.push(FileAction::Save);
+        }
+        if ui.add(Button::new("Save As…").min_size(size)).clicked() {
+            actions.push(FileAction::SaveAs);
+        }
+    });
 }
 
 fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {

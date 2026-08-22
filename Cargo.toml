@@ -20,6 +20,8 @@ wgpu = "29"
 grafton-ndi = "1.0.0"
 uuid = { version = "1", features = ["v4"] }
 multiviewer-decklink = { path = "src/sources/decklink/bindings" }
+rfd = "0.15"
+dirs = "6"
 
 [build-dependencies]
 cc = "1.0"
