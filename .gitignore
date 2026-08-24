@@ -1,4 +1,8 @@
-# Rust
+# macOS
+.DS_Store
+
+# Rust and tools
+.task
 target/
 dist/
 

@@ -1,0 +1,52 @@
+version: '3'
+
+vars:
+  APP_NAME: "Multiviewer"
+  BIN_DIR: "target"
+  RELEASE_DIR: "dist"
+
+tasks:
+  build:
+    summary: Builds the application
+    sources:
+      - './src/**/*.rs'
+    cmds:
+      - cargo build --release
+
+  # package:
+  #   summary: Packages a production build of the application
+  #   cmds:
+  #     - task: "{{OS}}:package"
+
+  run:
+    summary: Runs the application
+    watch: false
+    cmds:
+      - task: build
+      - ./{{.BIN_DIR}}/release/{{.APP_NAME}} {{.CLI_ARGS}}
+
+  check:
+    desc: Clean, tidy and audit
+    cmds:
+      - task: check
+      - task: vet
+
+  check:
+    desc: Check project for errors
+    cmds:
+      - cargo check
+
+  vet:
+    desc: Run linting
+    cmd: cargo clippy
+
+  update:
+    desc: Update dependencies
+    cmds:
+      - cargo update
+      - task: check
+
+  clean:
+    desc: Clean build directoy
+    cmds:
+      - rm -rf {{.BIN_DIR}} {{.RELEASE_DIR}}
