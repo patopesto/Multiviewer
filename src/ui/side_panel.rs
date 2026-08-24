@@ -755,11 +755,11 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
 
                 ui.label("Position");
                 settings_value(ui, |ui| {
-                    ui.label("X");
+                    ui.label("X ");
                     if ui.add(egui::DragValue::new(&mut source.x)).changed() {
                         engine.dirty = true;
                     }
-                    ui.label("Y");
+                    ui.label("Y ");
                     if ui.add(egui::DragValue::new(&mut source.y)).changed() {
                         engine.dirty = true;
                     }
@@ -787,7 +787,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
 
                 ui.label("Order");
                 settings_value(ui, |ui| {
-                    ui.label("Z");
+                    ui.label("Z ");
                     if ui.add(egui::DragValue::new(&mut source.z)).changed() {
                         engine.dirty = true;
                     }

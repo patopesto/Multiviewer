@@ -20,10 +20,30 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
     }
 }
 
+fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
+    ui.label(label);
+    settings_value(ui, |ui| {
+        let mut color_f32 = [
+            color[0] as f32 / 255.0,
+            color[1] as f32 / 255.0,
+            color[2] as f32 / 255.0,
+        ];
+        if ui.color_edit_button_rgb(&mut color_f32).changed() {
+            *color = [
+                (color_f32[0] * 255.0) as u8,
+                (color_f32[1] * 255.0) as u8,
+                (color_f32[2] * 255.0) as u8,
+            ];
+        }
+    });
+    ui.end_row();
+}
+
 fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
     let old_w = cfg.width;
     let old_h = cfg.height;
     let old_pattern = cfg.pattern.clone();
+    let old_cursor = cfg.cursor;
     settings_grid(ui, "test_settings_grid", |ui| {
         ui.label("Size");
         settings_value(ui, |ui| {
@@ -50,7 +70,7 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
         });
         ui.end_row();
 
-        if let TestPattern::UvGradient { red, green, blue } = &mut cfg.pattern {
+        if let TestPattern::UvGradient { red, green, blue, rotation } = &mut cfg.pattern {
             ui.label("Channels");
             settings_value(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -60,22 +80,31 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
                 });
             });
             ui.end_row();
-        }
 
-        if let TestPattern::Grid { cols, rows } = &mut cfg.pattern {
-            ui.label("Grid");
+            ui.label("Rotation");
             settings_value(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Cols");
-                    ui.add(egui::DragValue::new(cols).range(1..=100));
-                    ui.label("Rows");
-                    ui.add(egui::DragValue::new(rows).range(1..=100));
-                });
+                ui.add(egui::DragValue::new(rotation).range(0.0..=360.0).speed(1.0).suffix("°"));
             });
             ui.end_row();
         }
 
-        if let TestPattern::Radar { width, speed, direction } = &mut cfg.pattern {
+        if let TestPattern::Grid { cols, rows, bg_color, line_color } = &mut cfg.pattern {
+            ui.label("Grid");
+            settings_value(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Cols");
+                    ui.add(egui::DragValue::new(cols).range(1..=50));
+                    ui.label("Rows");
+                    ui.add(egui::DragValue::new(rows).range(1..=50));
+                });
+            });
+            ui.end_row();
+
+            color_picker_row(ui, "Primary Color", line_color);
+            color_picker_row(ui, "Background", bg_color);
+        }
+
+        if let TestPattern::Radar { width, speed, direction, bg_color, line_color } = &mut cfg.pattern {
             ui.label("Width");
             settings_value(ui, |ui| {
                 ui.add(egui::DragValue::new(width).range(1..=cfg.width));
@@ -84,24 +113,54 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
 
             ui.label("Speed");
             settings_value(ui, |ui| {
-                ui.add(egui::DragValue::new(speed).range(0.0..=20.0));
+                ui.add(egui::DragValue::new(speed).range(0.0..=50.0).speed(0.5));
             });
             ui.end_row();
 
             ui.label("Direction");
             settings_value(ui, |ui| {
-                egui::ComboBox::from_id_salt("ndi_bw")
+                egui::ComboBox::from_id_salt("radar_direction")
                     .width(ui.available_width())
                     .selected_text(format!("{:?}", direction))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(direction, RadarDirection::Horizontal, "Horizontal");
-                        ui.selectable_value(direction, RadarDirection::Vertical, "Vertical");
+                        ui.selectable_value(direction, RadarDirection::Right, "Right");
+                        ui.selectable_value(direction, RadarDirection::Left, "Left");
+                        ui.selectable_value(direction, RadarDirection::Down, "Down");
+                        ui.selectable_value(direction, RadarDirection::Up, "Up");
                     });
+            });
+            ui.end_row();
+
+            color_picker_row(ui, "Primary Color", line_color);
+            color_picker_row(ui, "Background", bg_color);
+        }
+
+        ui.label("Cursor");
+        settings_value(ui, |ui| {
+            ui.checkbox(&mut cfg.cursor.enabled, "Enabled");
+        });
+        ui.end_row();
+
+        if cfg.cursor.enabled {
+            ui.label("Cursor speed");
+            settings_value(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("X ");
+                    ui.add(egui::DragValue::new(&mut cfg.cursor.speed_x).range(0.0..=100.0).speed(0.5));
+                    ui.label("Y ");
+                    ui.add(egui::DragValue::new(&mut cfg.cursor.speed_y).range(0.0..=100.0).speed(0.5));
+                });
+            });
+            ui.end_row();
+
+            ui.label("Cursor width");
+            settings_value(ui, |ui| {
+                ui.add(egui::DragValue::new(&mut cfg.cursor.width).range(1..=100));
             });
             ui.end_row();
         }
     });
-    cfg.width != old_w || cfg.height != old_h || cfg.pattern != old_pattern
+    cfg.width != old_w || cfg.height != old_h || cfg.pattern != old_pattern || cfg.cursor != old_cursor
 }
 
 fn color_format_label(cf: grafton_ndi::ReceiverColorFormat) -> String {

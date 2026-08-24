@@ -4,6 +4,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 
+const NOMINAL_FPS: f64 = 60.0;
+
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ColorSpace {
     Rec601,
@@ -15,25 +17,50 @@ pub enum ColorSpace {
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub enum RadarDirection {
     #[default]
-    Horizontal,
-    Vertical,
+    Right,
+    Left,
+    Down,
+    Up,
 }
+
+fn black_color() -> [u8; 3] { [0, 0, 0] }
+fn white_color() -> [u8; 3] { [255, 255, 255] }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum TestPattern {
     Smpte(SmpteType),
-    UvGradient { red: bool, green: bool, blue: bool },
-    Grid { cols: u32, rows: u32 },
-    Radar { width: u32, speed: f32, direction: RadarDirection },
+    UvGradient {
+        red: bool,
+        green: bool,
+        blue: bool,
+        rotation: f32
+    },
+    Grid {
+        cols: u32,
+        rows: u32,
+        #[serde(default = "white_color")]
+        line_color: [u8; 3],
+        #[serde(default = "black_color")]
+        bg_color: [u8; 3],
+    },
+    Radar {
+        width: u32,
+        speed: f32,
+        direction: RadarDirection,
+        #[serde(default = "white_color")]
+        line_color: [u8; 3],
+        #[serde(default = "black_color")]
+        bg_color: [u8; 3],
+    },
 }
 
 impl TestPattern {
     pub const ALL: [TestPattern; 5] = [
         TestPattern::Smpte(SmpteType::Smpte1978),
         TestPattern::Smpte(SmpteType::Smpte2022),
-        TestPattern::UvGradient { red: true, green: true, blue: false },
-        TestPattern::Grid { cols: 19, rows: 9 },
-        TestPattern::Radar { width: 200, speed: 10.0, direction: RadarDirection::Horizontal },
+        TestPattern::UvGradient { red: true, green: true, blue: false, rotation: 0.0 },
+        TestPattern::Grid { cols: 19, rows: 9, line_color: [255, 255, 255], bg_color: [0, 0, 0] },
+        TestPattern::Radar { width: 200, speed: 10.0, direction: RadarDirection::Right, line_color: [255, 255, 255], bg_color: [0, 0, 0] },
     ];
 
     pub fn label(&self) -> &'static str {
@@ -54,11 +81,32 @@ pub enum SmpteType {
     Smpte2022, // Original spec is RP219:2002 superseded by RP219:2014
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CursorConfig {
+    pub enabled: bool,
+    pub speed_x: f32,
+    pub speed_y: f32,
+    pub width: u32,
+}
+
+impl Default for CursorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            speed_x: 8.0,
+            speed_y: 2.0,
+            width: 1,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TestSourceConfig {
     pub width: u32,
     pub height: u32,
     pub pattern: TestPattern,
+    #[serde(default)]
+    pub cursor: CursorConfig,
 }
 
 impl Default for TestSourceConfig {
@@ -67,6 +115,7 @@ impl Default for TestSourceConfig {
             width: 1280,
             height: 720,
             pattern: TestPattern::Smpte(SmpteType::default()),
+            cursor: CursorConfig::default(),
         }
     }
 }
@@ -91,6 +140,7 @@ impl TestSource {
         let width = cfg.width;
         let height = cfg.height;
         let pattern = cfg.pattern.clone();
+        let cursor = cfg.cursor;
         let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
         let name = id.clone();
@@ -99,26 +149,52 @@ impl TestSource {
             .spawn(move || {
                 let w = width;
                 let h = height;
+                let size = (w * h * 4) as usize;
+                let frame_interval = Duration::from_secs_f64(1.0 / NOMINAL_FPS);
                 let mut seq = 0u64;
+
+                // Render the static base once and reuse it every frame.
+                let mut base = vec![0u8; size];
+                generate_base(&mut base, w, h, &pattern);
+                let base = Arc::new(base);
+                let mut back = vec![0u8; size];
+
                 while running2.load(Ordering::Relaxed) {
+                    let frame_start = Instant::now();
                     let t0 = Instant::now();
-                    let mut buf = vec![0u8; (w * h * 4) as usize];
-                    generate_pattern(&mut buf, w, h, &pattern, seq);
+                    match &pattern {
+                        TestPattern::Radar { width, speed, direction, line_color, bg_color } => {
+                            generate_radar(&mut back, w, h, *width, *speed, seq, direction, *line_color, *bg_color);
+                        }
+                        _ => {
+                            back.copy_from_slice(&base);
+                        }
+                    }
+                    if cursor.enabled {
+                        overlay_cursor(&mut back, w, h, seq, &cursor);
+                    }
                     let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
                     {
                         let mut s = stats2.lock().unwrap();
-                        s.record_frame(w, h, PixelFormat::Rgba8.label(), 30.0);
+                        s.record_frame(w, h, PixelFormat::Rgba8.label(), NOMINAL_FPS);
                         s.record_copy_time(copy_ms);
                     }
-                    *writer.lock().unwrap() = Some(Frame::Cpu(CpuFrame {
-                        data: Arc::new(buf),
+                    let frame = Frame::Cpu(CpuFrame {
+                        data: Arc::new(std::mem::take(&mut back)),
                         w,
                         h,
                         fmt: PixelFormat::Rgba8,
                         seq,
-                    }));
+                    });
+                    let previous = writer.lock().unwrap().replace(frame);
+                    back = match previous {
+                        Some(Frame::Cpu(CpuFrame { data, .. })) => {
+                            Arc::try_unwrap(data).unwrap_or_else(|_| vec![0u8; size])
+                        }
+                        _ => vec![0u8; size],
+                    };
                     seq += 1;
-                    std::thread::sleep(Duration::from_millis(33));
+                    std::thread::sleep(frame_interval.saturating_sub(frame_start.elapsed()));
                 }
             })
             .expect("spawn test source");
@@ -151,12 +227,48 @@ impl VideoSource for TestSource {
     }
 }
 
-fn generate_pattern(buf: &mut [u8], w: u32, h: u32, pattern: &TestPattern, seq: u64) {
+fn generate_base(buf: &mut [u8], w: u32, h: u32, pattern: &TestPattern) {
     match pattern {
-        TestPattern::Smpte(t) => generate_smpte(buf, w, h, t, seq),
-        TestPattern::UvGradient{ red, green, blue } => generate_uv_gradient(buf, w, h, *red, *green, *blue, seq),
-        TestPattern::Grid { cols, rows } => generate_grid(buf, w, h, *cols, *rows, seq),
-        TestPattern::Radar { width, speed, direction } => generate_radar(buf, w, h, *width, *speed, seq, direction),
+        TestPattern::Smpte(t) => generate_smpte(buf, w, h, t),
+        TestPattern::UvGradient { red, green, blue, rotation } => generate_uv_gradient(buf, w, h, *red, *green, *blue, *rotation),
+        TestPattern::Grid { cols, rows, line_color, bg_color } => generate_grid(buf, w, h, *cols, *rows, *line_color, *bg_color),
+        // Radar is fully dynamic; the base is left black and generated per-frame.
+        TestPattern::Radar { .. } => buf.fill(0),
+    }
+}
+
+/// Overlay an optional moving cursor (white crosshair) on top of any pattern.
+fn overlay_cursor(buf: &mut [u8], w: u32, h: u32, seq: u64, cursor: &CursorConfig) {
+    if !cursor.enabled || cursor.width == 0 {
+        return;
+    }
+    let x = ((seq as f32 * cursor.speed_x) as u32) % w;
+    let y = ((seq as f32 * cursor.speed_y) as u32) % h;
+    let x_end = (x + cursor.width).min(w);
+    let y_end = (y + cursor.width).min(h);
+
+    // Vertical band.
+    for cy in 0..h {
+        let row_start = ((cy * w + x) * 4) as usize;
+        for cx in x..x_end {
+            let i = row_start + ((cx - x) * 4) as usize;
+            buf[i] = 255;
+            buf[i + 1] = 255;
+            buf[i + 2] = 255;
+            buf[i + 3] = 255;
+        }
+    }
+
+    // Horizontal band.
+    for cy in y..y_end {
+        let row_start = ((cy * w) * 4) as usize;
+        for cx in 0..w {
+            let i = row_start + (cx * 4) as usize;
+            buf[i] = 255;
+            buf[i + 1] = 255;
+            buf[i + 2] = 255;
+            buf[i + 3] = 255;
+        }
     }
 }
 
@@ -187,14 +299,14 @@ fn yuv_to_rgb_studio(y: f32, u: f32, v: f32, cs: ColorSpace) -> [u8; 3] {
     ]
 }
 
-fn generate_smpte(buf: &mut [u8], w: u32, h: u32, t: &SmpteType, seq: u64) {
+fn generate_smpte(buf: &mut [u8], w: u32, h: u32, t: &SmpteType) {
     match t {
-        SmpteType::Smpte1978 => generate_smpte_1978(buf, w, h, seq),
-        SmpteType::Smpte2022 => generate_rp2192014(buf, w, h, seq),
+        SmpteType::Smpte1978 => generate_smpte_1978(buf, w, h),
+        SmpteType::Smpte2022 => generate_rp2192014(buf, w, h),
     }
 }
 
-fn generate_smpte_1978(buf: &mut [u8], w: u32, h: u32, seq: u64) {
+fn generate_smpte_1978(buf: &mut [u8], w: u32, h: u32) {
     // BT.601 narrow-range Y'CbCr values per SMPTE EG 1-1990 / NTSC color bars.
     let bars_yuv = [
         (180.0, 128.0, 128.0), // 75% White
@@ -207,7 +319,6 @@ fn generate_smpte_1978(buf: &mut [u8], w: u32, h: u32, seq: u64) {
     ];
     let cs = ColorSpace::Rec601;
 
-    let marker = ((seq * 8) % w as u64) as u32;
     for y in 0..h {
         let y_f = y as f32 / h as f32;
 
@@ -248,10 +359,7 @@ fn generate_smpte_1978(buf: &mut [u8], w: u32, h: u32, seq: u64) {
                 }
             };
 
-            let mut c = yuv_to_rgb_studio(y_val, u_val, v_val, cs);
-            if x == marker || y == (seq * 2 % h as u64) as u32 {
-                c = [255, 255, 255];
-            }
+            let c = yuv_to_rgb_studio(y_val, u_val, v_val, cs);
             let i = ((y * w + x) * 4) as usize;
             buf[i] = c[0];
             buf[i + 1] = c[1];
@@ -263,7 +371,7 @@ fn generate_smpte_1978(buf: &mut [u8], w: u32, h: u32, seq: u64) {
 
 /// SMPTE RP219-1:2014 multi-format color bars.
 /// Outputs studio-range R'G'B' (16-235) derived from the Annex B Y'CbCr code values.
-fn generate_rp2192014(buf: &mut [u8], w: u32, h: u32, seq: u64) {
+fn generate_rp2192014(buf: &mut [u8], w: u32, h: u32) {
     let cs = ColorSpace::Rec709;
     // Heights of the four bands (Annex C, Table C.5).
     let h1 = (h * 7) / 12;
@@ -277,14 +385,8 @@ fn generate_rp2192014(buf: &mut [u8], w: u32, h: u32, seq: u64) {
     let left43 = side;
     let right43 = left43 + width43;
 
-    let marker_x = ((seq * 8) % w as u64) as u32;
-    let marker_y = (seq * 2 % h as u64) as u32;
-
     let mut write = |x: u32, y: u32, yuv: (f32, f32, f32)| {
-        let mut c = yuv_to_rgb_studio(yuv.0, yuv.1, yuv.2, cs);
-        if x == marker_x || y == marker_y {
-            c = [255, 255, 255];
-        }
+        let c = yuv_to_rgb_studio(yuv.0, yuv.1, yuv.2, cs);
         let i = ((y * w + x) * 4) as usize;
         buf[i] = c[0];
         buf[i + 1] = c[1];
@@ -415,25 +517,33 @@ fn generate_rp2192014(buf: &mut [u8], w: u32, h: u32, seq: u64) {
     }
 }
 
-fn generate_uv_gradient(buf: &mut [u8], w: u32, h: u32, r: bool, g: bool, b: bool, _seq: u64) {
+fn generate_uv_gradient(buf: &mut [u8], w: u32, h: u32, r: bool, g: bool, b: bool, rotation_deg: f32) {
+    let theta = rotation_deg.to_radians();
+    let cos = theta.cos();
+    let sin = theta.sin();
     for y in 0..h {
+        let ny = y as f32 / h as f32 - 0.5;
         for x in 0..w {
+            let nx = x as f32 / w as f32 - 0.5;
+            // Rotate the sampling coordinates around the image center.
+            let u = nx * cos - ny * sin + 0.5;
+            let v = nx * sin + ny * cos + 0.5;
             let i = ((y * w + x) * 4) as usize;
-            buf[i] = if r { (x as f32 / w as f32 * 255.0) as u8 } else { 0 };
-            buf[i + 1] = if g { (y as f32 / h as f32 * 255.0) as u8 } else { 0 };
-            buf[i + 2] = if b { ((w - x) as f32 / w as f32 * 255.0) as u8 } else { 0 };
+            buf[i] = if r { (u * 255.0).clamp(0.0, 255.0) as u8 } else { 0 };
+            buf[i + 1] = if g { (v * 255.0).clamp(0.0, 255.0) as u8 } else { 0 };
+            buf[i + 2] = if b { ((1.0 - u) * 255.0).clamp(0.0, 255.0) as u8 } else { 0 };
             buf[i + 3] = 255;
         }
     }
 }
 
-fn generate_grid(buf: &mut [u8], w: u32, h: u32, cols: u32, rows: u32, _seq: u64) {
+fn generate_grid(buf: &mut [u8], w: u32, h: u32, cols: u32, rows: u32, line_color: [u8; 3], bg_color: [u8; 3]) {
     let cw = w / cols;
     let rh = h / rows;
     for y in 0..h {
         for x in 0..w {
             let is_line = (x % cw < 2) || (y % rh < 2);
-            let c = if is_line { [255, 255, 255] } else { [0, 0, 0] };
+            let c = if is_line { line_color } else { bg_color };
             let i = ((y * w + x) * 4) as usize;
             buf[i] = c[0];
             buf[i + 1] = c[1];
@@ -443,10 +553,13 @@ fn generate_grid(buf: &mut [u8], w: u32, h: u32, cols: u32, rows: u32, _seq: u64
     }
 }
 
-fn generate_radar(buf: &mut [u8], w: u32, h: u32, width: u32, speed: f32, seq: u64, direction: &RadarDirection) {
-    let (dim_main, is_horizontal) = match direction {
-        RadarDirection::Horizontal => (w, true),
-        RadarDirection::Vertical => (h, false),
+#[allow(clippy::too_many_arguments)]
+fn generate_radar(buf: &mut [u8], w: u32, h: u32, width: u32, speed: f32, seq: u64, direction: &RadarDirection, line_color: [u8; 3], bg_color: [u8; 3]) {
+    let (dim_main, is_horizontal, reverse) = match direction {
+        RadarDirection::Right => (w, true, false),
+        RadarDirection::Left => (w, true, true),
+        RadarDirection::Down => (h, false, false),
+        RadarDirection::Up => (h, false, true),
     };
 
     let cycle = dim_main as f32 + width as f32;
@@ -455,8 +568,13 @@ fn generate_radar(buf: &mut [u8], w: u32, h: u32, width: u32, speed: f32, seq: u
 
     for y in 0..h {
         for x in 0..w {
-            let coord = if is_horizontal { x as i32 } else { y as i32 };
-            
+            let raw_coord = if is_horizontal { x as i32 } else { y as i32 };
+            let coord = if reverse {
+                (dim_main - 1) as i32 - raw_coord
+            } else {
+                raw_coord
+            };
+
             let intensity = if coord == edge_pos {
                 1.0
             } else if coord < edge_pos {
@@ -466,14 +584,18 @@ fn generate_radar(buf: &mut [u8], w: u32, h: u32, width: u32, speed: f32, seq: u
                 0.0
             };
 
-            let val = (intensity * 255.0) as u8;
             let i = ((y * w + x) * 4) as usize;
-            buf[i] = val;
-            buf[i + 1] = val;
-            buf[i + 2] = val;
+            buf[i] = lerp_u8(bg_color[0], line_color[0], intensity);
+            buf[i + 1] = lerp_u8(bg_color[1], line_color[1], intensity);
+            buf[i + 2] = lerp_u8(bg_color[2], line_color[2], intensity);
             buf[i + 3] = 255;
         }
     }
+}
+
+fn lerp_u8(a: u8, b: u8, t: f32) -> u8 {
+    let t = t.clamp(0.0, 1.0);
+    (a as f32 + (b as f32 - a as f32) * t) as u8
 }
 
 #[cfg(test)]
@@ -498,7 +620,7 @@ mod tests {
         let w = 1920;
         let h = 1080;
         let mut buf = vec![0u8; (w * h * 4) as usize];
-        generate_rp2192014(&mut buf, w, h, 0);
+        generate_rp2192014(&mut buf, w, h);
 
         // 75% white bar (central 4:3 area, first bar).
         assert_eq!(pixel(&buf, w, 300, 100), [180, 180, 180, 255]);
@@ -511,7 +633,7 @@ mod tests {
         let w = 1920;
         let h = 1080;
         let mut buf = vec![0u8; (w * h * 4) as usize];
-        generate_rp2192014(&mut buf, w, h, 0);
+        generate_rp2192014(&mut buf, w, h);
 
         let h1 = (h * 7) / 12;
         let y = h1 + 10;
@@ -536,7 +658,7 @@ mod tests {
         let w = 1920;
         let h = 1080;
         let mut buf = vec![0u8; (w * h * 4) as usize];
-        generate_rp2192014(&mut buf, w, h, 0);
+        generate_rp2192014(&mut buf, w, h);
 
         let y = (h * 7) / 12 + h / 12 + 10;
 
@@ -562,7 +684,7 @@ mod tests {
         let w = 1920;
         let h = 1080;
         let mut buf = vec![0u8; (w * h * 4) as usize];
-        generate_rp2192014(&mut buf, w, h, 0);
+        generate_rp2192014(&mut buf, w, h);
 
         let y = (h * 7) / 12 + h / 6 + 10;
 
@@ -582,7 +704,7 @@ mod tests {
         let w = 1280;
         let h = 720;
         let mut buf = vec![0u8; (w * h * 4) as usize];
-        generate_smpte_1978(&mut buf, w, h, 0);
+        generate_smpte_1978(&mut buf, w, h);
         // 75% white maps to studio-range 180/180/180.
         assert_eq!(pixel(&buf, w, 10, 10), [180, 180, 180, 255]);
     }
@@ -592,7 +714,7 @@ mod tests {
         let w = 1280;
         let h = 720;
         let mut buf = vec![0u8; (w * h * 4) as usize];
-        generate_smpte_1978(&mut buf, w, h, 0);
+        generate_smpte_1978(&mut buf, w, h);
 
         let y = h * 3 / 4 + 10; // bottom band
 
