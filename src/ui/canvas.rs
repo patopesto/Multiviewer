@@ -54,6 +54,7 @@ pub fn update(
     engine: &mut Engine,
     ctx: &egui::Context,
     frame: &mut eframe::Frame,
+    ui_visible: bool,
 ) {
     let rect = ui.available_rect_before_wrap();
     let panel_rect = Rect {
@@ -70,7 +71,8 @@ pub fn update(
     if !primary_down {
         engine.drag_state = DragState::None;
         engine.snap_guides = crate::engine::SnapGuides::default();
-    } else if pressed
+    } else if ui_visible
+        && pressed
         && response.hovered()
         && let Some(pos) = response.interact_pointer_pos()
     {
@@ -96,7 +98,7 @@ pub fn update(
         }
     }
 
-    if response.dragged() {
+    if ui_visible && response.dragged() {
         match engine.drag_state.clone() {
             DragState::Move { uuid } => {
                 engine.drag_layer(
@@ -124,7 +126,8 @@ pub fn update(
     }
 
     // Cursor feedback when hovering a resize handle.
-    if response.hovered()
+    if ui_visible
+        && response.hovered()
         && !primary_down
         && engine.expanded_source_id().is_none()
         && let Some(pos) = response.hover_pos()
@@ -134,7 +137,7 @@ pub fn update(
     }
 
     // Zoom toward the center of the view.
-    if response.hovered() {
+    if ui_visible && response.hovered() {
         let scroll = ctx.input(|i| i.smooth_scroll_delta).y;
         if scroll != 0.0 {
             let factor = 1.1_f32.powf(scroll / 50.0);
@@ -147,7 +150,11 @@ pub fn update(
     };
     engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
 
-    let transform = engine.display_transform(&panel_rect);
+    let transform = if ui_visible {
+        engine.display_transform(&panel_rect)
+    } else {
+        engine.default_transform(&panel_rect)
+    };
     let draw = engine.build_frame(&rs.device, &rs.queue, &panel_rect, transform);
     let ppp = ctx.pixels_per_point();
 
@@ -166,50 +173,56 @@ pub fn update(
         },
     ));
 
-    draw_overlays(&engine.cfg.canvas, &panel_rect, &painter, engine, transform);
-
-    // Context menu on sources
-    response.context_menu(|ui| {
-        ui.set_min_width(100.0);
-        if engine.expanded_source_id().is_some() {
-            if ui.button("Exit expanded view").clicked() {
-                engine.clear_expanded_source();
-                ui.close();
-            }
-        } else if let Some(pos) = ui.input(|i| i.pointer.latest_pos())
-            && let Some(uuid) = engine.hit_test(&panel_rect, (pos.x, pos.y))
-        {
-            engine.selected_layer_id = Some(uuid.clone());
-            if ui.button("Expand to full canvas").clicked() {
-                engine.expand_source(uuid);
-                ui.close();
-            }
-        }
-    });
-
-    // Buttons
-    if engine.expanded_source_id().is_some() {
-        let close_icon = asset_image!("close.svg");
-        let close_image = egui::Image::new(close_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
-        let close_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.max.x - 80.0, rect.min.y + 10.0),
-            egui::vec2(30.0, 30.0),
-        );
-        let close_btn = egui::Button::image(close_image).corner_radius(5.0);
-        if ui.put(close_rect, close_btn).on_hover_text("Exit expanded view").clicked() {
-            engine.clear_expanded_source();
-        }
+    if ui_visible {
+        draw_overlays(&engine.cfg.canvas, &panel_rect, &painter, engine, transform);
     }
 
-    let btn_icon = asset_image!("compress.svg");
-    let btn_image = egui::Image::new(btn_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
-    let btn_rect = egui::Rect::from_min_size(
-        egui::pos2(rect.max.x - 40.0, rect.min.y + 10.0),
-        egui::vec2(30.0, 30.0),
-    );
-    let btn = egui::Button::image(btn_image).corner_radius(5.0);
-    if ui.put(btn_rect, btn).on_hover_text("Re-center view").clicked() {
-        engine.recenter_view(&panel_rect);
+    // Context menu on sources
+    if ui_visible {
+        response.context_menu(|ui| {
+            ui.set_min_width(100.0);
+            if engine.expanded_source_id().is_some() {
+                if ui.button("Exit expanded view").clicked() {
+                    engine.clear_expanded_source();
+                    ui.close();
+                }
+            } else if let Some(pos) = ui.input(|i| i.pointer.latest_pos())
+                && let Some(uuid) = engine.hit_test(&panel_rect, (pos.x, pos.y))
+            {
+                engine.selected_layer_id = Some(uuid.clone());
+                if ui.button("Expand to full canvas").clicked() {
+                    engine.expand_source(uuid);
+                    ui.close();
+                }
+            }
+        });
+    }
+
+    // Buttons
+    if ui_visible {
+        if engine.expanded_source_id().is_some() {
+            let close_icon = asset_image!("close.svg");
+            let close_image = egui::Image::new(close_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
+            let close_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.max.x - 80.0, rect.min.y + 10.0),
+                egui::vec2(30.0, 30.0),
+            );
+            let close_btn = egui::Button::image(close_image).corner_radius(5.0);
+            if ui.put(close_rect, close_btn).on_hover_text("Exit expanded view").clicked() {
+                engine.clear_expanded_source();
+            }
+        }
+
+        let btn_icon = asset_image!("compress.svg");
+        let btn_image = egui::Image::new(btn_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
+        let btn_rect = egui::Rect::from_min_size(
+            egui::pos2(rect.max.x - 40.0, rect.min.y + 10.0),
+            egui::vec2(30.0, 30.0),
+        );
+        let btn = egui::Button::image(btn_image).corner_radius(5.0);
+        if ui.put(btn_rect, btn).on_hover_text("Re-center view").clicked() {
+            engine.recenter_view(&panel_rect);
+        }
     }
 }
 

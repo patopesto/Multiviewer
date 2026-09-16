@@ -12,6 +12,7 @@ pub struct App {
     image_loaders_installed: bool,
     last_error: Option<String>,
     pending_confirm: Option<Confirm>,
+    ui_visible: bool,
 }
 
 enum Confirm {
@@ -27,6 +28,7 @@ impl App {
             image_loaders_installed: false,
             last_error: None,
             pending_confirm: None,
+            ui_visible: true,
         };
         if let Some(path) = startup_path {
             if path.exists() {
@@ -118,6 +120,14 @@ impl App {
             return;
         };
 
+        // In hidden UI mode only allow toggling back and exiting expanded view.
+        if !self.ui_visible {
+            match shortcut {
+                Shortcut::ToggleUi | Shortcut::ExitExpanded => {}
+                _ => return,
+            }
+        }
+
         let rect = ui.available_rect_before_wrap();
         let panel_rect = crate::compositor::Rect {
             x: rect.min.x,
@@ -186,7 +196,7 @@ impl App {
             Shortcut::RecenterView => self.engine.recenter_view(&panel_rect),
             Shortcut::ZoomIn => self.engine.zoom_view(&panel_rect, 1.1),
             Shortcut::ZoomOut => self.engine.zoom_view(&panel_rect, 1.0 / 1.1),
-            _ => {}
+            Shortcut::ToggleUi => self.ui_visible = !self.ui_visible,
         }
     }
 
@@ -300,14 +310,18 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        let actions = super::side_panel::draw(ui, &mut self.engine);
-        self.handle_actions(actions);
+        if self.ui_visible {
+            let actions = super::side_panel::draw(ui, &mut self.engine);
+            self.handle_actions(actions);
+        }
         self.handle_global_shortcuts(ui);
         self.draw_confirmation_modal(&ctx);
-        self.draw_status_bar(ui);
+        if self.ui_visible {
+            self.draw_status_bar(ui);
+        }
 
         egui::CentralPanel::default().show(ui, |ui| {
-            super::canvas::update(ui, &mut self.engine, &ctx, frame);
+            super::canvas::update(ui, &mut self.engine, &ctx, frame, self.ui_visible);
         });
     }
 }

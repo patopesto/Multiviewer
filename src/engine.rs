@@ -690,6 +690,11 @@ impl Engine {
         )
     }
 
+    /// Base transform that fits the canvas into the panel without any user pan/zoom.
+    pub fn default_transform(&self, panel_rect: &Rect) -> (f32, f32, f32) {
+        compositor::canvas_transform(&self.cfg.canvas, panel_rect)
+    }
+
     pub fn recenter_view(&mut self, panel_rect: &Rect) {
         let canvas = &self.cfg.canvas;
         let (mut min_x, mut min_y) = (0.0_f32, 0.0_f32);

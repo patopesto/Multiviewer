@@ -25,6 +25,7 @@ pub enum Shortcut {
     ZoomOut,
     SelectNextSource,
     SelectPreviousSource,
+    ToggleUi,
 }
 
 impl Shortcut {
@@ -49,6 +50,7 @@ impl Shortcut {
             Shortcut::ZoomOut => "Zoom out",
             Shortcut::SelectNextSource => "Select next source",
             Shortcut::SelectPreviousSource => "Select previous source",
+            Shortcut::ToggleUi => "Toggle UI",
         }
     }
 
@@ -73,6 +75,7 @@ impl Shortcut {
             Shortcut::ZoomOut => "-",
             Shortcut::SelectNextSource => "Ctrl/Cmd + Alt + ↓",
             Shortcut::SelectPreviousSource => "Ctrl/Cmd + Alt + ↑",
+            Shortcut::ToggleUi => "Space",
         }
     }
 
@@ -159,6 +162,9 @@ impl Shortcut {
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Minus)) {
             return Some(Shortcut::ZoomOut);
         }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Space)) {
+            return Some(Shortcut::ToggleUi);
+        }
         None
     }
 
@@ -182,6 +188,7 @@ impl Shortcut {
             Shortcut::ZoomOut,
             Shortcut::SelectNextSource,
             Shortcut::SelectPreviousSource,
+            Shortcut::ToggleUi,
         ]
     }
 }
