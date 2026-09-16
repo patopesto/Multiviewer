@@ -23,8 +23,6 @@ pub enum Shortcut {
     RecenterView,
     ZoomIn,
     ZoomOut,
-
-    // Source-list-local shortcuts — handled in side_panel::draw_sources_section.
     SelectNextSource,
     SelectPreviousSource,
 }
@@ -73,8 +71,8 @@ impl Shortcut {
             Shortcut::RecenterView => "0",
             Shortcut::ZoomIn => "+ / =",
             Shortcut::ZoomOut => "-",
-            Shortcut::SelectNextSource => "↓",
-            Shortcut::SelectPreviousSource => "↑",
+            Shortcut::SelectNextSource => "Ctrl/Cmd + Alt + ↓",
+            Shortcut::SelectPreviousSource => "Ctrl/Cmd + Alt + ↑",
         }
     }
 
@@ -97,6 +95,15 @@ impl Shortcut {
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::N)) {
             return Some(Shortcut::NewProject);
+        }
+
+        // Source selection (Ctrl/Cmd + Alt + arrow).
+        let cmd_alt = Modifiers::COMMAND | Modifiers::ALT;
+        if ctx.input_mut(|i| i.consume_key(cmd_alt, Key::ArrowDown)) {
+            return Some(Shortcut::SelectNextSource);
+        }
+        if ctx.input_mut(|i| i.consume_key(cmd_alt, Key::ArrowUp)) {
+            return Some(Shortcut::SelectPreviousSource);
         }
 
         // Fast nudge (Shift + Alt + arrow).
@@ -155,17 +162,6 @@ impl Shortcut {
         None
     }
 
-    /// Detect a source-list-local shortcut and consume the key event.
-    pub fn detect_source_list(ctx: &egui::Context) -> Option<Self> {
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::ArrowDown)) {
-            return Some(Shortcut::SelectNextSource);
-        }
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::ArrowUp)) {
-            return Some(Shortcut::SelectPreviousSource);
-        }
-        None
-    }
-
     #[allow(dead_code)]
     pub fn all_global() -> &'static [Shortcut] {
         &[
@@ -184,12 +180,6 @@ impl Shortcut {
             Shortcut::RecenterView,
             Shortcut::ZoomIn,
             Shortcut::ZoomOut,
-        ]
-    }
-
-    #[allow(dead_code)]
-    pub fn all_source_list() -> &'static [Shortcut] {
-        &[
             Shortcut::SelectNextSource,
             Shortcut::SelectPreviousSource,
         ]
@@ -202,10 +192,6 @@ pub fn reference_text() -> String {
     let mut out = String::new();
     out.push_str("Global shortcuts:\n");
     for s in Shortcut::all_global() {
-        out.push_str(&format!("  {:45} {}\n", s.key(), s.label()));
-    }
-    out.push_str("\nSource list shortcuts:\n");
-    for s in Shortcut::all_source_list() {
         out.push_str(&format!("  {:45} {}\n", s.key(), s.label()));
     }
     out

@@ -169,6 +169,8 @@ impl App {
                     self.engine.selected_layer_id = None;
                 }
             }
+            Shortcut::SelectNextSource => self.engine.select_next_source(),
+            Shortcut::SelectPreviousSource => self.engine.select_previous_source(),
             Shortcut::NudgeUp => {
                 self.engine.nudge_selected_source(0.0, -nudge_amount);
             }

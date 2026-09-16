@@ -2,7 +2,6 @@ use crate::config::{BorderVisibility, SourceBorderVisibility, TextureMode};
 use crate::sources::decklink::DisplayMode;
 use crate::engine::Engine;
 use crate::sources::{Protocol, SourceConfig, SourceStats, OutputConfig};
-use crate::ui::shortcuts::Shortcut;
 use egui::{Align, Grid, Button, InnerResponse, Layout, ScrollArea, Ui};
 
 pub enum FileAction {
@@ -366,13 +365,15 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
         .map(|(i, l)| (i, l.uuid.clone(), l.name.clone()))
         .collect();
 
-    let mut any_row_focused = false;
+    let previous_selected = engine.selected_layer_id.clone();
 
     const MAX_VISIBLE_SOURCE_ROWS: f32 = 18.0;
     let row_height = ui.spacing().interact_size.y;
     egui::ScrollArea::vertical()
         .max_height(row_height * MAX_VISIBLE_SOURCE_ROWS)
         .show(ui, |ui| {
+            let mut selected_row_rect: Option<egui::Rect> = None;
+
             for (index, uuid, name) in rows {
                 // Use a plain frame as the drop zone so egui doesn't tint other rows while dragging.
                 let drop_zone_response = egui::Frame::new().show(ui, |ui| {
@@ -408,8 +409,8 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         if row_response.clicked() {
                             engine.selected_layer_id = Some(uuid.clone());
                         }
-                        if row_response.has_focus() {
-                            any_row_focused = true;
+                        if selected {
+                            selected_row_rect = Some(row_response.rect);
                         }
                     });
                 });
@@ -465,17 +466,12 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     }
                 }
             }
-        });
 
-    if any_row_focused && !ui.ctx().text_edit_focused() {
-        if let Some(shortcut) = Shortcut::detect_source_list(ui.ctx()) {
-            match shortcut {
-                Shortcut::SelectNextSource => engine.select_next_source(),
-                Shortcut::SelectPreviousSource => engine.select_previous_source(),
-                _ => {}
+            // Keep the selected row visible when selection changes (e.g. via global shortcuts).
+            if engine.selected_layer_id != previous_selected && let Some(rect) = selected_row_rect {
+                ui.scroll_to_rect(rect, None);
             }
-        }
-    }
+        });
 
     ui.horizontal(|ui| {
         if ui.button("+ Add Source").clicked() {
