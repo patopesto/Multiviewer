@@ -2,6 +2,7 @@ use crate::config::{BorderVisibility, SourceBorderVisibility, TextureMode};
 use crate::sources::decklink::DisplayMode;
 use crate::engine::Engine;
 use crate::sources::{Protocol, SourceConfig, SourceStats, OutputConfig};
+use crate::ui::shortcuts::Shortcut;
 use egui::{Align, Grid, Button, InnerResponse, Layout, ScrollArea, Ui};
 
 pub enum FileAction {
@@ -365,6 +366,8 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
         .map(|(i, l)| (i, l.uuid.clone(), l.name.clone()))
         .collect();
 
+    let mut any_row_focused = false;
+
     const MAX_VISIBLE_SOURCE_ROWS: f32 = 18.0;
     let row_height = ui.spacing().interact_size.y;
     egui::ScrollArea::vertical()
@@ -401,8 +404,12 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             .min_size(egui::vec2(available_width, 0.0))
                             .right_text("")
                             .truncate();
-                        if ui.add(label).clicked() {
+                        let row_response = ui.add(label);
+                        if row_response.clicked() {
                             engine.selected_layer_id = Some(uuid.clone());
+                        }
+                        if row_response.has_focus() {
+                            any_row_focused = true;
                         }
                     });
                 });
@@ -459,6 +466,16 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 }
             }
         });
+
+    if any_row_focused && !ui.ctx().text_edit_focused() {
+        if let Some(shortcut) = Shortcut::detect_source_list(ui.ctx()) {
+            match shortcut {
+                Shortcut::SelectNextSource => engine.select_next_source(),
+                Shortcut::SelectPreviousSource => engine.select_previous_source(),
+                _ => {}
+            }
+        }
+    }
 
     ui.horizontal(|ui| {
         if ui.button("+ Add Source").clicked() {

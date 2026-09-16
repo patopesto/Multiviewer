@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
 use crate::engine::Engine;
+use crate::ui::shortcuts::Shortcut;
 use crate::ui::side_panel::FileAction;
 
 const DEFAULT_PROJECT_NAME: &str = "Untitled";
@@ -104,6 +105,86 @@ impl App {
                 }
                 FileAction::SaveAs => self.save_as_dialog(),
             }
+        }
+    }
+
+    fn handle_global_shortcuts(&mut self, ui: &egui::Ui) {
+        let ctx = ui.ctx();
+        // Don't fire shortcuts while a modal is open or while typing in a text field.
+        if self.pending_confirm.is_some() || ctx.text_edit_focused() {
+            return;
+        }
+        let Some(shortcut) = Shortcut::detect_global(ctx) else {
+            return;
+        };
+
+        let rect = ui.available_rect_before_wrap();
+        let panel_rect = crate::compositor::Rect {
+            x: rect.min.x,
+            y: rect.min.y,
+            w: rect.width(),
+            h: rect.height(),
+        };
+        let nudge_amount = if ctx.input(|i| i.modifiers.alt) { 10.0 } else { 1.0 };
+
+        match shortcut {
+            Shortcut::NewProject => self.confirm_or(Confirm::New),
+            Shortcut::OpenProject => self.confirm_or(Confirm::Open),
+            Shortcut::SaveProject => {
+                if self.engine.project_path.is_some() {
+                    if let Err(e) = self.engine.save_project() {
+                        self.last_error = Some(e.to_string());
+                    } else {
+                        self.last_error = None;
+                    }
+                } else {
+                    self.save_as_dialog();
+                }
+            }
+            Shortcut::SaveProjectAs => self.save_as_dialog(),
+            Shortcut::AddSource => {
+                let uuid = self.engine.add_layer();
+                self.engine.selected_layer_id = Some(uuid);
+            }
+            Shortcut::DeleteSource => {
+                // Avoid deleting while a source is expanded; user can press Esc first.
+                if self.engine.expanded_source_id.is_some() {
+                    return;
+                }
+                if let Some(uuid) = self.engine.selected_layer_id.take() {
+                    self.engine.remove_layer(&uuid);
+                }
+            }
+            Shortcut::ExpandSource => {
+                if self.engine.expanded_source_id.is_some() {
+                    self.engine.clear_expanded_source();
+                } else if let Some(uuid) = self.engine.selected_layer_id.clone() {
+                    self.engine.expand_source(uuid);
+                }
+            }
+            Shortcut::ExitExpanded => {
+                if self.engine.expanded_source_id.is_some() {
+                    self.engine.clear_expanded_source();
+                } else {
+                    self.engine.selected_layer_id = None;
+                }
+            }
+            Shortcut::NudgeUp => {
+                self.engine.nudge_selected_source(0.0, -nudge_amount);
+            }
+            Shortcut::NudgeDown => {
+                self.engine.nudge_selected_source(0.0, nudge_amount);
+            }
+            Shortcut::NudgeLeft => {
+                self.engine.nudge_selected_source(-nudge_amount, 0.0);
+            }
+            Shortcut::NudgeRight => {
+                self.engine.nudge_selected_source(nudge_amount, 0.0);
+            }
+            Shortcut::RecenterView => self.engine.recenter_view(&panel_rect),
+            Shortcut::ZoomIn => self.engine.zoom_view(&panel_rect, 1.1),
+            Shortcut::ZoomOut => self.engine.zoom_view(&panel_rect, 1.0 / 1.1),
+            _ => {}
         }
     }
 
@@ -216,8 +297,10 @@ impl eframe::App for App {
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+
         let actions = super::side_panel::draw(ui, &mut self.engine);
         self.handle_actions(actions);
+        self.handle_global_shortcuts(ui);
         self.draw_confirmation_modal(&ctx);
         self.draw_status_bar(ui);
 

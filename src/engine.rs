@@ -322,7 +322,6 @@ impl Engine {
     }
 
     pub fn auto_save(&mut self) {
-
         if self.dirty && self.project_path.is_some() && self.last_saved_at.elapsed() >= AUTO_SAVE_INTERVAL {
             if let Err(e) = self.save_project() {
                 tracing::error!("auto-save failed: {e}");
@@ -713,6 +712,22 @@ impl Engine {
         self.view.pan.y = panel_rect.height() / 2.0 - base_oy - cy * display_scale;
     }
 
+    pub fn zoom_view(&mut self, panel_rect: &Rect, factor: f32) {
+        let (base_scale, base_ox, base_oy) =
+            compositor::canvas_transform(&self.cfg.canvas, panel_rect);
+        let old_zoom = self.view.zoom;
+        let new_zoom = (old_zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+        let center = egui::vec2(panel_rect.w / 2.0, panel_rect.h / 2.0);
+        let world_c = (center
+            - egui::vec2(base_ox + self.view.pan.x, base_oy + self.view.pan.y))
+            / (base_scale * old_zoom);
+        self.view.zoom = new_zoom;
+        self.view.pan = egui::vec2(
+            center.x - base_ox - world_c.x * base_scale * new_zoom,
+            center.y - base_oy - world_c.y * base_scale * new_zoom,
+        );
+    }
+
     pub fn expand_source(&mut self, uuid: String) {
         self.expanded_source_id = Some(uuid);
     }
@@ -723,6 +738,56 @@ impl Engine {
 
     pub fn expanded_source_id(&self) -> Option<&str> {
         self.expanded_source_id.as_deref()
+    }
+
+    pub fn select_next_source(&mut self) {
+        if self.cfg.canvas.sources.is_empty() {
+            self.selected_layer_id = None;
+            return;
+        }
+        let current_index = self
+            .selected_layer_id
+            .as_ref()
+            .and_then(|uuid| self.cfg.canvas.sources.iter().position(|s| &s.uuid == uuid));
+        let next_index = match current_index {
+            Some(i) => (i + 1) % self.cfg.canvas.sources.len(),
+            None => 0,
+        };
+        self.selected_layer_id = Some(self.cfg.canvas.sources[next_index].uuid.clone());
+    }
+
+    pub fn select_previous_source(&mut self) {
+        if self.cfg.canvas.sources.is_empty() {
+            self.selected_layer_id = None;
+            return;
+        }
+        let current_index = self
+            .selected_layer_id
+            .as_ref()
+            .and_then(|uuid| self.cfg.canvas.sources.iter().position(|s| &s.uuid == uuid));
+        let prev_index = match current_index {
+            Some(i) => {
+                if i == 0 {
+                    self.cfg.canvas.sources.len() - 1
+                } else {
+                    i - 1
+                }
+            }
+            None => self.cfg.canvas.sources.len() - 1,
+        };
+        self.selected_layer_id = Some(self.cfg.canvas.sources[prev_index].uuid.clone());
+    }
+
+    pub fn nudge_selected_source(&mut self, dx: f32, dy: f32) {
+        if self.expanded_source_id.is_some() {
+            return;
+        }
+        let Some(uuid) = self.selected_layer_id.clone() else { return };
+        if let Some(source) = self.cfg.canvas.sources.iter_mut().find(|s| s.uuid == uuid) {
+            source.x += dx;
+            source.y += dy;
+            self.dirty = true;
+        }
     }
 
     pub fn move_layer(&mut self, from_index: usize, to_index: usize) {
@@ -1553,6 +1618,123 @@ mod tests {
         engine.drag_layer(&uuid, (25.0, 0.0), &panel);
         assert_eq!(engine.cfg.canvas.sources[0].x, 25.0);
         assert!(engine.snap_guides.x.is_none());
+    }
+
+    #[test]
+    fn select_next_source_cycles_forward_and_wraps() {
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            sources: vec![],
+            outputs: Vec::new(),
+            border_visibility: Default::default(),
+            ..Default::default()
+        };
+        canvas.sources.push(Source::new_v4(
+            "L1".into(), Protocol::Test, None,
+            0.0, 0.0, 100, 100, 0,
+            TextureMode::Fit, false, false,
+        ));
+        canvas.sources.push(Source::new_v4(
+            "L2".into(), Protocol::Test, None,
+            100.0, 0.0, 100, 100, 1,
+            TextureMode::Fit, false, false,
+        ));
+        let mut engine = test_engine(canvas);
+        let uuids: Vec<String> = engine.cfg.canvas.sources.iter().map(|s| s.uuid.clone()).collect();
+
+        engine.select_next_source();
+        assert_eq!(engine.selected_layer_id.as_ref(), Some(&uuids[0]));
+
+        engine.selected_layer_id = Some(uuids[0].clone());
+        engine.select_next_source();
+        assert_eq!(engine.selected_layer_id.as_ref(), Some(&uuids[1]));
+
+        engine.select_next_source();
+        assert_eq!(engine.selected_layer_id.as_ref(), Some(&uuids[0]));
+    }
+
+    #[test]
+    fn select_previous_source_cycles_backward_and_wraps() {
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            sources: vec![],
+            outputs: Vec::new(),
+            border_visibility: Default::default(),
+            ..Default::default()
+        };
+        canvas.sources.push(Source::new_v4(
+            "L1".into(), Protocol::Test, None,
+            0.0, 0.0, 100, 100, 0,
+            TextureMode::Fit, false, false,
+        ));
+        canvas.sources.push(Source::new_v4(
+            "L2".into(), Protocol::Test, None,
+            100.0, 0.0, 100, 100, 1,
+            TextureMode::Fit, false, false,
+        ));
+        let mut engine = test_engine(canvas);
+        let uuids: Vec<String> = engine.cfg.canvas.sources.iter().map(|s| s.uuid.clone()).collect();
+
+        engine.selected_layer_id = Some(uuids[0].clone());
+        engine.select_previous_source();
+        assert_eq!(engine.selected_layer_id.as_ref(), Some(&uuids[1]));
+
+        engine.select_previous_source();
+        assert_eq!(engine.selected_layer_id.as_ref(), Some(&uuids[0]));
+    }
+
+    #[test]
+    fn nudge_selected_source_moves_by_delta() {
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            sources: vec![],
+            outputs: Vec::new(),
+            border_visibility: Default::default(),
+            ..Default::default()
+        };
+        canvas.sources.push(Source::new_v4(
+            "L1".into(), Protocol::Test, None,
+            10.0, 20.0, 100, 100, 0,
+            TextureMode::Fit, false, false,
+        ));
+        let mut engine = test_engine(canvas);
+        let uuid = engine.cfg.canvas.sources[0].uuid.clone();
+
+        engine.selected_layer_id = Some(uuid.clone());
+        engine.nudge_selected_source(3.0, -5.0);
+        let source = &engine.cfg.canvas.sources[0];
+        assert_eq!(source.x, 13.0);
+        assert_eq!(source.y, 15.0);
+        assert!(engine.dirty);
+    }
+
+    #[test]
+    fn nudge_selected_source_ignores_when_expanded() {
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            sources: vec![],
+            outputs: Vec::new(),
+            border_visibility: Default::default(),
+            ..Default::default()
+        };
+        canvas.sources.push(Source::new_v4(
+            "L1".into(), Protocol::Test, None,
+            10.0, 20.0, 100, 100, 0,
+            TextureMode::Fit, false, false,
+        ));
+        let mut engine = test_engine(canvas);
+        let uuid = engine.cfg.canvas.sources[0].uuid.clone();
+
+        engine.selected_layer_id = Some(uuid.clone());
+        engine.expand_source(uuid.clone());
+        engine.nudge_selected_source(3.0, -5.0);
+        let source = &engine.cfg.canvas.sources[0];
+        assert_eq!(source.x, 10.0);
+        assert_eq!(source.y, 20.0);
     }
 
     fn should_auto_save(engine: &Engine, now: Instant) -> bool {

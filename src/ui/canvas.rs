@@ -74,6 +74,7 @@ pub fn update(
         && response.hovered()
         && let Some(pos) = response.interact_pointer_pos()
     {
+        response.request_focus();
         if engine.expanded_source_id().is_some() {
             // While a source is expanded, the canvas is used for panning only.
             engine.drag_state = DragState::None;
@@ -136,21 +137,8 @@ pub fn update(
     if response.hovered() {
         let scroll = ctx.input(|i| i.smooth_scroll_delta).y;
         if scroll != 0.0 {
-            let (base_scale, base_ox, base_oy) =
-                compositor::canvas_transform(&engine.cfg.canvas, &panel_rect);
-            let old_zoom = engine.view.zoom;
             let factor = 1.1_f32.powf(scroll / 50.0);
-            let new_zoom =
-                (old_zoom * factor).clamp(crate::engine::MIN_ZOOM, crate::engine::MAX_ZOOM);
-            let center = egui::vec2(panel_rect.w / 2.0, panel_rect.h / 2.0);
-            let world_c = (center
-                - egui::vec2(base_ox + engine.view.pan.x, base_oy + engine.view.pan.y))
-                / (base_scale * old_zoom);
-            engine.view.zoom = new_zoom;
-            engine.view.pan = egui::vec2(
-                center.x - base_ox - world_c.x * base_scale * new_zoom,
-                center.y - base_oy - world_c.y * base_scale * new_zoom,
-            );
+            engine.zoom_view(&panel_rect, factor);
         }
     }
 
