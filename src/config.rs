@@ -59,6 +59,7 @@ pub struct Canvas {
     pub border_visibility: BorderVisibility,
     pub border_color: [u8; 4],
     pub border_width: f32,
+    #[serde(default)]
     pub label: LabelConfig,
     pub sources: Vec<Source>,
     #[serde(default)]
@@ -73,9 +74,9 @@ impl Default for Canvas {
             border_visibility: BorderVisibility::default(),
             border_color: [180, 180, 180, 255],
             border_width: 1.0,
+            label: LabelConfig::default(),
             sources: Vec::new(),
             outputs: Vec::new(),
-            label: LabelConfig::default(),
         }
     }
 }
@@ -99,6 +100,8 @@ pub struct Source {
     pub flip_v: bool,
     #[serde(default)]
     pub border_visibility: SourceBorderVisibility,
+    #[serde(default)]
+    pub label_visibility: SourceLabelVisibility,
     #[serde(default)]
     pub config: SourceConfig,
 }
@@ -131,6 +134,7 @@ impl Source {
             flip_h,
             flip_v,
             border_visibility: SourceBorderVisibility::default(),
+            label_visibility: SourceLabelVisibility::default(),
             config: SourceConfig::default(),
         }
     }
@@ -293,6 +297,24 @@ impl LabelPosition {
             LabelPosition::BottomCenter,
             LabelPosition::BottomRight,
         ]
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SourceLabelVisibility {
+    #[default]
+    Inherit,
+    Hide,
+    Show,
+}
+
+impl SourceLabelVisibility {
+    pub fn label(&self) -> &'static str {
+        match self {
+            SourceLabelVisibility::Inherit => "Inherit",
+            SourceLabelVisibility::Show => "Always show",
+            SourceLabelVisibility::Hide => "Always hide",
+        }
     }
 }
 

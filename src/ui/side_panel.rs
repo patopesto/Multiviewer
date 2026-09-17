@@ -1,4 +1,4 @@
-use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, TextureMode};
+use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::sources::decklink::DisplayMode;
 use crate::engine::Engine;
 use crate::sources::{Protocol, SourceConfig, SourceStats, OutputConfig};
@@ -873,46 +873,6 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 });
                 ui.end_row();
 
-                ui.label("Borders");
-                settings_value(ui, |ui| {
-                    egui::ComboBox::from_id_salt("layer_border_visibility")
-                        .width(ui.available_width())
-                        .selected_text(source.border_visibility.label())
-                        .show_ui(ui, |ui| {
-                            if ui
-                                .selectable_value(
-                                    &mut source.border_visibility,
-                                    SourceBorderVisibility::Inherit,
-                                    "Inherit",
-                                )
-                                .clicked()
-                            {
-                                engine.dirty = true;
-                            }
-                            if ui
-                                .selectable_value(
-                                    &mut source.border_visibility,
-                                    SourceBorderVisibility::Show,
-                                    "Always show",
-                                )
-                                .clicked()
-                            {
-                                engine.dirty = true;
-                            }
-                            if ui
-                                .selectable_value(
-                                    &mut source.border_visibility,
-                                    SourceBorderVisibility::Hide,
-                                    "Always hide",
-                                )
-                                .clicked()
-                            {
-                                engine.dirty = true;
-                            }
-                        });
-                });
-                ui.end_row();
-
                 ui.label("Flip");
                 settings_value(ui, |ui| {
                     ui.horizontal(|ui| {
@@ -923,6 +883,62 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             engine.dirty = true;
                         }
                     });
+                });
+                ui.end_row();
+
+                ui.label("Borders");
+                settings_value(ui, |ui| {
+                    egui::ComboBox::from_id_salt("layer_border_visibility")
+                        .width(ui.available_width())
+                        .selected_text(source.border_visibility.label())
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_value(&mut source.border_visibility, SourceBorderVisibility::Inherit, "Inherit")
+                                .clicked()
+                            {
+                                engine.dirty = true;
+                            }
+                            if ui
+                                .selectable_value(&mut source.border_visibility, SourceBorderVisibility::Show, "Always show")
+                                .clicked()
+                            {
+                                engine.dirty = true;
+                            }
+                            if ui
+                                .selectable_value(&mut source.border_visibility, SourceBorderVisibility::Hide, "Always hide")
+                                .clicked()
+                            {
+                                engine.dirty = true;
+                            }
+                        });
+                });
+                ui.end_row();
+
+                ui.label("Label");
+                settings_value(ui, |ui| {
+                    egui::ComboBox::from_id_salt("layer_label_visibility")
+                        .width(ui.available_width())
+                        .selected_text(source.label_visibility.label())
+                        .show_ui(ui, |ui| {
+                            if ui
+                                .selectable_value(&mut source.label_visibility, SourceLabelVisibility::Inherit, "Inherit")
+                                .clicked()
+                            {
+                                engine.dirty = true;
+                            }
+                            if ui
+                                .selectable_value(&mut source.label_visibility, SourceLabelVisibility::Show, "Always show")
+                                .clicked()
+                            {
+                                engine.dirty = true;
+                            }
+                            if ui
+                                .selectable_value(&mut source.label_visibility, SourceLabelVisibility::Hide, "Always hide")
+                                .clicked()
+                            {
+                                engine.dirty = true;
+                            }
+                        });
                 });
                 ui.end_row();
             });

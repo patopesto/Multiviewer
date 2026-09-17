@@ -1,4 +1,4 @@
-use crate::config::{BorderVisibility, Canvas, LabelPosition, SourceBorderVisibility, TextureMode};
+use crate::config::{BorderVisibility, Canvas, LabelPosition, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::sources::{ConvUniform, Frame, SourceRegistry};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
@@ -668,7 +668,12 @@ impl Compositor {
             }
 
             // Label overlay
-            if canvas.label.visibility == crate::config::LabelVisibility::Show && !source.name.is_empty() && !is_expanded_source {
+            let label_visible = match source.label_visibility {
+                SourceLabelVisibility::Show => true,
+                SourceLabelVisibility::Hide => false,
+                SourceLabelVisibility::Inherit => canvas.label.visibility == crate::config::LabelVisibility::Show,
+            };
+            if label_visible && !source.name.is_empty() && !is_expanded_source {
                 if self.label_bg_color != canvas.label.background_color {
                     self.label_bg_color = canvas.label.background_color;
                     self.label_bg_bg = Arc::new(solid_bind_group(
