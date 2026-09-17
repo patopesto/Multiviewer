@@ -71,77 +71,14 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
         settings_value(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("W");
-                if ui
-                    .add(egui::DragValue::new(&mut engine.cfg.canvas.width).range(100..=7680))
-                    .changed()
-                {
+                if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.width).range(100..=7680)).changed() {
                     engine.dirty = true;
                 }
                 ui.label("H");
-                if ui
-                    .add(egui::DragValue::new(&mut engine.cfg.canvas.height).range(100..=7680))
-                    .changed()
-                {
+                if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.height).range(100..=7680)).changed() {
                     engine.dirty = true;
                 }
             });
-        });
-        ui.end_row();
-
-        ui.label("Borders");
-        settings_value(ui, |ui| {
-            egui::ComboBox::from_id_salt("global_layer_borders")
-                .width(ui.available_width())
-                .selected_text(engine.cfg.canvas.border_visibility.label())
-                .show_ui(ui, |ui| {
-                    if ui
-                        .selectable_value(
-                            &mut engine.cfg.canvas.border_visibility,
-                            BorderVisibility::Show,
-                            "Show",
-                        )
-                        .clicked()
-                    {
-                        engine.dirty = true;
-                    }
-                    if ui
-                        .selectable_value(
-                            &mut engine.cfg.canvas.border_visibility,
-                            BorderVisibility::Hide,
-                            "Hide",
-                        )
-                        .clicked()
-                    {
-                        engine.dirty = true;
-                    }
-                });
-        });
-        ui.end_row();
-
-        ui.label("Border Color");
-        settings_value(ui, |ui| {
-            let mut color_f32 = [
-                engine.cfg.canvas.border_color[0] as f32 / 255.0,
-                engine.cfg.canvas.border_color[1] as f32 / 255.0,
-                engine.cfg.canvas.border_color[2] as f32 / 255.0,
-            ];
-            if ui.color_edit_button_rgb(&mut color_f32).changed() {
-                engine.cfg.canvas.border_color = [
-                    (color_f32[0] * 255.0) as u8,
-                    (color_f32[1] * 255.0) as u8,
-                    (color_f32[2] * 255.0) as u8,
-                    255, // lock alpha for now, until we figure out blending modes on the canvas
-                ];
-                engine.dirty = true;
-            }
-        });
-        ui.end_row();
-
-        ui.label("Border Size");
-        settings_value(ui, |ui| {
-            if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.border_width).range(0.0..=100.0)).changed() {
-                engine.dirty = true;
-            }
         });
         ui.end_row();
     });
@@ -167,10 +104,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
 
             ui.label("Size");
             settings_value(ui, |ui| {
-                if ui
-                    .add(egui::DragValue::new(&mut label.size).range(1.0..=256.0).speed(1.0).suffix(" px"))
-                    .changed()
-                {
+                if ui.add(egui::DragValue::new(&mut label.size).range(1.0..=256.0).speed(1.0).suffix(" px")).changed() {
                     engine.dirty = true;
                 }
             });
@@ -196,6 +130,54 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
 
             color_picker_rgba_row(ui, "Text Color", &mut label.text_color);
             color_picker_rgba_row(ui, "Background", &mut label.background_color);
+        });
+    });
+
+    collapsable_section(ui, "Borders", false, |ui| {
+        let border = &mut engine.cfg.canvas.border;
+        settings_grid(ui, "borders_grid", |ui| {
+            ui.label("Visibility");
+            settings_value(ui, |ui| {
+                egui::ComboBox::from_id_salt("global_layer_borders")
+                    .width(ui.available_width())
+                    .selected_text(border.visibility.label())
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_value(&mut border.visibility, BorderVisibility::Show, "Show").clicked() {
+                            engine.dirty = true;
+                        }
+                        if ui.selectable_value(&mut border.visibility, BorderVisibility::Hide, "Hide").clicked() {
+                            engine.dirty = true;
+                        }
+                    });
+            });
+            ui.end_row();
+
+            ui.label("Border Color");
+            settings_value(ui, |ui| {
+                let mut color_f32 = [
+                    border.color[0] as f32 / 255.0,
+                    border.color[1] as f32 / 255.0,
+                    border.color[2] as f32 / 255.0,
+                ];
+                if ui.color_edit_button_rgb(&mut color_f32).changed() {
+                    border.color = [
+                        (color_f32[0] * 255.0) as u8,
+                        (color_f32[1] * 255.0) as u8,
+                        (color_f32[2] * 255.0) as u8,
+                        255, // lock alpha for now, until we figure out blending modes on the canvas
+                    ];
+                    engine.dirty = true;
+                }
+            });
+            ui.end_row();
+
+            ui.label("Border Size");
+            settings_value(ui, |ui| {
+                if ui.add(egui::DragValue::new(&mut border.width).range(0.0..=100.0)).changed() {
+                    engine.dirty = true;
+                }
+            });
+            ui.end_row();
         });
     });
 
@@ -532,10 +514,7 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
             engine.selected_layer_id = Some(uuid);
         }
         let is_layer_selected = engine.selected_layer_id.is_some();
-        if ui
-            .add_enabled(is_layer_selected, egui::Button::new("- Delete Source"))
-            .clicked()
-        {
+        if ui.add_enabled(is_layer_selected, egui::Button::new("- Delete Source")).clicked() {
             if let Some(uuid) = engine.selected_layer_id.take() {
                 engine.remove_layer(&uuid);
             }
@@ -586,40 +565,22 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         .width(ui.available_width())
                         .selected_text(source.protocol.label())
                         .show_ui(ui, |ui| {
-                            if ui
-                                .selectable_value(&mut source.protocol, Protocol::Test, "Test")
-                                .clicked()
-                            {
+                            if ui.selectable_value(&mut source.protocol, Protocol::Test, "Test").clicked(){
                                 protocol_changed = true;
                             }
-                            if ui
-                                .selectable_value(&mut source.protocol, Protocol::Ndi, "NDI")
-                                .clicked()
-                            {
+                            if ui.selectable_value(&mut source.protocol, Protocol::Ndi, "NDI").clicked(){
                                 protocol_changed = true;
                             }
-                            if ui
-                                .selectable_value(
-                                    &mut source.protocol,
-                                    Protocol::Decklink,
-                                    "DeckLink",
-                                )
-                                .clicked()
-                            {
+                            if ui.selectable_value(&mut source.protocol, Protocol::Decklink, "DeckLink").clicked() {
+                                protocol_changed = true;
+                            }
+
+                            #[cfg(target_os = "macos")]
+                            if ui.selectable_value(&mut source.protocol, Protocol::Syphon, "Syphon").clicked(){
                                 protocol_changed = true;
                             }
                             #[cfg(target_os = "macos")]
-                            if ui
-                                .selectable_value(&mut source.protocol, Protocol::Syphon, "Syphon")
-                                .clicked()
-                            {
-                                protocol_changed = true;
-                            }
-                            #[cfg(target_os = "macos")]
-                            if ui
-                                .selectable_value(&mut source.protocol, Protocol::AvFoundation, "AVFoundation")
-                                .clicked()
-                            {
+                            if ui.selectable_value(&mut source.protocol, Protocol::AvFoundation, "AVFoundation").clicked(){
                                 protocol_changed = true;
                             }
                         });
@@ -886,56 +847,38 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 });
                 ui.end_row();
 
-                ui.label("Borders");
-                settings_value(ui, |ui| {
-                    egui::ComboBox::from_id_salt("layer_border_visibility")
-                        .width(ui.available_width())
-                        .selected_text(source.border_visibility.label())
-                        .show_ui(ui, |ui| {
-                            if ui
-                                .selectable_value(&mut source.border_visibility, SourceBorderVisibility::Inherit, "Inherit")
-                                .clicked()
-                            {
-                                engine.dirty = true;
-                            }
-                            if ui
-                                .selectable_value(&mut source.border_visibility, SourceBorderVisibility::Show, "Always show")
-                                .clicked()
-                            {
-                                engine.dirty = true;
-                            }
-                            if ui
-                                .selectable_value(&mut source.border_visibility, SourceBorderVisibility::Hide, "Always hide")
-                                .clicked()
-                            {
-                                engine.dirty = true;
-                            }
-                        });
-                });
-                ui.end_row();
-
                 ui.label("Label");
                 settings_value(ui, |ui| {
                     egui::ComboBox::from_id_salt("layer_label_visibility")
                         .width(ui.available_width())
                         .selected_text(source.label_visibility.label())
                         .show_ui(ui, |ui| {
-                            if ui
-                                .selectable_value(&mut source.label_visibility, SourceLabelVisibility::Inherit, "Inherit")
-                                .clicked()
-                            {
+                            if ui.selectable_value(&mut source.label_visibility, SourceLabelVisibility::Inherit, "Inherit").clicked() {
                                 engine.dirty = true;
                             }
-                            if ui
-                                .selectable_value(&mut source.label_visibility, SourceLabelVisibility::Show, "Always show")
-                                .clicked()
-                            {
+                            if ui.selectable_value(&mut source.label_visibility, SourceLabelVisibility::Show, "Always show").clicked() {
                                 engine.dirty = true;
                             }
-                            if ui
-                                .selectable_value(&mut source.label_visibility, SourceLabelVisibility::Hide, "Always hide")
-                                .clicked()
-                            {
+                            if ui.selectable_value(&mut source.label_visibility, SourceLabelVisibility::Hide, "Always hide").clicked() {
+                                engine.dirty = true;
+                            }
+                        });
+                });
+                ui.end_row();
+
+                ui.label("Borders");
+                settings_value(ui, |ui| {
+                    egui::ComboBox::from_id_salt("layer_border_visibility")
+                        .width(ui.available_width())
+                        .selected_text(source.border_visibility.label())
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_value(&mut source.border_visibility, SourceBorderVisibility::Inherit, "Inherit").clicked() {
+                                engine.dirty = true;
+                            }
+                            if ui.selectable_value(&mut source.border_visibility, SourceBorderVisibility::Show, "Always show").clicked() {
+                                engine.dirty = true;
+                            }
+                            if ui.selectable_value(&mut source.border_visibility, SourceBorderVisibility::Hide, "Always hide").clicked() {
                                 engine.dirty = true;
                             }
                         });
@@ -965,7 +908,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         if let Some(ref sid) = source.source_id {
             if let Some(source) = engine.registry.get_mut(sid) {
                 ui.separator();
-                collapsable_section(ui, "Protocol Settings", true, |ui| {
+                collapsable_section(ui, "Protocol Settings", false, |ui| {
                     if super::source_settings::render_source_settings(source, ui) {
                         config_changed = true;
                         new_config = Some(source.to_config());
@@ -974,7 +917,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 });
 
                 ui.separator();
-                collapsable_section(ui, "Source Stats", true, |ui| {
+                collapsable_section(ui, "Source Stats", false, |ui| {
                     let stats_arc = source.stats();
                     let stats = stats_arc.lock().unwrap();
                     draw_source_stats_section(&*stats, ui);

@@ -288,7 +288,7 @@ fn draw_overlays(
     painter.rect_stroke(
         egui::Rect::from_min_size(egui::pos2(lx, ly), egui::vec2(lw, lh)),
         0.0,
-        egui::Stroke::new(canvas.border_width, egui::Color32::YELLOW),
+        egui::Stroke::new(canvas.border.width, egui::Color32::YELLOW),
         egui::StrokeKind::Inside,
     );
 

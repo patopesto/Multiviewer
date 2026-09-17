@@ -1256,7 +1256,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1289,7 +1288,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1320,7 +1318,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         });
         let panel = Rect {
@@ -1344,7 +1341,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         });
         let panel = Rect {
@@ -1368,7 +1364,6 @@ mod tests {
             height: 100,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1420,7 +1415,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1491,7 +1485,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1530,7 +1523,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1583,7 +1575,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1632,7 +1623,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1666,7 +1656,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1697,7 +1686,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(
@@ -1723,7 +1711,6 @@ mod tests {
             height: 1080,
             sources: vec![],
             outputs: Vec::new(),
-            border_visibility: Default::default(),
             ..Default::default()
         };
         canvas.sources.push(Source::new_v4(

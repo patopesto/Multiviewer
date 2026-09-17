@@ -56,11 +56,9 @@ pub struct Canvas {
     pub width: u32,
     pub height: u32,
     #[serde(default)]
-    pub border_visibility: BorderVisibility,
-    pub border_color: [u8; 4],
-    pub border_width: f32,
-    #[serde(default)]
     pub label: LabelConfig,
+    #[serde(default)]
+    pub border: BorderConfig,
     pub sources: Vec<Source>,
     #[serde(default)]
     pub outputs: Vec<Output>,
@@ -71,10 +69,8 @@ impl Default for Canvas {
         Self {
             width: 1920,
             height: 1080,
-            border_visibility: BorderVisibility::default(),
-            border_color: [180, 180, 180, 255],
-            border_width: 1.0,
             label: LabelConfig::default(),
+            border: BorderConfig::default(),
             sources: Vec::new(),
             outputs: Vec::new(),
         }
@@ -99,9 +95,9 @@ pub struct Source {
     #[serde(default)]
     pub flip_v: bool,
     #[serde(default)]
-    pub border_visibility: SourceBorderVisibility,
-    #[serde(default)]
     pub label_visibility: SourceLabelVisibility,
+    #[serde(default)]
+    pub border_visibility: SourceBorderVisibility,
     #[serde(default)]
     pub config: SourceConfig,
 }
@@ -133,8 +129,8 @@ impl Source {
             mode,
             flip_h,
             flip_v,
-            border_visibility: SourceBorderVisibility::default(),
             label_visibility: SourceLabelVisibility::default(),
+            border_visibility: SourceBorderVisibility::default(),
             config: SourceConfig::default(),
         }
     }
@@ -185,40 +181,6 @@ impl TextureMode {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum BorderVisibility {
-    #[default]
-    Show,
-    Hide,
-}
-
-impl BorderVisibility {
-    pub fn label(&self) -> &'static str {
-        match self {
-            BorderVisibility::Show => "Show",
-            BorderVisibility::Hide => "Hide",
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum SourceBorderVisibility {
-    #[default]
-    Inherit,
-    Hide,
-    Show,
-}
-
-impl SourceBorderVisibility {
-    pub fn label(&self) -> &'static str {
-        match self {
-            SourceBorderVisibility::Inherit => "Inherit",
-            SourceBorderVisibility::Show => "Always show",
-            SourceBorderVisibility::Hide => "Always hide",
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct LabelConfig {
     pub visibility: LabelVisibility,
@@ -232,10 +194,10 @@ impl Default for LabelConfig {
     fn default() -> Self {
         Self {
             visibility: LabelVisibility::Hide,
+            position: LabelPosition::TopLeft,
+            size: 24.0,
             text_color: [255, 255, 255, 255],
             background_color: [0, 0, 0, 180],
-            size: 24.0,
-            position: LabelPosition::TopLeft,
         }
     }
 }
@@ -314,6 +276,57 @@ impl SourceLabelVisibility {
             SourceLabelVisibility::Inherit => "Inherit",
             SourceLabelVisibility::Show => "Always show",
             SourceLabelVisibility::Hide => "Always hide",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct BorderConfig {
+    pub visibility: BorderVisibility,
+    pub color: [u8; 4],
+    pub width: f32,
+}
+
+impl Default for BorderConfig {
+    fn default() -> Self {
+        Self {
+            visibility: BorderVisibility::default(),
+            color: [180, 180, 180, 255],
+            width: 1.0,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum BorderVisibility {
+    #[default]
+    Show,
+    Hide,
+}
+
+impl BorderVisibility {
+    pub fn label(&self) -> &'static str {
+        match self {
+            BorderVisibility::Show => "Show",
+            BorderVisibility::Hide => "Hide",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum SourceBorderVisibility {
+    #[default]
+    Inherit,
+    Hide,
+    Show,
+}
+
+impl SourceBorderVisibility {
+    pub fn label(&self) -> &'static str {
+        match self {
+            SourceBorderVisibility::Inherit => "Inherit",
+            SourceBorderVisibility::Show => "Always show",
+            SourceBorderVisibility::Hide => "Always hide",
         }
     }
 }

@@ -424,8 +424,8 @@ impl Compositor {
         let cw = canvas.width as f32 * scale;
         let ch = canvas.height as f32 * scale;
 
-        if self.border_color != canvas.border_color {
-            self.border_color = canvas.border_color;
+        if self.border_color != canvas.border.color {
+            self.border_color = canvas.border.color;
             self.border_bg = Arc::new(solid_bind_group(
                 &device,
                 &queue,
@@ -551,14 +551,14 @@ impl Compositor {
             });
             first_index += 6;
 
-            let global_borders = canvas.border_visibility;
+            let global_borders = canvas.border.visibility;
             let border_visible = match source.border_visibility {
                 SourceBorderVisibility::Show => true,
                 SourceBorderVisibility::Hide => false,
                 SourceBorderVisibility::Inherit => global_borders == BorderVisibility::Show,
             };
             if border_visible && !is_expanded_source {
-                let border_px = canvas.border_width;
+                let border_px = canvas.border.width;
                 let dx = 2.0 * border_px / panel_rect.width();
                 let dy = 2.0 * border_px / panel_rect.height();
 
