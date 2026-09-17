@@ -59,6 +59,7 @@ pub struct Canvas {
     pub border_visibility: BorderVisibility,
     pub border_color: [u8; 4],
     pub border_width: f32,
+    pub label: LabelConfig,
     pub sources: Vec<Source>,
     #[serde(default)]
     pub outputs: Vec<Output>,
@@ -74,6 +75,7 @@ impl Default for Canvas {
             border_width: 1.0,
             sources: Vec::new(),
             outputs: Vec::new(),
+            label: LabelConfig::default(),
         }
     }
 }
@@ -210,6 +212,87 @@ impl SourceBorderVisibility {
             SourceBorderVisibility::Show => "Always show",
             SourceBorderVisibility::Hide => "Always hide",
         }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct LabelConfig {
+    pub visibility: LabelVisibility,
+    pub position: LabelPosition,
+    pub size: f32,
+    pub text_color: [u8; 4],
+    pub background_color: [u8; 4],
+}
+
+impl Default for LabelConfig {
+    fn default() -> Self {
+        Self {
+            visibility: LabelVisibility::Hide,
+            text_color: [255, 255, 255, 255],
+            background_color: [0, 0, 0, 180],
+            size: 24.0,
+            position: LabelPosition::TopLeft,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LabelVisibility {
+    #[default]
+    Show,
+    Hide,
+}
+
+impl LabelVisibility {
+    pub fn label(&self) -> &'static str {
+        match self {
+            LabelVisibility::Show => "Show",
+            LabelVisibility::Hide => "Hide",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LabelPosition {
+    #[default]
+    TopLeft,
+    TopCenter,
+    TopRight,
+    CenterLeft,
+    Center,
+    CenterRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+impl LabelPosition {
+    pub fn label(&self) -> &'static str {
+        match self {
+            LabelPosition::TopLeft => "Top Left",
+            LabelPosition::TopCenter => "Top Center",
+            LabelPosition::TopRight => "Top Right",
+            LabelPosition::CenterLeft => "Center Left",
+            LabelPosition::Center => "Center",
+            LabelPosition::CenterRight => "Center Right",
+            LabelPosition::BottomLeft => "Bottom Left",
+            LabelPosition::BottomCenter => "Bottom Center",
+            LabelPosition::BottomRight => "Bottom Right",
+        }
+    }
+
+    pub fn all() -> &'static [LabelPosition] {
+        &[
+            LabelPosition::TopLeft,
+            LabelPosition::TopCenter,
+            LabelPosition::TopRight,
+            LabelPosition::CenterLeft,
+            LabelPosition::Center,
+            LabelPosition::CenterRight,
+            LabelPosition::BottomLeft,
+            LabelPosition::BottomCenter,
+            LabelPosition::BottomRight,
+        ]
     }
 }
 

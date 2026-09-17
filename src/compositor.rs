@@ -1,7 +1,10 @@
-use crate::config::{BorderVisibility, Canvas, SourceBorderVisibility, TextureMode};
+use crate::config::{BorderVisibility, Canvas, LabelPosition, SourceBorderVisibility, TextureMode};
 use crate::sources::{ConvUniform, Frame, SourceRegistry};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
+use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
 
 const MAX_LAYERS: usize = 256;
 
@@ -101,6 +104,7 @@ fn uyvy_to_rgb(sample: vec4<f32>, x: f32, mode: u32) -> vec3<f32> {
 /// Shared with the paint callback; immutable after creation.
 pub struct Shared {
     pub pipeline: wgpu::RenderPipeline,
+    pub text_pipeline: wgpu::RenderPipeline,
     pub placeholder_bg: Arc<wgpu::BindGroup>,
     pub vb: wgpu::Buffer,
     pub ib: wgpu::Buffer,
@@ -117,6 +121,29 @@ struct SourceTex {
     format: wgpu::TextureFormat,
 }
 
+struct LabelTex {
+    _tex: wgpu::Texture,
+    bg: Arc<wgpu::BindGroup>,
+    w: u32,
+    h: u32,
+    key_hash: u64,
+}
+
+#[derive(Clone, Debug)]
+struct LabelKey {
+    name: String,
+    size: f32,
+    text_color: [u8; 4],
+}
+
+impl Hash for LabelKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.size.to_bits().hash(state);
+        self.text_color.hash(state);
+    }
+}
+
 pub struct Compositor {
     pub shared: Arc<Shared>,
     bind_layout: wgpu::BindGroupLayout,
@@ -130,12 +157,27 @@ pub struct Compositor {
     canvas_h: u32,
     border_bg: Arc<wgpu::BindGroup>,
     border_color: [u8; 4],
+    font: fontdue::Font,
+    label_textures: HashMap<String, LabelTex>,
+    label_bg_color: [u8; 4],
+    label_bg_bg: Arc<wgpu::BindGroup>,
+    text_pipeline: wgpu::RenderPipeline,
+}
+
+pub enum Pipeline {
+    Main,
+    Text,
+}
+
+pub struct DrawCall {
+    pub first_index: u32,
+    pub bind_group: Arc<wgpu::BindGroup>,
+    pub pipeline: Pipeline,
 }
 
 pub struct Draw {
     pub verts: Arc<Vec<Vert>>,
-    /// (first_index, bind group) per source, in z-order
-    pub draws: Vec<(u32, Arc<wgpu::BindGroup>)>,
+    pub draws: Vec<DrawCall>,
 }
 
 impl Compositor {
@@ -222,8 +264,8 @@ impl Compositor {
             cache: None,
         });
 
-        // One content quad + up to four border edge quads per source.
-        const QUADS_PER_LAYER: usize = 5;
+        // One content quad + up to four border edge quads + label bg + label text per source.
+        const QUADS_PER_LAYER: usize = 7;
         let vb = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("cells-vb"),
             size: (MAX_LAYERS * QUADS_PER_LAYER * 4 * std::mem::size_of::<Vert>()) as u64,
@@ -292,9 +334,55 @@ impl Compositor {
             mapped_at_creation: false,
         });
 
+        let font = fontdue::Font::from_bytes(
+            epaint_default_fonts::HACK_REGULAR as &[u8],
+            fontdue::FontSettings::default(),
+        )
+        .expect("embedded font is valid");
+
+        let text_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("compositor-text"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[wgpu::VertexBufferLayout {
+                    array_stride: std::mem::size_of::<Vert>() as u64,
+                    step_mode: wgpu::VertexStepMode::Vertex,
+                    attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
+                }],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: target_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        let label_bg_color = [0, 0, 0, 180];
+        let label_bg_bg = Arc::new(solid_bind_group(
+            device,
+            queue,
+            &bind_layout,
+            &sampler,
+            label_bg_color,
+        ));
+
         Self {
             shared: Arc::new(Shared {
                 pipeline,
+                text_pipeline: text_pipeline.clone(),
                 placeholder_bg,
                 vb,
                 ib,
@@ -310,6 +398,11 @@ impl Compositor {
             canvas_h: 0,
             border_bg,
             border_color,
+            font,
+            label_textures: HashMap::new(),
+            label_bg_color,
+            label_bg_bg,
+            text_pipeline,
         }
     }
 
@@ -348,8 +441,8 @@ impl Compositor {
         let mut sources: Vec<_> = canvas.sources.iter().collect();
         sources.sort_by_key(|l| l.z);
 
-        let mut verts = Vec::with_capacity(sources.len() * 5 * 4);
-        let mut draws = Vec::with_capacity(sources.len() * 5);
+        let mut verts = Vec::with_capacity(sources.len() * 7 * 4);
+        let mut draws = Vec::with_capacity(sources.len() * 7);
 
         let mut first_index = 0u32;
         for source in sources {
@@ -451,7 +544,11 @@ impl Compositor {
                     uv: [u0, v1],
                 },
             ]);
-            draws.push((first_index, bg));
+            draws.push(DrawCall {
+                first_index,
+                bind_group: bg,
+                pipeline: Pipeline::Main,
+            });
             first_index += 6;
 
             let global_borders = canvas.border_visibility;
@@ -484,7 +581,11 @@ impl Compositor {
                         uv: [0.0, 1.0],
                     },
                 ]);
-                draws.push((first_index, self.border_bg.clone()));
+                draws.push(DrawCall {
+                    first_index,
+                    bind_group: self.border_bg.clone(),
+                    pipeline: Pipeline::Main,
+                });
                 first_index += 6;
 
                 // Bottom edge (inside source bounds).
@@ -506,7 +607,11 @@ impl Compositor {
                         uv: [0.0, 1.0],
                     },
                 ]);
-                draws.push((first_index, self.border_bg.clone()));
+                draws.push(DrawCall {
+                    first_index,
+                    bind_group: self.border_bg.clone(),
+                    pipeline: Pipeline::Main,
+                });
                 first_index += 6;
 
                 // Left edge (inside source bounds).
@@ -528,7 +633,11 @@ impl Compositor {
                         uv: [0.0, 1.0],
                     },
                 ]);
-                draws.push((first_index, self.border_bg.clone()));
+                draws.push(DrawCall {
+                    first_index,
+                    bind_group: self.border_bg.clone(),
+                    pipeline: Pipeline::Main,
+                });
                 first_index += 6;
 
                 // Right edge (inside source bounds).
@@ -550,7 +659,138 @@ impl Compositor {
                         uv: [0.0, 1.0],
                     },
                 ]);
-                draws.push((first_index, self.border_bg.clone()));
+                draws.push(DrawCall {
+                    first_index,
+                    bind_group: self.border_bg.clone(),
+                    pipeline: Pipeline::Main,
+                });
+                first_index += 6;
+            }
+
+            // Label overlay
+            if canvas.label.visibility == crate::config::LabelVisibility::Show && !source.name.is_empty() && !is_expanded_source {
+                if self.label_bg_color != canvas.label.background_color {
+                    self.label_bg_color = canvas.label.background_color;
+                    self.label_bg_bg = Arc::new(solid_bind_group(
+                        device,
+                        queue,
+                        &self.bind_layout,
+                        &self.sampler,
+                        self.label_bg_color,
+                    ));
+                }
+
+                let label = &canvas.label;
+                let label_key = LabelKey {
+                    name: source.name.clone(),
+                    size: label.size,
+                    text_color: label.text_color,
+                };
+                let mut hasher = DefaultHasher::new();
+                label_key.hash(&mut hasher);
+                let key_hash = hasher.finish();
+
+                let lt = self
+                    .label_textures
+                    .get(&source.uuid)
+                    .filter(|t| t.key_hash == key_hash);
+
+                let (tex_w, tex_h, label_bg) = if let Some(t) = lt {
+                    (t.w, t.h, t.bg.clone())
+                } else {
+                    let (tex, bg, w, h) = self.rasterize_label(device, queue, &label_key);
+                    self.label_textures.insert(
+                        source.uuid.clone(),
+                        LabelTex {
+                            _tex: tex,
+                            bg: bg.clone(),
+                            w,
+                            h,
+                            key_hash,
+                        },
+                    );
+                    (w, h, bg)
+                };
+
+                let padding = 4.0 * scale;
+                let bg_w = (tex_w as f32 * scale + padding * 2.0).min(lw);
+                let bg_h = (tex_h as f32 * scale + padding * 2.0).min(lh);
+
+                let (bg_x, bg_y) = match label.position {
+                    LabelPosition::TopLeft => (lx, ly),
+                    LabelPosition::TopCenter => (lx + (lw - bg_w) / 2.0, ly),
+                    LabelPosition::TopRight => (lx + lw - bg_w, ly),
+                    LabelPosition::CenterLeft => (lx, ly + (lh - bg_h) / 2.0),
+                    LabelPosition::Center => (lx + (lw - bg_w) / 2.0, ly + (lh - bg_h) / 2.0),
+                    LabelPosition::CenterRight => (lx + lw - bg_w, ly + (lh - bg_h) / 2.0),
+                    LabelPosition::BottomLeft => (lx, ly + lh - bg_h),
+                    LabelPosition::BottomCenter => (lx + (lw - bg_w) / 2.0, ly + lh - bg_h),
+                    LabelPosition::BottomRight => (lx + lw - bg_w, ly + lh - bg_h),
+                };
+
+                let bg_x0 = (bg_x - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
+                let bg_x1 = (bg_x + bg_w - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
+                let bg_y0 = 1.0 - (bg_y - panel_rect.y) / panel_rect.height() * 2.0;
+                let bg_y1 = 1.0 - (bg_y + bg_h - panel_rect.y) / panel_rect.height() * 2.0;
+
+                verts.extend_from_slice(&[
+                    Vert {
+                        pos: [bg_x0, bg_y0],
+                        uv: [0.0, 0.0],
+                    },
+                    Vert {
+                        pos: [bg_x1, bg_y0],
+                        uv: [1.0, 0.0],
+                    },
+                    Vert {
+                        pos: [bg_x1, bg_y1],
+                        uv: [1.0, 1.0],
+                    },
+                    Vert {
+                        pos: [bg_x0, bg_y1],
+                        uv: [0.0, 1.0],
+                    },
+                ]);
+                draws.push(DrawCall {
+                    first_index,
+                    bind_group: self.label_bg_bg.clone(),
+                    pipeline: Pipeline::Text,
+                });
+                first_index += 6;
+
+                let tx_w = tex_w as f32 * scale;
+                let tx_h = tex_h as f32 * scale;
+                let tx_x = bg_x + padding;
+                let tx_y = bg_y + padding;
+
+                let tx_x0 = (tx_x - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
+                let tx_x1 = (tx_x + tx_w - panel_rect.x) / panel_rect.width() * 2.0 - 1.0;
+                let tx_y0 = 1.0 - (tx_y - panel_rect.y) / panel_rect.height() * 2.0;
+                let tx_y1 = 1.0 - (tx_y + tx_h - panel_rect.y) / panel_rect.height() * 2.0;
+
+                verts.extend_from_slice(&[
+                    Vert {
+                        pos: [tx_x0, tx_y0],
+                        uv: [0.0, 0.0],
+                    },
+                    Vert {
+                        pos: [tx_x1, tx_y0],
+                        uv: [1.0, 0.0],
+                    },
+                    Vert {
+                        pos: [tx_x1, tx_y1],
+                        uv: [1.0, 1.0],
+                    },
+                    Vert {
+                        pos: [tx_x0, tx_y1],
+                        uv: [0.0, 1.0],
+                    },
+                ]);
+                draws.push(DrawCall {
+                    first_index,
+                    bind_group: label_bg,
+                    pipeline: Pipeline::Text,
+                });
                 first_index += 6;
             }
         }
@@ -559,6 +799,185 @@ impl Compositor {
             verts: Arc::new(verts),
             draws,
         }
+    }
+
+    fn rasterize_label(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        key: &LabelKey,
+    ) -> (wgpu::Texture, Arc<wgpu::BindGroup>, u32, u32) {
+
+        let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+        layout.reset(&LayoutSettings::default());
+        layout.append(&[&self.font], &TextStyle::new(&key.name, key.size, 0));
+
+        let glyphs = layout.glyphs();
+        if glyphs.is_empty() {
+            let tex = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("label-empty"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                view_formats: &[],
+            });
+            let view = tex.create_view(&Default::default());
+            let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("label-empty-conv"),
+                size: std::mem::size_of::<ConvUniform>() as u64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            queue.write_buffer(
+                &uniform,
+                0,
+                bytemuck::cast_slice(&[ConvUniform {
+                    mode: ConvMode::Passthrough as u32,
+                    width: 1.0,
+                    height: 1.0,
+                    _pad: 0.0,
+                }]),
+            );
+            let bg = Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("label-empty"),
+                layout: &self.bind_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(&self.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
+                        resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                            buffer: &uniform,
+                            offset: 0,
+                            size: None,
+                        }),
+                    },
+                ],
+            }));
+            return (tex, bg, 0, 0);
+        }
+
+        let max_x = glyphs.iter().map(|g| g.x + g.width as f32).fold(0.0_f32, f32::max).ceil() as i32;
+        let min_y = glyphs.iter().map(|g| g.y.floor() as i32).min().unwrap_or(0);
+        let max_y = glyphs.iter().map(|g| (g.y + g.height as f32).ceil() as i32).max().unwrap_or(0);
+        let width = max_x.max(1) as u32;
+        let height = (max_y - min_y).max(1) as u32;
+
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        let [tr, tg, tb, ta] = key.text_color;
+
+        for glyph in glyphs {
+            let (metrics, coverage) = self.font.rasterize_config(glyph.key);
+            let gx = glyph.x as u32;
+            let gy = (glyph.y as i32 - min_y) as u32;
+            for row in 0..metrics.height as u32 {
+                for col in 0..metrics.width as u32 {
+                    let src_idx = (row * metrics.width as u32 + col) as usize;
+                    let dst_x = gx + col;
+                    let dst_y = gy + row;
+                    if dst_x < width && dst_y < height {
+                        let dst_idx = ((dst_y * width + dst_x) * 4) as usize;
+                        let cov = coverage[src_idx];
+                        // alpha-blend with existing pixel (simple over)
+                        let src_a = ((cov as u32 * ta as u32) / 255) as u8;
+                        let inv_dst_a = 255 - src_a;
+                        pixels[dst_idx + 0] = ((tr as u32 * src_a as u32 + pixels[dst_idx + 0] as u32 * inv_dst_a as u32) / 255) as u8;
+                        pixels[dst_idx + 1] = ((tg as u32 * src_a as u32 + pixels[dst_idx + 1] as u32 * inv_dst_a as u32) / 255) as u8;
+                        pixels[dst_idx + 2] = ((tb as u32 * src_a as u32 + pixels[dst_idx + 2] as u32 * inv_dst_a as u32) / 255) as u8;
+                        pixels[dst_idx + 3] = (src_a as u32 + (pixels[dst_idx + 3] as u32 * inv_dst_a as u32) / 255) as u8;
+                    }
+                }
+            }
+        }
+
+        let tex = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("label"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let view = tex.create_view(&Default::default());
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &tex,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+        );
+
+        let uniform = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("label-conv"),
+            size: std::mem::size_of::<ConvUniform>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(
+            &uniform,
+            0,
+            bytemuck::cast_slice(&[ConvUniform {
+                mode: ConvMode::Passthrough as u32,
+                width: width as f32,
+                height: height as f32,
+                _pad: 0.0,
+            }]),
+        );
+        let bg = Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("label"),
+            layout: &self.bind_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&self.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                        buffer: &uniform,
+                        offset: 0,
+                        size: None,
+                    }),
+                },
+            ],
+        }));
+
+        (tex, bg, width, height)
     }
 
     pub fn render_canvas(
@@ -642,12 +1061,20 @@ impl Compositor {
             });
 
             rpass.set_viewport(0.0, 0.0, canvas_w as f32, canvas_h as f32, 0.0, 1.0);
-            rpass.set_pipeline(&self.canvas_pipeline);
             rpass.set_vertex_buffer(0, self.canvas_vb.slice(..));
             rpass.set_index_buffer(self.shared.ib.slice(..), wgpu::IndexFormat::Uint16);
-            for (first, bg) in &draw.draws {
-                rpass.set_bind_group(0, &**bg, &[]);
-                rpass.draw_indexed(*first..*first + 6, 0, 0..1);
+            let mut current_pipeline = None;
+            for draw_call in &draw.draws {
+                let pipeline = match draw_call.pipeline {
+                    Pipeline::Main => &self.canvas_pipeline,
+                    Pipeline::Text => &self.text_pipeline,
+                };
+                if current_pipeline != Some(pipeline) {
+                    rpass.set_pipeline(pipeline);
+                    current_pipeline = Some(pipeline);
+                }
+                rpass.set_bind_group(0, &*draw_call.bind_group, &[]);
+                rpass.draw_indexed(draw_call.first_index..draw_call.first_index + 6, 0, 0..1);
             }
         }
 

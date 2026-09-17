@@ -1,4 +1,4 @@
-use crate::config::{BorderVisibility, SourceBorderVisibility, TextureMode};
+use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, TextureMode};
 use crate::sources::decklink::DisplayMode;
 use crate::engine::Engine;
 use crate::sources::{Protocol, SourceConfig, SourceStats, OutputConfig};
@@ -146,7 +146,60 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
         ui.end_row();
     });
 
-    collapsable_section(ui, "Output", false, |ui| {
+    collapsable_section(ui, "Labels", false, |ui| {
+        let label = &mut engine.cfg.canvas.label;
+        settings_grid(ui, "labels_grid", |ui| {
+            ui.label("Visibility");
+            settings_value(ui, |ui| {
+                egui::ComboBox::from_id_salt("label_visibility")
+                    .width(ui.available_width())
+                    .selected_text(label.visibility.label())
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_value(&mut label.visibility, LabelVisibility::Show, "Show").changed() {
+                            engine.dirty = true;
+                        }
+                        if ui.selectable_value(&mut label.visibility, LabelVisibility::Hide, "Hide").changed() {
+                            engine.dirty = true;
+                        }
+                    });
+            });
+            ui.end_row();
+
+            ui.label("Size");
+            settings_value(ui, |ui| {
+                if ui
+                    .add(egui::DragValue::new(&mut label.size).range(1.0..=256.0).speed(1.0).suffix(" px"))
+                    .changed()
+                {
+                    engine.dirty = true;
+                }
+            });
+            ui.end_row();
+
+            ui.label("Position");
+            settings_value(ui, |ui| {
+                egui::ComboBox::from_id_salt("label_position")
+                    .width(ui.available_width())
+                    .selected_text(label.position.label())
+                    .show_ui(ui, |ui| {
+                        for position in LabelPosition::all() {
+                            if ui
+                                .selectable_value(&mut label.position, *position, position.label())
+                                .changed()
+                            {
+                                engine.dirty = true;
+                            }
+                        }
+                    });
+            });
+            ui.end_row();
+
+            color_picker_rgba_row(ui, "Text Color", &mut label.text_color);
+            color_picker_rgba_row(ui, "Background", &mut label.background_color);
+        });
+    });
+
+    collapsable_section(ui, "Outputs", false, |ui| {
         settings_grid(ui, "output_grid", |ui| {
             #[cfg(target_os = "macos")]
             {
@@ -1029,4 +1082,25 @@ pub fn settings_grid<R>(
 
 pub fn settings_value(ui: &mut Ui, contents: impl FnOnce(&mut Ui)) {
     ui.with_layout(Layout::left_to_right(Align::Center), contents);
+}
+
+fn color_picker_rgba_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 4]) {
+    ui.label(label);
+    settings_value(ui, |ui| {
+        let mut color_f32 = [
+            color[0] as f32 / 255.0,
+            color[1] as f32 / 255.0,
+            color[2] as f32 / 255.0,
+            color[3] as f32 / 255.0,
+        ];
+        if ui.color_edit_button_rgba_unmultiplied(&mut color_f32).changed() {
+            *color = [
+                (color_f32[0] * 255.0) as u8,
+                (color_f32[1] * 255.0) as u8,
+                (color_f32[2] * 255.0) as u8,
+                (color_f32[3] * 255.0) as u8,
+            ];
+        }
+    });
+    ui.end_row();
 }

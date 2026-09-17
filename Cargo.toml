@@ -17,6 +17,8 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 bytemuck = { version = "1", features = ["derive"] }
 wgpu = "29"
+fontdue = "0.9"
+epaint_default_fonts = "0.35"
 grafton-ndi = "1.0.0"
 uuid = { version = "1", features = ["v4"] }
 multiviewer-decklink = { path = "src/sources/decklink/bindings" }

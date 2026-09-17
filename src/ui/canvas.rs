@@ -14,7 +14,7 @@ pub struct CanvasCallback {
     rect_px: [f32; 4], // x, y, w, h (physical pixels, origin top-left)
     shared: Arc<compositor::Shared>,
     verts: Arc<Vec<Vert>>,
-    draws: Vec<(u32, Arc<wgpu::BindGroup>)>,
+    draws: Vec<compositor::DrawCall>,
 }
 
 impl egui_wgpu::CallbackTrait for CanvasCallback {
@@ -39,12 +39,20 @@ impl egui_wgpu::CallbackTrait for CanvasCallback {
         let [x, y, w, h] = self.rect_px;
         rpass.set_viewport(x, y, w, h, 0.0, 1.0);
         rpass.set_scissor_rect(x as u32, y as u32, w as u32, h as u32);
-        rpass.set_pipeline(&self.shared.pipeline);
         rpass.set_vertex_buffer(0, self.shared.vb.slice(..));
         rpass.set_index_buffer(self.shared.ib.slice(..), wgpu::IndexFormat::Uint16);
-        for (first, bg) in &self.draws {
-            rpass.set_bind_group(0, &**bg, &[]);
-            rpass.draw_indexed(*first..*first + 6, 0, 0..1);
+        let mut current_pipeline = None;
+        for draw_call in &self.draws {
+            let pipeline = match draw_call.pipeline {
+                compositor::Pipeline::Main => &self.shared.pipeline,
+                compositor::Pipeline::Text => &self.shared.text_pipeline,
+            };
+            if current_pipeline != Some(pipeline) {
+                rpass.set_pipeline(pipeline);
+                current_pipeline = Some(pipeline);
+            }
+            rpass.set_bind_group(0, &*draw_call.bind_group, &[]);
+            rpass.draw_indexed(draw_call.first_index..draw_call.first_index + 6, 0, 0..1);
         }
     }
 }
