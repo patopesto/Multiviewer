@@ -1,0 +1,74 @@
+version: '3'
+
+vars:
+  NDI_VERSION:
+    sh: cat vendor/ndi/NDI_SDK_VERSION 2>/dev/null || echo "unknown"
+  NDI_MACOS_SHA_FILE: vendor/ndi/macos/NDI_SDK_MACOS.sha256
+  NDI_MACOS_URL: https://downloads.ndi.tv/SDK/NDI_SDK_Mac/Install_NDI_SDK_v6_Apple.pkg
+  NDI_CACHE_DIR: 'vendor/ndi/.cache'
+
+tasks:
+  setup:
+    desc: Set up the NDI SDK for the current OS
+    cmds:
+      - task: "setup:{{OS}}"
+
+  setup:darwin:
+    desc: Download, verify, and extract the macOS NDI SDK v{{.NDI_VERSION}}
+    cmds:
+      - |
+        set -e
+        expected=$(cat "{{.NDI_MACOS_SHA_FILE}}" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')
+        cache_dir="{{.NDI_CACHE_DIR}}/macos/{{.NDI_VERSION}}-${expected}"
+        pkg="$cache_dir/ndi-sdk.pkg"
+        mkdir -p "$cache_dir"
+
+        if [ ! -f "$pkg" ]; then
+          echo "Downloading NDI SDK v{{.NDI_VERSION}} for macOS..."
+          curl -L -o "$pkg" "{{.NDI_MACOS_URL}}"
+        else
+          echo "Using cached NDI SDK pkg at $pkg"
+        fi
+
+        actual=$(shasum -a 256 "$pkg" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
+        if [ "$actual" != "$expected" ]; then
+          echo "NDI SDK SHA256 mismatch!" >&2
+          echo "Expected: $expected" >&2
+          echo "Actual:   $actual" >&2
+          echo "The upstream installer may have been rotated. Update vendor/ndi/macos/NDI_SDK_MACOS.sha256." >&2
+          exit 1
+        fi
+        echo "NDI SDK SHA256 verified."
+
+        sdk_dir="$PWD/vendor/ndi/macos/sdk"
+        rm -rf "$sdk_dir"
+        mkdir -p "$sdk_dir"
+
+        echo "Extracting NDI SDK..."
+        pkgutil --expand-full "$pkg" "$sdk_dir/_pkg"
+
+        payload="$sdk_dir/_pkg/NDI_SDK_Component.pkg/Payload"
+        if [ ! -d "$payload/NDI SDK for Apple" ]; then
+          echo "Could not find NDI SDK payload at $payload/NDI SDK for Apple" >&2
+          exit 1
+        fi
+
+        mv "$payload/NDI SDK for Apple"/* "$sdk_dir/"
+        rm -rf "$sdk_dir/_pkg"
+
+        # Persist NDI_SDK_DIR for cargo so `cargo run` finds the local SDK.
+        mkdir -p "$PWD/.cargo"
+        printf '[env]\nNDI_SDK_DIR = "%s"\n' "$(cd "$sdk_dir" && pwd)" > "$PWD/.cargo/config.toml"
+
+        echo "$sdk_dir" > "$PWD/.ndi_sdk_dir"
+        echo "NDI SDK v{{.NDI_VERSION}} ready at $sdk_dir"
+
+  setup:windows:
+    desc: Set up the NDI SDK for Windows (not yet implemented)
+    cmds:
+      - echo "Windows NDI SDK setup not yet implemented"
+
+  setup:linux:
+    desc: Set up the NDI SDK for Linux (not yet implemented)
+    cmds:
+      - echo "Linux NDI SDK setup not yet implemented"

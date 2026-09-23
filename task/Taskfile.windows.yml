@@ -1,0 +1,31 @@
+version: '3'
+
+vars:
+  APP_NAME: Multiviewer
+  DIST_DIR: dist
+
+tasks:
+  setup:
+    desc: Setup the development environment for Windows
+    cmds:
+      - echo "Windows setup not yet implemented"
+
+  run:
+    desc: Run the application on Windows
+    cmds:
+      - echo "Windows run not yet implemented"
+
+  build:
+    desc: Build the release binary for Windows
+    cmds:
+      - echo "Windows build not yet implemented"
+
+  package:
+    desc: Package the Windows application
+    cmds:
+      - echo "Windows package not yet implemented"
+
+  sign:
+    desc: Sign the Windows application
+    cmds:
+      - echo "Windows signing not yet implemented"

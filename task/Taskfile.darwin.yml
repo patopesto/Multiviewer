@@ -1,0 +1,100 @@
+version: '3'
+
+vars:
+  APP_NAME: Multiviewer
+  VERSION: "1.0.0"
+  ARCH: macos_arm64
+  DIST_DIR: dist
+  DIST_DMG: "{{.DIST_DIR}}/{{.APP_NAME}}_v{{.VERSION}}_{{.ARCH}}.dmg"
+
+tasks:
+  setup:
+    desc: Setup the development environment for macOS
+    cmds:
+      - task: :ndi:setup:darwin
+      - cargo install cargo-packager --locked
+      - brew install create-dmg
+
+  run:
+    desc: Run the application in debug mode
+    cmds:
+      - cargo run
+
+  build:
+    desc: Build the release binary for macOS
+    deps:
+      - :ndi:setup:darwin
+    cmds:
+      - cargo build --release
+
+  generate:icons:
+    desc: Generate assets/AppIcon.icns from assets/AppIcon.png
+    sources:
+      - assets/AppIcon.png
+    generates:
+      - assets/AppIcon.icns
+    cmds:
+      - mkdir -p .tmp.iconset
+      - sips -z 16 16 assets/AppIcon.png --out .tmp.iconset/icon_16x16.png
+      - sips -z 32 32 assets/AppIcon.png --out .tmp.iconset/icon_16x16@2x.png
+      - sips -z 32 32 assets/AppIcon.png --out .tmp.iconset/icon_32x32.png
+      - sips -z 64 64 assets/AppIcon.png --out .tmp.iconset/icon_32x32@2x.png
+      - sips -z 128 128 assets/AppIcon.png --out .tmp.iconset/icon_128x128.png
+      - sips -z 256 256 assets/AppIcon.png --out .tmp.iconset/icon_128x128@2x.png
+      - sips -z 256 256 assets/AppIcon.png --out .tmp.iconset/icon_256x256.png
+      - sips -z 512 512 assets/AppIcon.png --out .tmp.iconset/icon_256x256@2x.png
+      - sips -z 512 512 assets/AppIcon.png --out .tmp.iconset/icon_512x512.png
+      - sips -z 1024 1024 assets/AppIcon.png --out .tmp.iconset/icon_512x512@2x.png
+      - iconutil -c icns -o assets/AppIcon.icns .tmp.iconset
+      - rm -rf .tmp.iconset
+
+  package:
+    desc: Build .app and create custom DMG
+    deps:
+      - build
+      - generate:icons
+    cmds:
+      - cargo packager --release --formats app
+      - |
+        set -e
+        dmg="{{.DIST_DMG}}"
+        rm -f "$dmg"
+        create-dmg \
+          --volname "{{.APP_NAME}}" \
+          --volicon "assets/AppIcon.icns" \
+          --app-drop-link 480 170 \
+          --icon "{{.APP_NAME}}.app" 180 170 \
+          --window-size 600 400 \
+          --hide-extension "{{.APP_NAME}}.app" \
+          --skip-jenkins \
+          --codesign "-" \
+          "$dmg" \
+          "{{.DIST_DIR}}/{{.APP_NAME}}.app"
+
+  sign:
+    desc: Notarize and staple the DMG
+    deps:
+      - package
+    cmds:
+      - |
+        set -e
+        if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+          echo "Skipping notarization: APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID must be set" >&2
+          exit 0
+        fi
+
+        dmg="{{.DIST_DMG}}"
+        if [ ! -f "$dmg" ]; then
+          echo "DMG not found: $dmg" >&2
+          exit 1
+        fi
+
+        echo "Submitting $dmg for notarization..."
+        xcrun notarytool submit "$dmg" \
+          --apple-id "$APPLE_ID" \
+          --password "$APPLE_PASSWORD" \
+          --team-id "$APPLE_TEAM_ID" \
+          --wait
+        
+        echo "Stapling notarization ticket to $dmg..."
+        xcrun stapler staple "$dmg"

@@ -1,52 +1,49 @@
 version: '3'
 
+includes:
+  ndi: task/Taskfile.ndi.yml
+  darwin: task/Taskfile.darwin.yml
+  windows: task/Taskfile.windows.yml
+  linux: task/Taskfile.linux.yml
+
 vars:
-  APP_NAME: "Multiviewer"
-  BIN_DIR: "target"
-  RELEASE_DIR: "dist"
+  APP_NAME: Multiviewer
+  VERSION: "1.0.0"
+  DIST_DIR: dist
 
 tasks:
-  build:
-    summary: Builds the application
-    sources:
-      - './src/**/*.rs'
+  setup:
+    desc: Setup the development environment
     cmds:
-      - cargo build --release
-
-  # package:
-  #   summary: Packages a production build of the application
-  #   cmds:
-  #     - task: "{{OS}}:package"
+      - task: "{{OS}}:setup"
 
   run:
-    summary: Runs the application
-    watch: false
+    desc: Run the application
     cmds:
-      - task: build
-      - ./{{.BIN_DIR}}/release/{{.APP_NAME}} {{.CLI_ARGS}}
+      - task: "{{OS}}:run"
 
-  check:
-    desc: Clean, tidy and audit
+  build:
+    desc: Build the application for the current OS
     cmds:
-      - task: check
-      - task: vet
+      - task: "{{OS}}:build"
 
-  check:
-    desc: Check project for errors
+  package:
+    desc: Package the application for the current OS
     cmds:
-      - cargo check
+      - task: "{{OS}}:package"
 
-  vet:
-    desc: Run linting
-    cmd: cargo clippy
-
-  update:
-    desc: Update dependencies
+  sign:
+    desc: Sign/notarize the application for the current OS
     cmds:
-      - cargo update
-      - task: check
+      - task: "{{OS}}:sign"
+
+  test:
+    desc: Run clippy and tests
+    cmds:
+      - cargo clippy
+      - cargo test
 
   clean:
-    desc: Clean build directoy
+    desc: Clean build and dist directories
     cmds:
-      - rm -rf {{.BIN_DIR}} {{.RELEASE_DIR}}
+      - rm -rf target dist vendor/ndi/macos/sdk vendor/ndi/linux/sdk vendor/ndi/windows/sdk .ndi_sdk_dir .tmp.iconset

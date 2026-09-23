@@ -1,0 +1,31 @@
+version: '3'
+
+vars:
+  APP_NAME: Multiviewer
+  DIST_DIR: dist
+
+tasks:
+  setup:
+    desc: Setup the development environment for Linux
+    cmds:
+      - echo "Linux setup not yet implemented"
+
+  run:
+    desc: Run the application on Linux
+    cmds:
+      - echo "Linux run not yet implemented"
+
+  build:
+    desc: Build the release binary for Linux
+    cmds:
+      - echo "Linux build not yet implemented"
+
+  package:
+    desc: Package the Linux application
+    cmds:
+      - echo "Linux package not yet implemented"
+
+  sign:
+    desc: Sign the Linux application
+    cmds:
+      - echo "Linux signing not yet implemented"

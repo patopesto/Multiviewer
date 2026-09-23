@@ -14,6 +14,18 @@ vendor/ndi/**/*.lib
 vendor/ndi/**/*.dylib
 vendor/ndi/**/*.dll
 vendor/ndi/**/*.so
+vendor/ndi/.cache/
+vendor/ndi/macos/sdk/
+vendor/ndi/linux/sdk/
+vendor/ndi/windows/sdk/
+
+# Build metadata
+.ndi_sdk_dir
+.tmp.iconset
+.cargo/config.toml
+
+# Generated icons
+assets/AppIcon.icns
 
 # Blackmagic (only keep headers)
 vendor/blackmagic/*
