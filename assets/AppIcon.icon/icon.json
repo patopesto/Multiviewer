@@ -1,0 +1,58 @@
+{
+  "fill" : {
+    "linear-gradient" : [
+      "display-p3:0.35052,0.35052,0.35052,1.00000",
+      "srgb:0.25208,0.25208,0.25208,1.00000"
+    ],
+    "orientation" : {
+      "start" : {
+        "x" : 0.5,
+        "y" : 0
+      },
+      "stop" : {
+        "x" : 0.5,
+        "y" : 0.7
+      }
+    }
+  },
+  "groups" : [
+    {
+      "hidden" : false,
+      "layers" : [
+        {
+          "fill" : {
+            "automatic-gradient" : "display-p3:0.89704,0.09350,0.05207,1.00000",
+            "orientation" : {
+              "start" : {
+                "x" : 1,
+                "y" : 1
+              },
+              "stop" : {
+                "x" : 0,
+                "y" : 0
+              }
+            }
+          },
+          "glass" : false,
+          "image-name" : "AppIcon.svg",
+          "name" : "AppIcon"
+        }
+      ],
+      "lighting" : "individual",
+      "shadow" : {
+        "kind" : "none",
+        "opacity" : 0.5
+      },
+      "specular" : false,
+      "translucency" : {
+        "enabled" : false,
+        "value" : 0.5
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
