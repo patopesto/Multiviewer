@@ -60,7 +60,6 @@ tasks:
         mkdir -p "$PWD/.cargo"
         printf '[env]\nNDI_SDK_DIR = "%s"\n' "$(cd "$sdk_dir" && pwd)" > "$PWD/.cargo/config.toml"
 
-        echo "$sdk_dir" > "$PWD/.ndi_sdk_dir"
         echo "NDI SDK v{{.NDI_VERSION}} ready at $sdk_dir"
 
   setup:windows:
@@ -72,3 +71,8 @@ tasks:
     desc: Set up the NDI SDK for Linux (not yet implemented)
     cmds:
       - echo "Linux NDI SDK setup not yet implemented"
+
+  clean:
+    desc: Clear the cached NDI SDK downloads
+    cmds:
+      - rm -rf vendor/ndi/macos/sdk vendor/ndi/linux/sdk vendor/ndi/windows/sdk

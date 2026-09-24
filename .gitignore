@@ -20,7 +20,6 @@ vendor/ndi/linux/sdk/
 vendor/ndi/windows/sdk/
 
 # Build metadata
-.ndi_sdk_dir
 .tmp.iconset
 .cargo/config.toml
 

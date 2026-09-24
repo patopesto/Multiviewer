@@ -46,4 +46,4 @@ tasks:
   clean:
     desc: Clean build and dist directories
     cmds:
-      - rm -rf target dist vendor/ndi/macos/sdk vendor/ndi/linux/sdk vendor/ndi/windows/sdk .ndi_sdk_dir .tmp.iconset
+      - rm -rf target dist
