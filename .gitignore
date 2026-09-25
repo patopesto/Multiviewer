@@ -5,6 +5,7 @@
 .task
 target/
 dist/
+.cargo
 
 # App file extension
 *.multiviewer
@@ -19,12 +20,9 @@ vendor/ndi/macos/sdk/
 vendor/ndi/linux/sdk/
 vendor/ndi/windows/sdk/
 
-# Build metadata
-.tmp.iconset
-.cargo/config.toml
-
 # Generated icons
 assets/AppIcon.icns
+.tmp.iconset
 
 # Blackmagic (only keep headers)
 vendor/blackmagic/*
