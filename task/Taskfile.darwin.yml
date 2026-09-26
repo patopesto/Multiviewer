@@ -14,7 +14,7 @@ tasks:
     cmds:
       - task: :ndi:setup:darwin
       - cargo install cargo-packager --locked
-      - brew install create-dmg
+      - HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
 
   run:
     desc: Run the application in debug mode
