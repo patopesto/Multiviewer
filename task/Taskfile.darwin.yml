@@ -71,11 +71,10 @@ tasks:
           --codesign "-" \
           "$dmg" \
           "{{.DIST_DIR}}/{{.APP_NAME}}.app"
+      - task: sign
 
   sign:
     desc: Notarize and staple the DMG
-    deps:
-      - package
     cmds:
       - |
         set -e
