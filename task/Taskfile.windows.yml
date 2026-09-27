@@ -1,29 +1,33 @@
 version: '3'
 
-vars:
-  APP_NAME: Multiviewer
-  DIST_DIR: dist
-
 tasks:
   setup:
     desc: Setup the development environment for Windows
     cmds:
-      - echo "Windows setup not yet implemented"
+      - task: :ndi:setup:windows
+      - cargo install cargo-packager --locked
 
   run:
     desc: Run the application on Windows
+    deps:
+      - :ndi:setup:windows
     cmds:
-      - echo "Windows run not yet implemented"
+      - cargo run --release
 
   build:
     desc: Build the release binary for Windows
+    deps:
+      - :ndi:setup:windows
     cmds:
-      - echo "Windows build not yet implemented"
+      - cargo build --release
 
   package:
     desc: Package the Windows application
+    deps:
+      - build
+      - task: :common:generate-packager-config
     cmds:
-      - echo "Windows package not yet implemented"
+      - cargo packager --config .Packager.{{OS}}.toml -o {{.DIST_DIR}}
 
   sign:
     desc: Sign the Windows application

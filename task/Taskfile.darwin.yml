@@ -1,11 +1,8 @@
 version: '3'
 
 vars:
-  APP_NAME: Multiviewer
-  VERSION: "1.0.0"
   ARCH: macos_arm64
   TARGET: aarch64-apple-darwin
-  DIST_DIR: dist
   DIST_DMG: "{{.DIST_DIR}}/{{.APP_NAME}}_v{{.VERSION}}_{{.ARCH}}.dmg"
 
 tasks:
@@ -26,7 +23,7 @@ tasks:
     deps:
       - :ndi:setup:darwin
     cmds:
-      - cargo build --release --target {{.TARGET}}
+      - cargo build --release
 
   generate:icons:
     desc: Generate assets/AppIcon.icns from assets/AppIcon.png
@@ -54,8 +51,9 @@ tasks:
     deps:
       - build
       - generate:icons
+      - task: :common:generate-packager-config
     cmds:
-      - cargo packager --release --target {{.TARGET}} --formats app
+      - cargo packager --target {{.TARGET}} --config .Packager.{{OS}}.toml -o {{.DIST_DIR}}
       - |
         set -e
         dmg="{{.DIST_DMG}}"

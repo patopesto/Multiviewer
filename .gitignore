@@ -7,6 +7,13 @@ target/
 dist/
 .cargo
 
+# Generated cargo-packager configs
+.Packager.*.toml
+
+# Generated icons
+assets/AppIcon.icns
+.tmp.iconset
+
 # App file extension
 *.multiviewer
 
@@ -19,10 +26,6 @@ vendor/ndi/.cache/
 vendor/ndi/macos/sdk/
 vendor/ndi/linux/sdk/
 vendor/ndi/windows/sdk/
-
-# Generated icons
-assets/AppIcon.icns
-.tmp.iconset
 
 # Blackmagic (only keep headers)
 vendor/blackmagic/*

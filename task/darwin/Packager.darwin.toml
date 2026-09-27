@@ -1,0 +1,14 @@
+formats = ["app"]
+icons = ["assets/AppIcon.icns"]
+
+[macos]
+frameworks = [
+  "vendor/syphon/Syphon.framework",
+  "vendor/ndi/macos/sdk/lib/macOS/libndi.dylib",
+]
+minimum-system-version = "12.0"
+entitlements = "task/darwin/entitlements.plist"
+# TODO: replace with your real Developer ID identity, e.g.
+# "Developer ID Application: Your Name (TEAM_ID)"
+# For CI, set APPLE_CERTIFICATE and APPLE_CERTIFICATE_PASSWORD env vars.
+signing-identity = "-"

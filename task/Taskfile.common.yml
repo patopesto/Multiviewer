@@ -1,0 +1,22 @@
+version: '3'
+
+tasks:
+  generate-packager-config:
+    desc: Generate concatenated cargo-packager config
+    sources:
+      - task/Packager.common.toml
+      - task/{{OS}}/Packager.{{OS}}.toml
+    generates:
+      - .Packager.{{OS}}.toml
+    cmds:
+      - |
+        set -e
+        cat task/Packager.common.toml > .Packager.{{OS}}.toml
+        
+        if [ -n "$CARGO_BUILD_TARGET" ]; then
+          echo "binaries-dir = \"target/$CARGO_BUILD_TARGET/release\"" >> .Packager.{{OS}}.toml
+        else
+          echo "binaries-dir = \"target/release\"" >> .Packager.{{OS}}.toml
+        fi
+
+        cat task/{{OS}}/Packager.{{OS}}.toml >> .Packager.{{OS}}.toml

@@ -5,6 +5,7 @@ includes:
   darwin: task/Taskfile.darwin.yml
   windows: task/Taskfile.windows.yml
   linux: task/Taskfile.linux.yml
+  common: task/Taskfile.common.yml
 
 vars:
   APP_NAME: Multiviewer
@@ -29,6 +30,8 @@ tasks:
 
   package:
     desc: Package the application for the current OS
+    deps:
+      # - check:version
     cmds:
       - task: "{{OS}}:package"
 
@@ -36,6 +39,19 @@ tasks:
     desc: Sign/notarize the application for the current OS
     cmds:
       - task: "{{OS}}:sign"
+
+  check:version:
+    desc: Verify packager version matches Cargo.toml
+    cmds:
+      - |
+        set -e
+        cargo_version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        packager_version=$(grep '^version = ' task/Packager.common.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+        if [ "$cargo_version" != "$packager_version" ]; then
+          echo "❌ Version mismatch: Cargo.toml=$cargo_version, task/Packager.common.toml=$packager_version"
+          exit 1
+        fi
+        echo "✅ Versions match: $cargo_version"
 
   test:
     desc: Run clippy and tests
@@ -46,4 +62,4 @@ tasks:
   clean:
     desc: Clean build and dist directories
     cmds:
-      - rm -rf target dist
+      - rm -rf target dist .Packager*

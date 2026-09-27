@@ -1,29 +1,29 @@
 version: '3'
 
-vars:
-  APP_NAME: Multiviewer
-  DIST_DIR: dist
-
 tasks:
   setup:
     desc: Setup the development environment for Linux
     cmds:
-      - echo "Linux setup not yet implemented"
+      - task: :ndi:setup:linux
+      - cargo install cargo-packager --locked
 
   run:
     desc: Run the application on Linux
     cmds:
-      - echo "Linux run not yet implemented"
+      - cargo run --release
 
   build:
     desc: Build the release binary for Linux
     cmds:
-      - echo "Linux build not yet implemented"
+      - cargo build --release
 
   package:
     desc: Package the Linux application
+    deps:
+      - build
+      - task: :common:generate-packager-config
     cmds:
-      - echo "Linux package not yet implemented"
+      - cargo packager --config .Packager.{{OS}}.toml -o {{.DIST_DIR}}
 
   sign:
     desc: Sign the Linux application
