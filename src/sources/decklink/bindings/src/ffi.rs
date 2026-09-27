@@ -3,7 +3,6 @@ pub enum DecklinkSourceDiscovery {}
 pub enum DecklinkOutputDiscovery {}
 pub enum DecklinkOutputHandle {}
 
-#[cfg(any(target_os = "macos", target_os = "linux"))]
 unsafe extern "C" {
     // Input
     pub fn decklink_source_discovery_new() -> *mut DecklinkSourceDiscovery;

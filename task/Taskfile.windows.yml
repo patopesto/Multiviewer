@@ -7,6 +7,26 @@ tasks:
       - task: :ndi:setup:windows
       - cargo install cargo-packager --locked
 
+  generate:decklink-headers:
+    desc: Regenerate DeckLink C headers from IDL (requires cl.exe in PATH or VCVARS_PATH set)
+    platforms: [windows]
+    dir: vendor/blackmagic/Win/include
+    sources:
+      - DeckLinkAPI.idl
+    generates:
+      - generated/DeckLinkAPI.h
+      - generated/DeckLinkAPI_i.c
+    vars:
+      MIDL_PATH: 'C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/midl.exe'
+      VCVARS_PATH: 'C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvars64.bat'
+    env:
+      MIDL_PATH: '{{.MIDL_PATH}}'
+      VCVARS_PATH: '{{.VCVARS_PATH}}'
+    cmds:
+      - mkdir -p generated
+      - cmd /c "call "$VCVARS_PATH" && "$MIDL_PATH" DeckLinkAPI.idl /out generated /header DeckLinkAPI.h /iid DeckLinkAPI_i.c /notlb"
+      - rm -f generated/DeckLinkAPI_p.c generated/dlldata.c
+
   generate:icons:
     desc: Generate assets/AppIcon.ico from assets/AppIcon.png
     platforms: [darwin] # Note: sips is macOS-only

@@ -4,7 +4,6 @@
 #include <atomic>
 #include <cstring>
 #include <algorithm>
-#include <unistd.h>
 
 #ifdef __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
@@ -13,49 +12,30 @@
 
 #include <DeckLinkAPI.h>
 #include "decklink_input.h"
+#include "platform.h"
 
 
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
-#ifdef __APPLE__
-static std::string cfstring_to_std(CFStringRef cf) {
-    char buf[256];
-    if (CFStringGetCString(cf, buf, sizeof(buf), kCFStringEncodingUTF8)) {
-        CFRelease(cf);
-        return std::string(buf);
-    }
-    CFRelease(cf);
-    return "";
-}
-#endif
-
 static std::string get_display_name(IDeckLink* decklink) {
-#ifdef __APPLE__
-    CFStringRef cf_name;
-    if (decklink->GetDisplayName(&cf_name) == S_OK)
-        return cfstring_to_std(cf_name);
-    return "";
-#else
-    const char* name = nullptr;
-    if (decklink->GetDisplayName(&name) == S_OK)
-        return std::string(name);
-    return "";
-#endif
+    DECKLINK_DLSTRING_T name = nullptr;
+    if (decklink->GetDisplayName(&name) != S_OK) {
+        return "";
+    }
+    std::string result = DecklinkStringToStd(name);
+    DecklinkStringFree(name);
+    return result;
 }
 
 static std::string get_model_name(IDeckLink* decklink) {
-#ifdef __APPLE__
-    CFStringRef cf_name;
-    if (decklink->GetModelName(&cf_name) == S_OK)
-        return cfstring_to_std(cf_name);
-    return "";
-#else
-    const char* name = nullptr;
-    if (decklink->GetModelName(&name) == S_OK)
-        return std::string(name);
-    return "";
-#endif
+    DECKLINK_DLSTRING_T name = nullptr;
+    if (decklink->GetModelName(&name) != S_OK) {
+        return "";
+    }
+    std::string result = DecklinkStringToStd(name);
+    DecklinkStringFree(name);
+    return result;
 }
 
 
@@ -74,10 +54,13 @@ struct DecklinkSourceDiscovery {
 
 
 DecklinkSourceDiscovery* decklink_source_discovery_new(void) {
+    DecklinkComScope com_scope;
     auto* d = new DecklinkSourceDiscovery();
 
-    IDeckLinkIterator* iterator = CreateDeckLinkIteratorInstance();
-    if (!iterator) return d;
+    IDeckLinkIterator* iterator = nullptr;
+    if (FAILED(DecklinkCreateIterator(&iterator))) {
+        return d;
+    }
 
     IDeckLink* decklink = nullptr;
     while (iterator->Next(&decklink) == S_OK) {
@@ -103,9 +86,9 @@ DecklinkSourceDiscovery* decklink_source_discovery_new(void) {
         bool has_signal = false;
         IDeckLinkStatus* status = nullptr;
         if (decklink->QueryInterface(IID_IDeckLinkStatus, (void**)&status) == S_OK) {
-            bool locked = false;
+            DecklinkBool locked = 0;
             status->GetFlag(bmdDeckLinkStatusVideoInputSignalLocked, &locked);
-            has_signal = locked;
+            has_signal = locked != 0;
             status->Release();
         }
 
@@ -186,21 +169,12 @@ class CaptureCallback : public IDeckLinkInputCallback {
 
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, LPVOID* ppv) override {
             if (!ppv) return E_INVALIDARG;
-    #ifdef __APPLE__
-            CFUUIDBytes iunknown = CFUUIDGetUUIDBytes(IUnknownUUID);
-            if (memcmp(&iid, &iunknown, sizeof(REFIID)) == 0 ||
-                memcmp(&iid, &IID_IDeckLinkInputCallback, sizeof(REFIID)) == 0) {
+            if (DecklinkIsIUnknownIID(iid) ||
+                DecklinkIIDEqual(iid, IID_IDeckLinkInputCallback)) {
                 *ppv = static_cast<IDeckLinkInputCallback*>(this);
                 AddRef();
                 return S_OK;
             }
-    #else
-            if (memcmp(&iid, &IID_IDeckLinkInputCallback, sizeof(REFIID)) == 0) {
-                *ppv = static_cast<IDeckLinkInputCallback*>(this);
-                AddRef();
-                return S_OK;
-            }
-    #endif
             *ppv = nullptr;
             return E_NOINTERFACE;
         }
@@ -315,7 +289,11 @@ class CaptureCallback : public IDeckLinkInputCallback {
             row_bytes = static_cast<long>(CVPixelBufferGetBytesPerRow(pixel_buffer));
     #else
             void* bytes = nullptr;
-            videoFrame->GetBytes(&bytes);
+            IDeckLinkVideoBuffer* vbuf = nullptr;
+            if (videoFrame->QueryInterface(IID_IDeckLinkVideoBuffer, (void**)&vbuf) == S_OK) {
+                vbuf->GetBytes(&bytes);
+                vbuf->Release();
+            }
             src = static_cast<const uint8_t*>(bytes);
             row_bytes = videoFrame->GetRowBytes();
     #endif
@@ -439,10 +417,13 @@ void decklink_source_set_connection(DecklinkSource* s, uint32_t connection) {
 
 
 bool decklink_source_start(DecklinkSource* s) {
+    DecklinkComScope com_scope;
     if (!s || s->target_name.empty()) return false;
 
-    IDeckLinkIterator* iterator = CreateDeckLinkIteratorInstance();
-    if (!iterator) return false;
+    IDeckLinkIterator* iterator = nullptr;
+    if (FAILED(DecklinkCreateIterator(&iterator))) {
+        return false;
+    }
 
     IDeckLink* decklink = nullptr;
     bool found = false;
@@ -475,7 +456,7 @@ bool decklink_source_start(DecklinkSource* s) {
         return false;
     }
 
-    bool supports_fmt_detection = false;
+    DecklinkBool supports_fmt_detection = 0;
     IDeckLinkProfileAttributes* attr = nullptr;
     if (decklink->QueryInterface(IID_IDeckLinkProfileAttributes, (void**)&attr) == S_OK) {
         attr->GetFlag(BMDDeckLinkSupportsInputFormatDetection, &supports_fmt_detection);
@@ -498,7 +479,7 @@ bool decklink_source_start(DecklinkSource* s) {
             return false;
         }
         fprintf(stderr, "[decklink] set connection=0x%X ok\n", s->connection);
-        usleep(100000);
+        DecklinkSleepMs(100);
     }
 
     if (decklink->QueryInterface(IID_IDeckLinkInput, (void**)&s->input) != S_OK) {
@@ -596,7 +577,7 @@ void decklink_source_stop(DecklinkSource* s) {
         s->input->SetCallback(nullptr);
         s->input->DisableVideoInput();
         s->input->DisableAudioInput();
-        usleep(500000);
+        DecklinkSleepMs(500);
     }
     if (s->callback) {
         s->callback->detach();

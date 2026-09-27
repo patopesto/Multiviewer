@@ -1,30 +1,159 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    bmdFormat10BitRGB, bmdFormat10BitYUV, bmdFormat12BitRGB, bmdFormat12BitRGBLE,
-    bmdFormat8BitARGB, bmdFormat8BitBGRA, bmdFormat8BitYUV, bmdFormatDNxHR, bmdFormatH265
-};
-use crate::{
-    bmdMode2k2398, bmdMode2k24, bmdMode2k25, bmdMode2kDCI2398, bmdMode2kDCI24, bmdMode2kDCI25,
-    bmdMode2kDCI2997, bmdMode2kDCI30, bmdMode2kDCI48, bmdMode2kDCI50, bmdMode2kDCI5994,
-    bmdMode2kDCI60, bmdMode2kDCI9590, bmdMode2kDCI96, bmdMode2kDCI100, bmdMode2kDCI11988, bmdMode2kDCI120, bmdMode4K2160p2398, bmdMode4K2160p24, bmdMode4K2160p25, bmdMode4K2160p2997,
-    bmdMode4K2160p30, bmdMode4K2160p48, bmdMode4K2160p50, bmdMode4K2160p5994, bmdMode4K2160p60, bmdMode4K2160p9590, bmdMode4K2160p96, bmdMode4K2160p100, bmdMode4K2160p11988, bmdMode4K2160p120,
-    bmdMode4kDCI2398, bmdMode4kDCI24, bmdMode4kDCI25, bmdMode4kDCI2997, bmdMode4kDCI30,
-    bmdMode4kDCI48, bmdMode4kDCI50, bmdMode4kDCI5994, bmdMode4kDCI60, bmdMode4kDCI9590, bmdMode4kDCI96, bmdMode4kDCI100, bmdMode4kDCI11988, bmdMode4kDCI120, bmdMode8K4320p2398, bmdMode8K4320p24, bmdMode8K4320p25, bmdMode8K4320p2997,
-    bmdMode8K4320p30, bmdMode8K4320p48, bmdMode8K4320p50, bmdMode8K4320p5994, bmdMode8K4320p60,
-    bmdMode8kDCI2398, bmdMode8kDCI24, bmdMode8kDCI25, bmdMode8kDCI2997, bmdMode8kDCI30,
-    bmdMode8kDCI48, bmdMode8kDCI50, bmdMode8kDCI5994, bmdMode8kDCI60, bmdModeHD1080p2398,
-    bmdModeHD1080p24, bmdModeHD1080p25, bmdModeHD1080p2997, bmdModeHD1080p30, bmdModeHD1080p48,
-    bmdModeHD1080p50, bmdModeHD1080p5994, bmdModeHD1080p6000, bmdModeHD1080p9590, bmdModeHD1080p96, bmdModeHD1080p100, bmdModeHD1080p11988, bmdModeHD1080p120, bmdModeHD1080i50, bmdModeHD1080i5994, bmdModeHD1080i6000, bmdModeHD720p50, bmdModeHD720p5994,
-    bmdModeHD720p60, bmdModeNTSC, bmdModeNTSC2398, bmdModeNTSCp, bmdModePAL, bmdModePALp,
-    bmdMode640x480p60, bmdMode800x600p60, bmdMode1440x900p50, bmdMode1440x900p60, bmdMode1440x1080p50, bmdMode1440x1080p60, bmdMode1600x1200p50, bmdMode1600x1200p60, bmdMode1920x1200p50, bmdMode1920x1200p60, bmdMode1920x1440p50, bmdMode1920x1440p60, bmdMode2560x1440p50, bmdMode2560x1440p60, bmdMode2560x1600p50, bmdMode2560x1600p60
- };
-use crate::{
-    bmdVideoConnectionComponent, bmdVideoConnectionComposite, bmdVideoConnectionEthernet,
-    bmdVideoConnectionHDMI, bmdVideoConnectionInternal, bmdVideoConnectionOpticalEthernet,
-    bmdVideoConnectionOpticalSDI, bmdVideoConnectionSDI, bmdVideoConnectionSVideo,
-    bmdVideoConnectionUnspecified,
-};
+// Four-character code helper matching C multi-character constant semantics.
+// First character is the most significant byte.
+pub const fn fourcc(a: u8, b: u8, c: u8, d: u8) -> u32 {
+    ((a as u32) << 24) | ((b as u32) << 16) | ((c as u32) << 8) | (d as u32)
+}
+
+// BMDVideoConnection bit flags
+pub const bmdVideoConnectionUnspecified: u32 = 0;
+pub const bmdVideoConnectionSDI: u32 = 1 << 0;
+pub const bmdVideoConnectionHDMI: u32 = 1 << 1;
+pub const bmdVideoConnectionOpticalSDI: u32 = 1 << 2;
+pub const bmdVideoConnectionComponent: u32 = 1 << 3;
+pub const bmdVideoConnectionComposite: u32 = 1 << 4;
+pub const bmdVideoConnectionSVideo: u32 = 1 << 5;
+pub const bmdVideoConnectionEthernet: u32 = 1 << 6;
+pub const bmdVideoConnectionOpticalEthernet: u32 = 1 << 7;
+pub const bmdVideoConnectionInternal: u32 = 1 << 8;
+
+// BMDDisplayMode fourcc codes
+pub const bmdModeNTSC: u32 = fourcc(b'n', b't', b's', b'c');
+pub const bmdModeNTSC2398: u32 = fourcc(b'n', b't', b'2', b'3');
+pub const bmdModePAL: u32 = fourcc(b'p', b'a', b'l', 0);
+pub const bmdModeNTSCp: u32 = fourcc(b'n', b't', b's', b'p');
+pub const bmdModePALp: u32 = fourcc(b'p', b'a', b'l', b'p');
+
+pub const bmdModeHD1080p2398: u32 = fourcc(b'2', b'3', b'p', b's');
+pub const bmdModeHD1080p24: u32 = fourcc(b'2', b'4', b'p', b's');
+pub const bmdModeHD1080p25: u32 = fourcc(b'H', b'p', b'2', b'5');
+pub const bmdModeHD1080p2997: u32 = fourcc(b'H', b'p', b'2', b'9');
+pub const bmdModeHD1080p30: u32 = fourcc(b'H', b'p', b'3', b'0');
+pub const bmdModeHD1080p4795: u32 = fourcc(b'H', b'p', b'4', b'7');
+pub const bmdModeHD1080p48: u32 = fourcc(b'H', b'p', b'4', b'8');
+pub const bmdModeHD1080p50: u32 = fourcc(b'H', b'p', b'5', b'0');
+pub const bmdModeHD1080p5994: u32 = fourcc(b'H', b'p', b'5', b'9');
+pub const bmdModeHD1080p6000: u32 = fourcc(b'H', b'p', b'6', b'0');
+pub const bmdModeHD1080p9590: u32 = fourcc(b'H', b'p', b'9', b'5');
+pub const bmdModeHD1080p96: u32 = fourcc(b'H', b'p', b'9', b'6');
+pub const bmdModeHD1080p100: u32 = fourcc(b'H', b'p', b'1', b'0');
+pub const bmdModeHD1080p11988: u32 = fourcc(b'H', b'p', b'1', b'1');
+pub const bmdModeHD1080p120: u32 = fourcc(b'H', b'p', b'1', b'2');
+pub const bmdModeHD1080i50: u32 = fourcc(b'H', b'i', b'5', b'0');
+pub const bmdModeHD1080i5994: u32 = fourcc(b'H', b'i', b'5', b'9');
+pub const bmdModeHD1080i6000: u32 = fourcc(b'H', b'i', b'6', b'0');
+
+pub const bmdModeHD720p50: u32 = fourcc(b'h', b'p', b'5', b'0');
+pub const bmdModeHD720p5994: u32 = fourcc(b'h', b'p', b'5', b'9');
+pub const bmdModeHD720p60: u32 = fourcc(b'h', b'p', b'6', b'0');
+
+pub const bmdMode2k2398: u32 = fourcc(b'2', b'k', b'2', b'3');
+pub const bmdMode2k24: u32 = fourcc(b'2', b'k', b'2', b'4');
+pub const bmdMode2k25: u32 = fourcc(b'2', b'k', b'2', b'5');
+
+pub const bmdMode2kDCI2398: u32 = fourcc(b'2', b'd', b'2', b'3');
+pub const bmdMode2kDCI24: u32 = fourcc(b'2', b'd', b'2', b'4');
+pub const bmdMode2kDCI25: u32 = fourcc(b'2', b'd', b'2', b'5');
+pub const bmdMode2kDCI2997: u32 = fourcc(b'2', b'd', b'2', b'9');
+pub const bmdMode2kDCI30: u32 = fourcc(b'2', b'd', b'3', b'0');
+pub const bmdMode2kDCI4795: u32 = fourcc(b'2', b'd', b'4', b'7');
+pub const bmdMode2kDCI48: u32 = fourcc(b'2', b'd', b'4', b'8');
+pub const bmdMode2kDCI50: u32 = fourcc(b'2', b'd', b'5', b'0');
+pub const bmdMode2kDCI5994: u32 = fourcc(b'2', b'd', b'5', b'9');
+pub const bmdMode2kDCI60: u32 = fourcc(b'2', b'd', b'6', b'0');
+pub const bmdMode2kDCI9590: u32 = fourcc(b'2', b'd', b'9', b'5');
+pub const bmdMode2kDCI96: u32 = fourcc(b'2', b'd', b'9', b'6');
+pub const bmdMode2kDCI100: u32 = fourcc(b'2', b'd', b'1', b'0');
+pub const bmdMode2kDCI11988: u32 = fourcc(b'2', b'd', b'1', b'1');
+pub const bmdMode2kDCI120: u32 = fourcc(b'2', b'd', b'1', b'2');
+
+pub const bmdMode4K2160p2398: u32 = fourcc(b'4', b'k', b'2', b'3');
+pub const bmdMode4K2160p24: u32 = fourcc(b'4', b'k', b'2', b'4');
+pub const bmdMode4K2160p25: u32 = fourcc(b'4', b'k', b'2', b'5');
+pub const bmdMode4K2160p2997: u32 = fourcc(b'4', b'k', b'2', b'9');
+pub const bmdMode4K2160p30: u32 = fourcc(b'4', b'k', b'3', b'0');
+pub const bmdMode4K2160p4795: u32 = fourcc(b'4', b'k', b'4', b'7');
+pub const bmdMode4K2160p48: u32 = fourcc(b'4', b'k', b'4', b'8');
+pub const bmdMode4K2160p50: u32 = fourcc(b'4', b'k', b'5', b'0');
+pub const bmdMode4K2160p5994: u32 = fourcc(b'4', b'k', b'5', b'9');
+pub const bmdMode4K2160p60: u32 = fourcc(b'4', b'k', b'6', b'0');
+pub const bmdMode4K2160p9590: u32 = fourcc(b'4', b'k', b'9', b'5');
+pub const bmdMode4K2160p96: u32 = fourcc(b'4', b'k', b'9', b'6');
+pub const bmdMode4K2160p100: u32 = fourcc(b'4', b'k', b'1', b'0');
+pub const bmdMode4K2160p11988: u32 = fourcc(b'4', b'k', b'1', b'1');
+pub const bmdMode4K2160p120: u32 = fourcc(b'4', b'k', b'1', b'2');
+
+pub const bmdMode4kDCI2398: u32 = fourcc(b'4', b'd', b'2', b'3');
+pub const bmdMode4kDCI24: u32 = fourcc(b'4', b'd', b'2', b'4');
+pub const bmdMode4kDCI25: u32 = fourcc(b'4', b'd', b'2', b'5');
+pub const bmdMode4kDCI2997: u32 = fourcc(b'4', b'd', b'2', b'9');
+pub const bmdMode4kDCI30: u32 = fourcc(b'4', b'd', b'3', b'0');
+pub const bmdMode4kDCI4795: u32 = fourcc(b'4', b'd', b'4', b'7');
+pub const bmdMode4kDCI48: u32 = fourcc(b'4', b'd', b'4', b'8');
+pub const bmdMode4kDCI50: u32 = fourcc(b'4', b'd', b'5', b'0');
+pub const bmdMode4kDCI5994: u32 = fourcc(b'4', b'd', b'5', b'9');
+pub const bmdMode4kDCI60: u32 = fourcc(b'4', b'd', b'6', b'0');
+pub const bmdMode4kDCI9590: u32 = fourcc(b'4', b'd', b'9', b'5');
+pub const bmdMode4kDCI96: u32 = fourcc(b'4', b'd', b'9', b'6');
+pub const bmdMode4kDCI100: u32 = fourcc(b'4', b'd', b'1', b'0');
+pub const bmdMode4kDCI11988: u32 = fourcc(b'4', b'd', b'1', b'1');
+pub const bmdMode4kDCI120: u32 = fourcc(b'4', b'd', b'1', b'2');
+
+pub const bmdMode8K4320p2398: u32 = fourcc(b'8', b'k', b'2', b'3');
+pub const bmdMode8K4320p24: u32 = fourcc(b'8', b'k', b'2', b'4');
+pub const bmdMode8K4320p25: u32 = fourcc(b'8', b'k', b'2', b'5');
+pub const bmdMode8K4320p2997: u32 = fourcc(b'8', b'k', b'2', b'9');
+pub const bmdMode8K4320p30: u32 = fourcc(b'8', b'k', b'3', b'0');
+pub const bmdMode8K4320p4795: u32 = fourcc(b'8', b'k', b'4', b'7');
+pub const bmdMode8K4320p48: u32 = fourcc(b'8', b'k', b'4', b'8');
+pub const bmdMode8K4320p50: u32 = fourcc(b'8', b'k', b'5', b'0');
+pub const bmdMode8K4320p5994: u32 = fourcc(b'8', b'k', b'5', b'9');
+pub const bmdMode8K4320p60: u32 = fourcc(b'8', b'k', b'6', b'0');
+
+pub const bmdMode8kDCI2398: u32 = fourcc(b'8', b'd', b'2', b'3');
+pub const bmdMode8kDCI24: u32 = fourcc(b'8', b'd', b'2', b'4');
+pub const bmdMode8kDCI25: u32 = fourcc(b'8', b'd', b'2', b'5');
+pub const bmdMode8kDCI2997: u32 = fourcc(b'8', b'd', b'2', b'9');
+pub const bmdMode8kDCI30: u32 = fourcc(b'8', b'd', b'3', b'0');
+pub const bmdMode8kDCI4795: u32 = fourcc(b'8', b'd', b'4', b'7');
+pub const bmdMode8kDCI48: u32 = fourcc(b'8', b'd', b'4', b'8');
+pub const bmdMode8kDCI50: u32 = fourcc(b'8', b'd', b'5', b'0');
+pub const bmdMode8kDCI5994: u32 = fourcc(b'8', b'd', b'5', b'9');
+pub const bmdMode8kDCI60: u32 = fourcc(b'8', b'd', b'6', b'0');
+
+pub const bmdMode640x480p60: u32 = fourcc(b'v', b'g', b'a', b'6');
+pub const bmdMode800x600p60: u32 = fourcc(b's', b'v', b'g', b'6');
+pub const bmdMode1440x900p50: u32 = fourcc(b'w', b'x', b'g', b'5');
+pub const bmdMode1440x900p60: u32 = fourcc(b'w', b'x', b'g', b'6');
+pub const bmdMode1440x1080p50: u32 = fourcc(b's', b'x', b'g', b'5');
+pub const bmdMode1440x1080p60: u32 = fourcc(b's', b'x', b'g', b'6');
+pub const bmdMode1600x1200p50: u32 = fourcc(b'u', b'x', b'g', b'5');
+pub const bmdMode1600x1200p60: u32 = fourcc(b'u', b'x', b'g', b'6');
+pub const bmdMode1920x1200p50: u32 = fourcc(b'w', b'u', b'x', b'5');
+pub const bmdMode1920x1200p60: u32 = fourcc(b'w', b'u', b'x', b'6');
+pub const bmdMode1920x1440p50: u32 = fourcc(b'1', b'9', b'4', b'5');
+pub const bmdMode1920x1440p60: u32 = fourcc(b'1', b'9', b'4', b'6');
+pub const bmdMode2560x1440p50: u32 = fourcc(b'w', b'q', b'h', b'5');
+pub const bmdMode2560x1440p60: u32 = fourcc(b'w', b'q', b'h', b'6');
+pub const bmdMode2560x1600p50: u32 = fourcc(b'w', b'q', b'x', b'5');
+pub const bmdMode2560x1600p60: u32 = fourcc(b'w', b'q', b'x', b'6');
+pub const bmdModeUnknown: u32 = fourcc(b'i', b'u', b'n', b'k');
+
+// BMDPixelFormat constants
+pub const bmdFormatUnspecified: u32 = 0;
+pub const bmdFormat8BitYUV: u32 = fourcc(b'2', b'v', b'u', b'y');
+pub const bmdFormat10BitYUV: u32 = fourcc(b'v', b'2', b'1', b'0');
+pub const bmdFormat10BitYUVA: u32 = fourcc(b'A', b'y', b'1', b'0');
+pub const bmdFormat8BitARGB: u32 = 32;
+pub const bmdFormat8BitBGRA: u32 = fourcc(b'B', b'G', b'R', b'A');
+pub const bmdFormat10BitRGB: u32 = fourcc(b'r', b'2', b'1', b'0');
+pub const bmdFormat12BitRGB: u32 = fourcc(b'R', b'1', b'2', b'B');
+pub const bmdFormat12BitRGBLE: u32 = fourcc(b'R', b'1', b'2', b'L');
+pub const bmdFormat10BitRGBXLE: u32 = fourcc(b'R', b'1', b'0', b'l');
+pub const bmdFormat10BitRGBX: u32 = fourcc(b'R', b'1', b'0', b'b');
+pub const bmdFormatH265: u32 = fourcc(b'h', b'e', b'v', b'1');
+pub const bmdFormatDNxHR: u32 = fourcc(b'A', b'V', b'd', b'h');
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u32)]

@@ -1,62 +1,80 @@
 use std::path::PathBuf;
 
 fn main() {
-    #[cfg(any(target_os = "macos", target_os = "linux"))]
-    {
-        let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
-        let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
-        // Resolve SDK include path based on platform
-        let sdk_include = if cfg!(target_os = "macos") {
-            manifest_dir.join("../../../../vendor/blackmagic/Mac/include/")
-        } else if cfg!(target_os = "linux") {
-            manifest_dir.join("../../../../vendor/blackmagic/Linux/include/")
-        } else {
-            return;
-        };
+    println!("cargo:rerun-if-changed=shim/platform.h");
+    println!("cargo:rerun-if-changed=shim/platform.cpp");
+    println!("cargo:rerun-if-changed=shim/decklink_input.cpp");
+    println!("cargo:rerun-if-changed=shim/decklink_input.h");
+    println!("cargo:rerun-if-changed=shim/decklink_output.cpp");
+    println!("cargo:rerun-if-changed=shim/decklink_output.h");
 
-        // Generate bindings from SDK headers
-        let bindings = bindgen::Builder::default()
-            .header("include/decklink_sdk_enums.h")
-            .clang_arg(format!("-I{}", sdk_include.display()))
-            .clang_arg("-x")
-            .clang_arg("c++")
-            .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-            .allowlist_type("BMD.*")
-            .allowlist_var("bmd.*")
-            .allowlist_var("_BMD.*")
-            .generate()
-            .expect("Unable to generate DeckLink SDK bindings");
+    let mut build = cc::Build::new();
+    build.cpp(true);
+    build.include("shim/");
 
-        bindings
-            .write_to_file(out_dir.join("decklink_sdk_bindings.rs"))
-            .expect("Unable to write bindings");
-
-        // Compile C++ shim
-        let mut build = cc::Build::new();
-        build.cpp(true);
-        build.include(&sdk_include);
-        build.include("shim/");
-
-        if cfg!(target_os = "macos") {
-            build.file("shim/decklink_input.cpp");
-            build.file("shim/decklink_output.cpp");
-            build.file(sdk_include.join("DeckLinkAPIDispatch.cpp"));
-            println!("cargo:rustc-link-lib=framework=CoreFoundation");
-            println!("cargo:rustc-link-lib=framework=CoreVideo");
-        } else if cfg!(target_os = "linux") {
-            build.file("shim/decklink_input.cpp");
-            build.file("shim/decklink_output.cpp");
-            build.file(sdk_include.join("DeckLinkAPIDispatch.cpp"));
-            println!("cargo:rustc-link-lib=dl");
-        }
-
-        build.compile("decklink_shim");
-
-        println!("cargo:rerun-if-changed=shim/decklink_input.cpp");
-        println!("cargo:rerun-if-changed=shim/decklink_input.h");
-        println!("cargo:rerun-if-changed=shim/decklink_output.cpp");
-        println!("cargo:rerun-if-changed=shim/decklink_output.h");
-        println!("cargo:rerun-if-changed=include/decklink_sdk_enums.h");
+    #[cfg(target_os = "macos")]
+    if !setup_macos(&mut build, &manifest_dir) {
+        return;
     }
+
+    #[cfg(target_os = "linux")]
+    if !setup_linux(&mut build, &manifest_dir) {
+        return;
+    }
+
+    #[cfg(target_os = "windows")]
+    if !setup_windows(&mut build, &manifest_dir) {
+        return;
+    }
+
+    // Common shim files — compiled on all platforms
+    build.file("shim/platform.cpp");
+    build.file("shim/decklink_input.cpp");
+    build.file("shim/decklink_output.cpp");
+
+    build.compile("decklink_shim");
+}
+
+#[cfg(target_os = "macos")]
+fn setup_macos(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
+    let sdk_include = manifest_dir.join("../../../../vendor/blackmagic/Mac/include/");
+    build.include(&sdk_include);
+    build.file(sdk_include.join("DeckLinkAPIDispatch.cpp"));
+    println!("cargo:rustc-link-lib=framework=CoreFoundation");
+    println!("cargo:rustc-link-lib=framework=CoreVideo");
+    return true;
+}
+
+#[cfg(target_os = "linux")]
+fn setup_linux(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
+    let sdk_include = manifest_dir.join("../../../../vendor/blackmagic/Linux/include/");
+    build.include(&sdk_include);
+    build.file(sdk_include.join("DeckLinkAPIDispatch.cpp"));
+    println!("cargo:rustc-link-lib=dl");
+    return true;
+}
+
+#[cfg(target_os = "windows")]
+fn setup_windows(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
+    let sdk_include = manifest_dir.join("../../../../vendor/blackmagic/Win/include/");
+    let generated = sdk_include.join("generated");
+    let generated_h = generated.join("DeckLinkAPI.h");
+    let generated_iid = generated.join("DeckLinkAPI_i.c");
+
+    if !generated_h.exists() || !generated_iid.exists() {
+        println!(
+            "cargo:warning=DeckLink Windows generated headers not found at {}. Run 'task windows:generate:decklink-headers' to produce them.",
+            generated.display()
+        );
+        return false;
+    }
+
+    build.include(&sdk_include);
+    build.include(&generated);
+    build.file(&generated_iid);
+    println!("cargo:rustc-link-lib=ole32");
+    println!("cargo:rustc-link-lib=oleaut32");
+    return true;
 }
