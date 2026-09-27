@@ -2,6 +2,8 @@
 // Use the --console flag to re-attach stdout/stderr when launching from a terminal for debugging.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::sync::Arc;
+
 mod compositor;
 mod config;
 mod engine;
@@ -29,8 +31,12 @@ fn main() -> eframe::Result<()> {
     let session = session::Session::load();
     let startup_path = startup_path.or(session.last_project);
 
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/AppIcon.png")))
+        .expect("failed to decode app icon");
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([1600.0, 900.0]),
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([1600.0, 900.0])
+            .with_icon(Arc::new(icon)),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
