@@ -1,7 +1,7 @@
 version: '3'
 
 tasks:
-  generate-packager-config:
+  generate:packager-config:
     desc: Generate concatenated cargo-packager config
     sources:
       - task/Packager.common.toml

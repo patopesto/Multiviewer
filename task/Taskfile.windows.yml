@@ -7,6 +7,24 @@ tasks:
       - task: :ndi:setup:windows
       - cargo install cargo-packager --locked
 
+  generate:icons:
+    desc: Generate assets/AppIcon.ico from assets/AppIcon.png
+    platforms: [darwin] # Note: sips is macOS-only
+    sources:
+      - assets/AppIcon.png
+    generates:
+      - assets/AppIcon.ico
+    cmds:
+      - mkdir -p .tmp.ico
+      - sips --resampleHeightWidth 16 16 assets/AppIcon.png --out .tmp.ico/icon_16.png
+      - sips --resampleHeightWidth 24 24 assets/AppIcon.png --out .tmp.ico/icon_24.png
+      - sips --resampleHeightWidth 32 32 assets/AppIcon.png --out .tmp.ico/icon_32.png
+      - sips --resampleHeightWidth 48 48 assets/AppIcon.png --out .tmp.ico/icon_48.png
+      - sips --resampleHeightWidth 64 64 assets/AppIcon.png --out .tmp.ico/icon_64.png
+      - sips --resampleHeightWidth 128 128 assets/AppIcon.png --out .tmp.ico/icon_128.png
+      - png2ico assets/AppIcon.ico .tmp.ico/icon_16.png .tmp.ico/icon_24.png .tmp.ico/icon_32.png .tmp.ico/icon_48.png .tmp.ico/icon_64.png .tmp.ico/icon_128.png
+      - rm -rf .tmp.ico
+
   run:
     desc: Run the application on Windows
     deps:
@@ -25,7 +43,7 @@ tasks:
     desc: Package the Windows application
     deps:
       - build
-      - task: :common:generate-packager-config
+      - task: :common:generate:packager-config
     cmds:
       - cargo packager --config .Packager.{{OS}}.toml -o {{.DIST_DIR}}
 

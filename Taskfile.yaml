@@ -53,6 +53,13 @@ tasks:
         fi
         echo "✅ Versions match: $cargo_version"
 
+  generate-icons:
+    desc: Regenerate platform icon derivatives from assets/AppIcon.png
+    cmds:
+      - task: darwin:generate:icons
+      - task: windows:generate:icons
+      - task: linux:generate:icons
+
   test:
     desc: Run clippy and tests
     cmds:

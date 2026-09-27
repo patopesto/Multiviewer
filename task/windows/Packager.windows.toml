@@ -1,9 +1,10 @@
 formats = ["nsis"]
-icons = ["assets/AppIcon.png"]
+icons = ["assets/AppIcon.ico"]
 resources = [
   { src = "vendor/ndi/windows/sdk/Bin/x64/Processing.NDI.Lib.x64.dll", target = "Processing.NDI.Lib.x64.dll" },
-  "assets/AppIcon.png"
+  "assets/AppIcon.ico"
 ]
 
 [nsis]
 appdata-paths = ["$LOCALAPPDATA/$IDENTIFIER"]
+installer-icon = "assets/AppIcon.ico"

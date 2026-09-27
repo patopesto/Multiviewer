@@ -2,17 +2,17 @@
 .DS_Store
 
 # Rust and tools
-.task
 target/
 dist/
 .cargo
+.task
 
 # Generated cargo-packager configs
 .Packager.*.toml
 
 # Generated icons
-assets/AppIcon.icns
 .tmp.iconset
+.tmp.ico
 
 # App file extension
 *.multiviewer

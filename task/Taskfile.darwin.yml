@@ -11,12 +11,12 @@ tasks:
     cmds:
       - task: :ndi:setup:darwin
       - cargo install cargo-packager --locked
-      - HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg
+      - HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg png2ico
 
   run:
     desc: Run the application in debug mode
     cmds:
-      - cargo run
+      - cargo run --release
 
   build:
     desc: Build the release binary for macOS
@@ -51,7 +51,7 @@ tasks:
     deps:
       - build
       - generate:icons
-      - task: :common:generate-packager-config
+      - task: :common:generate:packager-config
     cmds:
       - cargo packager --target {{.TARGET}} --config .Packager.{{OS}}.toml -o {{.DIST_DIR}}
       - |
