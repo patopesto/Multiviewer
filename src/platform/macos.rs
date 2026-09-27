@@ -6,16 +6,15 @@ use std::sync::Mutex;
 use objc::runtime::{Class, Object, Sel};
 use objc::{msg_send, sel, sel_impl};
 
-/// File to handle project opening on macos when a project is double-clicked in Finder
-/// macOS doesn't pass the file path as an argument when launching the app
+/// macOS app-lifecycle hooks: Finder file-open events and URL handling.
 
 static QUEUE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-pub fn drain_queue() -> Option<PathBuf> {
-    QUEUE.lock().unwrap().take()
+pub fn poll_open_file() -> Option<PathBuf> {
+    return QUEUE.lock().unwrap().take();
 }
 
-pub fn queue_path(path: PathBuf) {
+fn queue_path(path: PathBuf) {
     *QUEUE.lock().unwrap() = Some(path);
 }
 
@@ -191,14 +190,14 @@ extern "C" fn handle_open_documents(
 
         AEDisposeDesc(list.as_mut_ptr() as *mut _);
     }
-    0
+    return 0;
 }
 
 fn file_url_to_path(bytes: &[u8]) -> Option<PathBuf> {
     let s = std::str::from_utf8(bytes).ok()?;
     let s = s.strip_prefix("file://")?;
     let path = percent_decode(s);
-    Some(PathBuf::from(path))
+    return Some(PathBuf::from(path));
 }
 
 fn percent_decode(s: &str) -> String {
@@ -219,10 +218,12 @@ fn percent_decode(s: &str) -> String {
             result.push(c);
         }
     }
-    result
+    return result;
 }
 
-pub fn install() {
+pub fn init_console(_show_console: bool) {}
+
+pub fn setup_app() {
     unsafe {
         let name = CFStringCreateWithCString(
             std::ptr::null(),
@@ -246,7 +247,7 @@ pub fn install() {
     }
 }
 
-pub fn set_ctx(_ctx: egui::Context) {
+pub fn on_window_created(_ctx: &egui::Context) {
     unsafe {
         let err = AEInstallEventHandler(
             u32::from_be_bytes(*b"aevt"),

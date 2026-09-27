@@ -212,9 +212,8 @@ impl App {
         }
     }
 
-    #[cfg(target_os = "macos")]
-    fn handle_macos_open_files(&mut self) {
-        if let Some(path) = crate::macos_app::drain_queue() {
+    fn handle_platform_open_files(&mut self) {
+        if let Some(path) = crate::platform::poll_open_file() {
             if path.extension().and_then(|e| e.to_str()) == Some(PROJECT_FILE_EXTENSION) {
                 self.confirm_or(Confirm::OpenPath(path));
             }
@@ -292,8 +291,7 @@ impl eframe::App for App {
             self.image_loaders_installed = true;
         }
         self.handle_dropped_files(ctx);
-        #[cfg(target_os = "macos")]
-        self.handle_macos_open_files();
+        self.handle_platform_open_files();
         self.engine.update();
         self.engine.auto_save();
         self.update_title(ctx);

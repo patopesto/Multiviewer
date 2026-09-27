@@ -3,7 +3,7 @@ version: '3'
 vars:
   ARCH: macos_arm64
   TARGET: aarch64-apple-darwin
-  DIST_DMG: "{{.DIST_DIR}}/{{.APP_NAME}}_v{{.VERSION}}_{{.ARCH}}.dmg"
+  DIST_DMG: "{{.DIST_DIR}}/{{.APP_NAME}}_{{.VERSION}}_{{.ARCH}}.dmg"
 
 tasks:
   setup:
