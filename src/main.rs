@@ -38,6 +38,7 @@ fn main() -> eframe::Result<()> {
             .with_inner_size([1600.0, 900.0])
             .with_icon(Arc::new(icon)),
         renderer: eframe::Renderer::Wgpu,
+        centered: true,
         ..Default::default()
     };
 

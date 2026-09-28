@@ -9,8 +9,9 @@ includes:
 
 vars:
   APP_NAME: Multiviewer
-  VERSION: "1.0.0"
   DIST_DIR: dist
+  VERSION:
+    sh: grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/'
 
 tasks:
   setup:
@@ -40,20 +41,25 @@ tasks:
     cmds:
       - task: "{{OS}}:sign"
 
+  check:
+    desc: Check the application
+    cmds:
+      - task: check:version
+      - cargo check
+
   check:version:
-    desc: Verify packager version matches Cargo.toml
+    desc: Verify versions are consistent
     cmds:
       - |
         set -e
-        cargo_version=$(grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
         packager_version=$(grep '^version = ' task/Packager.common.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-        if [ "$cargo_version" != "$packager_version" ]; then
-          echo "❌ Version mismatch: Cargo.toml=$cargo_version, task/Packager.common.toml=$packager_version"
+        if [ "{{.VERSION}}" != "$packager_version" ]; then
+          echo "❌ Version mismatch: Cargo.toml={{.VERSION}}, task/Packager.common.toml=$packager_version"
           exit 1
         fi
-        echo "✅ Versions match: $cargo_version"
+        echo "✅ task/Packager.common.toml: {{.VERSION}}"
 
-  generate-icons:
+  generate:icons:
     desc: Regenerate platform icon derivatives from assets/AppIcon.png
     cmds:
       - task: darwin:generate:icons
