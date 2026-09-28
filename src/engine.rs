@@ -322,10 +322,12 @@ impl Engine {
     }
 
     pub fn auto_save(&mut self) {
-        if self.dirty && self.project_path.is_some() && self.last_saved_at.elapsed() >= AUTO_SAVE_INTERVAL {
-            if let Err(e) = self.save_project() {
-                tracing::error!("auto-save failed: {e}");
-            }
+        if self.dirty
+            && self.project_path.is_some()
+            && self.last_saved_at.elapsed() >= AUTO_SAVE_INTERVAL
+            && let Err(e) = self.save_project()
+        {
+            tracing::error!("auto-save failed: {e}");
         }
     }
 
@@ -335,19 +337,17 @@ impl Engine {
         if let Some(ref ndi) = self.ndi {
             let discovered = ndi.list();
             for source in &self.cfg.canvas.sources {
-                if source.protocol == Protocol::Ndi {
-                    if let Some(ref name) = source.source_id {
-                        if self.registry.get(name).is_none() {
-                            if let Some(src) = discovered.iter().find(|s| &s.name == name) {
-                                let ndi_config = match &source.config {
-                                    SourceConfig::Ndi(c) => Some(c.clone()),
-                                    _ => None,
-                                };
-                                self.registry.add_ndi(name.clone(), src.clone(), ndi_config);
-                                self.dirty = true;
-                            }
-                        }
-                    }
+                if source.protocol == Protocol::Ndi
+                    && let Some(ref name) = source.source_id
+                    && self.registry.get(name).is_none()
+                    && let Some(src) = discovered.iter().find(|s| &s.name == name)
+                {
+                    let ndi_config = match &source.config {
+                        SourceConfig::Ndi(c) => Some(c.clone()),
+                        _ => None,
+                    };
+                    self.registry.add_ndi(name.clone(), src.clone(), ndi_config);
+                    self.dirty = true;
                 }
             }
         }
@@ -356,24 +356,22 @@ impl Engine {
         if let Some(ref decklink) = self.decklink {
             let discovered = decklink.list();
             for source in &self.cfg.canvas.sources {
-                if source.protocol == Protocol::Decklink {
-                    if let Some(ref name) = source.source_id {
-                        if self.registry.get(name).is_none() {
-                            if let Some(port) = discovered.iter().find(|p| &p.name == name) {
-                                let decklink_config = match &source.config {
-                                    SourceConfig::Decklink(c) => Some(c.clone()),
-                                    _ => None,
-                                };
-                                self.registry.add_decklink(
-                                    name.clone(),
-                                    name.clone(),
-                                    Some(port.connections),
-                                    decklink_config,
-                                );
-                                self.dirty = true;
-                            }
-                        }
-                    }
+                if source.protocol == Protocol::Decklink
+                    && let Some(ref name) = source.source_id
+                    && self.registry.get(name).is_none()
+                    && let Some(port) = discovered.iter().find(|p| &p.name == name)
+                {
+                    let decklink_config = match &source.config {
+                        SourceConfig::Decklink(c) => Some(c.clone()),
+                        _ => None,
+                    };
+                    self.registry.add_decklink(
+                        name.clone(),
+                        name.clone(),
+                        Some(port.connections),
+                        decklink_config,
+                    );
+                    self.dirty = true;
                 }
             }
         }
@@ -384,19 +382,17 @@ impl Engine {
             if let Some(ref syphon) = self.syphon {
                 let discovered = syphon.list();
                 for source in &self.cfg.canvas.sources {
-                    if source.protocol == Protocol::Syphon {
-                        if let Some(ref name) = source.source_id {
-                            if self.registry.get(name).is_none() {
-                                if discovered.iter().any(|s| s == name) {
-                                    let syphon_config = match &source.config {
-                                        SourceConfig::Syphon(c) => Some(c.clone()),
-                                        _ => None,
-                                    };
-                                    self.registry.add_syphon(name.clone(), name.clone(), syphon_config);
-                                    self.dirty = true;
-                                }
-                            }
-                        }
+                    if source.protocol == Protocol::Syphon
+                        && let Some(ref name) = source.source_id
+                        && self.registry.get(name).is_none()
+                        && discovered.iter().any(|s| s == name)
+                    {
+                        let syphon_config = match &source.config {
+                            SourceConfig::Syphon(c) => Some(c.clone()),
+                            _ => None,
+                        };
+                        self.registry.add_syphon(name.clone(), name.clone(), syphon_config);
+                        self.dirty = true;
                     }
                 }
             }
@@ -407,24 +403,22 @@ impl Engine {
         {
             if let Some(ref avf) = self.avfoundation {
                 for source in &self.cfg.canvas.sources {
-                    if source.protocol == Protocol::AvFoundation {
-                        if let Some(ref name) = source.source_id {
-                            if self.registry.get(name).is_none() {
-                                if let Some(device) = avf.find_by_name(name) {
-                                    let mut avf_config = match &source.config {
-                                        SourceConfig::AvFoundation(c) => c.clone(),
-                                        _ => crate::sources::AvFoundationSourceConfig::default(),
-                                    };
-                                    avf_config.device_unique_id = device.unique_id.clone();
-                                    self.registry.add_avfoundation(
-                                        device.name.clone(),
-                                        device.name.clone(),
-                                        Some(avf_config),
-                                    );
-                                    self.dirty = true;
-                                }
-                            }
-                        }
+                    if source.protocol == Protocol::AvFoundation
+                        && let Some(ref name) = source.source_id
+                        && self.registry.get(name).is_none()
+                        && let Some(device) = avf.find_by_name(name)
+                    {
+                        let mut avf_config = match &source.config {
+                            SourceConfig::AvFoundation(c) => c.clone(),
+                            _ => crate::sources::AvFoundationSourceConfig::default(),
+                        };
+                        avf_config.device_unique_id = device.unique_id.clone();
+                        self.registry.add_avfoundation(
+                            device.name.clone(),
+                            device.name.clone(),
+                            Some(avf_config),
+                        );
+                        self.dirty = true;
                     }
                 }
             }
@@ -544,16 +538,16 @@ impl Engine {
     pub fn connect(&mut self, protocol: Protocol, name: &str) {
         match protocol {
             Protocol::Ndi => {
-                if let Some(ref ndi) = self.ndi {
-                    if let Some(src) = ndi.find_by_name(name) {
-                        let ndi_config = self.cfg.canvas.sources.iter()
-                            .find(|s| s.source_id.as_deref() == Some(name))
-                            .and_then(|s| match &s.config {
-                                SourceConfig::Ndi(c) => Some(c.clone()),
-                                _ => None,
-                            });
-                        self.registry.add_ndi(name.to_string(), src, ndi_config);
-                    }
+                if let Some(ref ndi) = self.ndi
+                    && let Some(src) = ndi.find_by_name(name)
+                {
+                    let ndi_config = self.cfg.canvas.sources.iter()
+                        .find(|s| s.source_id.as_deref() == Some(name))
+                        .and_then(|s| match &s.config {
+                            SourceConfig::Ndi(c) => Some(c.clone()),
+                            _ => None,
+                        });
+                    self.registry.add_ndi(name.to_string(), src, ndi_config);
                 }
             }
             Protocol::Decklink => {
@@ -581,8 +575,8 @@ impl Engine {
                     });
                 self.registry.add_syphon(name.to_string(), name.to_string(), syphon_config);
             }
-            #[cfg(not(target_os = "macos"))]
-            Protocol::Syphon => {}
+            // #[cfg(not(target_os = "macos"))]
+            // Protocol::Syphon => {}
             #[cfg(target_os = "macos")]
             Protocol::AvFoundation => {
                 if let Some(device) = self.avfoundation.as_ref().and_then(|d| d.find_by_name(name)) {
@@ -596,8 +590,8 @@ impl Engine {
                     );
                 }
             }
-            #[cfg(not(target_os = "macos"))]
-            Protocol::AvFoundation => {}
+            // #[cfg(not(target_os = "macos"))]
+            // Protocol::AvFoundation => {}
             Protocol::Test => {}
         }
     }
@@ -801,12 +795,7 @@ impl Engine {
             return;
         }
         let source = self.cfg.canvas.sources.remove(from_index);
-        let insert_at = if to_index > from_index {
-            to_index
-        } else {
-            to_index
-        };
-        self.cfg.canvas.sources.insert(insert_at, source);
+        self.cfg.canvas.sources.insert(to_index, source);
         self.dirty = true;
     }
 
@@ -816,7 +805,7 @@ impl Engine {
         let break_threshold = SNAP_BREAK_THRESHOLD / scale;
         let candidates = self.snap_candidates(uuid);
 
-        if let Some(source) = self.cfg.canvas.sources.iter_mut().find(|l| &l.uuid == uuid) {
+        if let Some(source) = self.cfg.canvas.sources.iter_mut().find(|l| l.uuid == uuid) {
             let (dx, dy) = delta;
             let proposed_x = source.x + dx / scale;
             let proposed_y = source.y + dy / scale;
@@ -895,7 +884,7 @@ impl Engine {
             .canvas
             .sources
             .iter()
-            .find(|l| &l.uuid == uuid)
+            .find(|l| l.uuid == uuid)
             .map(|l| WorldRect {
                 x: l.x,
                 y: l.y,
@@ -1037,7 +1026,7 @@ impl Engine {
         let break_threshold = SNAP_BREAK_THRESHOLD / scale;
         let candidates = self.snap_candidates(uuid);
 
-        if let Some(source) = self.cfg.canvas.sources.iter_mut().find(|l| &l.uuid == uuid) {
+        if let Some(source) = self.cfg.canvas.sources.iter_mut().find(|l| l.uuid == uuid) {
             let mut x = start.x;
             let mut y = start.y;
             let mut w = start.w;
@@ -1223,10 +1212,7 @@ mod tests {
 
     fn test_engine(canvas: crate::config::Canvas) -> Engine {
         Engine {
-            cfg: crate::config::Config {
-                canvas,
-                ..Default::default()
-            },
+            cfg: crate::config::Config { canvas },
             registry: SourceRegistry::new(),
             output_registry: OutputRegistry::new(),
             ndi: None,

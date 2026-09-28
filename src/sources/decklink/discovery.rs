@@ -13,6 +13,7 @@ use std::time::Duration;
 #[derive(Clone)]
 pub struct Port {
     pub name: String,
+    #[allow(dead_code)]
     pub has_signal: bool,
     pub connections: VideoConnections,
 }

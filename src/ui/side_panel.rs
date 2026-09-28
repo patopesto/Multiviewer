@@ -350,7 +350,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 let selected_label = modes
                     .iter()
                     .find(|m| m.mode == current_mode)
-                    .map(|m| format!("{}", m.name))
+                    .map(|m| m.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
 
                 ui.label("Decklink Mode");
@@ -360,8 +360,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         .selected_text(selected_label)
                         .show_ui(ui, |ui| {
                             for m in &modes {
-                                let label =
-                                    format!("{}", m.name);
+                                let label = m.name.to_string();
                                 if ui.selectable_label(current_mode == m.mode, label).clicked() {
                                     if let OutputConfig::Decklink(config) =
                                         &mut engine.cfg.canvas.outputs[idx].config
@@ -454,51 +453,47 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 let row_rect = drop_zone_response.response.rect;
 
                 // Drop-line indicator while dragging over this row.
-                if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
-                    if row_rect.contains(pointer_pos) {
-                        if let Some(payload) = egui::DragAndDrop::payload::<String>(ui.ctx()) {
-                            if payload.as_ref() != &uuid {
-                                let line_y = if pointer_pos.y < row_rect.center().y {
-                                    row_rect.top()
-                                } else {
-                                    row_rect.bottom()
-                                };
-                                ui.painter().hline(
-                                    row_rect.x_range(),
-                                    line_y,
-                                    egui::Stroke::new(2.0, ui.visuals().selection.bg_fill),
-                                );
-                            }
-                        }
-                    }
+                if let Some(pointer_pos) = ui.ctx().pointer_interact_pos()
+                    && row_rect.contains(pointer_pos)
+                    && let Some(payload) = egui::DragAndDrop::payload::<String>(ui.ctx())
+                    && payload.as_ref() != &uuid
+                {
+                    let line_y = if pointer_pos.y < row_rect.center().y {
+                        row_rect.top()
+                    } else {
+                        row_rect.bottom()
+                    };
+                    ui.painter().hline(
+                        row_rect.x_range(),
+                        line_y,
+                        egui::Stroke::new(2.0, ui.visuals().selection.bg_fill),
+                    );
                 }
 
-                if let Some(payload) = dropped {
-                    if payload.as_ref() != &uuid {
-                        if let Some(from_index) = engine
-                            .cfg
-                            .canvas
-                            .sources
-                            .iter()
-                            .position(|l| l.uuid == *payload)
-                        {
-                            let pointer_y = ui
-                                .ctx()
-                                .pointer_interact_pos()
-                                .map(|p| p.y)
-                                .unwrap_or(row_rect.center().y);
-                            let to_index = if pointer_y < row_rect.center().y {
-                                if from_index < index {
-                                    index.saturating_sub(1)
-                                } else {
-                                    index
-                                }
-                            } else {
-                                if from_index < index { index } else { index + 1 }
-                            };
-                            engine.move_layer(from_index, to_index);
+                if let Some(payload) = dropped
+                    && payload.as_ref() != &uuid
+                    && let Some(from_index) = engine
+                        .cfg
+                        .canvas
+                        .sources
+                        .iter()
+                        .position(|l| l.uuid == *payload)
+                {
+                    let pointer_y = ui
+                        .ctx()
+                        .pointer_interact_pos()
+                        .map(|p| p.y)
+                        .unwrap_or(row_rect.center().y);
+                    let to_index = if pointer_y < row_rect.center().y {
+                        if from_index < index {
+                            index.saturating_sub(1)
+                        } else {
+                            index
                         }
-                    }
+                    } else {
+                        if from_index < index { index } else { index + 1 }
+                    };
+                    engine.move_layer(from_index, to_index);
                 }
             }
 
@@ -514,10 +509,10 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
             engine.selected_layer_id = Some(uuid);
         }
         let is_layer_selected = engine.selected_layer_id.is_some();
-        if ui.add_enabled(is_layer_selected, egui::Button::new("- Delete Source")).clicked() {
-            if let Some(uuid) = engine.selected_layer_id.take() {
-                engine.remove_layer(&uuid);
-            }
+        if ui.add_enabled(is_layer_selected, egui::Button::new("- Delete Source")).clicked()
+            && let Some(uuid) = engine.selected_layer_id.take()
+        {
+            engine.remove_layer(&uuid);
         }
     });
 }
@@ -640,17 +635,13 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                     // Discovered sources not yet connected (auto-connect on select)
                                     for src in &discovered {
                                         let name = &src.name;
-                                        if !ndi_ids.iter().any(|id| id == name) {
-                                            if ui
-                                                .selectable_label(
-                                                    current == name,
-                                                    format!("{name}"),
-                                                )
+                                        if !ndi_ids.iter().any(|id| id == name)
+                                            && ui
+                                                .selectable_label(current == name, name.to_string())
                                                 .clicked()
-                                            {
-                                                new_connect = Some((Protocol::Ndi, name.clone()));
-                                                selected_source = Some(name.clone());
-                                            }
+                                        {
+                                            new_connect = Some((Protocol::Ndi, name.clone()));
+                                            selected_source = Some(name.clone());
                                         }
                                     }
                                     if ndi_ids.is_empty() && discovered.is_empty() {
@@ -686,12 +677,11 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                     // Discovered ports not yet connected (auto-connect on select)
                                     for port in &discovered {
                                         let name = &port.name;
-                                        if !decklink_ids.iter().any(|id| id == name) {
-                                            if ui.selectable_label(current == name, name).clicked()
-                                            {
-                                                new_connect = Some((Protocol::Decklink, name.clone()));
-                                                selected_source = Some(name.clone());
-                                            }
+                                        if !decklink_ids.iter().any(|id| id == name)
+                                            && ui.selectable_label(current == name, name).clicked()
+                                        {
+                                            new_connect = Some((Protocol::Decklink, name.clone()));
+                                            selected_source = Some(name.clone());
                                         }
                                     }
                                     if decklink_ids.is_empty() && discovered.is_empty() {
@@ -722,12 +712,11 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         }
                                     }
                                     for name in &discovered {
-                                        if !syphon_ids.iter().any(|id| id == name) {
-                                            if ui.selectable_label(current == name, name).clicked()
-                                            {
-                                                new_connect = Some((Protocol::Syphon, name.clone()));
-                                                selected_source = Some(name.clone());
-                                            }
+                                        if !syphon_ids.iter().any(|id| id == name)
+                                            && ui.selectable_label(current == name, name).clicked()
+                                        {
+                                            new_connect = Some((Protocol::Syphon, name.clone()));
+                                            selected_source = Some(name.clone());
                                         }
                                     }
                                     if syphon_ids.is_empty() && discovered.is_empty() {
@@ -761,14 +750,13 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         }
                                     }
                                     for device in &discovered {
-                                        if !avf_ids.iter().any(|id| id == &device.name) {
-                                            if ui
+                                        if !avf_ids.iter().any(|id| id == &device.name)
+                                            && ui
                                                 .selectable_label(current == device.name, &device.name)
                                                 .clicked()
-                                            {
-                                                new_connect = Some((Protocol::AvFoundation, device.name.clone()));
-                                                selected_source = Some(device.name.clone());
-                                            }
+                                        {
+                                            new_connect = Some((Protocol::AvFoundation, device.name.clone()));
+                                            selected_source = Some(device.name.clone());
                                         }
                                     }
                                     if avf_ids.is_empty() && discovered.is_empty() {
@@ -905,24 +893,24 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         // Source-specific settings and stats
         let mut config_changed = false;
         let mut new_config = None;
-        if let Some(ref sid) = source.source_id {
-            if let Some(source) = engine.registry.get_mut(sid) {
-                ui.separator();
-                collapsable_section(ui, "Protocol Settings", false, |ui| {
-                    if super::source_settings::render_source_settings(source, ui) {
-                        config_changed = true;
-                        new_config = Some(source.to_config());
-                        restart_sid = Some(sid.clone());
-                    }
-                });
+        if let Some(ref sid) = source.source_id
+            && let Some(source) = engine.registry.get_mut(sid)
+        {
+            ui.separator();
+            collapsable_section(ui, "Protocol Settings", false, |ui| {
+                if super::source_settings::render_source_settings(source, ui) {
+                    config_changed = true;
+                    new_config = Some(source.to_config());
+                    restart_sid = Some(sid.clone());
+                }
+            });
 
-                ui.separator();
-                collapsable_section(ui, "Source Stats", false, |ui| {
-                    let stats_arc = source.stats();
-                    let stats = stats_arc.lock().unwrap();
-                    draw_source_stats_section(&*stats, ui);
-                });
-            }
+            ui.separator();
+            collapsable_section(ui, "Source Stats", false, |ui| {
+                let stats_arc = source.stats();
+                let stats = stats_arc.lock().unwrap();
+                draw_source_stats_section(&stats, ui);
+            });
         }
 
         // Store config sync data for later (outside the borrow)

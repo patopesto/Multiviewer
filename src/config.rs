@@ -103,6 +103,7 @@ pub struct Source {
 }
 
 impl Source {
+    #[allow(clippy::too_many_arguments)]
     pub fn new_v4(
         name: String,
         protocol: Protocol,

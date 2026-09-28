@@ -3,14 +3,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SyphonSourceConfig {}
-
-impl Default for SyphonSourceConfig {
-    fn default() -> Self {
-        Self {}
-    }
-}
 
 /// GPU-only Syphon receiver.
 pub struct SyphonSource {
@@ -176,17 +170,12 @@ impl VideoSource for SyphonSource {
             // Return the cached frame even if no new frame arrived
             let bg = self.bg.lock().unwrap();
             let dims = self.dims.lock().unwrap();
-            if let Some(ref bind_group) = *bg {
-                let seq = self.seq.load(Ordering::Relaxed);
-                Some(Frame::Syphon(super::super::SyphonFrame {
-                    bg: bind_group.clone(),
-                    w: dims.0,
-                    h: dims.1,
-                    seq,
-                }))
-            } else {
-                None
-            }
+            (*bg).as_ref().map(|bind_group| Frame::Syphon(super::super::SyphonFrame {
+                bg: bind_group.clone(),
+                w: dims.0,
+                h: dims.1,
+                seq: self.seq.load(Ordering::Relaxed),
+            }))
         }
     }
 

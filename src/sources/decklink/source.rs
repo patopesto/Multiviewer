@@ -52,17 +52,6 @@ impl Default for DecklinkSourceConfig {
     }
 }
 
-impl DecklinkSourceConfig {
-    pub fn with_defaults(supported: VideoConnections) -> Self {
-        let mut cfg = Self::default();
-        cfg.supported_connections = supported;
-        if matches!(cfg.connection, VideoConnection::Unspecified) {
-            cfg.connection = supported.default_connection();
-        }
-        cfg
-    }
-}
-
 pub struct DecklinkSource {
     #[allow(dead_code)]
     id: String,
@@ -180,11 +169,11 @@ impl DecklinkSource {
                             drop(guard);
 
                             // Try to reclaim the old frame's buffer back into the pool.
-                            if let Some(old_frame) = old {
-                                if let Ok(mut vec) = Arc::try_unwrap(old_frame.data) {
-                                    vec.resize(MAX_SIZE, 0);
-                                    pool[slot] = vec;
-                                }
+                            if let Some(old_frame) = old
+                                && let Ok(mut vec) = Arc::try_unwrap(old_frame.data)
+                            {
+                                vec.resize(MAX_SIZE, 0);
+                                pool[slot] = vec;
                             }
                             slot = (slot + 1) % pool.len();
                         }

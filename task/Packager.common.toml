@@ -3,7 +3,7 @@ product-name = "Multiviewer"
 identifier = "net.bambinito.multiviewer"
 description = "An app to view multiple realtime video feeds"
 copyright = "© 2026 Alban Moreon"
-version = "1.0.0"
+version = "0.1.0"
 category = "Video"
 
 binaries = [{ path = "Multiviewer", main = true }]

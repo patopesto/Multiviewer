@@ -144,6 +144,9 @@ impl Hash for LabelKey {
     }
 }
 
+/// Per-source draw state resolved once per frame: (bind group, source aspect, flip_h, flip_v).
+type ResolvedSource = Option<(Arc<wgpu::BindGroup>, f32, bool, bool)>;
+
 pub struct Compositor {
     pub shared: Arc<Shared>,
     bind_layout: wgpu::BindGroupLayout,
@@ -427,16 +430,15 @@ impl Compositor {
         if self.border_color != canvas.border.color {
             self.border_color = canvas.border.color;
             self.border_bg = Arc::new(solid_bind_group(
-                &device,
-                &queue,
+                device,
+                queue,
                 &self.bind_layout,
                 &self.sampler,
                 self.border_color,
             ));
         }
 
-        let mut seen: HashMap<&str, Option<(Arc<wgpu::BindGroup>, f32, bool, bool)>> =
-            HashMap::new();
+        let mut seen: HashMap<&str, ResolvedSource> = HashMap::new();
 
         let mut sources: Vec<_> = canvas.sources.iter().collect();
         sources.sort_by_key(|l| l.z);
@@ -899,7 +901,7 @@ impl Compositor {
                         // alpha-blend with existing pixel (simple over)
                         let src_a = ((cov as u32 * ta as u32) / 255) as u8;
                         let inv_dst_a = 255 - src_a;
-                        pixels[dst_idx + 0] = ((tr as u32 * src_a as u32 + pixels[dst_idx + 0] as u32 * inv_dst_a as u32) / 255) as u8;
+                        pixels[dst_idx] = ((tr as u32 * src_a as u32 + pixels[dst_idx] as u32 * inv_dst_a as u32) / 255) as u8;
                         pixels[dst_idx + 1] = ((tg as u32 * src_a as u32 + pixels[dst_idx + 1] as u32 * inv_dst_a as u32) / 255) as u8;
                         pixels[dst_idx + 2] = ((tb as u32 * src_a as u32 + pixels[dst_idx + 2] as u32 * inv_dst_a as u32) / 255) as u8;
                         pixels[dst_idx + 3] = (src_a as u32 + (pixels[dst_idx + 3] as u32 * inv_dst_a as u32) / 255) as u8;
@@ -1116,7 +1118,7 @@ impl Compositor {
             ),
             // UYVY 4:2:2 is packed as Rgba8 at half width; shader does YUV→RGB.
             PixelFormat::Uyvy422 => {
-                if f.w % 2 != 0 {
+                if !f.w.is_multiple_of(2) {
                     tracing::warn!(
                         "compositor {name}: UYVY frame has odd width {}, last column will be dropped",
                         f.w

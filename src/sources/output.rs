@@ -101,7 +101,7 @@ impl OutputRegistry {
         if self.outputs.contains_key(&id) {
             return id;
         }
-        let output = syphon::SyphonOutput::new(id.clone(), name, config, enabled);
+        let output = syphon::SyphonOutput::new(name, config, enabled);
         self.outputs.insert(id.clone(), Box::new(output));
         id
     }

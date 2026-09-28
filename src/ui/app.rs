@@ -203,20 +203,20 @@ impl App {
     fn handle_dropped_files(&mut self, ctx: &egui::Context) {
         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
         for file in dropped {
-            if let Some(path) = file.path {
-                if path.extension().and_then(|e| e.to_str()) == Some(PROJECT_FILE_EXTENSION) {
-                    self.confirm_or(Confirm::Open);
-                    break;
-                }
+            if let Some(path) = file.path
+                && path.extension().and_then(|e| e.to_str()) == Some(PROJECT_FILE_EXTENSION)
+            {
+                self.confirm_or(Confirm::Open);
+                break;
             }
         }
     }
 
     fn handle_platform_open_files(&mut self) {
-        if let Some(path) = crate::platform::poll_open_file() {
-            if path.extension().and_then(|e| e.to_str()) == Some(PROJECT_FILE_EXTENSION) {
-                self.confirm_or(Confirm::OpenPath(path));
-            }
+        if let Some(path) = crate::platform::poll_open_file()
+            && path.extension().and_then(|e| e.to_str()) == Some(PROJECT_FILE_EXTENSION)
+        {
+            self.confirm_or(Confirm::OpenPath(path));
         }
     }
 

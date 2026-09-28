@@ -1,6 +1,6 @@
 [package]
 name = "Multiviewer"
-version = "1.0.0"
+version = "0.1.0"
 edition = "2024"
 authors = ["Alban Moreon"]
 description = "Multi-protocol video multiviewer"
@@ -13,6 +13,10 @@ members = [".", "src/sources/decklink/bindings"]
 
 [workspace.lints.clippy]
 needless_return = "allow"
+
+# `objc 0.2` macros expand `cfg(feature = "cargo-clippy")` in our crate; we declare no features.
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }
 
 [lints]
 workspace = true

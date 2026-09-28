@@ -80,7 +80,6 @@ impl NdiOutput {
                     // The returned async token borrows the buffer, so we cannot store it across
                     // loop iterations. Dropping it here flushes the frame before the next send.
                     let _token = sender.send_video_async(&frame);
-                    drop(frame);
                     {
                         let mut s = stats_clone.lock().unwrap();
                         s.width = frame_w;

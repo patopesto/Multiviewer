@@ -49,6 +49,7 @@ pub struct ConvUniform {
     pub _pad: f32,
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum SourceKind {
     Test(test::TestSource, test::TestSourceConfig),
     Ndi(ndi::NdiSource, ndi::NdiSourceConfig, grafton_ndi::Source),

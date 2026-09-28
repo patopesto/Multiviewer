@@ -302,11 +302,9 @@ impl DecklinkOutput {
         let mode_id: u32 = self.config.display_mode.into();
         buffer[8..12].copy_from_slice(&mode_id.to_le_bytes());
 
-        if let Some(ref tx) = self.frame_tx {
-            if tx.try_send(buffer).is_err() {
-                let mut s = self.stats.lock().unwrap();
-                s.frames_dropped += 1;
-            }
+        if let Some(ref tx) = self.frame_tx && tx.try_send(buffer).is_err() {
+            let mut s = self.stats.lock().unwrap();
+            s.frames_dropped += 1;
         }
     }
 

@@ -234,10 +234,8 @@ impl Drop for AvFoundationSource {
     fn drop(&mut self) {
         self.running
             .store(false, std::sync::atomic::Ordering::Relaxed);
-        if let Some(t) = self.thread.take() {
-            if let Err(e) = t.join() {
-                tracing::error!("AVFoundation source {} thread join failed: {e:?}", self.name);
-            }
+        if let Some(t) = self.thread.take() && let Err(e) = t.join() {
+            tracing::error!("AVFoundation source {} thread join failed: {e:?}", self.name);
         }
     }
 }

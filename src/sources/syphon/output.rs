@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 
 use super::super::Protocol;
-use super::super::output::{OutputId, OutputStats, VideoOutput};
+use super::super::output::{OutputStats, VideoOutput};
 
 const FLIP_SHADER: &str = r#"
 struct VertexOutput {
@@ -63,7 +63,6 @@ pub struct SyphonOutputConfig {
 }
 
 pub struct SyphonOutput {
-    id: OutputId,
     name: String,
     config: SyphonOutputConfig,
     output: Mutex<Option<syphon_wgpu::SyphonWgpuOutput>>,
@@ -83,9 +82,8 @@ pub struct SyphonOutput {
 }
 
 impl SyphonOutput {
-    pub fn new(id: OutputId, name: String, config: SyphonOutputConfig, enabled: bool) -> Self {
+    pub fn new(name: String, config: SyphonOutputConfig, enabled: bool) -> Self {
         Self {
-            id,
             name,
             config,
             output: Mutex::new(None),

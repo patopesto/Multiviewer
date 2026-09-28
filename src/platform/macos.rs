@@ -6,8 +6,7 @@ use std::sync::Mutex;
 use objc::runtime::{Class, Object, Sel};
 use objc::{msg_send, sel, sel_impl};
 
-/// macOS app-lifecycle hooks: Finder file-open events and URL handling.
-
+// macOS app-lifecycle hooks: Finder file-open events and URL handling.
 static QUEUE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 pub fn poll_open_file() -> Option<PathBuf> {
@@ -127,10 +126,8 @@ unsafe fn inject_open_urls_method() {
                 let path_str: *mut Object = msg_send![url, path];
                 if !path_str.is_null() {
                     let bytes: *const c_char = msg_send![path_str, UTF8String];
-                    if !bytes.is_null() {
-                        if let Ok(cstr) = CStr::from_ptr(bytes).to_str() {
-                            queue_path(PathBuf::from(cstr));
-                        }
+                    if !bytes.is_null() && let Ok(cstr) = CStr::from_ptr(bytes).to_str() {
+                        queue_path(PathBuf::from(cstr));
                     }
                 }
             }
@@ -181,10 +178,11 @@ extern "C" fn handle_open_documents(
                 buf.len() as c_long,
                 &mut actual,
             );
-            if err == 0 && actual > 0 {
-                if let Some(path) = file_url_to_path(&buf[..actual as usize]) {
-                    queue_path(path);
-                }
+            if err == 0
+                && actual > 0
+                && let Some(path) = file_url_to_path(&buf[..actual as usize])
+            {
+                queue_path(path);
             }
         }
 
@@ -206,11 +204,9 @@ fn percent_decode(s: &str) -> String {
     while let Some(c) = chars.next() {
         if c == '%' {
             let hex: String = chars.by_ref().take(2).collect();
-            if hex.len() == 2 {
-                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                    result.push(byte as char);
-                    continue;
-                }
+            if hex.len() == 2 && let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                result.push(byte as char);
+                continue;
             }
             result.push('%');
             result.push_str(&hex);
@@ -227,7 +223,7 @@ pub fn setup_app() {
     unsafe {
         let name = CFStringCreateWithCString(
             std::ptr::null(),
-            b"NSApplicationWillFinishLaunchingNotification\0".as_ptr() as *const _,
+            c"NSApplicationWillFinishLaunchingNotification".as_ptr(),
             K_CF_STRING_ENCODING_UTF8,
         );
         if name.is_null() {
