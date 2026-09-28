@@ -340,6 +340,9 @@ mod tests {
     use crate::sources::{NdiSourceConfig, NdiOutputConfig, DecklinkSourceConfig, DecklinkOutputConfig, TestSourceConfig};
     use crate::sources::decklink::{VideoConnection, VideoConnections};
 
+    // Syphon output types only exist on macOS; other platforms exercise the
+    // same round-trip through the unavailable-protocol tests below.
+    #[cfg(target_os = "macos")]
     #[test]
     fn output_config_round_trips() {
         let output = Output::new_v4(
@@ -365,11 +368,134 @@ mod tests {
     fn output_config_deserializes_missing_config() {
         let json = r#"{"uuid":"abc","name":"Test","protocol":"Syphon","enabled":true}"#;
         let parsed: Output = serde_json::from_str(json).unwrap();
+        #[cfg(target_os = "macos")]
         assert_eq!(parsed.protocol, Protocol::Syphon);
-        match parsed.config {
-            OutputConfig::Unknown => {} // Expected: missing config defaults to Unknown
+        #[cfg(not(target_os = "macos"))]
+        assert_eq!(parsed.protocol, Protocol::Unknown("Syphon".to_string()));
+        match &parsed.config {
+            // Expected: missing config defaults to Unknown(Null)
+            OutputConfig::Unknown(v) => assert!(v.is_null()),
             _ => panic!("expected Unknown config"),
         }
+        // Round-trips in the historical form, not as `null`.
+        let saved = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(saved["config"], serde_json::json!({"protocol": "Unknown"}));
+    }
+
+    /// A macOS-authored Syphon output must load on any platform and be written
+    /// back byte-for-byte compatible, so opening the project on macOS again
+    /// restores it untouched.
+    #[test]
+    fn syphon_output_round_trips_on_unavailable_platform() {
+        let json = r#"{"uuid":"out1","name":"Program","protocol":"Syphon","enabled":true,
+            "config":{"protocol":"Syphon","server_name":"Multiviewer"}}"#;
+        let parsed: Output = serde_json::from_str(json).unwrap();
+        #[cfg(target_os = "macos")]
+        assert_eq!(parsed.protocol, Protocol::Syphon);
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert_eq!(parsed.protocol, Protocol::Unknown("Syphon".to_string()));
+            assert_eq!(parsed.protocol.label(), "Syphon (Unavailable)");
+            // The raw config is preserved rather than interpreted.
+            let OutputConfig::Unknown(v) = &parsed.config else {
+                panic!("expected Unknown config")
+            };
+            assert_eq!(v.get("server_name"), Some(&serde_json::json!("Multiviewer")));
+        }
+
+        let saved = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(saved["protocol"], "Syphon");
+        assert_eq!(saved["config"]["server_name"], "Multiviewer");
+    }
+
+    /// A macOS-authored AVFoundation source (device-specific config) must
+    /// survive load + save on a platform that has no AVFoundation.
+    #[test]
+    fn avfoundation_source_round_trips_on_unavailable_platform() {
+        let json = r#"{
+            "uuid":"u1","name":"Camera","protocol":"AvFoundation",
+            "source_id":"FaceTime HD Camera","x":10.0,"y":20.0,
+            "width":1920,"height":1080,"z":3,"mode":"Fit",
+            "config":{"protocol":"AvFoundation","device_unique_id":"0x802000000a5f123"}
+        }"#;
+        let parsed: Source = serde_json::from_str(json).unwrap();
+        #[cfg(target_os = "macos")]
+        assert_eq!(parsed.protocol, Protocol::AvFoundation);
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert_eq!(parsed.protocol, Protocol::Unknown("AvFoundation".to_string()));
+            assert_eq!(parsed.protocol.label(), "AVFoundation (Unavailable)");
+            let SourceConfig::Unknown(v) = &parsed.config else {
+                panic!("expected Unknown config")
+            };
+            assert_eq!(
+                v.get("device_unique_id"),
+                Some(&serde_json::json!("0x802000000a5f123"))
+            );
+        }
+        // Layout is independent of protocol availability.
+        assert_eq!(parsed.name, "Camera");
+        assert_eq!(parsed.x, 10.0);
+        assert_eq!(parsed.z, 3);
+
+        let saved = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(saved["protocol"], "AvFoundation");
+        assert_eq!(saved["config"]["device_unique_id"], "0x802000000a5f123");
+    }
+
+    /// A protocol this build has never heard of (the same code path Windows
+    /// takes for Syphon) must load, keep its config, and save back untouched.
+    #[test]
+    fn unknown_protocol_source_round_trips() {
+        let json = r#"{
+            "canvas": {
+                "width":1920, "height":1080,
+                "sources": [{
+                    "uuid":"u1","name":"Spout In","protocol":"Spout","source_id":"Spout1",
+                    "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit",
+                    "config":{"protocol":"Spout","name":"Game"}
+                }],
+                "outputs": [{
+                    "uuid":"o1","name":"Spout Out","protocol":"Spout","enabled":true,
+                    "config":{"protocol":"Spout","name":"Program"}
+                }]
+            }
+        }"#;
+
+        let dir = std::env::temp_dir().join(format!("multiviewer-unknown-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("show.multiviewer");
+        std::fs::write(&path, json).unwrap();
+
+        let cfg = Config::load_from(&path).unwrap();
+        let source = &cfg.canvas.sources[0];
+        assert_eq!(source.protocol, Protocol::Unknown("Spout".to_string()));
+        assert_eq!(source.protocol.label(), "Spout (Unavailable)");
+        let SourceConfig::Unknown(v) = &source.config else {
+            panic!("expected Unknown config")
+        };
+        assert_eq!(v.get("name"), Some(&serde_json::json!("Game")));
+        let output = &cfg.canvas.outputs[0];
+        assert_eq!(output.protocol, Protocol::Unknown("Spout".to_string()));
+        let OutputConfig::Unknown(v) = &output.config else {
+            panic!("expected Unknown config")
+        };
+        assert_eq!(v.get("name"), Some(&serde_json::json!("Program")));
+
+        // Save and load again: nothing may be lost.
+        cfg.save_to(&path).unwrap();
+        let reloaded = Config::load_from(&path).unwrap();
+        assert_eq!(reloaded.canvas.sources[0].protocol, Protocol::Unknown("Spout".to_string()));
+        let SourceConfig::Unknown(v) = &reloaded.canvas.sources[0].config else {
+            panic!("expected Unknown config")
+        };
+        assert_eq!(v.get("name"), Some(&serde_json::json!("Game")));
+        let OutputConfig::Unknown(v) = &reloaded.canvas.outputs[0].config else {
+            panic!("expected Unknown config")
+        };
+        assert_eq!(v.get("name"), Some(&serde_json::json!("Program")));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

@@ -31,16 +31,77 @@ pub trait VideoOutput: Send {
 
 /// Protocol-specific output configuration stored in the config file.
 /// New protocols (NDI, DeckLink, ...) add variants here.
-#[derive(Serialize, Deserialize, Clone, Default)]
-#[serde(tag = "protocol")]
+///
+/// `Unknown` doubles as the "no config" default (`Value::Null`) and as the
+/// carrier for config JSON this platform cannot interpret: the original value
+/// is kept untouched and written back on save, so a project round-trips to a
+/// platform that does understand it.
+#[derive(Clone)]
 pub enum OutputConfig {
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonOutputConfig),
     Ndi(ndi::NdiOutputConfig),
     Decklink(decklink::DecklinkOutputConfig),
-    #[default]
-    #[serde(other)]
-    Unknown,
+    Unknown(serde_json::Value),
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        OutputConfig::Unknown(serde_json::Value::Null)
+    }
+}
+
+/// Known variants in their original wire format (internally tagged with
+/// `protocol`); used by both directions of the custom serde impls below.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "protocol")]
+enum OutputConfigInner {
+    #[cfg(target_os = "macos")]
+    Syphon(syphon::SyphonOutputConfig),
+    Ndi(ndi::NdiOutputConfig),
+    Decklink(decklink::DecklinkOutputConfig),
+}
+
+impl From<OutputConfigInner> for OutputConfig {
+    fn from(inner: OutputConfigInner) -> Self {
+        match inner {
+            #[cfg(target_os = "macos")]
+            OutputConfigInner::Syphon(c) => OutputConfig::Syphon(c),
+            OutputConfigInner::Ndi(c) => OutputConfig::Ndi(c),
+            OutputConfigInner::Decklink(c) => OutputConfig::Decklink(c),
+        }
+    }
+}
+
+impl Serialize for OutputConfig {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            OutputConfig::Unknown(v) if v.is_null() => {
+                // Historical wire form of a missing/default config.
+                serde_json::json!({"protocol": "Unknown"}).serialize(serializer)
+            }
+            OutputConfig::Unknown(v) => v.serialize(serializer),
+            #[cfg(target_os = "macos")]
+            OutputConfig::Syphon(c) => OutputConfigInner::Syphon(c.clone()).serialize(serializer),
+            OutputConfig::Ndi(c) => OutputConfigInner::Ndi(c.clone()).serialize(serializer),
+            OutputConfig::Decklink(c) => OutputConfigInner::Decklink(c.clone()).serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for OutputConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if value.is_null() {
+            return Ok(OutputConfig::default());
+        }
+        match serde_json::from_value::<OutputConfigInner>(value.clone()) {
+            Ok(inner) => return Ok(inner.into()),
+            // Unrecognized `protocol` tag (a protocol this platform does not
+            // have, or a corrupt known one): keep the original JSON verbatim.
+            Err(_) => return Ok(OutputConfig::Unknown(value)),
+        }
+    }
 }
 
 /// Type-erased output handle stored in the registry.

@@ -11,6 +11,7 @@ pub struct App {
     engine: Engine,
     image_loaders_installed: bool,
     last_error: Option<String>,
+    last_warning: Option<String>,
     pending_confirm: Option<Confirm>,
     ui_visible: bool,
 }
@@ -27,6 +28,7 @@ impl App {
             engine: Engine::new_project(),
             image_loaders_installed: false,
             last_error: None,
+            last_warning: None,
             pending_confirm: None,
             ui_visible: true,
         };
@@ -34,6 +36,8 @@ impl App {
             if path.exists() {
                 if let Err(e) = app.engine.open_project(&path) {
                     app.last_error = Some(e.to_string());
+                } else {
+                    app.refresh_warning();
                 }
             } else {
                 app.last_error = Some(format!("Startup project not found: {}", path.display()));
@@ -42,11 +46,22 @@ impl App {
         app
     }
 
+    /// Promote warnings collected while loading the current project to the
+    /// status bar.
+    fn refresh_warning(&mut self) {
+        self.last_warning = if self.engine.load_warnings.is_empty() {
+            None
+        } else {
+            Some(self.engine.load_warnings.join(" "))
+        };
+    }
+
     fn open_path(&mut self, path: &std::path::Path) {
         if let Err(e) = self.engine.open_project(path) {
             self.last_error = Some(e.to_string());
         } else {
             self.last_error = None;
+            self.refresh_warning();
         }
     }
 
@@ -63,6 +78,7 @@ impl App {
             Confirm::New => {
                 self.engine = Engine::new_project();
                 self.last_error = None;
+                self.last_warning = None;
             }
             Confirm::Open => self.open_dialog(),
             Confirm::OpenPath(path) => self.open_path(&path),
@@ -270,6 +286,8 @@ impl App {
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             let status = if let Some(err) = &self.last_error {
                 format!("Error: {err}")
+            } else if let Some(warn) = &self.last_warning {
+                format!("Warning: {warn}")
             } else if self.engine.dirty {
                 if self.engine.project_path.is_some() {
                     "Unsaved changes".to_string()

@@ -136,6 +136,9 @@ pub struct Engine {
     pub drag_state: DragState,
     pub snap_guides: SnapGuides,
     pub view: ViewState,
+    /// Warnings collected while loading the current project, e.g. sources
+    /// whose protocol is unavailable on this platform.
+    pub load_warnings: Vec<String>,
 }
 
 impl Engine {
@@ -179,6 +182,7 @@ impl Engine {
             drag_state: DragState::None,
             snap_guides: SnapGuides::default(),
             view: ViewState::new(),
+            load_warnings: Vec::new(),
         };
 
         engine.rebuild_from_config();
@@ -189,6 +193,28 @@ impl Engine {
         self.registry.clear();
         self.output_registry.clear();
         self.comp = None;
+        self.load_warnings.clear();
+
+        // Report protocols this platform cannot run. Their entries stay in the
+        // config untouched (raw JSON preserved) and are written back on save.
+        let unavailable: std::collections::BTreeSet<&str> = self
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .map(|s| &s.protocol)
+            .chain(self.cfg.canvas.outputs.iter().map(|o| &o.protocol))
+            .filter_map(|p| match p {
+                Protocol::Unknown(name) => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+        if !unavailable.is_empty() {
+            self.load_warnings.push(format!(
+                "Unavailable protocols in project: {}",
+                unavailable.into_iter().collect::<Vec<_>>().join(", ")
+            ));
+        }
 
         // Restore Test sources for all Test sources in the loaded config.
         // Each Test source gets a fresh dedicated test source.
@@ -593,11 +619,13 @@ impl Engine {
             // #[cfg(not(target_os = "macos"))]
             // Protocol::AvFoundation => {}
             Protocol::Test => {}
+            // Unavailable protocols have no runtime source to connect.
+            Protocol::Unknown(_) => {}
         }
     }
 
     pub fn add_output(&mut self, protocol: Protocol, name: String, config: OutputConfig) -> String {
-        let output = crate::config::Output::new_v4(name.clone(), protocol, true, config.clone());
+        let output = crate::config::Output::new_v4(name.clone(), protocol.clone(), true, config.clone());
         let id = output.uuid.clone();
         self.cfg.canvas.outputs.push(output);
 
@@ -1232,7 +1260,60 @@ mod tests {
             drag_state: DragState::None,
             snap_guides: SnapGuides::default(),
             view: ViewState::new(),
+            load_warnings: Vec::new(),
         }
+    }
+
+    /// A project authored where unavailable protocols exist (Syphon on
+    /// Windows, an unknown protocol anywhere) must load, warn in the status
+    /// bar, and never spawn a runtime source for it.
+    #[test]
+    fn load_project_with_unavailable_protocol_warns_and_skips_runtime() {
+        let json = r#"{
+            "canvas": {
+                "width":1920, "height":1080,
+                "sources": [
+                    {"uuid":"u1","name":"Spout In","protocol":"Spout","source_id":"Spout1",
+                     "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit",
+                     "config":{"protocol":"Spout","name":"Game"}},
+                    {"uuid":"u2","name":"Bars","protocol":"Test","source_id":"Test A",
+                     "x":0.0,"y":0.0,"width":640,"height":360,"z":1,"mode":"Fit"}
+                ],
+                "outputs":[
+                    {"uuid":"o1","name":"Spout Out","protocol":"Spout","enabled":true,
+                     "config":{"protocol":"Spout","name":"Program"}}
+                ]
+            }
+        }"#;
+
+        let dir = std::env::temp_dir().join(format!("multiviewer-unavailable-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("show.multiviewer");
+        std::fs::write(&path, json).unwrap();
+
+        let cfg = crate::config::Config::load_from(&path).unwrap();
+        let mut engine = test_engine(cfg.canvas);
+        engine.rebuild_from_config();
+
+        // Both entries survive, the unavailable config is kept verbatim.
+        assert_eq!(engine.cfg.canvas.sources.len(), 2);
+        assert_eq!(engine.cfg.canvas.outputs.len(), 1);
+        let SourceConfig::Unknown(v) = &engine.cfg.canvas.sources[0].config else {
+            panic!("expected Unknown config")
+        };
+        assert_eq!(v.get("name"), Some(&serde_json::json!("Game")));
+
+        // Only the Test source gets a runtime instance.
+        assert_eq!(engine.registry.iter().count(), 1);
+        assert!(engine.registry.get(&"Spout1".to_string()).is_none());
+        let test_sid = engine.cfg.canvas.sources[1].source_id.clone().unwrap();
+        assert!(engine.registry.get(&test_sid).is_some());
+
+        // The status bar picks this up from load_warnings.
+        assert_eq!(engine.load_warnings.len(), 1);
+        assert!(engine.load_warnings[0].contains("Spout"));
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

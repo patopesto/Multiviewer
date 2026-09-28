@@ -764,6 +764,10 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                     }
                                 });
                         }
+                        Protocol::Unknown(_) => {
+                            // No runtime source exists for unavailable protocols.
+                            ui.weak("(unavailable)");
+                        }
                     }
                 });
                 ui.end_row();
@@ -877,6 +881,11 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
 
         if protocol_changed {
             source.source_id = None;
+            // Leaving an unavailable protocol: the preserved raw config belongs
+            // to the old protocol and must not follow the source.
+            if matches!(source.config, SourceConfig::Unknown(_)) {
+                source.config = SourceConfig::for_protocol(&source.protocol);
+            }
             engine.dirty = true;
         }
 

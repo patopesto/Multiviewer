@@ -23,8 +23,12 @@ pub trait VideoSource: Send + Sync {
 }
 
 /// Protocol-specific source configuration stored in the config file.
-#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
-#[serde(tag = "protocol")]
+///
+/// `Unknown` doubles as the "no config" default (`Value::Null`) and as the
+/// carrier for config JSON this platform cannot interpret: the original value
+/// is kept untouched and written back on save, so a project round-trips to a
+/// platform that does understand it.
+#[derive(Clone, Debug, PartialEq)]
 pub enum SourceConfig {
     Test(test::TestSourceConfig),
     Ndi(ndi::NdiSourceConfig),
@@ -33,9 +37,96 @@ pub enum SourceConfig {
     Decklink(decklink::DecklinkSourceConfig),
     #[cfg(target_os = "macos")]
     AvFoundation(avfoundation::AvFoundationSourceConfig),
-    #[default]
-    #[serde(other)]
-    Unknown,
+    Unknown(serde_json::Value),
+}
+
+impl Default for SourceConfig {
+    fn default() -> Self {
+        SourceConfig::Unknown(serde_json::Value::Null)
+    }
+}
+
+/// Known variants in their original wire format (internally tagged with
+/// `protocol`); used by both directions of the custom serde impls below.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "protocol")]
+enum SourceConfigInner {
+    Test(test::TestSourceConfig),
+    Ndi(ndi::NdiSourceConfig),
+    #[cfg(target_os = "macos")]
+    Syphon(syphon::SyphonSourceConfig),
+    Decklink(decklink::DecklinkSourceConfig),
+    #[cfg(target_os = "macos")]
+    AvFoundation(avfoundation::AvFoundationSourceConfig),
+}
+
+impl From<SourceConfigInner> for SourceConfig {
+    fn from(inner: SourceConfigInner) -> Self {
+        match inner {
+            SourceConfigInner::Test(c) => SourceConfig::Test(c),
+            SourceConfigInner::Ndi(c) => SourceConfig::Ndi(c),
+            #[cfg(target_os = "macos")]
+            SourceConfigInner::Syphon(c) => SourceConfig::Syphon(c),
+            SourceConfigInner::Decklink(c) => SourceConfig::Decklink(c),
+            #[cfg(target_os = "macos")]
+            SourceConfigInner::AvFoundation(c) => SourceConfig::AvFoundation(c),
+        }
+    }
+}
+
+impl Serialize for SourceConfig {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            SourceConfig::Unknown(v) if v.is_null() => {
+                // Historical wire form of a missing/default config.
+                serde_json::json!({"protocol": "Unknown"}).serialize(serializer)
+            }
+            SourceConfig::Unknown(v) => v.serialize(serializer),
+            SourceConfig::Test(c) => SourceConfigInner::Test(c.clone()).serialize(serializer),
+            SourceConfig::Ndi(c) => SourceConfigInner::Ndi(c.clone()).serialize(serializer),
+            SourceConfig::Decklink(c) => SourceConfigInner::Decklink(c.clone()).serialize(serializer),
+            #[cfg(target_os = "macos")]
+            SourceConfig::Syphon(c) => SourceConfigInner::Syphon(c.clone()).serialize(serializer),
+            #[cfg(target_os = "macos")]
+            SourceConfig::AvFoundation(c) => {
+                SourceConfigInner::AvFoundation(c.clone()).serialize(serializer)
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SourceConfig {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if value.is_null() {
+            return Ok(SourceConfig::default());
+        }
+        match serde_json::from_value::<SourceConfigInner>(value.clone()) {
+            Ok(inner) => return Ok(inner.into()),
+            // Unrecognized `protocol` tag (a protocol this platform does not
+            // have, or a corrupt known one): keep the original JSON verbatim.
+            Err(_) => return Ok(SourceConfig::Unknown(value)),
+        }
+    }
+}
+
+impl SourceConfig {
+    /// Default config for a protocol, used when a source switches protocols
+    /// (e.g. away from an unavailable one) and the old config no longer applies.
+    pub fn for_protocol(protocol: &Protocol) -> Self {
+        match protocol {
+            Protocol::Test => SourceConfig::Test(test::TestSourceConfig::default()),
+            Protocol::Ndi => SourceConfig::Ndi(ndi::NdiSourceConfig::default()),
+            Protocol::Decklink => SourceConfig::Decklink(decklink::DecklinkSourceConfig::default()),
+            #[cfg(target_os = "macos")]
+            Protocol::Syphon => SourceConfig::Syphon(syphon::SyphonSourceConfig::default()),
+            #[cfg(target_os = "macos")]
+            Protocol::AvFoundation => {
+                SourceConfig::AvFoundation(avfoundation::AvFoundationSourceConfig::default())
+            }
+            Protocol::Unknown(_) => SourceConfig::default(),
+        }
+    }
 }
 
 /// Uniform block consumed by the compositor's fragment shader.
@@ -355,7 +446,8 @@ impl SourceRegistry {
             Some(Protocol::Syphon) => self.restart_syphon(id),
             #[cfg(target_os = "macos")]
             Some(Protocol::AvFoundation) => self.restart_avfoundation(id),
-            None => {}
+            // No runtime source exists for unavailable protocols.
+            _ => {}
         }
     }
 
