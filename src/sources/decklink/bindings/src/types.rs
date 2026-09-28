@@ -1,3 +1,5 @@
+#![allow(non_upper_case_globals)]
+
 use serde::{Deserialize, Serialize};
 
 // Four-character code helper matching C multi-character constant semantics.

@@ -11,6 +11,12 @@ repository = "https://gitlab.com/multiviewer/multiviewer"
 [workspace]
 members = [".", "src/sources/decklink/bindings"]
 
+[workspace.lints.clippy]
+needless_return = "allow"
+
+[lints]
+workspace = true
+
 [dependencies]
 eframe = { version = "0.35", default-features = false, features = ["wgpu", "default_fonts"] }
 egui = "0.35"

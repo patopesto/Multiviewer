@@ -42,6 +42,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <vector>
 
 #if !defined(_WIN32)
 #include <unistd.h>
@@ -90,13 +91,12 @@ std::string DecklinkStringToStd(DECKLINK_DLSTRING_T str) {
 #endif
 
 #ifdef __APPLE__
-    std::string result;
     CFIndex string_size = CFStringGetLength(str) + 1;
-    char buffer[string_size];
-    if (CFStringGetCString(str, buffer, string_size, kCFStringEncodingUTF8)) {
-        result = buffer;
+    std::vector<char> buffer(string_size);
+    if (CFStringGetCString(str, buffer.data(), string_size, kCFStringEncodingUTF8)) {
+        return std::string(buffer.data());
     }
-    return result;
+    return "";
 #endif
 
 #if !defined(_WIN32) && !defined(__APPLE__)
