@@ -578,6 +578,10 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             if ui.selectable_value(&mut source.protocol, Protocol::AvFoundation, "AVFoundation").clicked(){
                                 protocol_changed = true;
                             }
+                            #[cfg(target_os = "windows")]
+                            if ui.selectable_value(&mut source.protocol, Protocol::Spout, "Spout").clicked(){
+                                protocol_changed = true;
+                            }
                         });
                 });
                 ui.end_row();
@@ -760,6 +764,41 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         }
                                     }
                                     if avf_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        }
+                        #[cfg(target_os = "windows")]
+                        Protocol::Spout => {
+                            let spout_ids: Vec<String> = engine
+                                .registry
+                                .list_sources(Protocol::Spout)
+                                .into_iter()
+                                .map(|(id, _)| id.clone())
+                                .collect();
+                            let current = source.source_id.as_deref().unwrap_or("");
+                            let discovered =
+                                engine.spout.as_ref().map(|d| d.list()).unwrap_or_default();
+                            egui::ComboBox::from_id_salt("spout_source")
+                                .width(ui.available_width())
+                                .height(1000.0)
+                                .selected_text(current.to_string())
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    for id in &spout_ids {
+                                        if ui.selectable_label(current == id, id).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    for name in &discovered {
+                                        if !spout_ids.iter().any(|id| id == name)
+                                            && ui.selectable_label(current == name, name).clicked()
+                                        {
+                                            new_connect = Some((Protocol::Spout, name.clone()));
+                                            selected_source = Some(name.clone());
+                                        }
+                                    }
+                                    if spout_ids.is_empty() && discovered.is_empty() {
                                         ui.weak("(scanning...)");
                                     }
                                 });

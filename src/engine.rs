@@ -15,6 +15,8 @@ use crate::sources::syphon::Discovery as SyphonDiscovery;
 use crate::sources::syphon::SyphonOutputConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::avfoundation::Discovery as AvFoundationDiscovery;
+#[cfg(target_os = "windows")]
+use crate::sources::spout::Discovery as SpoutDiscovery;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 20.0;
@@ -125,6 +127,8 @@ pub struct Engine {
     pub syphon: Option<SyphonDiscovery>,
     #[cfg(target_os = "macos")]
     pub avfoundation: Option<AvFoundationDiscovery>,
+    #[cfg(target_os = "windows")]
+    pub spout: Option<SpoutDiscovery>,
     comp: Option<Compositor>,
     device: Option<Arc<wgpu::Device>>,
     queue: Option<Arc<wgpu::Queue>>,
@@ -161,6 +165,10 @@ impl Engine {
         #[cfg(target_os = "macos")]
         let avfoundation = Some(AvFoundationDiscovery::start());
 
+        // Start Spout sender discovery on Windows
+        #[cfg(target_os = "windows")]
+        let spout = Some(SpoutDiscovery::start());
+
         let mut engine = Self {
             cfg,
             registry,
@@ -171,6 +179,8 @@ impl Engine {
             syphon,
             #[cfg(target_os = "macos")]
             avfoundation,
+            #[cfg(target_os = "windows")]
+            spout,
             comp: None,
             device: None,
             queue: None,
@@ -450,6 +460,28 @@ impl Engine {
             }
         }
 
+        // Auto-connect pending Spout sources on Windows
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(ref spout) = self.spout {
+                let discovered = spout.list();
+                for source in &self.cfg.canvas.sources {
+                    if source.protocol == Protocol::Spout
+                        && let Some(ref name) = source.source_id
+                        && self.registry.get(name).is_none()
+                        && discovered.iter().any(|s| s == name)
+                    {
+                        let spout_config = match &source.config {
+                            SourceConfig::Spout(c) => Some(c.clone()),
+                            _ => None,
+                        };
+                        self.registry.add_spout(name.clone(), name.clone(), spout_config);
+                        self.dirty = true;
+                    }
+                }
+            }
+        }
+
         self.registry.apply_pending_restarts();
     }
 
@@ -563,6 +595,7 @@ impl Engine {
 
     pub fn connect(&mut self, protocol: Protocol, name: &str) {
         match protocol {
+            Protocol::Test => {}
             Protocol::Ndi => {
                 if let Some(ref ndi) = self.ndi
                     && let Some(src) = ndi.find_by_name(name)
@@ -601,8 +634,6 @@ impl Engine {
                     });
                 self.registry.add_syphon(name.to_string(), name.to_string(), syphon_config);
             }
-            // #[cfg(not(target_os = "macos"))]
-            // Protocol::Syphon => {}
             #[cfg(target_os = "macos")]
             Protocol::AvFoundation => {
                 if let Some(device) = self.avfoundation.as_ref().and_then(|d| d.find_by_name(name)) {
@@ -616,9 +647,16 @@ impl Engine {
                     );
                 }
             }
-            // #[cfg(not(target_os = "macos"))]
-            // Protocol::AvFoundation => {}
-            Protocol::Test => {}
+            #[cfg(target_os = "windows")]
+            Protocol::Spout => {
+                let spout_config = self.cfg.canvas.sources.iter()
+                    .find(|s| s.source_id.as_deref() == Some(name))
+                    .and_then(|s| match &s.config {
+                        SourceConfig::Spout(c) => Some(c.clone()),
+                        _ => None,
+                    });
+                self.registry.add_spout(name.to_string(), name.to_string(), spout_config);
+            }
             // Unavailable protocols have no runtime source to connect.
             Protocol::Unknown(_) => {}
         }
@@ -1249,6 +1287,8 @@ mod tests {
             syphon: None,
             #[cfg(target_os = "macos")]
             avfoundation: None,
+            #[cfg(target_os = "windows")]
+            spout: None,
             comp: None,
             device: None,
             queue: None,
@@ -1273,15 +1313,15 @@ mod tests {
             "canvas": {
                 "width":1920, "height":1080,
                 "sources": [
-                    {"uuid":"u1","name":"Spout In","protocol":"Spout","source_id":"Spout1",
+                    {"uuid":"u1","name":"Spout In","protocol":"fake","source_id":"Spout1",
                      "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit",
-                     "config":{"protocol":"Spout","name":"Game"}},
+                     "config":{"protocol":"fake","name":"Game"}},
                     {"uuid":"u2","name":"Bars","protocol":"Test","source_id":"Test A",
                      "x":0.0,"y":0.0,"width":640,"height":360,"z":1,"mode":"Fit"}
                 ],
                 "outputs":[
-                    {"uuid":"o1","name":"Spout Out","protocol":"Spout","enabled":true,
-                     "config":{"protocol":"Spout","name":"Program"}}
+                    {"uuid":"o1","name":"Spout Out","protocol":"fake","enabled":true,
+                     "config":{"protocol":"fake","name":"Program"}}
                 ]
             }
         }"#;
@@ -1311,7 +1351,7 @@ mod tests {
 
         // The status bar picks this up from load_warnings.
         assert_eq!(engine.load_warnings.len(), 1);
-        assert!(engine.load_warnings[0].contains("Spout"));
+        assert!(engine.load_warnings[0].contains("fake"));
 
         std::fs::remove_dir_all(&dir).ok();
     }

@@ -7,6 +7,8 @@ use crate::ui::side_panel::{settings_grid, settings_value};
 use crate::sources::SyphonSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::AvFoundationSourceConfig;
+#[cfg(target_os = "windows")]
+use crate::sources::SpoutSourceConfig;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
     match source {
@@ -17,6 +19,8 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         SourceKind::Syphon(_, cfg, _) => syphon_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
         SourceKind::AvFoundation(_, cfg, _) => avfoundation_settings_ui(cfg, ui),
+        #[cfg(target_os = "windows")]
+        SourceKind::Spout(_, cfg, _) => spout_settings_ui(cfg, ui),
     }
 }
 
@@ -260,6 +264,12 @@ fn syphon_settings_ui(_cfg: &mut SyphonSourceConfig, _ui: &mut egui::Ui) -> bool
 
 #[cfg(target_os = "macos")]
 fn avfoundation_settings_ui(_cfg: &mut AvFoundationSourceConfig, _ui: &mut egui::Ui) -> bool {
+    // No tunables yet
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn spout_settings_ui(_cfg: &mut SpoutSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
     false
 }

@@ -11,6 +11,8 @@ use super::test;
 use super::syphon;
 #[cfg(target_os = "macos")]
 use super::avfoundation;
+#[cfg(target_os = "windows")]
+use super::spout;
 
 pub type SourceId = String;
 
@@ -37,6 +39,8 @@ pub enum SourceConfig {
     Decklink(decklink::DecklinkSourceConfig),
     #[cfg(target_os = "macos")]
     AvFoundation(avfoundation::AvFoundationSourceConfig),
+    #[cfg(target_os = "windows")]
+    Spout(spout::SpoutSourceConfig),
     Unknown(serde_json::Value),
 }
 
@@ -58,6 +62,8 @@ enum SourceConfigInner {
     Decklink(decklink::DecklinkSourceConfig),
     #[cfg(target_os = "macos")]
     AvFoundation(avfoundation::AvFoundationSourceConfig),
+    #[cfg(target_os = "windows")]
+    Spout(spout::SpoutSourceConfig),
 }
 
 impl From<SourceConfigInner> for SourceConfig {
@@ -70,6 +76,8 @@ impl From<SourceConfigInner> for SourceConfig {
             SourceConfigInner::Decklink(c) => SourceConfig::Decklink(c),
             #[cfg(target_os = "macos")]
             SourceConfigInner::AvFoundation(c) => SourceConfig::AvFoundation(c),
+            #[cfg(target_os = "windows")]
+            SourceConfigInner::Spout(c) => SourceConfig::Spout(c),
         }
     }
 }
@@ -91,6 +99,8 @@ impl Serialize for SourceConfig {
             SourceConfig::AvFoundation(c) => {
                 SourceConfigInner::AvFoundation(c.clone()).serialize(serializer)
             }
+            #[cfg(target_os = "windows")]
+            SourceConfig::Spout(c) => SourceConfigInner::Spout(c.clone()).serialize(serializer),
         }
     }
 }
@@ -124,6 +134,8 @@ impl SourceConfig {
             Protocol::AvFoundation => {
                 SourceConfig::AvFoundation(avfoundation::AvFoundationSourceConfig::default())
             }
+            #[cfg(target_os = "windows")]
+            Protocol::Spout => SourceConfig::Spout(spout::SpoutSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
         }
     }
@@ -149,6 +161,8 @@ pub enum SourceKind {
     Decklink(decklink::DecklinkSource, decklink::DecklinkSourceConfig, String),
     #[cfg(target_os = "macos")]
     AvFoundation(avfoundation::AvFoundationSource, avfoundation::AvFoundationSourceConfig, String),
+    #[cfg(target_os = "windows")]
+    Spout(spout::SpoutSource, spout::SpoutSourceConfig, String),
 }
 
 impl SourceKind {
@@ -162,6 +176,8 @@ impl SourceKind {
             SourceKind::Decklink(s, _, _) => s.name(),
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(_, _, display_name) => display_name.as_str(),
+            #[cfg(target_os = "windows")]
+            SourceKind::Spout(s, _, _) => s.name(),
         }
     }
 
@@ -174,6 +190,8 @@ impl SourceKind {
             SourceKind::Decklink(s, _, _) => s.latest(device, queue),
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(s, _, _) => s.latest(device, queue),
+            #[cfg(target_os = "windows")]
+            SourceKind::Spout(s, _, _) => s.latest(device, queue),
         }
     }
 
@@ -186,6 +204,8 @@ impl SourceKind {
             SourceKind::Decklink(s, _, _) => s.stats(),
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(s, _, _) => s.stats(),
+            #[cfg(target_os = "windows")]
+            SourceKind::Spout(s, _, _) => s.stats(),
         }
     }
 
@@ -198,6 +218,8 @@ impl SourceKind {
             SourceKind::Decklink(_, _, _) => Protocol::Decklink,
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(_, _, _) => Protocol::AvFoundation,
+            #[cfg(target_os = "windows")]
+            SourceKind::Spout(_, _, _) => Protocol::Spout,
         }
     }
 
@@ -210,6 +232,8 @@ impl SourceKind {
             SourceKind::Decklink(_, cfg, _) => SourceConfig::Decklink(cfg.clone()),
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(_, cfg, _) => SourceConfig::AvFoundation(cfg.clone()),
+            #[cfg(target_os = "windows")]
+            SourceKind::Spout(_, cfg, _) => SourceConfig::Spout(cfg.clone()),
         }
     }
 }
@@ -400,6 +424,24 @@ impl SourceRegistry {
         id
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn add_spout(
+        &mut self,
+        id: SourceId,
+        sender_name: String,
+        _config: Option<spout::SpoutSourceConfig>,
+    ) -> SourceId {
+        if self.sources.contains_key(&id) || self.pending_restarts.contains(&id) {
+            return id;
+        }
+        let src = spout::SpoutSource::spawn(id.clone(), sender_name);
+        self.sources.insert(
+            id.clone(),
+            SourceKind::Spout(src, spout::SpoutSourceConfig::default(), id.clone()),
+        );
+        return id;
+    }
+
     pub fn add_decklink(
         &mut self,
         id: SourceId,
@@ -446,6 +488,8 @@ impl SourceRegistry {
             Some(Protocol::Syphon) => self.restart_syphon(id),
             #[cfg(target_os = "macos")]
             Some(Protocol::AvFoundation) => self.restart_avfoundation(id),
+            #[cfg(target_os = "windows")]
+            Some(Protocol::Spout) => self.restart_spout(id),
             // No runtime source exists for unavailable protocols.
             _ => {}
         }
@@ -515,6 +559,19 @@ impl SourceRegistry {
                     });
                 })
                 .expect("spawn avfoundation restart thread");
+        }
+    }
+
+    /// Restart a Spout source with its current config. The receiver is created
+    /// lazily on the next `latest()` call, so no thread handoff is needed.
+    #[cfg(target_os = "windows")]
+    pub fn restart_spout(&mut self, id: &str) {
+        if let Some(SourceKind::Spout(_, cfg, sender_name)) = self.sources.remove(id) {
+            let src = spout::SpoutSource::spawn(id.to_string(), sender_name.clone());
+            self.sources.insert(
+                id.to_string(),
+                SourceKind::Spout(src, cfg, sender_name),
+            );
         }
     }
 

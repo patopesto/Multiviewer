@@ -9,9 +9,11 @@ pub mod ndi;
 pub mod syphon;
 #[cfg(target_os = "macos")]
 pub mod avfoundation;
+#[cfg(target_os = "windows")]
+pub mod spout;
 
 #[allow(unused_imports)]
-pub use common::{Protocol, PixelFormat, Frame, CpuFrame, SyphonFrame};
+pub use common::{Protocol, PixelFormat, Frame, CpuFrame, GpuFrame};
 
 #[allow(unused_imports)]
 pub use source::{
@@ -41,3 +43,6 @@ pub use syphon::{SyphonSource, SyphonSourceConfig, SyphonOutput, SyphonOutputCon
 #[cfg(target_os = "macos")]
 #[allow(unused_imports)]
 pub use avfoundation::{AvFoundationSource, AvFoundationSourceConfig};
+#[cfg(target_os = "windows")]
+#[allow(unused_imports)]
+pub use spout::{SpoutSource, SpoutSourceConfig};

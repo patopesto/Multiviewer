@@ -4,10 +4,12 @@ fn main() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()));
 
     #[cfg(target_os = "macos")]
-    setup_macos(&manifest_dir);
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+        setup_macos(&manifest_dir);
+    }
 
     #[cfg(target_os = "windows")]
-    {
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap_or_else(|_| ".".to_string()));
         setup_windows(&manifest_dir, &out_dir);
     }

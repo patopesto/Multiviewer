@@ -29,12 +29,14 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
+ "spout2-rs",
  "syphon-core",
  "syphon-wgpu",
  "tracing",
  "tracing-subscriber",
  "uuid",
  "wgpu",
+ "windows",
 ]
 
 [[package]]
@@ -3462,6 +3464,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
  "bitflags 2.13.1",
+]
+
+[[package]]
+name = "spout2-rs"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e3d5a4fafc4e72ae9a57e78d8a4b84e7580a7671b9729c26894fe2434c73bb4"
+dependencies = [
+ "spout2-sys",
+]
+
+[[package]]
+name = "spout2-sys"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "670dd837cb0132982b6113a6c553e99453b0f8ba3014bd697bd7236e1a9d88aa"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

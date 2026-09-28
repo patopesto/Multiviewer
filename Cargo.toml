@@ -59,3 +59,11 @@ dispatch2 = "0.3"
 objc2 = "0.6"
 objc2-foundation = "0.3"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+# `spout2-rs` vendors the Spout2 SDK (BSD-2-Clause) and compiles it statically;
+# `dx12` is the backend matching wgpu's Windows backend (no `dx`/`gl` needed).
+spout2 = { package = "spout2-rs", version = "0.1", default-features = false, features = ["dx12"] }
+# For `windows::core::Interface::as_raw` on the raw D3D12 pointers wgpu-hal
+# exposes; same 0.62 line wgpu-hal uses so the trait impls unify.
+windows = { version = "0.62", default-features = false }
+

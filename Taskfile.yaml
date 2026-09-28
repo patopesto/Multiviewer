@@ -10,8 +10,8 @@ includes:
 vars:
   APP_NAME: Multiviewer
   DIST_DIR: dist
-  VERSION:
-    sh: grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/'
+  VERSION: "0.1.0"
+    # sh: grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/'
 
 tasks:
   setup:

@@ -451,13 +451,13 @@ mod tests {
             "canvas": {
                 "width":1920, "height":1080,
                 "sources": [{
-                    "uuid":"u1","name":"Spout In","protocol":"Spout","source_id":"Spout1",
+                    "uuid":"u1","name":"Spout In","protocol":"fake","source_id":"Spout1",
                     "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit",
-                    "config":{"protocol":"Spout","name":"Game"}
+                    "config":{"protocol":"fake","name":"Game"}
                 }],
                 "outputs": [{
-                    "uuid":"o1","name":"Spout Out","protocol":"Spout","enabled":true,
-                    "config":{"protocol":"Spout","name":"Program"}
+                    "uuid":"o1","name":"Spout Out","protocol":"fake","enabled":true,
+                    "config":{"protocol":"fake","name":"Program"}
                 }]
             }
         }"#;
@@ -469,14 +469,14 @@ mod tests {
 
         let cfg = Config::load_from(&path).unwrap();
         let source = &cfg.canvas.sources[0];
-        assert_eq!(source.protocol, Protocol::Unknown("Spout".to_string()));
-        assert_eq!(source.protocol.label(), "Spout (Unavailable)");
+        assert_eq!(source.protocol, Protocol::Unknown("fake".to_string()));
+        assert_eq!(source.protocol.label(), "fake (Unavailable)");
         let SourceConfig::Unknown(v) = &source.config else {
             panic!("expected Unknown config")
         };
         assert_eq!(v.get("name"), Some(&serde_json::json!("Game")));
         let output = &cfg.canvas.outputs[0];
-        assert_eq!(output.protocol, Protocol::Unknown("Spout".to_string()));
+        assert_eq!(output.protocol, Protocol::Unknown("fake".to_string()));
         let OutputConfig::Unknown(v) = &output.config else {
             panic!("expected Unknown config")
         };
@@ -485,7 +485,7 @@ mod tests {
         // Save and load again: nothing may be lost.
         cfg.save_to(&path).unwrap();
         let reloaded = Config::load_from(&path).unwrap();
-        assert_eq!(reloaded.canvas.sources[0].protocol, Protocol::Unknown("Spout".to_string()));
+        assert_eq!(reloaded.canvas.sources[0].protocol, Protocol::Unknown("fake".to_string()));
         let SourceConfig::Unknown(v) = &reloaded.canvas.sources[0].config else {
             panic!("expected Unknown config")
         };

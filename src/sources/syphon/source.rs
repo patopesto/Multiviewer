@@ -160,7 +160,7 @@ impl VideoSource for SyphonSource {
             }
 
             let seq = self.seq.fetch_add(1, Ordering::Relaxed);
-            Some(Frame::Syphon(super::super::SyphonFrame {
+            Some(Frame::Syphon(super::super::GpuFrame {
                 bg: bg.as_ref().unwrap().clone(),
                 w,
                 h,
@@ -170,7 +170,7 @@ impl VideoSource for SyphonSource {
             // Return the cached frame even if no new frame arrived
             let bg = self.bg.lock().unwrap();
             let dims = self.dims.lock().unwrap();
-            (*bg).as_ref().map(|bind_group| Frame::Syphon(super::super::SyphonFrame {
+            (*bg).as_ref().map(|bind_group| Frame::Syphon(super::super::GpuFrame {
                 bg: bind_group.clone(),
                 w: dims.0,
                 h: dims.1,

@@ -5,11 +5,13 @@ use serde::{Serialize, Deserialize};
 pub enum Protocol {
     Test,
     Ndi,
-    #[cfg(target_os = "macos")]
-    Syphon,
     Decklink,
     #[cfg(target_os = "macos")]
+    Syphon,
+    #[cfg(target_os = "macos")]
     AvFoundation,
+    #[cfg(target_os = "windows")]
+    Spout,
     /// A protocol that is not available on this platform. Holds the original
     /// protocol name as serialized in the project file so it round-trips
     /// unchanged when the project is opened on a platform that supports it.
@@ -23,11 +25,13 @@ impl Protocol {
         match self {
             Protocol::Test => "Test",
             Protocol::Ndi => "Ndi",
-            #[cfg(target_os = "macos")]
-            Protocol::Syphon => "Syphon",
             Protocol::Decklink => "Decklink",
             #[cfg(target_os = "macos")]
+            Protocol::Syphon => "Syphon",
+            #[cfg(target_os = "macos")]
             Protocol::AvFoundation => "AvFoundation",
+            #[cfg(target_os = "windows")]
+            Protocol::Spout => "Spout",
             Protocol::Unknown(name) => name,
         }
     }
@@ -36,11 +40,13 @@ impl Protocol {
         match self {
             Protocol::Test => "Test".to_string(),
             Protocol::Ndi => "NDI".to_string(),
-            #[cfg(target_os = "macos")]
-            Protocol::Syphon => "Syphon".to_string(),
             Protocol::Decklink => "DeckLink".to_string(),
             #[cfg(target_os = "macos")]
+            Protocol::Syphon => "Syphon".to_string(),
+            #[cfg(target_os = "macos")]
             Protocol::AvFoundation => "AVFoundation".to_string(),
+            #[cfg(target_os = "windows")]
+            Protocol::Spout => "Spout".to_string(),
             Protocol::Unknown(name) => format!("{name} (Unavailable)"),
         }
     }
@@ -58,11 +64,13 @@ impl<'de> Deserialize<'de> for Protocol {
         Ok(match s.as_str() {
             "Test" => Protocol::Test,
             "Ndi" => Protocol::Ndi,
-            #[cfg(target_os = "macos")]
-            "Syphon" => Protocol::Syphon,
             "Decklink" => Protocol::Decklink,
             #[cfg(target_os = "macos")]
+            "Syphon" => Protocol::Syphon,
+            #[cfg(target_os = "macos")]
             "AvFoundation" => Protocol::AvFoundation,
+            #[cfg(target_os = "windows")]
+            "Spout" => Protocol::Spout,
             other => Protocol::Unknown(other.to_string()),
         })
     }
@@ -99,7 +107,7 @@ pub struct CpuFrame {
 }
 
 #[derive(Clone)]
-pub struct SyphonFrame {
+pub struct GpuFrame {
     pub bg: Arc<wgpu::BindGroup>,
     pub w: u32,
     pub h: u32,
@@ -110,5 +118,8 @@ pub struct SyphonFrame {
 #[derive(Clone)]
 pub enum Frame {
     Cpu(CpuFrame),
-    Syphon(SyphonFrame),
+    #[cfg(target_os = "macos")]
+    Syphon(GpuFrame),
+    #[cfg(target_os = "windows")]
+    Spout(GpuFrame),
 }

@@ -14,18 +14,13 @@ fn main() {
     build.cpp(true);
     build.include("shim/");
 
-    #[cfg(target_os = "macos")]
-    if !setup_macos(&mut build, &manifest_dir) {
-        return;
-    }
-
-    #[cfg(target_os = "linux")]
-    if !setup_linux(&mut build, &manifest_dir) {
-        return;
-    }
-
-    #[cfg(target_os = "windows")]
-    if !setup_windows(&mut build, &manifest_dir) {
+    let ok = match std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default().as_str() {
+        "macos" => setup_macos(&mut build, &manifest_dir),
+        "linux" => setup_linux(&mut build, &manifest_dir),
+        "windows" => setup_windows(&mut build, &manifest_dir),
+        _ => false,
+    };
+    if !ok {
         return;
     }
 
@@ -37,7 +32,6 @@ fn main() {
     build.compile("decklink_shim");
 }
 
-#[cfg(target_os = "macos")]
 fn setup_macos(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
     let sdk_include = manifest_dir.join("../../../../vendor/blackmagic/Mac/include/");
     build.include(&sdk_include);
@@ -47,7 +41,6 @@ fn setup_macos(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
     return true;
 }
 
-#[cfg(target_os = "linux")]
 fn setup_linux(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
     let sdk_include = manifest_dir.join("../../../../vendor/blackmagic/Linux/include/");
     build.include(&sdk_include);
@@ -56,8 +49,14 @@ fn setup_linux(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
     return true;
 }
 
-#[cfg(target_os = "windows")]
 fn setup_windows(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
+    if !std::env::var("HOST").unwrap_or_default().contains("-windows") {
+        println!(
+            "cargo:warning=DeckLink Windows shim skipped: compiling it requires a Windows host"
+        );
+        return false;
+    }
+
     let sdk_include = manifest_dir.join("../../../../vendor/blackmagic/Win/include/");
     let generated = sdk_include.join("generated");
     let generated_h = generated.join("DeckLinkAPI.h");
