@@ -45,4 +45,4 @@ pub use syphon::{SyphonSource, SyphonSourceConfig, SyphonOutput, SyphonOutputCon
 pub use avfoundation::{AvFoundationSource, AvFoundationSourceConfig};
 #[cfg(target_os = "windows")]
 #[allow(unused_imports)]
-pub use spout::{SpoutSource, SpoutSourceConfig};
+pub use spout::{SpoutSource, SpoutSourceConfig, SpoutOutput, SpoutOutputConfig};

@@ -30,6 +30,7 @@
 | **NDI** | ✅ | ✅ | macOS, Windows, Linux |   |
 | **Blackmagic DeckLink** | ✅ | ✅ | macOS, Windows, Linux | Requires [DeckLink Desktop Video](https://www.blackmagicdesign.com/support/family/capture-and-playback) installed |
 | **Syphon** | ✅ | ✅ | macOS only | GPU-only, zero-copy texture sharing |
+| **Spout** | ✅ | ✅ | Windows only | GPU-only, zero-copy texture sharing |
 | **AVFoundation** | ✅ | — | macOS only | Webcams and capture devices |
 | **Test Patterns** | ✅ | — | macOS, Windows, Linux | CPU-generated color bars and patterns |
 
@@ -113,6 +114,7 @@ Multiviewer ingests video from multiple protocols, composites them on a shared G
 - [NDI SDK](https://ndi.video/download-ndi-sdk/) — NDI, proprietary with attribution requirements
 - [Blackmagic DeckLink SDK](https://www.blackmagicdesign.com/support) — BSD-style license (see header files)
 - [Syphon](https://syphon.v002.info/) — BSD 3-clause
+- [Spout](https://spout.zeal.co/) — BSD 2-clause
 
 ---
 

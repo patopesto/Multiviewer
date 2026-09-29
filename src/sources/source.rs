@@ -34,9 +34,9 @@ pub trait VideoSource: Send + Sync {
 pub enum SourceConfig {
     Test(test::TestSourceConfig),
     Ndi(ndi::NdiSourceConfig),
+    Decklink(decklink::DecklinkSourceConfig),
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonSourceConfig),
-    Decklink(decklink::DecklinkSourceConfig),
     #[cfg(target_os = "macos")]
     AvFoundation(avfoundation::AvFoundationSourceConfig),
     #[cfg(target_os = "windows")]
@@ -57,9 +57,9 @@ impl Default for SourceConfig {
 enum SourceConfigInner {
     Test(test::TestSourceConfig),
     Ndi(ndi::NdiSourceConfig),
+    Decklink(decklink::DecklinkSourceConfig),
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonSourceConfig),
-    Decklink(decklink::DecklinkSourceConfig),
     #[cfg(target_os = "macos")]
     AvFoundation(avfoundation::AvFoundationSourceConfig),
     #[cfg(target_os = "windows")]
@@ -71,9 +71,9 @@ impl From<SourceConfigInner> for SourceConfig {
         match inner {
             SourceConfigInner::Test(c) => SourceConfig::Test(c),
             SourceConfigInner::Ndi(c) => SourceConfig::Ndi(c),
+            SourceConfigInner::Decklink(c) => SourceConfig::Decklink(c),
             #[cfg(target_os = "macos")]
             SourceConfigInner::Syphon(c) => SourceConfig::Syphon(c),
-            SourceConfigInner::Decklink(c) => SourceConfig::Decklink(c),
             #[cfg(target_os = "macos")]
             SourceConfigInner::AvFoundation(c) => SourceConfig::AvFoundation(c),
             #[cfg(target_os = "windows")]
@@ -96,9 +96,7 @@ impl Serialize for SourceConfig {
             #[cfg(target_os = "macos")]
             SourceConfig::Syphon(c) => SourceConfigInner::Syphon(c.clone()).serialize(serializer),
             #[cfg(target_os = "macos")]
-            SourceConfig::AvFoundation(c) => {
-                SourceConfigInner::AvFoundation(c.clone()).serialize(serializer)
-            }
+            SourceConfig::AvFoundation(c) => SourceConfigInner::AvFoundation(c.clone()).serialize(serializer),
             #[cfg(target_os = "windows")]
             SourceConfig::Spout(c) => SourceConfigInner::Spout(c.clone()).serialize(serializer),
         }
@@ -131,9 +129,7 @@ impl SourceConfig {
             #[cfg(target_os = "macos")]
             Protocol::Syphon => SourceConfig::Syphon(syphon::SyphonSourceConfig::default()),
             #[cfg(target_os = "macos")]
-            Protocol::AvFoundation => {
-                SourceConfig::AvFoundation(avfoundation::AvFoundationSourceConfig::default())
-            }
+            Protocol::AvFoundation => SourceConfig::AvFoundation(avfoundation::AvFoundationSourceConfig::default()),
             #[cfg(target_os = "windows")]
             Protocol::Spout => SourceConfig::Spout(spout::SpoutSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
@@ -156,9 +152,9 @@ pub struct ConvUniform {
 pub enum SourceKind {
     Test(test::TestSource, test::TestSourceConfig),
     Ndi(ndi::NdiSource, ndi::NdiSourceConfig, grafton_ndi::Source),
+    Decklink(decklink::DecklinkSource, decklink::DecklinkSourceConfig, String),
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonSource, syphon::SyphonSourceConfig, String),
-    Decklink(decklink::DecklinkSource, decklink::DecklinkSourceConfig, String),
     #[cfg(target_os = "macos")]
     AvFoundation(avfoundation::AvFoundationSource, avfoundation::AvFoundationSourceConfig, String),
     #[cfg(target_os = "windows")]
@@ -171,9 +167,9 @@ impl SourceKind {
         match self {
             SourceKind::Test(s, _) => s.name(),
             SourceKind::Ndi(s, _, _) => s.name(),
+            SourceKind::Decklink(s, _, _) => s.name(),
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(s, _, _) => s.name(),
-            SourceKind::Decklink(s, _, _) => s.name(),
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(_, _, display_name) => display_name.as_str(),
             #[cfg(target_os = "windows")]
@@ -185,9 +181,9 @@ impl SourceKind {
         match self {
             SourceKind::Test(s, _) => s.latest(device, queue),
             SourceKind::Ndi(s, _, _) => s.latest(device, queue),
+            SourceKind::Decklink(s, _, _) => s.latest(device, queue),
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(s, _, _) => s.latest(device, queue),
-            SourceKind::Decklink(s, _, _) => s.latest(device, queue),
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(s, _, _) => s.latest(device, queue),
             #[cfg(target_os = "windows")]
@@ -199,9 +195,9 @@ impl SourceKind {
         match self {
             SourceKind::Test(s, _) => s.stats(),
             SourceKind::Ndi(s, _, _) => s.stats(),
+            SourceKind::Decklink(s, _, _) => s.stats(),
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(s, _, _) => s.stats(),
-            SourceKind::Decklink(s, _, _) => s.stats(),
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(s, _, _) => s.stats(),
             #[cfg(target_os = "windows")]
@@ -213,9 +209,9 @@ impl SourceKind {
         match self {
             SourceKind::Test(_, _) => Protocol::Test,
             SourceKind::Ndi(_, _, _) => Protocol::Ndi,
+            SourceKind::Decklink(_, _, _) => Protocol::Decklink,
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(_, _, _) => Protocol::Syphon,
-            SourceKind::Decklink(_, _, _) => Protocol::Decklink,
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(_, _, _) => Protocol::AvFoundation,
             #[cfg(target_os = "windows")]
@@ -227,9 +223,9 @@ impl SourceKind {
         match self {
             SourceKind::Test(_, cfg) => SourceConfig::Test(cfg.clone()),
             SourceKind::Ndi(_, cfg, _) => SourceConfig::Ndi(cfg.clone()),
+            SourceKind::Decklink(_, cfg, _) => SourceConfig::Decklink(cfg.clone()),
             #[cfg(target_os = "macos")]
             SourceKind::Syphon(_, cfg, _) => SourceConfig::Syphon(cfg.clone()),
-            SourceKind::Decklink(_, cfg, _) => SourceConfig::Decklink(cfg.clone()),
             #[cfg(target_os = "macos")]
             SourceKind::AvFoundation(_, cfg, _) => SourceConfig::AvFoundation(cfg.clone()),
             #[cfg(target_os = "windows")]

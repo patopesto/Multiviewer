@@ -17,6 +17,8 @@ use crate::sources::syphon::SyphonOutputConfig;
 use crate::sources::avfoundation::Discovery as AvFoundationDiscovery;
 #[cfg(target_os = "windows")]
 use crate::sources::spout::Discovery as SpoutDiscovery;
+#[cfg(target_os = "windows")]
+use crate::sources::spout::SpoutOutputConfig;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 20.0;
@@ -320,6 +322,20 @@ impl Engine {
                         syphon_config.server_name.clone()
                     };
                     self.output_registry.add_syphon(id, name, syphon_config, output.enabled);
+                }
+                #[cfg(target_os = "windows")]
+                Protocol::Spout => {
+                    let id = output.uuid.clone();
+                    let spout_config = match &output.config {
+                        OutputConfig::Spout(c) => c.clone(),
+                        _ => SpoutOutputConfig::default(),
+                    };
+                    let name = if spout_config.sender_name.is_empty() {
+                        output.name.clone()
+                    } else {
+                        spout_config.sender_name.clone()
+                    };
+                    self.output_registry.add_spout(id, name, spout_config, output.enabled);
                 }
                 _ => {}
             }
@@ -681,6 +697,11 @@ impl Engine {
                 let output_name = if c.server_name.is_empty() { name } else { c.server_name.clone() };
                 self.output_registry.add_syphon(id.clone(), output_name, c, true);
             }
+            #[cfg(target_os = "windows")]
+            (Protocol::Spout, OutputConfig::Spout(c)) => {
+                let output_name = if c.sender_name.is_empty() { name } else { c.sender_name.clone() };
+                self.output_registry.add_spout(id.clone(), output_name, c, true);
+            }
             _ => {}
         }
 
@@ -700,6 +721,9 @@ impl Engine {
         }
         if let Some(out) = self.output_registry.get_mut(&uuid.to_string()) {
             out.set_enabled(enabled);
+        } else if enabled {
+            tracing::info!("output {uuid}: runtime missing while enabling, recreating");
+            self.restart_output(uuid);
         }
         self.dirty = true;
     }
@@ -730,6 +754,11 @@ impl Engine {
             (Protocol::Syphon, OutputConfig::Syphon(c)) => {
                 let name = if c.server_name.is_empty() { output.name.clone() } else { c.server_name.clone() };
                 self.output_registry.add_syphon(uuid.to_string(), name, c.clone(), output.enabled);
+            }
+            #[cfg(target_os = "windows")]
+            (Protocol::Spout, OutputConfig::Spout(c)) => {
+                let name = if c.sender_name.is_empty() { output.name.clone() } else { c.sender_name.clone() };
+                self.output_registry.add_spout(uuid.to_string(), name, c.clone(), output.enabled);
             }
             _ => {}
         }
@@ -1867,5 +1896,29 @@ mod tests {
         engine.dirty = true;
         engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
         assert!(!should_auto_save(&engine, Instant::now()));
+    }
+
+    /// A cfg output entry without its runtime object (project saved before the
+    /// protocol was wired up) must be recreated on enable, or the side-panel
+    /// checkbox silently flips back off while cfg says enabled.
+    #[test]
+    fn enabling_output_with_missing_runtime_recreates_it() {
+        let mut engine = test_engine(crate::config::Canvas::default());
+        let output = crate::config::Output::new_v4(
+            "NDI".to_string(),
+            Protocol::Ndi,
+            false,
+            OutputConfig::Ndi(NdiOutputConfig {
+                sender_name: "Test".to_string(),
+            }),
+        );
+        let id = output.uuid.clone();
+        engine.cfg.canvas.outputs.push(output);
+
+        engine.set_output_enabled(&id, true);
+
+        assert!(engine.cfg.canvas.outputs.iter().any(|o| o.uuid == id && o.enabled));
+        let registered = engine.output_registry.get(&id).expect("runtime object recreated");
+        assert!(registered.enabled());
     }
 }

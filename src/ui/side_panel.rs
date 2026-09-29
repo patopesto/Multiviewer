@@ -183,6 +183,41 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
 
     collapsable_section(ui, "Outputs", false, |ui| {
         settings_grid(ui, "output_grid", |ui| {
+            ui.label("NDI Output");
+            settings_value(ui, |ui| {
+                let ndi_index = engine
+                    .cfg
+                    .canvas
+                    .outputs
+                    .iter()
+                    .position(|o| o.protocol == Protocol::Ndi);
+                let registry_id = ndi_index
+                    .as_ref()
+                    .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
+                let mut enabled = registry_id
+                    .as_ref()
+                    .and_then(|id| engine.output_registry.get(id))
+                    .map(|ok| ok.enabled())
+                    .unwrap_or(false);
+
+                if ui.checkbox(&mut enabled, "Enable").changed() {
+                    if enabled {
+                        if let Some(id) = registry_id {
+                            engine.set_output_enabled(&id, true);
+                        } else {
+                            let name = "NDI Output".to_string();
+                            let ndi_config = crate::sources::NdiOutputConfig {
+                                sender_name: "Multiviewer".to_string(),
+                            };
+                            engine.add_output(Protocol::Ndi, name, OutputConfig::Ndi(ndi_config));
+                        }
+                    } else if let Some(id) = registry_id {
+                        engine.remove_output(&id);
+                    }
+                }
+            });
+            ui.end_row();
+
             #[cfg(target_os = "macos")]
             {
                 ui.label("Syphon Output");
@@ -221,40 +256,43 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 ui.end_row();
             }
 
-            ui.label("NDI Output");
-            settings_value(ui, |ui| {
-                let ndi_index = engine
-                    .cfg
-                    .canvas
-                    .outputs
-                    .iter()
-                    .position(|o| o.protocol == Protocol::Ndi);
-                let registry_id = ndi_index
-                    .as_ref()
-                    .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
-                let mut enabled = registry_id
-                    .as_ref()
-                    .and_then(|id| engine.output_registry.get(id))
-                    .map(|ok| ok.enabled())
-                    .unwrap_or(false);
+            #[cfg(target_os = "windows")]
+            {
+                ui.label("Spout Output");
+                settings_value(ui, |ui| {
+                    let spout_index = engine
+                        .cfg
+                        .canvas
+                        .outputs
+                        .iter()
+                        .position(|o| o.protocol == Protocol::Spout);
+                    let registry_id = spout_index
+                        .as_ref()
+                        .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
+                    let mut enabled = registry_id
+                        .as_ref()
+                        .and_then(|id| engine.output_registry.get(id))
+                        .map(|ok| ok.enabled())
+                        .unwrap_or(false);
 
-                if ui.checkbox(&mut enabled, "Enable").changed() {
-                    if enabled {
-                        if let Some(id) = registry_id {
-                            engine.set_output_enabled(&id, true);
-                        } else {
-                            let name = "NDI Output".to_string();
-                            let ndi_config = crate::sources::NdiOutputConfig {
-                                sender_name: "Multiviewer".to_string(),
-                            };
-                            engine.add_output(Protocol::Ndi, name, OutputConfig::Ndi(ndi_config));
+                    if ui.checkbox(&mut enabled, "Enable").changed() {
+                        if enabled {
+                            if let Some(id) = registry_id {
+                                engine.set_output_enabled(&id, true);
+                            } else {
+                                let name = "Spout Output".to_string();
+                                let spout_config = crate::sources::SpoutOutputConfig {
+                                    sender_name: "Multiviewer".to_string(),
+                                };
+                                engine.add_output(Protocol::Spout, name, OutputConfig::Spout(spout_config));
+                            }
+                        } else if let Some(id) = registry_id {
+                            engine.remove_output(&id);
                         }
-                    } else if let Some(id) = registry_id {
-                        engine.remove_output(&id);
                     }
-                }
-            });
-            ui.end_row();
+                });
+                ui.end_row();
+            }
 
             ui.label("DeckLink Output");
             settings_value(ui, |ui| {

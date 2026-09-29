@@ -337,6 +337,8 @@ mod tests {
     use super::*;
     #[cfg(target_os = "macos")]
     use crate::sources::syphon::SyphonOutputConfig;
+    #[cfg(target_os = "windows")]
+    use crate::sources::SpoutOutputConfig;
     use crate::sources::{NdiSourceConfig, NdiOutputConfig, DecklinkSourceConfig, DecklinkOutputConfig, TestSourceConfig};
     use crate::sources::decklink::{VideoConnection, VideoConnections};
 
@@ -406,6 +408,56 @@ mod tests {
         let saved = serde_json::to_value(&parsed).unwrap();
         assert_eq!(saved["protocol"], "Syphon");
         assert_eq!(saved["config"]["server_name"], "Multiviewer");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn spout_output_config_round_trips() {
+        let output = Output::new_v4(
+            "My Spout".into(),
+            Protocol::Spout,
+            true,
+            OutputConfig::Spout(SpoutOutputConfig {
+                sender_name: "Program".into(),
+            }),
+        );
+        let json = serde_json::to_string(&output).unwrap();
+        let parsed: Output = serde_json::from_str(&json).unwrap();
+        match parsed.config {
+            OutputConfig::Spout(c) => assert_eq!(c.sender_name, "Program"),
+            _ => panic!("expected Spout config"),
+        }
+    }
+
+    /// A Windows-authored Spout output must load on any platform and be written
+    /// back byte-for-byte compatible, so opening the project on Windows again restores it untouched.
+    #[test]
+    fn spout_output_round_trips_on_unavailable_platform() {
+        let json = r#"{"uuid":"out1","name":"Program","protocol":"Spout","enabled":true,
+            "config":{"protocol":"Spout","sender_name":"Multiviewer"}}"#;
+        let parsed: Output = serde_json::from_str(json).unwrap();
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(parsed.protocol, Protocol::Spout);
+            let OutputConfig::Spout(c) = &parsed.config else {
+                panic!("expected Spout config")
+            };
+            assert_eq!(c.sender_name, "Multiviewer");
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(parsed.protocol, Protocol::Unknown("Spout".to_string()));
+            assert_eq!(parsed.protocol.label(), "Spout (Unavailable)");
+            // The raw config is preserved rather than interpreted.
+            let OutputConfig::Unknown(v) = &parsed.config else {
+                panic!("expected Unknown config")
+            };
+            assert_eq!(v.get("sender_name"), Some(&serde_json::json!("Multiviewer")));
+        }
+
+        let saved = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(saved["protocol"], "Spout");
+        assert_eq!(saved["config"]["sender_name"], "Multiviewer");
     }
 
     /// A macOS-authored AVFoundation source (device-specific config) must

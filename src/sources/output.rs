@@ -7,6 +7,8 @@ use super::decklink;
 use super::ndi;
 #[cfg(target_os = "macos")]
 use super::syphon;
+#[cfg(target_os = "windows")]
+use super::spout;
 
 
 pub type OutputId = String;
@@ -38,10 +40,12 @@ pub trait VideoOutput: Send {
 /// platform that does understand it.
 #[derive(Clone)]
 pub enum OutputConfig {
-    #[cfg(target_os = "macos")]
-    Syphon(syphon::SyphonOutputConfig),
     Ndi(ndi::NdiOutputConfig),
     Decklink(decklink::DecklinkOutputConfig),
+    #[cfg(target_os = "macos")]
+    Syphon(syphon::SyphonOutputConfig),
+    #[cfg(target_os = "windows")]
+    Spout(spout::SpoutOutputConfig),
     Unknown(serde_json::Value),
 }
 
@@ -56,19 +60,23 @@ impl Default for OutputConfig {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "protocol")]
 enum OutputConfigInner {
-    #[cfg(target_os = "macos")]
-    Syphon(syphon::SyphonOutputConfig),
     Ndi(ndi::NdiOutputConfig),
     Decklink(decklink::DecklinkOutputConfig),
+    #[cfg(target_os = "macos")]
+    Syphon(syphon::SyphonOutputConfig),
+    #[cfg(target_os = "windows")]
+    Spout(spout::SpoutOutputConfig),
 }
 
 impl From<OutputConfigInner> for OutputConfig {
     fn from(inner: OutputConfigInner) -> Self {
         match inner {
-            #[cfg(target_os = "macos")]
-            OutputConfigInner::Syphon(c) => OutputConfig::Syphon(c),
             OutputConfigInner::Ndi(c) => OutputConfig::Ndi(c),
             OutputConfigInner::Decklink(c) => OutputConfig::Decklink(c),
+            #[cfg(target_os = "macos")]
+            OutputConfigInner::Syphon(c) => OutputConfig::Syphon(c),
+            #[cfg(target_os = "windows")]
+            OutputConfigInner::Spout(c) => OutputConfig::Spout(c),
         }
     }
 }
@@ -81,10 +89,12 @@ impl Serialize for OutputConfig {
                 serde_json::json!({"protocol": "Unknown"}).serialize(serializer)
             }
             OutputConfig::Unknown(v) => v.serialize(serializer),
-            #[cfg(target_os = "macos")]
-            OutputConfig::Syphon(c) => OutputConfigInner::Syphon(c.clone()).serialize(serializer),
             OutputConfig::Ndi(c) => OutputConfigInner::Ndi(c.clone()).serialize(serializer),
             OutputConfig::Decklink(c) => OutputConfigInner::Decklink(c.clone()).serialize(serializer),
+            #[cfg(target_os = "macos")]
+            OutputConfig::Syphon(c) => OutputConfigInner::Syphon(c.clone()).serialize(serializer),
+            #[cfg(target_os = "windows")]
+            OutputConfig::Spout(c) => OutputConfigInner::Spout(c.clone()).serialize(serializer),
         }
     }
 }
@@ -163,6 +173,16 @@ impl OutputRegistry {
             return id;
         }
         let output = syphon::SyphonOutput::new(name, config, enabled);
+        self.outputs.insert(id.clone(), Box::new(output));
+        id
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn add_spout(&mut self, id: OutputId, name: String, config: spout::SpoutOutputConfig, enabled: bool) -> OutputId {
+        if self.outputs.contains_key(&id) {
+            return id;
+        }
+        let output = spout::SpoutOutput::new(name, config, enabled);
         self.outputs.insert(id.clone(), Box::new(output));
         id
     }
