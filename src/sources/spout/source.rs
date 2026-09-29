@@ -7,28 +7,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SpoutSourceConfig {}
 
-/// `spout2::dx12::Receiver` is `!Send`/`!Sync`: it owns raw D3D11On12 bridge
-/// state without claiming thread safety.
-///
-/// # Safety
-/// The D3D12 device/queue and D3D11 device behind the receiver are
-/// free-threaded COM objects. The receiver is only ever touched while holding
-/// `SpoutSource::receiver`'s mutex, and `latest()` — the only accessor — runs
-/// on the render thread, so accesses never overlap.
+/// Justifies the `unsafe impl Send`: `latest()` touches the receiver only while
+/// holding `SpoutSource::receiver`'s mutex, on the render thread.
 struct SpoutReceiver(spout2::dx12::Receiver);
 unsafe impl Send for SpoutReceiver {}
 
-/// Zero-copy Spout receiver: Spout writes into a wgpu-owned texture through
-/// the D3D11On12 bridge and the compositor samples that same texture.
+/// Zero-copy Spout receiver: Spout writes into a wgpu-owned texture via D3D11On12.
 ///
-/// ponytail: external D3D12 writes rely on Spout's copies being ordered on the
-/// same command queue wgpu submits to (that is what `with_device` takes our
-/// queue for) and on D3D12 tolerating wgpu's stale source-state in the first
-/// sampling barrier. Ceiling: a driver that honors barrier `StateBefore`
-/// strictly could show stale frames or debug-layer errors. Upgrade path: wait
-/// on a fence and transition to `COPY_DEST` explicitly after each receive, or
-/// double-buffer the textures — decide after validating on Windows (the D3D12
-/// backend is required; Vulkan fallback does not work).
+/// ponytail: assumes Spout's copies order on wgpu's command queue; upgrade path
+/// if a driver rejects wgpu's stale barrier state is a fence + `COPY_DEST` barrier.
 pub struct SpoutSource {
     name: String,
     sender_name: String,
@@ -40,9 +27,7 @@ pub struct SpoutSource {
     dims: Mutex<(u32, u32)>,
     seq: AtomicU64,
     stats: Arc<Mutex<SourceStats>>,
-    /// Persistent failure conditions (receiver open, unsupported format) are
-    /// retried every frame; log each only once instead of at 60 Hz.
-    diagnostics_logged: AtomicBool,
+    diagnostics_logged: AtomicBool, // Retried every frame; each failure is logged once instead of at 60 Hz.
 }
 
 impl SpoutSource {
@@ -69,11 +54,7 @@ impl SpoutSource {
         sender_name: &str,
     ) -> Result<spout2::dx12::Receiver, String> {
         use windows::core::Interface;
-        // Safety: the raw `ID3D12Device*`/`ID3D12CommandQueue*` handed to
-        // Spout come from these `device`/`queue` handles and outlive the
-        // receiver — the receiver only lives inside `SpoutSource`, which is
-        // owned by the engine, which the eframe app owns alongside the
-        // renderer for the whole process lifetime.
+        // Safety: device/queue outlive the receiver; the app owns both for its lifetime.
         unsafe {
             let Some(hal_device) = device.as_hal::<wgpu::hal::api::Dx12>() else {
                 return Err("Spout requires wgpu's D3D12 backend".to_string());
@@ -91,9 +72,7 @@ impl SpoutSource {
     /// The raw `ID3D12Resource*` backing a wgpu texture, for Spout's receive.
     fn texture_ptr(texture: &wgpu::Texture) -> Result<*mut c_void, &'static str> {
         use windows::core::Interface;
-        // Safety: reading the raw pointer cannot dangle — the texture is alive
-        // for this call — and it lives on the same D3D12 device as the
-        // receiver because both derive from the same wgpu device.
+        // Safety: the texture is alive for this call and shares the receiver's device.
         unsafe {
             let Some(hal_texture) = texture.as_hal::<wgpu::hal::api::Dx12>() else {
                 return Err("Spout requires wgpu's D3D12 backend");
@@ -127,7 +106,7 @@ impl SpoutSource {
         }
     }
 
-    /// The last produced frame, if any (mirrors Syphon's cached-frame path).
+    /// The last produced frame, if any.
     fn cached(&self) -> Option<Frame> {
         let dims = self.dims.lock().unwrap();
         let bg = self.bg.lock().unwrap();
@@ -153,9 +132,7 @@ impl VideoSource for SpoutSource {
                     *receiver_guard = Some(SpoutReceiver(receiver));
                 }
                 Err(e) => {
-                    // Persistent failures would otherwise be invisible: the
-                    // default log filter is `multiviewer=info`, and this path
-                    // retries every frame. Log the first error only.
+                    // Retried every frame; log the first failure only.
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
                         tracing::error!(
                             "Spout receiver open failed for '{}': {e}",
@@ -168,22 +145,15 @@ impl VideoSource for SpoutSource {
         }
         let receiver = &mut receiver_guard.as_mut().unwrap().0;
 
-        // The sender appeared or changed size/format: release the old texture
-        // and bind group so both are recreated below, before the next receive.
+        // Sender appeared or changed: drop the old texture/bind group so both rebuild below.
         if receiver.is_updated() {
             *self.texture.lock().unwrap() = None;
             *self.bg.lock().unwrap() = None;
             *self.dims.lock().unwrap() = (0, 0);
         }
 
-        // Create the receive texture once the sender's size is known.
-        // Deliberately NOT gated on `receiver.is_connected()`: Spout only sets
-        // its connected flag after a receive into an *existing* texture (the
-        // null-slot check precedes `m_bConnected = true` in
-        // SpoutDX12::ReceiveDX12Resource), so gating on it here deadlocks — no
-        // texture would ever be created. Size/format are stored by
-        // ReceiveSenderData before connecting; matches spout2-rs's own
-        // dx12_gpu_receiver example.
+        // Deliberately not gated on `is_connected()`: Spout only sets that flag after a
+        // receive into an existing texture (the null slot returns first), so the gate deadlocks.
         if self.texture.lock().unwrap().is_none() {
             let (w, h) = receiver.sender_size();
             if w > 0 && h > 0 {
@@ -217,9 +187,7 @@ impl VideoSource for SpoutSource {
             }
         }
 
-        // Drive the connection every call. With no texture yet the null slot
-        // only connects; afterwards Spout copies the sender's frame into our
-        // texture on the same command queue wgpu submits to.
+        // Null slot discovers the sender; a texture pointer makes Spout copy into it.
         let mut raw_slot: *mut c_void = std::ptr::null_mut();
         {
             let texture_guard = self.texture.lock().unwrap();
@@ -233,9 +201,7 @@ impl VideoSource for SpoutSource {
                 }
             }
         }
-        // Safety: the slot holds our wgpu texture's `ID3D12Resource*` (same
-        // D3D12 device the receiver was opened with), or null — Spout accepts
-        // a null slot as connect-only.
+        // Safety: slot holds our texture's `ID3D12Resource*` (same device) or null.
         match unsafe { receiver.receive_resource(&mut raw_slot) } {
             Ok(true) => {}
             // Not connected to a sender yet.
@@ -252,7 +218,6 @@ impl VideoSource for SpoutSource {
         };
         let frame_new = receiver.is_frame_new();
 
-        // (Re)build the bind group whenever the texture was recreated.
         let dims = self.dims.lock().unwrap();
         let mut bg = self.bg.lock().unwrap();
         let mut layout = self.layout.lock().unwrap();

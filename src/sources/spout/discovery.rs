@@ -2,10 +2,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// Background Spout sender discovery.
-///
-/// Mirrors the Syphon discovery thread: a loop enumerating the sender registry
-/// every two seconds. The `Receiver` is `!Send`, so it is created on (and
-/// dropped on) this thread and never leaves it.
 pub struct Discovery {
     senders: Arc<Mutex<Vec<String>>>,
 }

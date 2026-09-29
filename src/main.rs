@@ -33,7 +33,7 @@ fn main() -> eframe::Result<()> {
 
     let icon = eframe::icon_data::from_png_bytes(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/AppIcon.png")))
         .expect("failed to decode app icon");
-    let options = eframe::NativeOptions {
+    let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1600.0, 900.0])
             .with_icon(Arc::new(icon)),
@@ -41,6 +41,7 @@ fn main() -> eframe::Result<()> {
         centered: true,
         ..Default::default()
     };
+    platform::configure_wgpu(&mut options);
 
     println!("Hello from Multiviewer");
     return eframe::run_native(
@@ -48,6 +49,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             platform::on_window_created(&cc.egui_ctx);
+            log_wgpu_backend(cc);
             return Ok(Box::new(ui::App::new(startup_path)));
         }),
     );
@@ -68,5 +70,20 @@ fn parse_cli() -> (bool, Option<std::path::PathBuf>) {
     }
 
     return (show_console, positional);
+}
+
+fn log_wgpu_backend(cc: &eframe::CreationContext<'_>) {
+    match &cc.wgpu_render_state {
+        Some(render_state) => {
+            let info = render_state.adapter.get_info();
+            tracing::info!(
+                "wgpu backend {:?}, adapter '{}' ({:?})",
+                info.backend,
+                info.name,
+                info.device_type
+            );
+        }
+        None => tracing::info!("wgpu renderer not in use"),
+    }
 }
 

@@ -243,6 +243,8 @@ pub fn setup_app() {
     }
 }
 
+pub fn configure_wgpu(_options: &mut eframe::NativeOptions) {}
+
 pub fn on_window_created(_ctx: &egui::Context) {
     unsafe {
         let err = AEInstallEventHandler(
