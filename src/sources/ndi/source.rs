@@ -1,4 +1,4 @@
-use super::super::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
+use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -79,35 +79,32 @@ impl Default for NdiSourceConfig {
 pub struct NdiSource {
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
-    #[allow(dead_code)]
-    id: String,
-    name: String,
+    source_ref: SourceRef,
     running: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl NdiSource {
-    pub fn spawn(id: String, source: grafton_ndi::Source, cfg: &NdiSourceConfig) -> Self {
+    pub fn spawn(source_ref: SourceRef, source: grafton_ndi::Source, cfg: &NdiSourceConfig) -> Self {
         use grafton_ndi::{LineStrideOrSize, NDI, Receiver, ReceiverOptions};
 
         let slot = Arc::new(Mutex::new(None));
         let slot2 = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let stats2 = stats.clone();
-        let name = id.clone();
-        let name_for_thread = name.clone();
+        let trace_ref = source_ref.clone();
         let bandwidth = cfg.bandwidth;
         let color_format = cfg.color_format;
         let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
         
         let thread = std::thread::Builder::new()
-            .name(format!("ndi-in-{id}"))
+            .name(format!("ndi-in-{source_ref}"))
             .spawn(move || {
                 let ndi = match NDI::new() {
                     Ok(n) => n,
                     Err(e) => {
-                        tracing::error!(source=name_for_thread, "NDI init failed: {}", e);
+                        tracing::error!(source=trace_ref, "NDI init failed: {}", e);
                         return;
                     }
                 };
@@ -118,7 +115,7 @@ impl NdiSource {
                 let receiver = match Receiver::new(&ndi, &options) {
                     Ok(r) => r,
                     Err(e) => {
-                        tracing::error!(source=name_for_thread, "NDI Receiver creation failed: {}", e);
+                        tracing::error!(source=trace_ref, "NDI Receiver creation failed: {}", e);
                         return;
                     }
                 };
@@ -139,7 +136,7 @@ impl NdiSource {
                                 }
                                 pf => {
                                     if warned_formats.insert(pf as u32) {
-                                        tracing::warn!(source=name_for_thread, "NDI Unsupported pixel format {pf:?}, frame dropped");
+                                        tracing::warn!(source=trace_ref, "NDI Unsupported pixel format {pf:?}, frame dropped");
                                     }
                                     continue;
                                 }
@@ -179,13 +176,13 @@ impl NdiSource {
                             seq += 1;
                         }
                         Err(e) => {
-                            tracing::warn!(source=name_for_thread, "NDI capture timeout: {}", e);
+                            tracing::warn!(source=trace_ref, "NDI capture timeout: {}", e);
                         }
                     }
                 }
             })
             .expect("spawn ndi-recv");
-        Self { slot, stats, id, name, running, thread: Some(thread) }
+        Self { slot, stats, source_ref, running, thread: Some(thread) }
     }
 }
 
@@ -195,7 +192,7 @@ impl Drop for NdiSource {
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
-            tracing::error!(source=self.name, "Thread join failed: {:?}", e);
+            tracing::error!(source=self.source_ref, "Thread join failed: {:?}", e);
         }
     }
 }
@@ -203,10 +200,6 @@ impl Drop for NdiSource {
 impl VideoSource for NdiSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
         self.slot.lock().unwrap().clone()
-    }
-
-    fn name(&self) -> &str {
-        &self.name
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {

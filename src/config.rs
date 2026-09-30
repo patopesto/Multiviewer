@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::sources::{Protocol, SourceConfig, OutputConfig};
+use crate::sources::{Protocol, SourceConfig, SourceRef, OutputConfig};
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
@@ -77,13 +77,15 @@ impl Default for Canvas {
     }
 }
 
+pub type LayerId = String;
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Source {
-    pub uuid: String,
+    pub uuid: LayerId,
     #[serde(default)]
     pub name: String,
     pub protocol: Protocol,
-    pub source_id: Option<String>,
+    pub source_ref: Option<SourceRef>,
     pub x: f32,
     pub y: f32,
     pub width: u32,
@@ -104,10 +106,10 @@ pub struct Source {
 
 impl Source {
     #[allow(clippy::too_many_arguments)]
-    pub fn new_v4(
+    pub fn new(
         name: String,
         protocol: Protocol,
-        source_id: Option<String>,
+        source_ref: Option<SourceRef>,
         x: f32,
         y: f32,
         width: u32,
@@ -121,7 +123,7 @@ impl Source {
             uuid: uuid::Uuid::new_v4().to_string(),
             name,
             protocol,
-            source_id,
+            source_ref,
             x,
             y,
             width,
@@ -139,7 +141,7 @@ impl Source {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Output {
-    pub uuid: String,
+    pub uuid: LayerId,
     #[serde(default)]
     pub name: String,
     pub protocol: Protocol,
@@ -149,7 +151,7 @@ pub struct Output {
 }
 
 impl Output {
-    pub fn new_v4(
+    pub fn new(
         name: String,
         protocol: Protocol,
         enabled: bool,
@@ -340,14 +342,14 @@ mod tests {
     #[cfg(target_os = "windows")]
     use crate::sources::SpoutOutputConfig;
     use crate::sources::{NdiSourceConfig, NdiOutputConfig, DecklinkSourceConfig, DecklinkOutputConfig, TestSourceConfig};
-    use crate::sources::decklink::{VideoConnection, VideoConnections};
+    use crate::sources::decklink::VideoConnection;
 
     // Syphon output types only exist on macOS; other platforms exercise the
     // same round-trip through the unavailable-protocol tests below.
     #[cfg(target_os = "macos")]
     #[test]
     fn output_config_round_trips() {
-        let output = Output::new_v4(
+        let output = Output::new(
             "Multiviewer".to_string(),
             Protocol::Syphon,
             true,
@@ -413,7 +415,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn spout_output_config_round_trips() {
-        let output = Output::new_v4(
+        let output = Output::new(
             "My Spout".into(),
             Protocol::Spout,
             true,
@@ -466,7 +468,7 @@ mod tests {
     fn avfoundation_source_round_trips_on_unavailable_platform() {
         let json = r#"{
             "uuid":"u1","name":"Camera","protocol":"AvFoundation",
-            "source_id":"FaceTime HD Camera","x":10.0,"y":20.0,
+            "source_ref":"FaceTime HD Camera","x":10.0,"y":20.0,
             "width":1920,"height":1080,"z":3,"mode":"Fit",
             "config":{"protocol":"AvFoundation","device_unique_id":"0x802000000a5f123"}
         }"#;
@@ -503,7 +505,7 @@ mod tests {
             "canvas": {
                 "width":1920, "height":1080,
                 "sources": [{
-                    "uuid":"u1","name":"Spout In","protocol":"fake","source_id":"Spout1",
+                    "uuid":"u1","name":"Spout In","protocol":"fake","source_ref":"Spout1",
                     "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit",
                     "config":{"protocol":"fake","name":"Game"}
                 }],
@@ -553,7 +555,7 @@ mod tests {
     #[test]
     fn decklink_output_config_round_trips() {
         use multiviewer_decklink::DisplayMode;
-        let output = Output::new_v4(
+        let output = Output::new(
             "My DeckLink".into(),
             Protocol::Decklink,
             true,
@@ -580,7 +582,7 @@ mod tests {
 
     #[test]
     fn ndi_output_config_round_trips() {
-        let output = Output::new_v4(
+        let output = Output::new(
             "My NDI".into(),
             Protocol::Ndi,
             true,
@@ -599,7 +601,7 @@ mod tests {
 
     #[test]
     fn test_source_config_round_trips() {
-        let mut source = Source::new_v4(
+        let mut source = Source::new(
             "Test".to_string(),
             Protocol::Test,
             Some("test-1".to_string()),
@@ -626,7 +628,7 @@ mod tests {
 
     #[test]
     fn ndi_source_config_round_trips() {
-        let mut source = Source::new_v4(
+        let mut source = Source::new(
             "NDI".to_string(),
             Protocol::Ndi,
             Some("ndi-1".to_string()),
@@ -651,7 +653,7 @@ mod tests {
 
     #[test]
     fn decklink_source_config_round_trips() {
-        let mut source = Source::new_v4(
+        let mut source = Source::new(
             "DeckLink".to_string(),
             Protocol::Decklink,
             Some("decklink-1".to_string()),
@@ -661,7 +663,6 @@ mod tests {
         );
         source.config = SourceConfig::Decklink(DecklinkSourceConfig {
             connection: VideoConnection::Hdmi,
-            supported_connections: VideoConnections::EMPTY,
         });
         let json = serde_json::to_string(&source).unwrap();
         let parsed: Source = serde_json::from_str(&json).unwrap();
@@ -681,7 +682,7 @@ mod tests {
 
         let mut cfg = Config::default();
         cfg.canvas.width = 1234;
-        cfg.canvas.sources.push(Source::new_v4(
+        cfg.canvas.sources.push(Source::new(
             "Test".to_string(),
             Protocol::Test,
             Some("test-1".to_string()),
@@ -696,5 +697,64 @@ mod tests {
         assert_eq!(loaded.canvas.sources[0].protocol, Protocol::Test);
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn source_ref_round_trips() {
+        let json = r#"{
+            "uuid":"u1","name":"Cam","protocol":"Test","source_ref":"Test A",
+            "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit"
+        }"#;
+        let parsed: Source = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.source_ref.as_deref(), Some("Test A"));
+
+        let saved = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(saved["source_ref"], "Test A");
+    }
+
+    /// Quads on the same protocol + source_ref share one runtime source: the
+    /// shared reference and its config survive save → load on both quads.
+    #[test]
+    fn quads_sharing_source_ref_round_trips() {
+        let json = r#"{
+            "canvas": {
+                "width":1920, "height":1080,
+                "sources": [
+                    {"uuid":"u1","name":"Quad A","protocol":"Ndi","source_ref":"Cam (1)",
+                     "x":0.0,"y":0.0,"width":960,"height":540,"z":0,"mode":"Fit",
+                     "config":{"protocol":"Ndi","bandwidth":"Highest","color_format":"UYVY_RGBA"}},
+                    {"uuid":"u2","name":"Quad B","protocol":"Ndi","source_ref":"Cam (1)",
+                     "x":960.0,"y":0.0,"width":960,"height":540,"z":1,"mode":"Fit",
+                     "config":{"protocol":"Ndi","bandwidth":"Highest","color_format":"UYVY_RGBA"}}
+                ]
+            }
+        }"#;
+
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        let [a, b] = &cfg.canvas.sources[..] else {
+            panic!("expected two sources")
+        };
+        // One shared runtime reference, with its config on every bound quad.
+        assert_eq!(a.source_ref.as_deref(), Some("Cam (1)"));
+        assert_eq!(b.source_ref.as_deref(), Some("Cam (1)"));
+        let (SourceConfig::Ndi(ca), SourceConfig::Ndi(cb)) = (&a.config, &b.config) else {
+            panic!("expected Ndi configs")
+        };
+        assert_eq!(ca.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
+        assert_eq!(cb.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
+
+        // Round-trip keeps the shared source_ref and config on both quads.
+        let saved = serde_json::to_string(&cfg).unwrap();
+        let reloaded: Config = serde_json::from_str(&saved).unwrap();
+        let [a, b] = &reloaded.canvas.sources[..] else {
+            panic!("expected two sources")
+        };
+        assert_eq!(a.source_ref.as_deref(), Some("Cam (1)"));
+        assert_eq!(b.source_ref.as_deref(), Some("Cam (1)"));
+        let (SourceConfig::Ndi(ca), SourceConfig::Ndi(cb)) = (&a.config, &b.config) else {
+            panic!("expected Ndi configs")
+        };
+        assert_eq!(ca.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
+        assert_eq!(cb.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
     }
 }

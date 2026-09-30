@@ -1,4 +1,4 @@
-use super::super::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
+use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -124,15 +124,13 @@ impl Default for TestSourceConfig {
 pub struct TestSource {
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
-    #[allow(dead_code)]
-    id: String,
-    name: String,
+    source_ref: SourceRef,
     running: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl TestSource {
-    pub fn spawn(id: String, cfg: &TestSourceConfig) -> Self {
+    pub fn spawn(source_ref: SourceRef, cfg: &TestSourceConfig) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let writer = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
@@ -143,9 +141,8 @@ impl TestSource {
         let cursor = cfg.cursor;
         let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
-        let name = id.clone();
         let thread = std::thread::Builder::new()
-            .name(format!("test-in-{id}"))
+            .name(format!("test-in-{source_ref}"))
             .spawn(move || {
                 let w = width;
                 let h = height;
@@ -198,7 +195,7 @@ impl TestSource {
                 }
             })
             .expect("spawn test source");
-        Self { slot, stats, id, name, running, thread: Some(thread) }
+        Self { slot, stats, source_ref, running, thread: Some(thread) }
     }
 }
 
@@ -208,7 +205,7 @@ impl Drop for TestSource {
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
-            tracing::error!(source=self.name, "Thread join failed: {:?}", e);
+            tracing::error!(source=self.source_ref, "Thread join failed: {:?}", e);
         }
     }
 }
@@ -216,10 +213,6 @@ impl Drop for TestSource {
 impl VideoSource for TestSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
         self.slot.lock().unwrap().clone()
-    }
-
-    fn name(&self) -> &str {
-        &self.name
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {

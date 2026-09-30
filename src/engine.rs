@@ -3,22 +3,24 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::compositor::{self, Compositor, Draw, Rect};
-use crate::config::{Config, Source, TextureMode};
-use crate::sources::{Protocol, SourceConfig, OutputConfig, SourceRegistry, OutputRegistry};
+use crate::config::{Config, LayerId, Source, TextureMode};
+use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, SourceRegistry, OutputRegistry};
 use crate::sources::decklink::Discovery as DecklinkDiscovery;
-use crate::sources::decklink::DecklinkOutputConfig;
+use crate::sources::decklink::{DecklinkSourceConfig, DecklinkOutputConfig};
 use crate::sources::ndi::Discovery as NdiDiscovery;
-use crate::sources::ndi::NdiOutputConfig;
+use crate::sources::ndi::{NdiSourceConfig, NdiOutputConfig};
 #[cfg(target_os = "macos")]
 use crate::sources::syphon::Discovery as SyphonDiscovery;
 #[cfg(target_os = "macos")]
-use crate::sources::syphon::SyphonOutputConfig;
+use crate::sources::syphon::{SyphonSourceConfig, SyphonOutputConfig};
 #[cfg(target_os = "macos")]
 use crate::sources::avfoundation::Discovery as AvFoundationDiscovery;
+#[cfg(target_os = "macos")]
+use crate::sources::avfoundation::AvFoundationSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::spout::Discovery as SpoutDiscovery;
 #[cfg(target_os = "windows")]
-use crate::sources::spout::SpoutOutputConfig;
+use crate::sources::spout::{SpoutSourceConfig, SpoutOutputConfig};
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 20.0;
@@ -137,8 +139,8 @@ pub struct Engine {
     pub project_path: Option<PathBuf>,
     pub dirty: bool,
     last_saved_at: Instant,
-    pub selected_layer_id: Option<String>,
-    pub expanded_source_id: Option<String>,
+    pub selected_layer_id: Option<LayerId>,
+    pub expanded_layer_id: Option<LayerId>,
     pub drag_state: DragState,
     pub snap_guides: SnapGuides,
     pub view: ViewState,
@@ -190,7 +192,7 @@ impl Engine {
             dirty: false,
             last_saved_at: Instant::now(),
             selected_layer_id: None,
-            expanded_source_id: None,
+            expanded_layer_id: None,
             drag_state: DragState::None,
             snap_guides: SnapGuides::default(),
             view: ViewState::new(),
@@ -244,11 +246,11 @@ impl Engine {
                     SourceConfig::Test(c) => Some(c.clone()),
                     _ => None,
                 };
-                let sid = self.registry.add_test(test_config);
-                source.source_id = Some(sid);
+                let key = self.registry.add_test(test_config);
+                source.source_ref = Some(key.source_ref);
                 self.dirty = true;
             }
-            // NDI and Syphon sources keep their source_id; auto-connect happens in update()
+            // NDI and Syphon sources keep their source_ref; auto-connect happens in update()
         }
 
         // Seed demo layout if nothing was loaded
@@ -256,13 +258,13 @@ impl Engine {
             let w = self.cfg.canvas.width as f32;
             let h = self.cfg.canvas.height as f32;
             for i in 0..2 {
-                let sid = self.registry.add_test(None);
+                let key = self.registry.add_test(None);
                 let col = i % 2;
                 let row = i / 2;
-                self.cfg.canvas.sources.push(Source::new_v4(
+                self.cfg.canvas.sources.push(Source::new(
                     format!("Source {}", i + 1),
                     Protocol::Test,
-                    Some(sid),
+                    Some(key.source_ref),
                     col as f32 * w / 2.0,
                     row as f32 * h / 2.0,
                     (w / 2.0) as u32,
@@ -388,44 +390,45 @@ impl Engine {
 
     pub fn update(&mut self) {
         // Auto-connect pending NDI sources when they appear in discovery
-        if let Some(ref ndi) = self.ndi {
-            let discovered = ndi.list();
+        if let Some(ref discovery) = self.ndi {
+            let discovered = discovery.list();
             for source in &self.cfg.canvas.sources {
                 if source.protocol == Protocol::Ndi
-                    && let Some(ref name) = source.source_id
-                    && self.registry.get(name).is_none()
-                    && let Some(src) = discovered.iter().find(|s| &s.name == name)
+                    && let Some(ref source_ref) = source.source_ref
                 {
-                    let ndi_config = match &source.config {
-                        SourceConfig::Ndi(c) => Some(c.clone()),
-                        _ => None,
-                    };
-                    self.registry.add_ndi(name.clone(), src.clone(), ndi_config);
-                    self.dirty = true;
+                    let key = SourceKey::new(Protocol::Ndi, source_ref.clone());
+                    if !self.registry.contains(&key)
+                        && let Some(src) = discovered.iter().find(|s| &s.name == source_ref)
+                    {
+                        let config = match &source.config {
+                            SourceConfig::Ndi(c) => c.clone(),
+                            _ => NdiSourceConfig::default(),
+                        };
+                        self.registry.add_ndi(key, config, src.clone());
+                        self.dirty = true;
+                    }
                 }
             }
         }
 
         // Auto-connect pending DeckLink sources when they appear in discovery
-        if let Some(ref decklink) = self.decklink {
-            let discovered = decklink.list();
+        if let Some(ref discovery) = self.decklink {
+            let discovered = discovery.list();
             for source in &self.cfg.canvas.sources {
                 if source.protocol == Protocol::Decklink
-                    && let Some(ref name) = source.source_id
-                    && self.registry.get(name).is_none()
-                    && let Some(port) = discovered.iter().find(|p| &p.name == name)
+                    && let Some(ref source_ref) = source.source_ref
                 {
-                    let decklink_config = match &source.config {
-                        SourceConfig::Decklink(c) => Some(c.clone()),
-                        _ => None,
-                    };
-                    self.registry.add_decklink(
-                        name.clone(),
-                        name.clone(),
-                        Some(port.connections),
-                        decklink_config,
-                    );
-                    self.dirty = true;
+                    let key = SourceKey::new(Protocol::Decklink, source_ref.clone());
+                    if !self.registry.contains(&key)
+                        && let Some(port) = discovered.iter().find(|p| &p.name == source_ref)
+                    {
+                        let config = match &source.config {
+                            SourceConfig::Decklink(c) => c.clone(),
+                            _ => DecklinkSourceConfig::default(),
+                        };
+                        self.registry.add_decklink(key, config, port.connections);
+                        self.dirty = true;
+                    }
                 }
             }
         }
@@ -433,20 +436,23 @@ impl Engine {
         // Auto-connect pending Syphon sources on macOS
         #[cfg(target_os = "macos")]
         {
-            if let Some(ref syphon) = self.syphon {
-                let discovered = syphon.list();
+            if let Some(ref discovery) = self.syphon {
+                let discovered = discovery.list();
                 for source in &self.cfg.canvas.sources {
                     if source.protocol == Protocol::Syphon
-                        && let Some(ref name) = source.source_id
-                        && self.registry.get(name).is_none()
-                        && discovered.iter().any(|s| s == name)
+                        && let Some(ref source_ref) = source.source_ref
                     {
-                        let syphon_config = match &source.config {
-                            SourceConfig::Syphon(c) => Some(c.clone()),
-                            _ => None,
-                        };
-                        self.registry.add_syphon(name.clone(), name.clone(), syphon_config);
-                        self.dirty = true;
+                        let key = SourceKey::new(Protocol::Syphon, source_ref.clone());
+                        if !self.registry.contains(&key)
+                            && discovered.iter().any(|s| s == source_ref)
+                        {
+                            let config = match &source.config {
+                                SourceConfig::Syphon(c) => c.clone(),
+                                _ => SyphonSourceConfig::default(),
+                            };
+                            self.registry.add_syphon(key, config);
+                            self.dirty = true;
+                        }
                     }
                 }
             }
@@ -458,21 +464,20 @@ impl Engine {
             if let Some(ref avf) = self.avfoundation {
                 for source in &self.cfg.canvas.sources {
                     if source.protocol == Protocol::AvFoundation
-                        && let Some(ref name) = source.source_id
-                        && self.registry.get(name).is_none()
-                        && let Some(device) = avf.find_by_name(name)
+                        && let Some(ref source_ref) = source.source_ref
                     {
-                        let mut avf_config = match &source.config {
-                            SourceConfig::AvFoundation(c) => c.clone(),
-                            _ => crate::sources::AvFoundationSourceConfig::default(),
-                        };
-                        avf_config.device_unique_id = device.unique_id.clone();
-                        self.registry.add_avfoundation(
-                            device.name.clone(),
-                            device.name.clone(),
-                            Some(avf_config),
-                        );
-                        self.dirty = true;
+                        let key = SourceKey::new(Protocol::AvFoundation, source_ref.clone());
+                        if !self.registry.contains(&key)
+                            && let Some(device) = avf.find_by_name(source_ref)
+                        {
+                            let mut config = match &source.config {
+                                SourceConfig::AvFoundation(c) => c.clone(),
+                                _ => AvFoundationSourceConfig::default(),
+                            };
+                            config.device_unique_id = device.unique_id.clone();
+                            self.registry.add_avfoundation(key, config);
+                            self.dirty = true;
+                        }
                     }
                 }
             }
@@ -481,20 +486,23 @@ impl Engine {
         // Auto-connect pending Spout sources on Windows
         #[cfg(target_os = "windows")]
         {
-            if let Some(ref spout) = self.spout {
-                let discovered = spout.list();
+            if let Some(ref discovery) = self.spout {
+                let discovered = discovery.list();
                 for source in &self.cfg.canvas.sources {
                     if source.protocol == Protocol::Spout
-                        && let Some(ref name) = source.source_id
-                        && self.registry.get(name).is_none()
-                        && discovered.iter().any(|s| s == name)
+                        && let Some(ref source_ref) = source.source_ref
                     {
-                        let spout_config = match &source.config {
-                            SourceConfig::Spout(c) => Some(c.clone()),
-                            _ => None,
-                        };
-                        self.registry.add_spout(name.clone(), name.clone(), spout_config);
-                        self.dirty = true;
+                        let key = SourceKey::new(Protocol::Spout, source_ref.clone());
+                        if !self.registry.contains(&key)
+                            && discovered.iter().any(|s| s == source_ref)
+                        {
+                            let config = match &source.config {
+                                SourceConfig::Spout(c) => c.clone(),
+                                _ => SpoutSourceConfig::default(),
+                            };
+                            self.registry.add_spout(key, config);
+                            self.dirty = true;
+                        }
                     }
                 }
             }
@@ -535,7 +543,7 @@ impl Engine {
             &self.registry,
             panel_rect,
             transform,
-            self.expanded_source_id.as_deref(),
+            self.expanded_layer_id.as_deref(),
         )
     }
 
@@ -555,7 +563,7 @@ impl Engine {
             queue,
             &self.cfg.canvas,
             &self.registry,
-            self.expanded_source_id.as_deref(),
+            self.expanded_layer_id.as_deref(),
         );
         if let Some((texture, w, h)) = comp.canvas_texture() {
             self.output_registry
@@ -568,23 +576,26 @@ impl Engine {
     }
 
     pub fn cleanup_orphaned_sources(&mut self) {
-        let active_ids: Vec<&str> = self
+        let active_keys: Vec<SourceKey> = self
             .cfg
             .canvas
             .sources
             .iter()
-            .filter_map(|l| l.source_id.as_deref())
+            .filter_map(|l| {
+                l.source_ref.clone()
+                    .map(|source_ref| SourceKey::new(l.protocol.clone(), source_ref))
+            })
             .collect();
-        self.registry.cleanup_orphaned_sources(&active_ids);
+        self.registry.cleanup_orphaned_sources(&active_keys);
     }
 
     pub fn add_layer(&mut self) -> String {
-        let sid = self.registry.add_test(None);
+        let key = self.registry.add_test(None);
         let num = self.cfg.canvas.sources.len() + 1;
-        let source = Source::new_v4(
+        let source = Source::new(
             format!("Source {num}"),
             Protocol::Test,
-            Some(sid),
+            Some(key.source_ref),
             self.cfg.canvas.width as f32 * 0.25,
             self.cfg.canvas.height as f32 * 0.25,
             self.cfg.canvas.width / 2,
@@ -605,75 +616,104 @@ impl Engine {
         if self.selected_layer_id.as_deref() == Some(uuid) {
             self.selected_layer_id = None;
         }
-        if self.expanded_source_id.as_deref() == Some(uuid) {
-            self.expanded_source_id = None;
+        if self.expanded_layer_id.as_deref() == Some(uuid) {
+            self.expanded_layer_id = None;
         }
         self.dirty = true;
     }
 
+    /// Persist a runtime protocol config edit. The runtime source is shared by
+    /// every quad bound to the same (protocol, source_ref), so the edit is
+    /// written to all of them — one source, one config.
+    pub fn sync_source_config(&mut self, layer_uuid: &str, config: SourceConfig) {
+        let Some((protocol, source_ref)) = self
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .find(|s| s.uuid == layer_uuid)
+            .map(|s| (s.protocol.clone(), s.source_ref.clone()))
+        else {
+            return;
+        };
+        for quad in self.cfg.canvas.sources.iter_mut() {
+            let bound = quad.uuid == layer_uuid
+                || (source_ref.is_some()
+                    && quad.protocol == protocol
+                    && quad.source_ref == source_ref);
+            if bound {
+                quad.config = config.clone();
+            }
+        }
+        self.dirty = true;
+    }
+
+    /// Persisted config of the quad on `protocol` that references
+    /// `source_ref` — scoped by protocol so another protocol carrying the
+    /// same source_ref never leaks its config in.
+    fn quad_config(&self, protocol: &Protocol, source_ref: &str) -> Option<&SourceConfig> {
+        return self
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .find(|s| s.protocol == *protocol && s.source_ref.as_deref() == Some(source_ref))
+            .map(|s| &s.config);
+    }
+
     pub fn connect(&mut self, protocol: Protocol, name: &str) {
+        let key = SourceKey::new(protocol.clone(), name.to_string());
         match protocol {
+            // Test sources are created locally, never connected to.
             Protocol::Test => {}
             Protocol::Ndi => {
-                if let Some(ref ndi) = self.ndi
-                    && let Some(src) = ndi.find_by_name(name)
+                if let Some(ref discovery) = self.ndi
+                    && let Some(src) = discovery.find_by_name(name)
                 {
-                    let ndi_config = self.cfg.canvas.sources.iter()
-                        .find(|s| s.source_id.as_deref() == Some(name))
-                        .and_then(|s| match &s.config {
-                            SourceConfig::Ndi(c) => Some(c.clone()),
-                            _ => None,
-                        });
-                    self.registry.add_ndi(name.to_string(), src, ndi_config);
+                    let config = match self.quad_config(&Protocol::Ndi, name) {
+                        Some(SourceConfig::Ndi(c)) => c.clone(),
+                        _ => NdiSourceConfig::default(),
+                    };
+                    self.registry.add_ndi(key, config, src);
                 }
             }
             Protocol::Decklink => {
-                let connections = self
+                let config = match self.quad_config(&Protocol::Decklink, name) {
+                    Some(SourceConfig::Decklink(c)) => c.clone(),
+                    _ => DecklinkSourceConfig::default(),
+                };
+                let supported_connections = self
                     .decklink
                     .as_ref()
                     .and_then(|d| d.find_by_name(name))
-                    .map(|p| p.connections);
-                let decklink_config = self.cfg.canvas.sources.iter()
-                    .find(|s| s.source_id.as_deref() == Some(name))
-                    .and_then(|s| match &s.config {
-                        SourceConfig::Decklink(c) => Some(c.clone()),
-                        _ => None,
-                    });
-                self.registry
-                    .add_decklink(name.to_string(), name.to_string(), connections, decklink_config);
+                    .map(|p| p.connections)
+                    .unwrap_or_default();
+                self.registry.add_decklink(key, config, supported_connections);
             }
             #[cfg(target_os = "macos")]
             Protocol::Syphon => {
-                let syphon_config = self.cfg.canvas.sources.iter()
-                    .find(|s| s.source_id.as_deref() == Some(name))
-                    .and_then(|s| match &s.config {
-                        SourceConfig::Syphon(c) => Some(c.clone()),
-                        _ => None,
-                    });
-                self.registry.add_syphon(name.to_string(), name.to_string(), syphon_config);
+                let config = match self.quad_config(&Protocol::Syphon, name) {
+                    Some(SourceConfig::Syphon(c)) => c.clone(),
+                    _ => SyphonSourceConfig::default(),
+                };
+                self.registry.add_syphon(key, config);
             }
             #[cfg(target_os = "macos")]
             Protocol::AvFoundation => {
                 if let Some(device) = self.avfoundation.as_ref().and_then(|d| d.find_by_name(name)) {
-                    let avf_config = crate::sources::AvFoundationSourceConfig {
+                    let config = AvFoundationSourceConfig {
                         device_unique_id: device.unique_id.clone(),
                     };
-                    self.registry.add_avfoundation(
-                        device.name.clone(),
-                        device.name.clone(),
-                        Some(avf_config),
-                    );
+                    self.registry.add_avfoundation(key, config);
                 }
             }
             #[cfg(target_os = "windows")]
             Protocol::Spout => {
-                let spout_config = self.cfg.canvas.sources.iter()
-                    .find(|s| s.source_id.as_deref() == Some(name))
-                    .and_then(|s| match &s.config {
-                        SourceConfig::Spout(c) => Some(c.clone()),
-                        _ => None,
-                    });
-                self.registry.add_spout(name.to_string(), name.to_string(), spout_config);
+                let config = match self.quad_config(&Protocol::Spout, name) {
+                    Some(SourceConfig::Spout(c)) => c.clone(),
+                    _ => SpoutSourceConfig::default(),
+                };
+                self.registry.add_spout(key, config);
             }
             // Unavailable protocols have no runtime source to connect.
             Protocol::Unknown(_) => {}
@@ -681,7 +721,7 @@ impl Engine {
     }
 
     pub fn add_output(&mut self, protocol: Protocol, name: String, config: OutputConfig) -> String {
-        let output = crate::config::Output::new_v4(name.clone(), protocol.clone(), true, config.clone());
+        let output = crate::config::Output::new(name.clone(), protocol.clone(), true, config.clone());
         let id = output.uuid.clone();
         self.cfg.canvas.outputs.push(output);
 
@@ -825,15 +865,15 @@ impl Engine {
     }
 
     pub fn expand_source(&mut self, uuid: String) {
-        self.expanded_source_id = Some(uuid);
+        self.expanded_layer_id = Some(uuid);
     }
 
     pub fn clear_expanded_source(&mut self) {
-        self.expanded_source_id = None;
+        self.expanded_layer_id = None;
     }
 
-    pub fn expanded_source_id(&self) -> Option<&str> {
-        self.expanded_source_id.as_deref()
+    pub fn expanded_layer_id(&self) -> Option<&str> {
+        self.expanded_layer_id.as_deref()
     }
 
     pub fn select_next_source(&mut self) {
@@ -875,7 +915,7 @@ impl Engine {
     }
 
     pub fn nudge_selected_source(&mut self, dx: f32, dy: f32) {
-        if self.expanded_source_id.is_some() {
+        if self.expanded_layer_id.is_some() {
             return;
         }
         let Some(uuid) = self.selected_layer_id.clone() else { return };
@@ -1327,7 +1367,7 @@ mod tests {
             dirty: false,
             last_saved_at: Instant::now(),
             selected_layer_id: None,
-            expanded_source_id: None,
+            expanded_layer_id: None,
             drag_state: DragState::None,
             snap_guides: SnapGuides::default(),
             view: ViewState::new(),
@@ -1344,10 +1384,10 @@ mod tests {
             "canvas": {
                 "width":1920, "height":1080,
                 "sources": [
-                    {"uuid":"u1","name":"Spout In","protocol":"fake","source_id":"Spout1",
+                    {"uuid":"u1","name":"Spout In","protocol":"fake","source_ref":"Spout1",
                      "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit",
                      "config":{"protocol":"fake","name":"Game"}},
-                    {"uuid":"u2","name":"Bars","protocol":"Test","source_id":"Test A",
+                    {"uuid":"u2","name":"Bars","protocol":"Test","source_ref":"Test A",
                      "x":0.0,"y":0.0,"width":640,"height":360,"z":1,"mode":"Fit"}
                 ],
                 "outputs":[
@@ -1374,11 +1414,17 @@ mod tests {
         };
         assert_eq!(v.get("name"), Some(&serde_json::json!("Game")));
 
-        // Only the Test source gets a runtime instance.
+        // Only the Test source gets a runtime instance. The unavailable quad's
+        // key is distinct from any live source that happens to share its ref.
         assert_eq!(engine.registry.iter().count(), 1);
-        assert!(engine.registry.get(&"Spout1".to_string()).is_none());
-        let test_sid = engine.cfg.canvas.sources[1].source_id.clone().unwrap();
-        assert!(engine.registry.get(&test_sid).is_some());
+        let unavailable_key =
+            SourceKey::new(Protocol::Unknown("fake".to_string()), "Spout1".to_string());
+        assert!(engine.registry.get(&unavailable_key).is_none());
+        let test_key = SourceKey::new(
+            Protocol::Test,
+            engine.cfg.canvas.sources[1].source_ref.clone().unwrap(),
+        );
+        assert!(engine.registry.get(&test_key).is_some());
 
         // The status bar picks this up from load_warnings.
         assert_eq!(engine.load_warnings.len(), 1);
@@ -1396,7 +1442,7 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L1".into(),
             Protocol::Test,
             None,
@@ -1412,11 +1458,11 @@ mod tests {
         let mut engine = test_engine(canvas);
         let uuid = engine.cfg.canvas.sources[0].uuid.clone();
 
-        assert!(engine.expanded_source_id().is_none());
+        assert!(engine.expanded_layer_id().is_none());
         engine.expand_source(uuid.clone());
-        assert_eq!(engine.expanded_source_id(), Some(uuid.as_str()));
+        assert_eq!(engine.expanded_layer_id(), Some(uuid.as_str()));
         engine.clear_expanded_source();
-        assert!(engine.expanded_source_id().is_none());
+        assert!(engine.expanded_layer_id().is_none());
     }
 
     #[test]
@@ -1428,7 +1474,7 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L1".into(),
             Protocol::Test,
             None,
@@ -1446,7 +1492,7 @@ mod tests {
         engine.expand_source(uuid.clone());
 
         engine.remove_layer(&uuid);
-        assert!(engine.expanded_source_id().is_none());
+        assert!(engine.expanded_layer_id().is_none());
     }
 
     #[test]
@@ -1504,7 +1550,7 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
 
             "L1".into(),
             Protocol::Test,
@@ -1518,7 +1564,7 @@ mod tests {
             false,
             false,
         ));
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L2".into(),
             Protocol::Test,
             None,
@@ -1555,7 +1601,7 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
 
             "L1".into(),
             Protocol::Test,
@@ -1625,7 +1671,7 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
 
             "L1".into(),
             Protocol::Test,
@@ -1663,7 +1709,7 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
 
             "L1".into(),
             Protocol::Test,
@@ -1677,7 +1723,7 @@ mod tests {
             false,
             false,
         ));
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L2".into(),
             Protocol::Test,
             None,
@@ -1715,7 +1761,7 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
 
             "L1".into(),
             Protocol::Test,
@@ -1763,12 +1809,12 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L1".into(), Protocol::Test, None,
             0.0, 0.0, 100, 100, 0,
             TextureMode::Fit, false, false,
         ));
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L2".into(), Protocol::Test, None,
             100.0, 0.0, 100, 100, 1,
             TextureMode::Fit, false, false,
@@ -1796,12 +1842,12 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L1".into(), Protocol::Test, None,
             0.0, 0.0, 100, 100, 0,
             TextureMode::Fit, false, false,
         ));
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L2".into(), Protocol::Test, None,
             100.0, 0.0, 100, 100, 1,
             TextureMode::Fit, false, false,
@@ -1826,7 +1872,7 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L1".into(), Protocol::Test, None,
             10.0, 20.0, 100, 100, 0,
             TextureMode::Fit, false, false,
@@ -1851,7 +1897,7 @@ mod tests {
             outputs: Vec::new(),
             ..Default::default()
         };
-        canvas.sources.push(Source::new_v4(
+        canvas.sources.push(Source::new(
             "L1".into(), Protocol::Test, None,
             10.0, 20.0, 100, 100, 0,
             TextureMode::Fit, false, false,
@@ -1906,7 +1952,7 @@ mod tests {
     #[test]
     fn enabling_output_with_missing_runtime_recreates_it() {
         let mut engine = test_engine(crate::config::Canvas::default());
-        let output = crate::config::Output::new_v4(
+        let output = crate::config::Output::new(
             "NDI".to_string(),
             Protocol::Ndi,
             false,
@@ -1922,5 +1968,75 @@ mod tests {
         assert!(engine.cfg.canvas.outputs.iter().any(|o| o.uuid == id && o.enabled));
         let registered = engine.output_registry.get(&id).expect("runtime object recreated");
         assert!(registered.enabled());
+    }
+
+    /// An edit on one quad persists to every quad bound to the same
+    /// (protocol, source_ref) — and to no quad bound to a different source or
+    /// protocol, even when the reference string is identical.
+    #[test]
+    fn sync_source_config_updates_quads_sharing_the_key() {
+        use crate::sources::NdiSourceConfig;
+        let mut canvas = crate::config::Canvas {
+            width: 1920,
+            height: 1080,
+            sources: vec![],
+            outputs: Vec::new(),
+            ..Default::default()
+        };
+        let ndi = |bw| SourceConfig::Ndi(NdiSourceConfig {
+            bandwidth: bw,
+            color_format: grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
+        });
+        let highest = grafton_ndi::ReceiverBandwidth::Highest;
+        let lowest = grafton_ndi::ReceiverBandwidth::Lowest;
+
+        let mut quad_a = Source::new(
+            "Quad A".into(), Protocol::Ndi, Some("Cam (1)".into()),
+            0.0, 0.0, 960, 540, 0, TextureMode::Fit, false, false,
+        );
+        quad_a.config = ndi(highest);
+        let mut quad_b = Source::new(
+            "Quad B".into(), Protocol::Ndi, Some("Cam (1)".into()),
+            960.0, 0.0, 960, 540, 1, TextureMode::Fit, false, false,
+        );
+        quad_b.config = ndi(highest);
+        let mut quad_c = Source::new(
+            "Quad C".into(), Protocol::Ndi, Some("Other Cam".into()),
+            0.0, 540.0, 960, 540, 2, TextureMode::Fit, false, false,
+        );
+        quad_c.config = ndi(highest);
+        let mut quad_d = Source::new(
+            "Quad D".into(), Protocol::Decklink, Some("Cam (1)".into()),
+            960.0, 540.0, 960, 540, 3, TextureMode::Fit, false, false,
+        );
+        quad_d.config = SourceConfig::Decklink(DecklinkSourceConfig {
+            connection: decklink::VideoConnection::Hdmi,
+        });
+        canvas.sources.extend([quad_a, quad_b, quad_c, quad_d]);
+        let mut engine = test_engine(canvas);
+        let uuid_a = engine.cfg.canvas.sources[0].uuid.clone();
+
+        engine.sync_source_config(&uuid_a, ndi(lowest));
+
+        let [a, b, c, d] = &engine.cfg.canvas.sources[..] else {
+            panic!("expected four sources")
+        };
+        // Same (protocol, source_ref): both quads show the edit.
+        let (SourceConfig::Ndi(ca), SourceConfig::Ndi(cb)) = (&a.config, &b.config) else {
+            panic!("expected Ndi configs")
+        };
+        assert_eq!(ca.bandwidth, lowest);
+        assert_eq!(cb.bandwidth, lowest);
+        // Same protocol, different source_ref: untouched.
+        let SourceConfig::Ndi(cc) = &c.config else {
+            panic!("expected Ndi config")
+        };
+        assert_eq!(cc.bandwidth, highest);
+        // Same reference string under another protocol is a different key.
+        let SourceConfig::Decklink(cd) = &d.config else {
+            panic!("expected Decklink config")
+        };
+        assert_eq!(cd.connection, decklink::VideoConnection::Hdmi);
+        assert!(engine.dirty);
     }
 }

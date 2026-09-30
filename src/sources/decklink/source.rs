@@ -1,61 +1,21 @@
-use crate::sources::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
-use multiviewer_decklink::{DecklinkPixelFormat, VideoConnection, VideoConnections};
+use crate::sources::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
+use multiviewer_decklink::{DecklinkPixelFormat, VideoConnection};
 use multiviewer_decklink::{decklink_source_new, decklink_source_free, decklink_source_set_connection, decklink_source_start, decklink_source_stop, decklink_source_poll_frame};
 use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use serde::{Deserialize, Serialize, Deserializer, Serializer};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DecklinkSourceConfig {
+    // Unspecified falls back to whatever the device reports first.
+    #[serde(default)]
     pub connection: VideoConnection,
-    pub supported_connections: VideoConnections,
-}
-
-impl Serialize for DecklinkSourceConfig {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("DecklinkSourceConfig", 1)?;
-        state.serialize_field("connection", &self.connection)?;
-        state.end()
-    }
-}
-
-impl<'de> Deserialize<'de> for DecklinkSourceConfig {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        struct Helper {
-            #[serde(default)]
-            connection: VideoConnection,
-        }
-        let helper = Helper::deserialize(deserializer)?;
-        Ok(DecklinkSourceConfig {
-            connection: helper.connection,
-            supported_connections: VideoConnections::EMPTY,
-        })
-    }
-}
-
-impl Default for DecklinkSourceConfig {
-    fn default() -> Self {
-        Self {
-            connection: VideoConnection::Unspecified,
-            supported_connections: VideoConnections::EMPTY,
-        }
-    }
 }
 
 pub struct DecklinkSource {
-    #[allow(dead_code)]
-    id: String,
-    name: String,
+    source_ref: SourceRef,
     latest: Arc<Mutex<Option<CpuFrame>>>,
     stats: Arc<Mutex<SourceStats>>,
     running: Arc<AtomicBool>,
@@ -63,37 +23,37 @@ pub struct DecklinkSource {
 }
 
 impl DecklinkSource {
-    pub fn spawn(id: String, display_name: String, cfg: &DecklinkSourceConfig) -> Self {
+    pub fn spawn(source_ref: SourceRef, cfg: &DecklinkSourceConfig) -> Self {
         let latest = Arc::new(Mutex::new(None));
         let latest2 = latest.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let stats2 = stats.clone();
         let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
-        let name = id.clone();
-        let name_for_thread = name.clone();
+        let device_name = source_ref.clone();
+        let trace_ref = source_ref.clone();
         let connection = cfg.connection;
         let thread = std::thread::Builder::new()
-            .name(format!("decklink-in-{}", id))
+            .name(format!("decklink-in-{source_ref}"))
             .spawn(move || {
                 unsafe {
-                    let display_name_c = match CString::new(display_name) {
+                    let display_name_c = match CString::new(device_name) {
                         Ok(c) => c,
                         Err(_) => {
-                            tracing::error!(source=name_for_thread, "DeckLink display name contains null");
+                            tracing::error!(source=trace_ref, "DeckLink display name contains null");
                             return;
                         }
                     };
                     let src = decklink_source_new(display_name_c.as_ptr());
                     if src.is_null() {
-                        tracing::error!(source=name_for_thread, "DeckLink source creation failed");
+                        tracing::error!(source=trace_ref, "DeckLink source creation failed");
                         return;
                     }
                     if !matches!(connection, VideoConnection::Unspecified) {
                         decklink_source_set_connection(src, connection as u32);
                     }
                     if !decklink_source_start(src) {
-                        tracing::error!(source=name_for_thread, "DeckLink source start failed");
+                        tracing::error!(source=trace_ref, "DeckLink source start failed");
                         decklink_source_free(src);
                         return;
                     }
@@ -182,8 +142,7 @@ impl DecklinkSource {
             })
             .expect("spawn decklink source");
         Self {
-            id,
-            name,
+            source_ref,
             latest,
             stats,
             running,
@@ -198,7 +157,7 @@ impl Drop for DecklinkSource {
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
-            tracing::error!(source=self.name, "DeckLink thread join failed: {:?}", e);
+            tracing::error!(source=self.source_ref, "DeckLink thread join failed: {:?}", e);
         }
     }
 }
@@ -210,10 +169,6 @@ impl VideoSource for DecklinkSource {
             .unwrap()
             .as_ref()
             .map(|f| Frame::Cpu(f.clone()))
-    }
-
-    fn name(&self) -> &str {
-        &self.name
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {

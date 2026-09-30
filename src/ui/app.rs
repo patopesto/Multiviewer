@@ -174,7 +174,7 @@ impl App {
             }
             Shortcut::DeleteSource => {
                 // Avoid deleting while a source is expanded; user can press Esc first.
-                if self.engine.expanded_source_id.is_some() {
+                if self.engine.expanded_layer_id.is_some() {
                     return;
                 }
                 if let Some(uuid) = self.engine.selected_layer_id.take() {
@@ -182,14 +182,14 @@ impl App {
                 }
             }
             Shortcut::ExpandSource => {
-                if self.engine.expanded_source_id.is_some() {
+                if self.engine.expanded_layer_id.is_some() {
                     self.engine.clear_expanded_source();
                 } else if let Some(uuid) = self.engine.selected_layer_id.clone() {
                     self.engine.expand_source(uuid);
                 }
             }
             Shortcut::ExitExpanded => {
-                if self.engine.expanded_source_id.is_some() {
+                if self.engine.expanded_layer_id.is_some() {
                     self.engine.clear_expanded_source();
                 } else {
                     self.engine.selected_layer_id = None;

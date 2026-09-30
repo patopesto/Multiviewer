@@ -1,4 +1,4 @@
-use super::super::{ConvUniform, Frame, PixelFormat, SourceStats, VideoSource};
+use super::super::{ConvUniform, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
@@ -8,8 +8,7 @@ pub struct SyphonSourceConfig {}
 
 /// GPU-only Syphon receiver.
 pub struct SyphonSource {
-    name: String,
-    server_name: String,
+    source_ref: SourceRef,
     input: Mutex<Option<syphon_wgpu::SyphonWgpuInput>>,
     layout: Mutex<Option<Arc<wgpu::BindGroupLayout>>>,
     sampler: Mutex<Option<Arc<wgpu::Sampler>>>,
@@ -20,10 +19,9 @@ pub struct SyphonSource {
 }
 
 impl SyphonSource {
-    pub fn spawn(id: String, server_name: String) -> Self {
+    pub fn spawn(source_ref: SourceRef) -> Self {
         Self {
-            name: id,
-            server_name,
+            source_ref,
             input: Mutex::new(None),
             layout: Mutex::new(None),
             sampler: Mutex::new(None),
@@ -41,12 +39,12 @@ impl VideoSource for SyphonSource {
 
         if input_guard.is_none() {
             let mut input = syphon_wgpu::SyphonWgpuInput::new(device, queue);
-            match input.connect(&self.server_name) {
+            match input.connect(&self.source_ref) {
                 Ok(()) => {
-                    tracing::info!(source=self.server_name, "Syphon connected");
+                    tracing::info!(source=self.source_ref, "Syphon connected");
                 }
                 Err(e) => {
-                    tracing::error!(source=self.server_name, "Syphon connect failed: {}", e);
+                    tracing::error!(source=self.source_ref, "Syphon connect failed: {}", e);
                     return None;
                 }
             }
@@ -118,7 +116,7 @@ impl VideoSource for SyphonSource {
             if dims.0 != w || dims.1 != h || bg.is_none() {
                 let view = tex.create_view(&Default::default());
                 let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some(&format!("{}-conv", self.name)),
+                    label: Some(&format!("{}-conv", self.source_ref)),
                     size: std::mem::size_of::<ConvUniform>() as u64,
                     usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,
@@ -134,7 +132,7 @@ impl VideoSource for SyphonSource {
                     }]),
                 );
                 let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: Some(&self.name),
+                    label: Some(&self.source_ref),
                     layout: layout.as_ref().unwrap(),
                     entries: &[
                         wgpu::BindGroupEntry {
@@ -177,10 +175,6 @@ impl VideoSource for SyphonSource {
                 seq: self.seq.load(Ordering::Relaxed),
             }))
         }
-    }
-
-    fn name(&self) -> &str {
-        &self.name
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {

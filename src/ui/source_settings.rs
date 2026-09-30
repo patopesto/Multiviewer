@@ -1,6 +1,6 @@
-use crate::sources::{DecklinkSourceConfig, NdiSourceConfig, SourceKind, TestSourceConfig};
+use crate::sources::{DecklinkSourceConfig, NdiSourceConfig, SourceKind, SourceRuntimeConfig, TestSourceConfig};
 use crate::sources::test::{TestPattern, RadarDirection};
-use crate::sources::decklink::VideoConnection;
+use crate::sources::decklink::{VideoConnection, VideoConnections};
 use crate::ui::side_panel::{settings_grid, settings_value};
 
 #[cfg(target_os = "macos")]
@@ -12,9 +12,9 @@ use crate::sources::SpoutSourceConfig;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
     match source {
-        SourceKind::Test(_, cfg) => test_settings_ui(cfg, ui),
+        SourceKind::Test(_, cfg, _) => test_settings_ui(cfg, ui),
         SourceKind::Ndi(_, cfg, _) => ndi_settings_ui(cfg, ui),
-        SourceKind::Decklink(_, cfg, _) => decklink_settings_ui(cfg, ui),
+        SourceKind::Decklink(_, cfg, runtime) => decklink_settings_ui(cfg, runtime, ui),
         #[cfg(target_os = "macos")]
         SourceKind::Syphon(_, cfg, _) => syphon_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
@@ -230,13 +230,23 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
     cfg.bandwidth != old_bw || cfg.color_format != old_cf
 }
 
-fn decklink_settings_ui(cfg: &mut DecklinkSourceConfig, ui: &mut egui::Ui) -> bool {
+fn decklink_settings_ui(
+    cfg: &mut DecklinkSourceConfig,
+    runtime: &SourceRuntimeConfig,
+    ui: &mut egui::Ui,
+) -> bool {
     let old_conn = cfg.connection;
+    // The connection mask lives in runtime data (discovered on connect), not
+    // in the persisted config; absent a live source, offer every connection.
+    let supported = match runtime {
+        SourceRuntimeConfig::Decklink { supported_connections } => *supported_connections,
+        _ => VideoConnections::EMPTY,
+    };
 
-    let available: Vec<VideoConnection> = if cfg.supported_connections.is_empty() {
+    let available: Vec<VideoConnection> = if supported.is_empty() {
         VideoConnection::ALL.to_vec()
     } else {
-        cfg.supported_connections.iter().collect()
+        supported.iter().collect()
     };
 
     settings_grid(ui, "decklink_settings_grid", |ui| {

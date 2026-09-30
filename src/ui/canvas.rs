@@ -85,7 +85,7 @@ pub fn update(
         && let Some(pos) = response.interact_pointer_pos()
     {
         response.request_focus();
-        if engine.expanded_source_id().is_some() {
+        if engine.expanded_layer_id().is_some() {
             // While a source is expanded, the canvas is used for panning only.
             engine.drag_state = DragState::None;
         } else if let Some((uuid, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
@@ -137,7 +137,7 @@ pub fn update(
     if ui_visible
         && response.hovered()
         && !primary_down
-        && engine.expanded_source_id().is_none()
+        && engine.expanded_layer_id().is_none()
         && let Some(pos) = response.hover_pos()
         && let Some((_, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y))
     {
@@ -189,7 +189,7 @@ pub fn update(
     if ui_visible {
         response.context_menu(|ui| {
             ui.set_min_width(100.0);
-            if engine.expanded_source_id().is_some() {
+            if engine.expanded_layer_id().is_some() {
                 if ui.button("Exit expanded view").clicked() {
                     engine.clear_expanded_source();
                     ui.close();
@@ -208,7 +208,7 @@ pub fn update(
 
     // Buttons
     if ui_visible {
-        if engine.expanded_source_id().is_some() {
+        if engine.expanded_layer_id().is_some() {
             let close_icon = asset_image!("close.svg");
             let close_image = egui::Image::new(close_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
             let close_rect = egui::Rect::from_min_size(
@@ -268,7 +268,7 @@ fn draw_overlays(
     );
 
     // Hide selection overlays while a source is expanded.
-    if engine.expanded_source_id().is_some() {
+    if engine.expanded_layer_id().is_some() {
         return;
     }
 

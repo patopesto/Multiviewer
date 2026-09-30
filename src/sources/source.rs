@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 
 use super::{Protocol, Frame};
-use super::decklink::{self, VideoConnections};
+use super::decklink;
 use super::ndi;
 use super::test;
 #[cfg(target_os = "macos")]
@@ -14,13 +14,24 @@ use super::avfoundation;
 #[cfg(target_os = "windows")]
 use super::spout;
 
-pub type SourceId = String;
+pub type SourceRef = String;
+
+/// Identity of a live source in the registry
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SourceKey {
+    pub protocol: Protocol,
+    pub source_ref: SourceRef,
+}
+
+impl SourceKey {
+    pub fn new(protocol: Protocol, source_ref: SourceRef) -> Self {
+        Self { protocol, source_ref }
+    }
+}
 
 // Runtime video source
 pub trait VideoSource: Send + Sync {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame>;
-    #[allow(dead_code)]
-    fn name(&self) -> &str;
     fn stats(&self) -> Arc<Mutex<SourceStats>>;
 }
 
@@ -148,38 +159,91 @@ pub struct ConvUniform {
     pub _pad: f32,
 }
 
+/// Data a source needs to open that cannot be derived from the `SourceKey`
+/// alone. Never persisted — it lives only in the registry so respawn can
+/// reopen the source without rediscovery.
+#[derive(Clone, Debug)]
+pub enum SourceRuntimeConfig {
+    Test,
+    Ndi { discovered: grafton_ndi::Source },
+    Decklink { supported_connections: decklink::VideoConnections },
+    #[cfg(target_os = "macos")]
+    Syphon,
+    #[cfg(target_os = "macos")]
+    AvFoundation,
+    #[cfg(target_os = "windows")]
+    Spout,
+}
+
 #[allow(clippy::large_enum_variant)]
 pub enum SourceKind {
-    Test(test::TestSource, test::TestSourceConfig),
-    Ndi(ndi::NdiSource, ndi::NdiSourceConfig, grafton_ndi::Source),
-    Decklink(decklink::DecklinkSource, decklink::DecklinkSourceConfig, String),
+    Test(test::TestSource, test::TestSourceConfig, SourceRuntimeConfig),
+    Ndi(ndi::NdiSource, ndi::NdiSourceConfig, SourceRuntimeConfig),
+    Decklink(decklink::DecklinkSource, decklink::DecklinkSourceConfig, SourceRuntimeConfig),
     #[cfg(target_os = "macos")]
-    Syphon(syphon::SyphonSource, syphon::SyphonSourceConfig, String),
+    Syphon(syphon::SyphonSource, syphon::SyphonSourceConfig, SourceRuntimeConfig),
     #[cfg(target_os = "macos")]
-    AvFoundation(avfoundation::AvFoundationSource, avfoundation::AvFoundationSourceConfig, String),
+    AvFoundation(avfoundation::AvFoundationSource, avfoundation::AvFoundationSourceConfig, SourceRuntimeConfig),
     #[cfg(target_os = "windows")]
-    Spout(spout::SpoutSource, spout::SpoutSourceConfig, String),
+    Spout(spout::SpoutSource, spout::SpoutSourceConfig, SourceRuntimeConfig),
 }
 
 impl SourceKind {
-    #[allow(dead_code)]
-    pub fn name(&self) -> &str {
-        match self {
-            SourceKind::Test(s, _) => s.name(),
-            SourceKind::Ndi(s, _, _) => s.name(),
-            SourceKind::Decklink(s, _, _) => s.name(),
+    fn new_test(key: &SourceKey, config: test::TestSourceConfig) -> Self {
+        let src = test::TestSource::spawn(key.source_ref.clone(), &config);
+        return Self::Test(src, config, SourceRuntimeConfig::Test);
+    }
+
+    fn new_ndi(key: &SourceKey, config: ndi::NdiSourceConfig, discovered: grafton_ndi::Source) -> Self {
+        let src = ndi::NdiSource::spawn(key.source_ref.clone(), discovered.clone(), &config);
+        return Self::Ndi(src, config, SourceRuntimeConfig::Ndi { discovered });
+    }
+
+    fn new_decklink(key: &SourceKey, config: decklink::DecklinkSourceConfig, supported_connections: decklink::VideoConnections) -> Self {
+        let src = decklink::DecklinkSource::spawn(key.source_ref.clone(), &config);
+        return Self::Decklink(src, config, SourceRuntimeConfig::Decklink { supported_connections });
+    }
+
+    #[cfg(target_os = "macos")]
+    fn new_syphon(key: &SourceKey, config: syphon::SyphonSourceConfig) -> Self {
+        let src = syphon::SyphonSource::spawn(key.source_ref.clone());
+        return Self::Syphon(src, config, SourceRuntimeConfig::Syphon);
+    }
+
+    #[cfg(target_os = "macos")]
+    fn new_avfoundation(key: &SourceKey, config: avfoundation::AvFoundationSourceConfig) -> Self {
+        let src = avfoundation::AvFoundationSource::spawn(key.source_ref.clone(), &config);
+        return Self::AvFoundation(src, config, SourceRuntimeConfig::AvFoundation);
+    }
+
+    #[cfg(target_os = "windows")]
+    fn new_spout(key: &SourceKey, config: spout::SpoutSourceConfig) -> Self {
+        let src = spout::SpoutSource::spawn(key.source_ref.clone());
+        return Self::Spout(src, config, SourceRuntimeConfig::Spout);
+    }
+
+    /// Rebuild this source under the same key from the config and runtime data
+    /// it already carries — neither can be derived from the key alone.
+    fn respawn(self, key: &SourceKey) -> Self {
+        return match self {
+            Self::Test(_, config, SourceRuntimeConfig::Test) => Self::new_test(key, config),
+            Self::Ndi(_, config, SourceRuntimeConfig::Ndi { discovered }) => Self::new_ndi(key, config, discovered),
+            Self::Decklink(_, config, SourceRuntimeConfig::Decklink { supported_connections }) => Self::new_decklink(key, config, supported_connections),
             #[cfg(target_os = "macos")]
-            SourceKind::Syphon(s, _, _) => s.name(),
+            Self::Syphon(_, config, SourceRuntimeConfig::Syphon) => Self::new_syphon(key, config),
             #[cfg(target_os = "macos")]
-            SourceKind::AvFoundation(_, _, display_name) => display_name.as_str(),
+            Self::AvFoundation(_, config, SourceRuntimeConfig::AvFoundation) => Self::new_avfoundation(key, config),
             #[cfg(target_os = "windows")]
-            SourceKind::Spout(s, _, _) => s.name(),
-        }
+            Self::Spout(_, config, SourceRuntimeConfig::Spout) => Self::new_spout(key, config),
+            // Every kind is constructed with its own runtime variant; no other
+            // pairing can exist.
+            _ => unreachable!("source kind paired with a foreign runtime config"),
+        };
     }
 
     pub fn latest(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Frame> {
         match self {
-            SourceKind::Test(s, _) => s.latest(device, queue),
+            SourceKind::Test(s, _, _) => s.latest(device, queue),
             SourceKind::Ndi(s, _, _) => s.latest(device, queue),
             SourceKind::Decklink(s, _, _) => s.latest(device, queue),
             #[cfg(target_os = "macos")]
@@ -193,7 +257,7 @@ impl SourceKind {
 
     pub fn stats(&self) -> Arc<Mutex<SourceStats>> {
         match self {
-            SourceKind::Test(s, _) => s.stats(),
+            SourceKind::Test(s, _, _) => s.stats(),
             SourceKind::Ndi(s, _, _) => s.stats(),
             SourceKind::Decklink(s, _, _) => s.stats(),
             #[cfg(target_os = "macos")]
@@ -205,23 +269,9 @@ impl SourceKind {
         }
     }
 
-    pub fn protocol(&self) -> Protocol {
-        match self {
-            SourceKind::Test(_, _) => Protocol::Test,
-            SourceKind::Ndi(_, _, _) => Protocol::Ndi,
-            SourceKind::Decklink(_, _, _) => Protocol::Decklink,
-            #[cfg(target_os = "macos")]
-            SourceKind::Syphon(_, _, _) => Protocol::Syphon,
-            #[cfg(target_os = "macos")]
-            SourceKind::AvFoundation(_, _, _) => Protocol::AvFoundation,
-            #[cfg(target_os = "windows")]
-            SourceKind::Spout(_, _, _) => Protocol::Spout,
-        }
-    }
-
     pub fn to_config(&self) -> SourceConfig {
         match self {
-            SourceKind::Test(_, cfg) => SourceConfig::Test(cfg.clone()),
+            SourceKind::Test(_, cfg, _) => SourceConfig::Test(cfg.clone()),
             SourceKind::Ndi(_, cfg, _) => SourceConfig::Ndi(cfg.clone()),
             SourceKind::Decklink(_, cfg, _) => SourceConfig::Decklink(cfg.clone()),
             #[cfg(target_os = "macos")]
@@ -231,12 +281,6 @@ impl SourceKind {
             #[cfg(target_os = "windows")]
             SourceKind::Spout(_, cfg, _) => SourceConfig::Spout(cfg.clone()),
         }
-    }
-}
-
-impl From<&SourceKind> for Protocol {
-    fn from(kind: &SourceKind) -> Self {
-        kind.protocol()
     }
 }
 
@@ -345,15 +389,15 @@ impl SourceStats {
 }
 
 pub struct RestartResult {
-    pub id: SourceId,
+    pub key: SourceKey,
     pub kind: SourceKind,
 }
 
 // Registry of all live sources. Owned by the UI thread; sources render on their own threads.
 pub struct SourceRegistry {
-    sources: HashMap<SourceId, SourceKind>,
+    sources: HashMap<SourceKey, SourceKind>,
     next_test: u32,
-    pending_restarts: HashSet<SourceId>,
+    pending_restarts: HashSet<SourceKey>,
     restart_tx: std::sync::mpsc::Sender<RestartResult>,
     restart_rx: std::sync::mpsc::Receiver<RestartResult>,
 }
@@ -370,251 +414,164 @@ impl SourceRegistry {
         }
     }
 
-    /// Create a dedicated test source.
-    pub fn add_test(&mut self, config: Option<test::TestSourceConfig>) -> SourceId {
-        self.next_test += 1;
-        let letter = (b'A' + (self.next_test as u8 - 1) % 26) as char;
-        let id = format!("Test {letter}");
-        let cfg = config.unwrap_or_default();
-        let src = test::TestSource::spawn(id.clone(), &cfg);
-        self.sources.insert(id.clone(), SourceKind::Test(src, cfg));
-        return id;
+    /// Register a live source under its key. A key that is already live or
+    /// mid-restart is left alone, so every quad binding it shares one receiver.
+    fn add(&mut self, key: SourceKey, kind: SourceKind) -> SourceKey {
+        if !self.contains(&key) {
+            self.sources.insert(key.clone(), kind);
+        }
+        return key;
     }
 
-    pub fn add_ndi(&mut self, id: SourceId, source: grafton_ndi::Source, config: Option<ndi::NdiSourceConfig>) -> SourceId {
-        if self.sources.contains_key(&id) {
-            return id;
-        }
-        let cfg = config.unwrap_or_default();
-        let src = ndi::NdiSource::spawn(id.clone(), source.clone(), &cfg);
-        self.sources.insert(id.clone(), SourceKind::Ndi(src, cfg, source));
-        return id;
+    /// Create a dedicated test source under a fresh key.
+    pub fn add_test(&mut self, config: Option<test::TestSourceConfig>) -> SourceKey {
+        let key = loop {
+            self.next_test += 1;
+            let letter = (b'A' + (self.next_test as u8 - 1) % 26) as char;
+            // Past 26 live test sources the letter wraps; the counter suffix
+            // keeps the key unique so a new source never overwrites a live one.
+            let source_ref = if self.next_test <= 26 {
+                format!("Test {letter}")
+            } else {
+                format!("Test {letter} {}", self.next_test)
+            };
+            let key = SourceKey::new(Protocol::Test, source_ref);
+            if !self.contains(&key) {
+                break key;
+            }
+        };
+        let kind = SourceKind::new_test(&key, config.unwrap_or_default());
+        return self.add(key, kind);
     }
 
-    #[cfg(target_os = "macos")]
-    pub fn add_syphon(&mut self, id: SourceId, server_name: String, _config: Option<syphon::SyphonSourceConfig>) -> SourceId {
-        if self.sources.contains_key(&id) {
-            return id;
+    pub fn add_ndi(&mut self, key: SourceKey, config: ndi::NdiSourceConfig, discovered: grafton_ndi::Source) -> SourceKey {
+        if self.contains(&key) {
+            return key;
         }
-        let src = syphon::SyphonSource::spawn(id.clone(), server_name);
-        self.sources.insert(id.clone(), SourceKind::Syphon(src, syphon::SyphonSourceConfig::default(), id.clone()));
-        return id;
+        self.sources.insert(key.clone(), SourceKind::new_ndi(&key, config, discovered));
+        return key;
     }
 
-    #[cfg(target_os = "macos")]
-    pub fn add_avfoundation(
-        &mut self,
-        id: SourceId,
-        display_name: String,
-        config: Option<avfoundation::AvFoundationSourceConfig>,
-    ) -> SourceId {
-        if self.sources.contains_key(&id) || self.pending_restarts.contains(&id) {
-            return id;
+    pub fn add_decklink(&mut self, key: SourceKey, config: decklink::DecklinkSourceConfig, supported_connections: decklink::VideoConnections) -> SourceKey {
+        if self.contains(&key) {
+            return key;
         }
-        let cfg = config.unwrap_or_default();
-        let src = avfoundation::AvFoundationSource::spawn(id.clone(), &cfg);
         self.sources.insert(
-            id.clone(),
-            SourceKind::AvFoundation(src, cfg, display_name),
+            key.clone(),
+            SourceKind::new_decklink(&key, config, supported_connections),
         );
-        id
+        return key;
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn add_syphon(&mut self, key: SourceKey, config: syphon::SyphonSourceConfig) -> SourceKey {
+        if self.contains(&key) {
+            return key;
+        }
+        self.sources.insert(key.clone(), SourceKind::new_syphon(&key, config));
+        return key;
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn add_avfoundation(&mut self, key: SourceKey, config: avfoundation::AvFoundationSourceConfig) -> SourceKey {
+        if self.contains(&key) {
+            return key;
+        }
+        self.sources.insert(key.clone(), SourceKind::new_avfoundation(&key, config));
+        return key;
     }
 
     #[cfg(target_os = "windows")]
-    pub fn add_spout(
-        &mut self,
-        id: SourceId,
-        sender_name: String,
-        _config: Option<spout::SpoutSourceConfig>,
-    ) -> SourceId {
-        if self.sources.contains_key(&id) || self.pending_restarts.contains(&id) {
-            return id;
+    pub fn add_spout(&mut self, key: SourceKey, config: spout::SpoutSourceConfig) -> SourceKey {
+        if self.contains(&key) {
+            return key;
         }
-        let src = spout::SpoutSource::spawn(id.clone(), sender_name);
-        self.sources.insert(
-            id.clone(),
-            SourceKind::Spout(src, spout::SpoutSourceConfig::default(), id.clone()),
-        );
-        return id;
+        self.sources.insert(key.clone(), SourceKind::new_spout(&key, config));
+        return key;
     }
 
-    pub fn add_decklink(
-        &mut self,
-        id: SourceId,
-        display_name: String,
-        supported_connections: Option<VideoConnections>,
-        config: Option<decklink::DecklinkSourceConfig>,
-    ) -> SourceId {
-        if self.sources.contains_key(&id) || self.pending_restarts.contains(&id) {
-            return id;
-        }
-        let supported = supported_connections.unwrap_or(VideoConnections::EMPTY);
-        let mut cfg = config.unwrap_or_default();
-        cfg.supported_connections = supported;
-        let src = decklink::DecklinkSource::spawn(id.clone(), display_name, &cfg);
-        self.sources.insert(id.clone(), SourceKind::Decklink(src, cfg, id.clone()));
-        return id;
+    /// Whether a source for this key is live or being restarted.
+    pub fn contains(&self, key: &SourceKey) -> bool {
+        self.sources.contains_key(key) || self.pending_restarts.contains(key)
     }
 
-    pub fn get(&self, id: &SourceId) -> Option<&SourceKind> {
-        self.sources.get(id)
+    pub fn get(&self, key: &SourceKey) -> Option<&SourceKind> {
+        self.sources.get(key)
     }
 
-    pub fn get_mut(&mut self, id: &SourceId) -> Option<&mut SourceKind> {
-        self.sources.get_mut(id)
+    pub fn get_mut(&mut self, key: &SourceKey) -> Option<&mut SourceKind> {
+        self.sources.get_mut(key)
     }
 
     #[allow(dead_code)]
-    pub fn iter(&self) -> impl Iterator<Item = (&SourceId, &SourceKind)> {
+    pub fn iter(&self) -> impl Iterator<Item = (&SourceKey, &SourceKind)> {
         self.sources.iter()
     }
 
     #[allow(dead_code)]
-    pub fn remove(&mut self, id: &SourceId) {
-        self.sources.remove(id);
+    pub fn remove(&mut self, key: &SourceKey) {
+        self.sources.remove(key);
     }
 
-     pub fn restart(&mut self, id: &str) {
-        let protocol = self.sources.get(id).map(|s| s.protocol());
-        match protocol {
-            Some(Protocol::Test) => self.restart_test(id),
-            Some(Protocol::Ndi) => self.restart_ndi(id),
-            Some(Protocol::Decklink) => self.restart_decklink(id),
-            #[cfg(target_os = "macos")]
-            Some(Protocol::Syphon) => self.restart_syphon(id),
-            #[cfg(target_os = "macos")]
-            Some(Protocol::AvFoundation) => self.restart_avfoundation(id),
+    /// Restart the source under `key` with its current config. Test and Spout
+    /// rebuild inline (no blocking work); every other protocol reopens a device
+    /// or receiver on a thread, and the key stays pending until
+    /// `apply_pending_restarts` reinserts the new source — quads show a
+    /// placeholder meanwhile.
+    pub fn restart(&mut self, key: &SourceKey) {
+        let Some(kind) = self.sources.remove(key) else {
+            return;
+        };
+        match kind {
+            kind @ SourceKind::Test(..) => {
+                self.sources.insert(key.clone(), kind.respawn(key));
+            }
             #[cfg(target_os = "windows")]
-            Some(Protocol::Spout) => self.restart_spout(id),
-            // No runtime source exists for unavailable protocols.
-            _ => {}
-        }
-    }
-
-    /// Restart a test source with its current config.
-    pub fn restart_test(&mut self, id: &str) {
-        if let Some(SourceKind::Test(_, cfg)) = self.sources.remove(id) {
-            let src = test::TestSource::spawn(id.to_string(), &cfg);
-            self.sources.insert(id.to_string(), SourceKind::Test(src, cfg));
-        }
-    }
-
-    /// Restart an NDI source with its current config.
-    pub fn restart_ndi(&mut self, id: &str) {
-        if let Some(SourceKind::Ndi(_, cfg, source)) = self.sources.remove(id) {
-            self.pending_restarts.insert(id.to_string());
-            let tx = self.restart_tx.clone();
-            let id = id.to_string();
-            std::thread::Builder::new()
-                .name(format!("ndi-restart-{id}"))
-                .spawn(move || {
-                    let new = ndi::NdiSource::spawn(id.clone(), source.clone(), &cfg);
-                    let _ = tx.send(RestartResult {
-                        id: id.clone(),
-                        kind: SourceKind::Ndi(new, cfg, source),
-                    });
-                })
-                .expect("spawn ndi restart thread");
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn restart_syphon(&mut self, id: &str) {
-        if let Some(SourceKind::Syphon(_, cfg, server_name)) = self.sources.remove(id) {
-            self.pending_restarts.insert(id.to_string());
-            let tx = self.restart_tx.clone();
-            let id = id.to_string();
-            let server = server_name.clone();
-            std::thread::Builder::new()
-                .name(format!("syphon-restart-{id}"))
-                .spawn(move || {
-                    let new = syphon::SyphonSource::spawn(id.clone(), server);
-                    let _ = tx.send(RestartResult {
-                        id: id.clone(),
-                        kind: SourceKind::Syphon(new, cfg, id),
-                    });
-                })
-                .expect("spawn syphon restart thread");
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    pub fn restart_avfoundation(&mut self, id: &str) {
-        if let Some(SourceKind::AvFoundation(_, cfg, display_name)) = self.sources.remove(id) {
-            self.pending_restarts.insert(id.to_string());
-            let tx = self.restart_tx.clone();
-            let id = id.to_string();
-            let name = display_name.clone();
-            std::thread::Builder::new()
-                .name(format!("avf-restart-{id}"))
-                .spawn(move || {
-                    let new = avfoundation::AvFoundationSource::spawn(id.clone(), &cfg);
-                    let _ = tx.send(RestartResult {
-                        id: id.clone(),
-                        kind: SourceKind::AvFoundation(new, cfg, name),
-                    });
-                })
-                .expect("spawn avfoundation restart thread");
-        }
-    }
-
-    /// Restart a Spout source with its current config. The receiver is created
-    /// lazily on the next `latest()` call, so no thread handoff is needed.
-    #[cfg(target_os = "windows")]
-    pub fn restart_spout(&mut self, id: &str) {
-        if let Some(SourceKind::Spout(_, cfg, sender_name)) = self.sources.remove(id) {
-            let src = spout::SpoutSource::spawn(id.to_string(), sender_name.clone());
-            self.sources.insert(
-                id.to_string(),
-                SourceKind::Spout(src, cfg, sender_name),
-            );
-        }
-    }
-
-    pub fn restart_decklink(&mut self, id: &str) {
-        if let Some(SourceKind::Decklink(old_source, cfg, display_name)) = self.sources.remove(id) {
-            self.pending_restarts.insert(id.to_string());
-            let tx = self.restart_tx.clone();
-            let id = id.to_string();
-            std::thread::Builder::new()
-                .name(format!("decklink-restart-{id}"))
-                .spawn(move || {
-                    drop(old_source);
-                    let new_source = decklink::DecklinkSource::spawn(id.clone(), display_name, &cfg);
-                    let _ = tx.send(RestartResult {
-                        id: id.clone(),
-                        kind: SourceKind::Decklink(new_source, cfg, id),
-                    });
-                })
-                .expect("spawn decklink restart thread");
+            kind @ SourceKind::Spout(..) => {
+                self.sources.insert(key.clone(), kind.respawn(key));
+            }
+            kind => {
+                let key = key.clone();
+                self.pending_restarts.insert(key.clone());
+                let tx = self.restart_tx.clone();
+                let thread_name =
+                    format!("{}-restart-{}", key.protocol.name().to_lowercase(), key.source_ref);
+                std::thread::Builder::new()
+                    .name(thread_name)
+                    .spawn(move || {
+                        let kind = kind.respawn(&key);
+                        let _ = tx.send(RestartResult { key, kind });
+                    })
+                    .expect("spawn source restart thread");
+            }
         }
     }
 
     pub fn apply_pending_restarts(&mut self) {
         while let Ok(result) = self.restart_rx.try_recv() {
-            self.pending_restarts.remove(&result.id);
-            self.sources.insert(result.id, result.kind);
+            self.pending_restarts.remove(&result.key);
+            self.sources.insert(result.key, result.kind);
         }
     }
 
     /// Remove all sources not referenced anymore.
-    pub fn cleanup_orphaned_sources(&mut self, active_source_ids: &[&str]) {
-        let active: HashSet<&str> = active_source_ids.iter().copied().collect();
-        let to_remove: Vec<String> = self
+    pub fn cleanup_orphaned_sources(&mut self, active_keys: &[SourceKey]) {
+        let active: HashSet<&SourceKey> = active_keys.iter().collect();
+        let to_remove: Vec<SourceKey> = self
             .sources
-            .iter()
-            .filter(|(id, _)| !active.contains(id.as_str()))
-            .map(|(id, _)| id.clone())
+            .keys()
+            .filter(|key| !active.contains(key))
+            .cloned()
             .collect();
-        for id in to_remove {
-            self.sources.remove(&id);
+        for key in to_remove {
+            self.sources.remove(&key);
         }
     }
 
-    pub fn list_sources(&self, protocol: Protocol) -> Vec<(&SourceId, &SourceKind)> {
+    pub fn list_sources(&self, protocol: Protocol) -> Vec<(&SourceKey, &SourceKind)> {
         self.sources
             .iter()
-            .filter(|(_, sk)| sk.protocol() == protocol)
+            .filter(|(key, _)| key.protocol == protocol)
             .collect()
     }
 
@@ -628,7 +585,7 @@ impl SourceRegistry {
 
 #[cfg(test)]
 mod tests {
-    use super::SourceStats;
+    use super::*;
 
     #[test]
     fn stats_records_and_averages() {
@@ -648,5 +605,62 @@ mod tests {
         assert_eq!(s.frames_dropped, 1);
         assert!((s.copy_time_ms - 2.0).abs() < 0.001);
         assert!((s.upload_time_ms - 3.0).abs() < 0.001);
+    }
+
+    /// A source_ref alone is not a registry identity: two protocols may carry
+    /// the same reference without one lookup hitting the other's source.
+    #[test]
+    fn keys_are_protocol_scoped() {
+        let mut registry = SourceRegistry::new();
+        let key = SourceKey::new(Protocol::Test, "Camera".into());
+        registry.add(key.clone(), SourceKind::new_test(&key, Default::default()));
+
+        assert!(registry.contains(&key));
+        let other_protocol = SourceKey::new(Protocol::Ndi, "Camera".into());
+        assert!(!registry.contains(&other_protocol));
+        assert!(registry.get(&other_protocol).is_none());
+        assert_eq!(registry.list_sources(Protocol::Test).len(), 1);
+        assert_eq!(registry.list_sources(Protocol::Ndi).len(), 0);
+    }
+
+    /// A second quad binding the same protocol + source_ref shares the one
+    /// live receiver instead of spawning another.
+    #[test]
+    fn duplicate_key_shares_one_runtime_source() {
+        let mut registry = SourceRegistry::new();
+        let key = registry.add_test(None);
+        let count = registry.iter().count();
+
+        let again = registry.add(key.clone(), SourceKind::new_test(&key, Default::default()));
+        assert_eq!(again, key);
+        assert_eq!(registry.iter().count(), count);
+        assert!(registry.get(&key).is_some());
+    }
+
+    /// Past 26 test sources the letter suffix wraps; keys must stay unique so
+    /// a new source never overwrites a live one.
+    #[test]
+    fn add_test_keys_stay_unique_past_the_letter_wrap() {
+        let mut registry = SourceRegistry::new();
+        let config = test::TestSourceConfig {
+            width: 64,
+            height: 64,
+            ..Default::default()
+        };
+        let mut keys = HashSet::new();
+        for _ in 0..30 {
+            let key = registry.add_test(Some(config.clone()));
+            assert!(keys.insert(key.clone()), "duplicate key {:?}", key);
+        }
+        assert_eq!(registry.iter().count(), 30);
+    }
+
+    /// A restart rebuilds the source under the same key.
+    #[test]
+    fn restart_keeps_the_key() {
+        let mut registry = SourceRegistry::new();
+        let key = registry.add_test(None);
+        registry.restart(&key);
+        assert!(registry.get(&key).is_some());
     }
 }

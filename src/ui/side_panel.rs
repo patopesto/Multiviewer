@@ -1,7 +1,7 @@
 use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::sources::decklink::DisplayMode;
 use crate::engine::Engine;
-use crate::sources::{Protocol, SourceConfig, SourceStats, OutputConfig};
+use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceStats, OutputConfig};
 use egui::{Align, Grid, Button, InnerResponse, Layout, ScrollArea, Ui};
 
 pub enum FileAction {
@@ -558,19 +558,10 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
 fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, selected_uuid: &str) {
     let mut new_test_source = false;
     let mut new_connect: Option<(Protocol, String)> = None;
-    let mut selected_source: Option<String> = None;
+    let mut selected_source: Option<SourceRef> = None;
     let mut protocol_changed = false;
-    let mut restart_sid: Option<String> = None;
-    let mut config_sync: Option<(String, SourceConfig)> = None;
-
-    // Extract source_id early to avoid borrow issues
-    let source_id_for_sync = engine
-        .cfg
-        .canvas
-        .sources
-        .iter()
-        .find(|l| l.uuid == selected_uuid)
-        .and_then(|s| s.source_id.clone());
+    let mut restart_key: Option<SourceKey> = None;
+    let mut config_sync: Option<SourceConfig> = None;
 
     if let Some(source) = engine
         .cfg
@@ -633,9 +624,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .registry
                                 .list_sources(Protocol::Test)
                                 .into_iter()
-                                .map(|(id, _)| id.clone())
+                                .map(|(key, _)| key.source_ref.clone())
                                 .collect();
-                            let current = source.source_id.as_deref().unwrap_or("");
+                            let current = source.source_ref.as_deref().unwrap_or("");
                             egui::ComboBox::from_id_salt("test_source")
                                 .width(ui.available_width())
                                 .height(1000.0)
@@ -657,9 +648,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .registry
                                 .list_sources(Protocol::Ndi)
                                 .into_iter()
-                                .map(|(id, _)| id.clone())
+                                .map(|(key, _)| key.source_ref.clone())
                                 .collect();
-                            let current = source.source_id.as_deref().unwrap_or("");
+                            let current = source.source_ref.as_deref().unwrap_or("");
                             let discovered =
                                 engine.ndi.as_ref().map(|d| d.list()).unwrap_or_default();
                             egui::ComboBox::from_id_salt("ndi_source")
@@ -696,9 +687,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .registry
                                 .list_sources(Protocol::Decklink)
                                 .into_iter()
-                                .map(|(id, _)| id.clone())
+                                .map(|(key, _)| key.source_ref.clone())
                                 .collect();
-                            let current = source.source_id.as_deref().unwrap_or("");
+                            let current = source.source_ref.as_deref().unwrap_or("");
                             let discovered = engine
                                 .decklink
                                 .as_ref()
@@ -737,9 +728,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .registry
                                 .list_sources(Protocol::Syphon)
                                 .into_iter()
-                                .map(|(id, _)| id.clone())
+                                .map(|(key, _)| key.source_ref.clone())
                                 .collect();
-                            let current = source.source_id.as_deref().unwrap_or("");
+                            let current = source.source_ref.as_deref().unwrap_or("");
                             let discovered =
                                 engine.syphon.as_ref().map(|d| d.list()).unwrap_or_default();
                             egui::ComboBox::from_id_salt("syphon_source")
@@ -772,9 +763,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .registry
                                 .list_sources(Protocol::AvFoundation)
                                 .into_iter()
-                                .map(|(id, _)| id.clone())
+                                .map(|(key, _)| key.source_ref.clone())
                                 .collect();
-                            let current = source.source_id.as_deref().unwrap_or("");
+                            let current = source.source_ref.as_deref().unwrap_or("");
                             let discovered = engine
                                 .avfoundation
                                 .as_ref()
@@ -812,9 +803,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .registry
                                 .list_sources(Protocol::Spout)
                                 .into_iter()
-                                .map(|(id, _)| id.clone())
+                                .map(|(key, _)| key.source_ref.clone())
                                 .collect();
-                            let current = source.source_id.as_deref().unwrap_or("");
+                            let current = source.source_ref.as_deref().unwrap_or("");
                             let discovered =
                                 engine.spout.as_ref().map(|d| d.list()).unwrap_or_default();
                             egui::ComboBox::from_id_salt("spout_source")
@@ -957,7 +948,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         });
 
         if protocol_changed {
-            source.source_id = None;
+            source.source_ref = None;
             // Leaving an unavailable protocol: the preserved raw config belongs
             // to the old protocol and must not follow the source.
             if matches!(source.config, SourceConfig::Unknown(_)) {
@@ -968,40 +959,37 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
 
         // Apply source selection (outside the closure to avoid borrow issues)
         if selected_source.is_some() {
-            source.source_id = selected_source;
+            source.source_ref = selected_source;
             engine.dirty = true;
         }
         if new_test_source {
-            source.source_id = Some(engine.registry.add_test(None));
+            source.source_ref = Some(engine.registry.add_test(None).source_ref);
             engine.dirty = true;
         }
 
-        // Source-specific settings and stats
-        let mut config_changed = false;
-        let mut new_config = None;
-        if let Some(ref sid) = source.source_id
-            && let Some(source) = engine.registry.get_mut(sid)
+        // Source-specific settings and stats, looked up by the quad's own
+        // (protocol, source_ref) key — never by another protocol's source.
+        let settings_key = source
+            .source_ref
+            .clone()
+            .map(|source_ref| SourceKey::new(source.protocol.clone(), source_ref));
+        if let Some(key) = settings_key
+            && let Some(runtime) = engine.registry.get_mut(&key)
         {
             ui.separator();
             collapsable_section(ui, "Protocol Settings", false, |ui| {
-                if super::source_settings::render_source_settings(source, ui) {
-                    config_changed = true;
-                    new_config = Some(source.to_config());
-                    restart_sid = Some(sid.clone());
+                if super::source_settings::render_source_settings(runtime, ui) {
+                    config_sync = Some(runtime.to_config());
+                    restart_key = Some(key.clone());
                 }
             });
 
             ui.separator();
             collapsable_section(ui, "Source Stats", false, |ui| {
-                let stats_arc = source.stats();
+                let stats_arc = runtime.stats();
                 let stats = stats_arc.lock().unwrap();
                 draw_source_stats_section(&stats, ui);
             });
-        }
-
-        // Store config sync data for later (outside the borrow)
-        if config_changed && let Some(cfg) = new_config && let Some(sid) = source_id_for_sync.clone() {
-            config_sync = Some((sid, cfg));
         }
     }
 
@@ -1009,17 +997,14 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         engine.connect(protocol, &name);
     }
 
-    // Sync runtime config back to persisted config
-    if let Some((sid, cfg)) = config_sync {
-        if let Some(cfg_source) = engine.cfg.canvas.sources.iter_mut().find(|s| s.source_id.as_deref() == Some(sid.as_str())) {
-            cfg_source.config = cfg;
-        }
-        engine.dirty = true;
+    // Write the runtime config back to every quad sharing the source
+    if let Some(cfg) = config_sync {
+        engine.sync_source_config(selected_uuid, cfg);
     }
 
-    // Restart sources if their config changed
-    if let Some(sid) = restart_sid {
-        engine.registry.restart(&sid);
+    // Restart the shared runtime source if its config changed
+    if let Some(key) = restart_key {
+        engine.registry.restart(&key);
     }
 }
 

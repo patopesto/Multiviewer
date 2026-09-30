@@ -1,4 +1,4 @@
-use super::super::{ConvUniform, Frame, GpuFrame, PixelFormat, SourceStats, VideoSource};
+use super::super::{ConvUniform, Frame, GpuFrame, PixelFormat, SourceRef, SourceStats, VideoSource};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -17,8 +17,7 @@ unsafe impl Send for SpoutReceiver {}
 /// ponytail: assumes Spout's copies order on wgpu's command queue; upgrade path
 /// if a driver rejects wgpu's stale barrier state is a fence + `COPY_DEST` barrier.
 pub struct SpoutSource {
-    name: String,
-    sender_name: String,
+    source_ref: SourceRef,
     receiver: Mutex<Option<SpoutReceiver>>,
     texture: Mutex<Option<wgpu::Texture>>,
     layout: Mutex<Option<Arc<wgpu::BindGroupLayout>>>,
@@ -31,10 +30,9 @@ pub struct SpoutSource {
 }
 
 impl SpoutSource {
-    pub fn spawn(id: String, sender_name: String) -> Self {
+    pub fn spawn(source_ref: SourceRef) -> Self {
         Self {
-            name: id,
-            sender_name,
+            source_ref,
             receiver: Mutex::new(None),
             texture: Mutex::new(None),
             layout: Mutex::new(None),
@@ -126,15 +124,15 @@ impl VideoSource for SpoutSource {
         let mut receiver_guard = self.receiver.lock().unwrap();
 
         if receiver_guard.is_none() {
-            match Self::open_receiver(device, queue, &self.sender_name) {
+            match Self::open_receiver(device, queue, &self.source_ref) {
                 Ok(receiver) => {
-                    tracing::info!(source=self.sender_name, "Spout receiver opened");
+                    tracing::info!(source=self.source_ref, "Spout receiver opened");
                     *receiver_guard = Some(SpoutReceiver(receiver));
                 }
                 Err(e) => {
                     // Retried every frame; log the first failure only.
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
-                        tracing::error!(source=self.sender_name, "Spout receiver open failed: {}", e);
+                        tracing::error!(source=self.source_ref, "Spout receiver open failed: {}", e);
                     }
                     return None;
                 }
@@ -156,12 +154,12 @@ impl VideoSource for SpoutSource {
             if w > 0 && h > 0 {
                 let Some(format) = Self::wgpu_format(receiver.sender_format()) else {
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
-                        tracing::warn!(source=self.sender_name, "Spout sender uses unsupported DXGI format {}", receiver.sender_format());
+                        tracing::warn!(source=self.source_ref, "Spout sender uses unsupported DXGI format {}", receiver.sender_format());
                     }
                     return None;
                 };
                 let texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some(self.name.as_str()),
+                    label: Some(self.source_ref.as_str()),
                     size: wgpu::Extent3d {
                         width: w,
                         height: h,
@@ -188,7 +186,7 @@ impl VideoSource for SpoutSource {
                 match Self::texture_ptr(texture) {
                     Ok(ptr) => raw_slot = ptr,
                     Err(e) => {
-                        tracing::error!(source=self.sender_name, "Error on texture pointer: {}", e);
+                        tracing::error!(source=self.source_ref, "Error on texture pointer: {}", e);
                         return None;
                     }
                 }
@@ -200,7 +198,7 @@ impl VideoSource for SpoutSource {
             // Not connected to a sender yet.
             Ok(false) => return self.cached(),
             Err(e) => {
-                tracing::debug!(source=self.sender_name, "Spout receive failed: {}", e);
+                tracing::debug!(source=self.source_ref, "Spout receive failed: {}", e);
                 return self.cached();
             }
         }
@@ -263,7 +261,7 @@ impl VideoSource for SpoutSource {
         if bg.is_none() {
             let view = texture.create_view(&Default::default());
             let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(&format!("{}-conv", self.name)),
+                label: Some(&format!("{}-conv", self.source_ref)),
                 size: std::mem::size_of::<ConvUniform>() as u64,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -279,7 +277,7 @@ impl VideoSource for SpoutSource {
                 }]),
             );
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some(&self.name),
+                label: Some(&self.source_ref),
                 layout: layout.as_ref().unwrap(),
                 entries: &[
                     wgpu::BindGroupEntry {
@@ -326,10 +324,6 @@ impl VideoSource for SpoutSource {
             h: dims.1,
             seq: self.seq.load(Ordering::Relaxed),
         }))
-    }
-
-    fn name(&self) -> &str {
-        &self.name
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {

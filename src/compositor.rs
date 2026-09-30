@@ -1,5 +1,5 @@
 use crate::config::{BorderVisibility, Canvas, LabelPosition, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
-use crate::sources::{ConvUniform, Frame, SourceRegistry};
+use crate::sources::{ConvUniform, Frame, Protocol, SourceKey, SourceRegistry};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
@@ -151,7 +151,7 @@ pub struct Compositor {
     pub shared: Arc<Shared>,
     bind_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    textures: HashMap<String, SourceTex>,
+    textures: HashMap<SourceKey, SourceTex>,
     canvas_texture: Option<wgpu::Texture>,
     canvas_view: Option<wgpu::TextureView>,
     canvas_vb: wgpu::Buffer,
@@ -438,7 +438,8 @@ impl Compositor {
             ));
         }
 
-        let mut seen: HashMap<&str, ResolvedSource> = HashMap::new();
+        // Dedupe per (protocol, source_ref): quads sharing a runtime source, resolve it once and reuse the bind group.
+        let mut seen: HashMap<(&Protocol, &str), ResolvedSource> = HashMap::new();
 
         let mut sources: Vec<_> = canvas.sources.iter().collect();
         sources.sort_by_key(|l| l.z);
@@ -453,14 +454,15 @@ impl Compositor {
                 continue;
             }
 
-            let entry = source.source_id.as_deref().and_then(|sid| {
-                seen.entry(sid)
+            let entry = source.source_ref.as_deref().and_then(|source_ref| {
+                seen.entry((&source.protocol, source_ref))
                     .or_insert_with(|| {
-                        let src = registry.get(&sid.to_string())?;
+                        let key = SourceKey::new(source.protocol.clone(), source_ref.to_string());
+                        let src = registry.get(&key)?;
                         let stats = src.stats();
                         match src.latest(device, queue)? {
                             Frame::Cpu(f) => {
-                                let st = self.ensure_texture(device, queue, sid, &f, Some(stats));
+                                let st = self.ensure_texture(device, queue, &key, &f, Some(stats));
                                 Some((st.bg.clone(), f.w as f32 / f.h as f32, false, false))
                             }
                             #[cfg(target_os = "macos")]
@@ -1103,7 +1105,7 @@ impl Compositor {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        name: &str,
+        key: &SourceKey,
         f: &crate::sources::CpuFrame,
         stats: Option<Arc<Mutex<crate::sources::SourceStats>>>,
     ) -> &SourceTex {
@@ -1125,7 +1127,8 @@ impl Compositor {
             PixelFormat::Uyvy422 => {
                 if !f.w.is_multiple_of(2) {
                     tracing::warn!(
-                        "compositor {name}: UYVY frame has odd width {}, last column will be dropped",
+                        "compositor {}: UYVY frame has odd width {}, last column will be dropped",
+                        key.source_ref,
                         f.w
                     );
                 }
@@ -1139,15 +1142,15 @@ impl Compositor {
         };
         let stale = self
             .textures
-            .get(name)
+            .get(key)
             .map(|t| t.w != f.w || t.h != f.h || t.format != format || t.tex_w != tex_w)
             .unwrap_or(false);
         if stale {
-            self.textures.remove(name);
+            self.textures.remove(key);
         }
-        let st = self.textures.entry(name.to_string()).or_insert_with(|| {
+        let st = self.textures.entry(key.clone()).or_insert_with(|| {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(name),
+                label: Some(key.source_ref.as_str()),
                 size: wgpu::Extent3d {
                     width: tex_w,
                     height: f.h,
@@ -1162,7 +1165,7 @@ impl Compositor {
             });
             let view = tex.create_view(&Default::default());
             let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some(&format!("{name}-conv")),
+                label: Some(&format!("{}-conv", key.source_ref)),
                 size: std::mem::size_of::<ConvUniform>() as u64,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -1178,7 +1181,7 @@ impl Compositor {
                 }]),
             );
             let bg = Arc::new(device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some(name),
+                label: Some(key.source_ref.as_str()),
                 layout: &self.bind_layout,
                 entries: &[
                     wgpu::BindGroupEntry {

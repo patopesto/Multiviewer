@@ -17,8 +17,8 @@ pub use common::{Protocol, PixelFormat, Frame, CpuFrame, GpuFrame};
 
 #[allow(unused_imports)]
 pub use source::{
-    SourceId, SourceKind, VideoSource, SourceConfig, SourceStats,
-    SourceRegistry, RestartResult, ConvUniform,
+    SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, VideoSource, SourceConfig,
+    SourceStats, SourceRegistry, RestartResult, ConvUniform,
 };
 #[allow(unused_imports)]
 pub use output::{

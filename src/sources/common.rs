@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Protocol {
     Test,
     Ndi,

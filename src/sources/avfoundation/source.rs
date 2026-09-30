@@ -1,4 +1,4 @@
-use super::super::{CpuFrame, Frame, PixelFormat, SourceStats, VideoSource};
+use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 use std::cell::{Cell, RefCell};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -136,7 +136,7 @@ pub struct AvFoundationSourceConfig {
 
 /// Active AVFoundation capture source on its own thread.
 pub struct AvFoundationSource {
-    name: String,
+    source_ref: SourceRef,
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     running: Arc<std::sync::atomic::AtomicBool>,
@@ -144,26 +144,26 @@ pub struct AvFoundationSource {
 }
 
 impl AvFoundationSource {
-    pub fn spawn(id: String, cfg: &AvFoundationSourceConfig) -> Self {
+    pub fn spawn(source_ref: SourceRef, cfg: &AvFoundationSourceConfig) -> Self {
         let slot = Arc::new(Mutex::new(None::<Frame>));
         let stats = Arc::new(Mutex::new(SourceStats::new()));
 
         let slot2 = slot.clone();
         let stats2 = stats.clone();
-        let name = id.clone();
+        let trace_ref = source_ref.clone();
         let device_unique_id = cfg.device_unique_id.clone();
         let running = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let running2 = running.clone();
 
         let thread = std::thread::Builder::new()
-            .name(format!("avf-in-{id}"))
+            .name(format!("avf-in-{source_ref}"))
             .spawn(move || {
-                Self::run_capture(name, device_unique_id, slot2, stats2, running2);
+                Self::run_capture(trace_ref, device_unique_id, slot2, stats2, running2);
             })
             .expect("spawn avfoundation capture thread");
 
         Self {
-            name: id,
+            source_ref,
             slot,
             stats,
             running,
@@ -172,7 +172,7 @@ impl AvFoundationSource {
     }
 
     fn run_capture(
-        name: String,
+        source_ref: String,
         device_unique_id: String,
         slot: Arc<Mutex<Option<Frame>>>,
         stats: Arc<Mutex<SourceStats>>,
@@ -180,7 +180,7 @@ impl AvFoundationSource {
     ) {
         let unique_id = NSString::from_str(&device_unique_id);
         let Some(device) = AVCaptureDevice::device_with_unique_id(&unique_id) else {
-            tracing::error!(source=name, "AVFoundation device not found: {}", device_unique_id);
+            tracing::error!(source=source_ref, "AVFoundation device not found: {}", device_unique_id);
             return;
         };
 
@@ -188,7 +188,7 @@ impl AvFoundationSource {
         let input = match AVCaptureDeviceInput::from_device(&device) {
             Ok(i) => i,
             Err(e) => {
-                tracing::error!(source=name, "AVFoundation could not create device input for {}: {}", device_unique_id, e);
+                tracing::error!(source=source_ref, "AVFoundation could not create device input for {}: {}", device_unique_id, e);
                 return;
             }
         };
@@ -231,7 +231,7 @@ impl Drop for AvFoundationSource {
         self.running
             .store(false, std::sync::atomic::Ordering::Relaxed);
         if let Some(t) = self.thread.take() && let Err(e) = t.join() {
-            tracing::error!(source=self.name, "Thread join failed: {:?}", e);
+            tracing::error!(source=self.source_ref, "Thread join failed: {:?}", e);
         }
     }
 }
@@ -239,10 +239,6 @@ impl Drop for AvFoundationSource {
 impl VideoSource for AvFoundationSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
         self.slot.lock().unwrap().clone()
-    }
-
-    fn name(&self) -> &str {
-        &self.name
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
