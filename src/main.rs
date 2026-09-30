@@ -50,6 +50,7 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             platform::on_window_created(&cc.egui_ctx);
             log_wgpu_backend(cc);
+            cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
             return Ok(Box::new(ui::App::new(startup_path)));
         }),
     );
