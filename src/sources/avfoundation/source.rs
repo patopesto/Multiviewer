@@ -150,6 +150,7 @@ impl AvFoundationSource {
 
         let slot2 = slot.clone();
         let stats2 = stats.clone();
+        let name = id.clone();
         let device_unique_id = cfg.device_unique_id.clone();
         let running = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let running2 = running.clone();
@@ -157,7 +158,7 @@ impl AvFoundationSource {
         let thread = std::thread::Builder::new()
             .name(format!("avf-in-{id}"))
             .spawn(move || {
-                Self::run_capture(device_unique_id, slot2, stats2, running2);
+                Self::run_capture(name, device_unique_id, slot2, stats2, running2);
             })
             .expect("spawn avfoundation capture thread");
 
@@ -171,6 +172,7 @@ impl AvFoundationSource {
     }
 
     fn run_capture(
+        name: String,
         device_unique_id: String,
         slot: Arc<Mutex<Option<Frame>>>,
         stats: Arc<Mutex<SourceStats>>,
@@ -178,10 +180,7 @@ impl AvFoundationSource {
     ) {
         let unique_id = NSString::from_str(&device_unique_id);
         let Some(device) = AVCaptureDevice::device_with_unique_id(&unique_id) else {
-            tracing::error!(
-                "AVFoundation source {}: device not found",
-                device_unique_id
-            );
+            tracing::error!(source=name, "AVFoundation device not found: {}", device_unique_id);
             return;
         };
 
@@ -189,10 +188,7 @@ impl AvFoundationSource {
         let input = match AVCaptureDeviceInput::from_device(&device) {
             Ok(i) => i,
             Err(e) => {
-                tracing::error!(
-                    "AVFoundation source {}: could not create device input: {e:?}",
-                    device_unique_id
-                );
+                tracing::error!(source=name, "AVFoundation could not create device input for {}: {}", device_unique_id, e);
                 return;
             }
         };
@@ -211,7 +207,7 @@ impl AvFoundationSource {
         let delegate = CaptureDelegate::new(slot, stats);
         let delegate_obj: &ProtocolObject<dyn AVCaptureVideoDataOutputSampleBufferDelegate> =
             ProtocolObject::from_ref(&*delegate);
-        let queue = DispatchQueue::new("com.multiviewer.avfoundation", DispatchQueueAttr::SERIAL);
+        let queue = DispatchQueue::new("net.bambinito.multiviewer.avfoundation", DispatchQueueAttr::SERIAL);
         output.set_sample_buffer_delegate(delegate_obj, &queue);
 
         session.begin_configuration();
@@ -235,7 +231,7 @@ impl Drop for AvFoundationSource {
         self.running
             .store(false, std::sync::atomic::Ordering::Relaxed);
         if let Some(t) = self.thread.take() && let Err(e) = t.join() {
-            tracing::error!("AVFoundation source {} thread join failed: {e:?}", self.name);
+            tracing::error!(source=self.name, "Thread join failed: {:?}", e);
         }
     }
 }

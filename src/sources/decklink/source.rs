@@ -80,23 +80,20 @@ impl DecklinkSource {
                     let display_name_c = match CString::new(display_name) {
                         Ok(c) => c,
                         Err(_) => {
-                            tracing::error!(
-                                "DeckLink display name contains null for {}",
-                                name_for_thread
-                            );
+                            tracing::error!(source=name_for_thread, "DeckLink display name contains null");
                             return;
                         }
                     };
                     let src = decklink_source_new(display_name_c.as_ptr());
                     if src.is_null() {
-                        tracing::error!("DeckLink source creation failed for {}", name_for_thread);
+                        tracing::error!(source=name_for_thread, "DeckLink source creation failed");
                         return;
                     }
                     if !matches!(connection, VideoConnection::Unspecified) {
                         decklink_source_set_connection(src, connection as u32);
                     }
                     if !decklink_source_start(src) {
-                        tracing::error!("DeckLink source start failed for {}", name_for_thread);
+                        tracing::error!(source=name_for_thread, "DeckLink source start failed");
                         decklink_source_free(src);
                         return;
                     }
@@ -201,7 +198,7 @@ impl Drop for DecklinkSource {
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
-            tracing::error!("DeckLink thread join failed for {}: {:?}", self.name, e);
+            tracing::error!(source=self.name, "DeckLink thread join failed: {:?}", e);
         }
     }
 }

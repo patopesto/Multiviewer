@@ -208,7 +208,7 @@ impl Drop for TestSource {
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
-            tracing::error!("Test source {} thread join failed: {:?}", self.name, e);
+            tracing::error!(source=self.name, "Thread join failed: {:?}", e);
         }
     }
 }

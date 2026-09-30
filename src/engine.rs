@@ -377,9 +377,11 @@ impl Engine {
         if self.dirty
             && self.project_path.is_some()
             && self.last_saved_at.elapsed() >= AUTO_SAVE_INTERVAL
-            && let Err(e) = self.save_project()
         {
-            tracing::error!("auto-save failed: {e}");
+            tracing::debug!("Auto-saving project");
+            if let Err(e) = self.save_project() {
+                tracing::error!("Auto-save failed: {e}");
+            }
         }
     }
 

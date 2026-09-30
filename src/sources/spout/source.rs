@@ -128,16 +128,13 @@ impl VideoSource for SpoutSource {
         if receiver_guard.is_none() {
             match Self::open_receiver(device, queue, &self.sender_name) {
                 Ok(receiver) => {
-                    tracing::info!("Spout receiver opened for '{}'", self.sender_name);
+                    tracing::info!(source=self.sender_name, "Spout receiver opened");
                     *receiver_guard = Some(SpoutReceiver(receiver));
                 }
                 Err(e) => {
                     // Retried every frame; log the first failure only.
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
-                        tracing::error!(
-                            "Spout receiver open failed for '{}': {e}",
-                            self.sender_name
-                        );
+                        tracing::error!(source=self.sender_name, "Spout receiver open failed: {}", e);
                     }
                     return None;
                 }
@@ -159,11 +156,7 @@ impl VideoSource for SpoutSource {
             if w > 0 && h > 0 {
                 let Some(format) = Self::wgpu_format(receiver.sender_format()) else {
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
-                        tracing::warn!(
-                            "Spout sender '{}' uses unsupported DXGI format {}",
-                            self.sender_name,
-                            receiver.sender_format()
-                        );
+                        tracing::warn!(source=self.sender_name, "Spout sender uses unsupported DXGI format {}", receiver.sender_format());
                     }
                     return None;
                 };
@@ -195,7 +188,7 @@ impl VideoSource for SpoutSource {
                 match Self::texture_ptr(texture) {
                     Ok(ptr) => raw_slot = ptr,
                     Err(e) => {
-                        tracing::error!("{e}");
+                        tracing::error!(source=self.sender_name, "Error on texture pointer: {}", e);
                         return None;
                     }
                 }
@@ -207,7 +200,7 @@ impl VideoSource for SpoutSource {
             // Not connected to a sender yet.
             Ok(false) => return self.cached(),
             Err(e) => {
-                tracing::debug!("Spout receive failed for '{}': {e}", self.sender_name);
+                tracing::debug!(source=self.sender_name, "Spout receive failed: {}", e);
                 return self.cached();
             }
         }

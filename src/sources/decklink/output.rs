@@ -109,13 +109,13 @@ impl DecklinkOutput {
                 let device_name = thread_config.device_name.clone();
                 let mode_id: u32 = thread_config.display_mode.into();
                 let Ok(device_name_c) = CString::new(device_name) else {
-                    tracing::error!("DeckLink output {thread_name}: device name contains null");
+                    tracing::error!(output=thread_name, "DeckLink output device name contains null");
                     return;
                 };
 
                 let output = unsafe { decklink_output_new(device_name_c.as_ptr()) };
                 if output.is_null() {
-                    tracing::error!("DeckLink output {thread_name}: failed to create output handle");
+                    tracing::error!(output=thread_name, "DeckLink output failed to create output handle");
                     return;
                 }
 
@@ -143,9 +143,9 @@ impl DecklinkOutput {
                     if !started {
                         if unsafe { decklink_output_start(output, mode_id) } {
                             started = true;
-                            tracing::info!("DeckLink output {thread_name}: started on {mode_id}");
+                            tracing::info!(output=thread_name, "DeckLink output started on {}", mode_id);
                         } else {
-                            tracing::error!("DeckLink output {thread_name}: start failed");
+                            tracing::error!(output=thread_name, "DeckLink output start failed");
                             break;
                         }
                     }
@@ -276,11 +276,11 @@ impl DecklinkOutput {
             let _ = tx.send(result);
         });
         if device.poll(wgpu::PollType::wait_indefinitely()).is_err() {
-            tracing::error!("DeckLink output {}: poll failed", self.id);
+            tracing::error!(output=self.id, "DeckLink output poll failed");
             return;
         }
         if rx.recv().unwrap().is_err() {
-            tracing::error!("DeckLink output {}: readback map failed", self.id);
+            tracing::error!(output=self.id, "DeckLink output readback map failed");
             return;
         }
 

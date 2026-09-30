@@ -17,7 +17,7 @@ impl Discovery {
                 let ndi = match NDI::new() {
                     Ok(n) => n,
                     Err(e) => {
-                        tracing::error!("NDI init failed in discovery: {e}");
+                        tracing::error!("NDI init failed: {}", e);
                         return;
                     }
                 };
@@ -27,7 +27,7 @@ impl Discovery {
                 ) {
                     Ok(f) => f,
                     Err(e) => {
-                        tracing::error!("NDI Finder failed: {e}");
+                        tracing::error!("NDI Finder creation failed: {}", e);
                         return;
                     }
                 };
@@ -37,7 +37,7 @@ impl Discovery {
                             let mut lock = sources2.lock().unwrap();
                             *lock = list;
                         }
-                        Err(e) => tracing::warn!("NDI discovery error: {e}"),
+                        Err(e) => tracing::warn!("NDI discovery error: {}", e),
                     }
                     std::thread::sleep(Duration::from_secs(2));
                 }

@@ -14,6 +14,7 @@ pub struct NdiOutputConfig {
 }
 
 pub struct NdiOutput {
+    #[allow(dead_code)]
     id: OutputId,
     name: String,
     enabled: AtomicBool,
@@ -27,6 +28,8 @@ pub struct NdiOutput {
 
 impl NdiOutput {
     pub fn new(id: OutputId, name: String, config: NdiOutputConfig, enabled: bool) -> Self {
+        use grafton_ndi::{BorrowedVideoFrame, NDI, Sender, SenderOptions};
+
         let (frame_tx, frame_rx) = mpsc::sync_channel::<Vec<u8>>(2);
         let stats = Arc::new(Mutex::new(OutputStats::default()));
         let stats_clone = Arc::clone(&stats);
@@ -35,17 +38,20 @@ impl NdiOutput {
         let thread = thread::Builder::new()
             .name(format!("ndi-out-{id}"))
             .spawn(move || {
-                let Ok(ndi) = grafton_ndi::NDI::new() else {
-                    tracing::error!("NDI output {thread_name}: failed to initialize NDI");
-                    return;
+                let ndi = match NDI::new() {
+                    Ok(n) => n,
+                    Err(e) => {
+                        tracing::error!(output=thread_name, "NDI init failed: {}", e);
+                        return;
+                    }
                 };
-                let options = grafton_ndi::SenderOptions::builder(&config.sender_name)
+                let options = SenderOptions::builder(&config.sender_name)
                     .clock_video(true)
                     .build();
-                let mut sender = match grafton_ndi::Sender::new(&ndi, &options) {
+                let mut sender = match Sender::new(&ndi, &options) {
                     Ok(s) => s,
                     Err(e) => {
-                        tracing::error!("NDI output {thread_name}: failed to create sender: {e:?}");
+                        tracing::error!(output=thread_name, "NDI Sender creation failed: {}", e);
                         return;
                     }
                 };
@@ -61,7 +67,7 @@ impl NdiOutput {
                         continue;
                     }
 
-                    let frame = match grafton_ndi::BorrowedVideoFrame::try_from_uncompressed(
+                    let frame = match BorrowedVideoFrame::try_from_uncompressed(
                         &buffer[8..],
                         frame_w as i32,
                         frame_h as i32,
@@ -71,7 +77,7 @@ impl NdiOutput {
                     ) {
                         Ok(f) => f,
                         Err(e) => {
-                            tracing::error!("NDI output {thread_name}: frame build failed: {e:?}");
+                            tracing::error!(output=thread_name, "NDI output frame build failed: {}", e);
                             continue;
                         }
                     };
@@ -158,11 +164,11 @@ impl VideoOutput for NdiOutput {
             let _ = tx.send(result);
         });
         if device.poll(wgpu::PollType::wait_indefinitely()).is_err() {
-            tracing::error!("NDI output {}: poll failed", self.id);
+            tracing::error!(output=self.name, "NDI output poll failed");
             return;
         }
         if rx.recv().unwrap().is_err() {
-            tracing::error!("NDI output {}: readback map failed", self.id);
+            tracing::error!(output=self.name, "NDI output readback map failed");
             return;
         }
 

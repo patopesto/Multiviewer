@@ -43,10 +43,10 @@ impl VideoSource for SyphonSource {
             let mut input = syphon_wgpu::SyphonWgpuInput::new(device, queue);
             match input.connect(&self.server_name) {
                 Ok(()) => {
-                    tracing::info!("Syphon connected to {}", self.server_name);
+                    tracing::info!(source=self.server_name, "Syphon connected");
                 }
                 Err(e) => {
-                    tracing::debug!("Syphon connect failed for {}: {}", self.server_name, e);
+                    tracing::error!(source=self.server_name, "Syphon connect failed: {}", e);
                     return None;
                 }
             }

@@ -89,6 +89,7 @@ pub struct NdiSource {
 impl NdiSource {
     pub fn spawn(id: String, source: grafton_ndi::Source, cfg: &NdiSourceConfig) -> Self {
         use grafton_ndi::{LineStrideOrSize, NDI, Receiver, ReceiverOptions};
+
         let slot = Arc::new(Mutex::new(None));
         let slot2 = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
@@ -99,13 +100,14 @@ impl NdiSource {
         let color_format = cfg.color_format;
         let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
+        
         let thread = std::thread::Builder::new()
             .name(format!("ndi-in-{id}"))
             .spawn(move || {
                 let ndi = match NDI::new() {
                     Ok(n) => n,
                     Err(e) => {
-                        tracing::error!("NDI init failed for {name_for_thread}: {e}");
+                        tracing::error!(source=name_for_thread, "NDI init failed: {}", e);
                         return;
                     }
                 };
@@ -116,7 +118,7 @@ impl NdiSource {
                 let receiver = match Receiver::new(&ndi, &options) {
                     Ok(r) => r,
                     Err(e) => {
-                        tracing::error!("NDI Receiver failed for {name_for_thread}: {e}");
+                        tracing::error!(source=name_for_thread, "NDI Receiver creation failed: {}", e);
                         return;
                     }
                 };
@@ -137,9 +139,7 @@ impl NdiSource {
                                 }
                                 pf => {
                                     if warned_formats.insert(pf as u32) {
-                                        tracing::warn!(
-                                            "NDI source {name_for_thread}: unsupported pixel format {pf:?}, frame dropped"
-                                        );
+                                        tracing::warn!(source=name_for_thread, "NDI Unsupported pixel format {pf:?}, frame dropped");
                                     }
                                     continue;
                                 }
@@ -179,7 +179,7 @@ impl NdiSource {
                             seq += 1;
                         }
                         Err(e) => {
-                            tracing::trace!("NDI capture timeout for {name_for_thread}: {e}");
+                            tracing::warn!(source=name_for_thread, "NDI capture timeout: {}", e);
                         }
                     }
                 }
@@ -195,7 +195,7 @@ impl Drop for NdiSource {
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
-            tracing::error!("NDI source {} thread join failed: {:?}", self.name, e);
+            tracing::error!(source=self.name, "Thread join failed: {:?}", e);
         }
     }
 }

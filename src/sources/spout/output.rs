@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
 use super::super::Protocol;
-use super::super::output::{OutputStats, VideoOutput};
+use super::super::output::{OutputId, OutputStats, VideoOutput};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SpoutOutputConfig {
@@ -32,6 +32,8 @@ unsafe impl Send for SendState {}
 /// (isolating Spout from the resource-state changes other outputs make to the
 /// canvas), then shared through Spout's D3D11On12 bridge.
 pub struct SpoutOutput {
+    #[allow(dead_code)]
+    id: OutputId,
     name: String,
     enabled: AtomicBool,
     stats: Arc<Mutex<OutputStats>>,
@@ -42,13 +44,14 @@ pub struct SpoutOutput {
 impl SpoutOutput {
     /// `name` is the output's display name; a non-empty `config.sender_name`
     /// overrides it as the Spout sender name.
-    pub fn new(name: String, config: SpoutOutputConfig, enabled: bool) -> Self {
+    pub fn new(id: OutputId, name: String, config: SpoutOutputConfig, enabled: bool) -> Self {
         let name = if config.sender_name.is_empty() {
             name
         } else {
             config.sender_name
         };
         Self {
+            id,
             name,
             enabled: AtomicBool::new(enabled),
             stats: Arc::new(Mutex::new(OutputStats::default())),
@@ -152,12 +155,7 @@ impl SpoutOutput {
         if recreate {
             match Self::create_state(device, queue, &self.name, width, height) {
                 Ok(state) => {
-                    tracing::info!(
-                        "Spout output created: {} ({}x{})",
-                        self.name,
-                        width,
-                        height
-                    );
+                    tracing::info!(output=self.name, "Spout output created: ({}x{})", width, height);
                     *state_guard = Some(state);
                     let mut s = self.stats.lock().unwrap();
                     s.width = width;
@@ -167,7 +165,7 @@ impl SpoutOutput {
                     *state_guard = None;
                     // Retried every frame; log the first failure only.
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
-                        tracing::error!("Spout output '{}' open failed: {e}", self.name);
+                        tracing::error!(output=self.name, "Spout output open failed: {}", e);
                     }
                     return;
                 }
@@ -211,7 +209,7 @@ impl SpoutOutput {
             Ok(()) => s.frames_sent += 1,
             Err(e) => {
                 s.frames_dropped += 1;
-                tracing::debug!("Spout send failed for '{}': {e}", self.name);
+                tracing::error!(output=self.name, "Spout send failed: {}", e);
             }
         }
     }

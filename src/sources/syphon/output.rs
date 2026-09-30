@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 
 use super::super::Protocol;
-use super::super::output::{OutputStats, VideoOutput};
+use super::super::output::{OutputId, OutputStats, VideoOutput};
 
 const FLIP_SHADER: &str = r#"
 struct VertexOutput {
@@ -63,6 +63,8 @@ pub struct SyphonOutputConfig {
 }
 
 pub struct SyphonOutput {
+    #[allow(dead_code)]
+    id: OutputId,
     name: String,
     config: SyphonOutputConfig,
     output: Mutex<Option<syphon_wgpu::SyphonWgpuOutput>>,
@@ -82,8 +84,9 @@ pub struct SyphonOutput {
 }
 
 impl SyphonOutput {
-    pub fn new(name: String, config: SyphonOutputConfig, enabled: bool) -> Self {
+    pub fn new(id: OutputId, name: String, config: SyphonOutputConfig, enabled: bool) -> Self {
         Self {
+            id,
             name,
             config,
             output: Mutex::new(None),
@@ -123,12 +126,7 @@ impl SyphonOutput {
         if output_guard.is_none() || current_width != width || current_height != height {
             match syphon_wgpu::SyphonWgpuOutput::new(&self.config.server_name, device, queue, width, height) {
                 Ok(output) => {
-                    tracing::info!(
-                        "Syphon output created: {} ({}x{})",
-                        self.name,
-                        width,
-                        height
-                    );
+                    tracing::info!(output=self.name, "Syphon output created: ({}x{})", width, height);
                     self.width.store(width, Ordering::Relaxed);
                     self.height.store(height, Ordering::Relaxed);
                     *output_guard = Some(output);
@@ -139,7 +137,7 @@ impl SyphonOutput {
                     output_guard = self.output.lock().unwrap();
                 }
                 Err(e) => {
-                    tracing::error!("Syphon output creation failed for {}: {}", self.name, e);
+                    tracing::error!(output=self.name, "Syphon output creation failed: {}", e);
                     return;
                 }
             }
@@ -169,13 +167,7 @@ impl SyphonOutput {
             let status = output.publish(flipped, device, queue);
             let elapsed = start.elapsed().as_secs_f32() * 1000.0;
 
-            tracing::info!(
-                "Syphon publish {}: {:?}, clients: {}, elapsed: {:.2}ms",
-                self.name,
-                status,
-                clients,
-                elapsed
-            );
+            tracing::trace!(output=self.name, "Syphon publish: {:?}, clients: {}, elapsed: {:.2}ms", status, clients, elapsed);
 
             let mut s = self.stats.lock().unwrap();
             s.send_time_ms = elapsed;
