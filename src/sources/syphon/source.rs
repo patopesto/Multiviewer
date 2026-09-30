@@ -9,6 +9,7 @@ pub struct SyphonSourceConfig {}
 /// GPU-only Syphon receiver.
 pub struct SyphonSource {
     source_ref: SourceRef,
+    info: syphon_core::ServerInfo,
     input: Mutex<Option<syphon_wgpu::SyphonWgpuInput>>,
     layout: Mutex<Option<Arc<wgpu::BindGroupLayout>>>,
     sampler: Mutex<Option<Arc<wgpu::Sampler>>>,
@@ -19,9 +20,10 @@ pub struct SyphonSource {
 }
 
 impl SyphonSource {
-    pub fn spawn(source_ref: SourceRef) -> Self {
+    pub fn spawn(source_ref: SourceRef, info: syphon_core::ServerInfo) -> Self {
         Self {
             source_ref,
+            info,
             input: Mutex::new(None),
             layout: Mutex::new(None),
             sampler: Mutex::new(None),
@@ -39,7 +41,10 @@ impl VideoSource for SyphonSource {
 
         if input_guard.is_none() {
             let mut input = syphon_wgpu::SyphonWgpuInput::new(device, queue);
-            match input.connect(&self.source_ref) {
+            let connected = input
+                .connect_by_info(&self.info)
+                .or_else(|_| input.connect(&self.source_ref));
+            match connected {
                 Ok(()) => {
                     tracing::info!(source=self.source_ref, "Syphon connected");
                 }

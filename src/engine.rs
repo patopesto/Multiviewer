@@ -394,13 +394,15 @@ impl Engine {
                     {
                         let key = SourceKey::new(Protocol::Syphon, source_ref.clone());
                         if !self.registry.contains(&key)
-                            && discovered.iter().any(|s| s == source_ref)
+                            && let Some(info) = discovered
+                                .iter()
+                                .find(|s| s.display_name() == source_ref.as_str())
                         {
                             let config = match &source.config {
                                 SourceConfig::Syphon(c) => c.clone(),
                                 _ => SyphonSourceConfig::default(),
                             };
-                            self.registry.add_syphon(key, config);
+                            self.registry.add_syphon(key, config, info.clone());
                             self.dirty = true;
                         }
                     }
@@ -640,11 +642,15 @@ impl Engine {
             }
             #[cfg(target_os = "macos")]
             Protocol::Syphon => {
-                let config = match self.layer_config(&Protocol::Syphon, name) {
-                    Some(SourceConfig::Syphon(c)) => c.clone(),
-                    _ => SyphonSourceConfig::default(),
-                };
-                self.registry.add_syphon(key, config);
+                if let Some(ref discovery) = self.syphon
+                    && let Some(info) = discovery.find_by_display_name(name)
+                {
+                    let config = match self.layer_config(&Protocol::Syphon, name) {
+                        Some(SourceConfig::Syphon(c)) => c.clone(),
+                        _ => SyphonSourceConfig::default(),
+                    };
+                    self.registry.add_syphon(key, config, info);
+                }
             }
             #[cfg(target_os = "macos")]
             Protocol::AvFoundation => {

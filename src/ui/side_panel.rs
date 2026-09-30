@@ -1,6 +1,8 @@
 use crate::APP_NAME;
 use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::sources::decklink::DisplayMode;
+#[cfg(target_os = "macos")]
+use crate::sources::syphon::format_syphon_label;
 use crate::engine::Engine;
 use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceStats, OutputConfig};
 use egui::{Align, Grid, Button, InnerResponse, Layout, ScrollArea, Ui};
@@ -245,7 +247,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             } else {
                                 let name = "Syphon Output".to_string();
                                 let syphon_config = crate::sources::SyphonOutputConfig {
-                                    server_name: APP_NAME.to_string(),
+                                    server_name: name.clone(),
                                 };
                                 engine.add_output(Protocol::Syphon, name, OutputConfig::Syphon(syphon_config));
                             }
@@ -725,35 +727,51 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         }
                         #[cfg(target_os = "macos")]
                         Protocol::Syphon => {
-                            let syphon_ids: Vec<String> = engine
+                            let syphon_sources: Vec<(String, String)> = engine
                                 .registry
                                 .list_sources(Protocol::Syphon)
                                 .into_iter()
-                                .map(|(key, _)| key.source_ref.clone())
+                                .map(|(key, kind)| {
+                                    let label = kind.display_label(&key.source_ref);
+                                    (key.source_ref.clone(), label)
+                                })
                                 .collect();
                             let current = source.source_ref.as_deref().unwrap_or("");
+                            let current_label = syphon_sources
+                                .iter()
+                                .find(|(id, _)| id == current)
+                                .map(|(_, label)| label.clone())
+                                .unwrap_or_else(|| current.to_string());
                             let discovered =
                                 engine.syphon.as_ref().map(|d| d.list()).unwrap_or_default();
                             egui::ComboBox::from_id_salt("syphon_source")
                                 .width(ui.available_width())
                                 .height(1000.0)
-                                .selected_text(current.to_string())
+                                .selected_text(current_label)
                                 .truncate()
                                 .show_ui(ui, |ui| {
-                                    for id in &syphon_ids {
-                                        if ui.selectable_label(current == id, id).clicked() {
+                                    // Already connected Syphon sources
+                                    for (id, label) in &syphon_sources {
+                                        if ui.selectable_label(current == id, label).clicked() {
                                             selected_source = Some(id.clone());
                                         }
                                     }
-                                    for name in &discovered {
-                                        if !syphon_ids.iter().any(|id| id == name)
-                                            && ui.selectable_label(current == name, name).clicked()
+                                    // Discovered servers not yet connected (auto-connect on select)
+                                    for info in &discovered {
+                                        let id = info.display_name();
+                                        let label =
+                                            format_syphon_label(&info.app_name, &info.name);
+                                        if !syphon_sources.iter().any(|(c, _)| c == id)
+                                            && ui
+                                                .selectable_label(current == id, &label)
+                                                .clicked()
                                         {
-                                            new_connect = Some((Protocol::Syphon, name.clone()));
-                                            selected_source = Some(name.clone());
+                                            new_connect =
+                                                Some((Protocol::Syphon, id.to_string()));
+                                            selected_source = Some(id.to_string());
                                         }
                                     }
-                                    if syphon_ids.is_empty() && discovered.is_empty() {
+                                    if syphon_sources.is_empty() && discovered.is_empty() {
                                         ui.weak("(scanning...)");
                                     }
                                 });

@@ -11,6 +11,8 @@ use super::test;
 use super::syphon;
 #[cfg(target_os = "macos")]
 use super::avfoundation;
+#[cfg(target_os = "macos")]
+use syphon_core::ServerInfo as SyphonServerInfo;
 #[cfg(target_os = "windows")]
 use super::spout;
 
@@ -168,7 +170,7 @@ pub enum SourceRuntimeConfig {
     Ndi { discovered: grafton_ndi::Source },
     Decklink { supported_connections: decklink::VideoConnections },
     #[cfg(target_os = "macos")]
-    Syphon,
+    Syphon { info: SyphonServerInfo },
     #[cfg(target_os = "macos")]
     AvFoundation,
     #[cfg(target_os = "windows")]
@@ -197,8 +199,8 @@ impl SourceKind {
                 Box::new(decklink::DecklinkSource::spawn(key.source_ref.clone(), c))
             }
             #[cfg(target_os = "macos")]
-            (SourceConfig::Syphon(_), SourceRuntimeConfig::Syphon) => {
-                Box::new(syphon::SyphonSource::spawn(key.source_ref.clone()))
+            (SourceConfig::Syphon(_), SourceRuntimeConfig::Syphon { info }) => {
+                Box::new(syphon::SyphonSource::spawn(key.source_ref.clone(), info.clone()))
             }
             #[cfg(target_os = "macos")]
             (SourceConfig::AvFoundation(c), SourceRuntimeConfig::AvFoundation) => Box::new(
@@ -231,6 +233,18 @@ impl SourceKind {
 
     pub fn to_config(&self) -> SourceConfig {
         return self.config.clone();
+    }
+
+    /// Human-readable label. Syphon joins app + server name; every other
+    /// protocol's `source_ref` is already displayable as-is.
+    pub fn display_label(&self, source_ref: &str) -> String {
+        #[cfg(target_os = "macos")]
+        {
+            if let SourceRuntimeConfig::Syphon { info } = &self.runtime {
+                return syphon::format_syphon_label(&info.app_name, &info.name);
+            }
+        }
+        return source_ref.to_string();
     }
 }
 
@@ -425,11 +439,15 @@ impl SourceRegistry {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn add_syphon(&mut self, key: SourceKey, config: syphon::SyphonSourceConfig) -> SourceKey {
+    pub fn add_syphon(&mut self, key: SourceKey, config: syphon::SyphonSourceConfig, info: SyphonServerInfo) -> SourceKey {
         if self.contains(&key) {
             return key;
         }
-        let kind = SourceKind::new(&key, SourceConfig::Syphon(config), SourceRuntimeConfig::Syphon);
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::Syphon(config),
+            SourceRuntimeConfig::Syphon { info },
+        );
         self.sources.insert(key.clone(), kind);
         return key;
     }
