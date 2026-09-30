@@ -175,112 +175,62 @@ pub enum SourceRuntimeConfig {
     Spout,
 }
 
-#[allow(clippy::large_enum_variant)]
-pub enum SourceKind {
-    Test(test::TestSource, test::TestSourceConfig, SourceRuntimeConfig),
-    Ndi(ndi::NdiSource, ndi::NdiSourceConfig, SourceRuntimeConfig),
-    Decklink(decklink::DecklinkSource, decklink::DecklinkSourceConfig, SourceRuntimeConfig),
-    #[cfg(target_os = "macos")]
-    Syphon(syphon::SyphonSource, syphon::SyphonSourceConfig, SourceRuntimeConfig),
-    #[cfg(target_os = "macos")]
-    AvFoundation(avfoundation::AvFoundationSource, avfoundation::AvFoundationSourceConfig, SourceRuntimeConfig),
-    #[cfg(target_os = "windows")]
-    Spout(spout::SpoutSource, spout::SpoutSourceConfig, SourceRuntimeConfig),
+/// A live source: its boxed runtime, the config persisted in the project, and
+/// the runtime-only data needed to open it. Protocol-agnostic from the
+/// outside — construction is the only place that knows concrete types.
+pub struct SourceKind {
+    source: Box<dyn VideoSource>,
+    pub config: SourceConfig,
+    pub runtime: SourceRuntimeConfig,
 }
 
 impl SourceKind {
-    fn new_test(key: &SourceKey, config: test::TestSourceConfig) -> Self {
-        let src = test::TestSource::spawn(key.source_ref.clone(), &config);
-        return Self::Test(src, config, SourceRuntimeConfig::Test);
-    }
-
-    fn new_ndi(key: &SourceKey, config: ndi::NdiSourceConfig, discovered: grafton_ndi::Source) -> Self {
-        let src = ndi::NdiSource::spawn(key.source_ref.clone(), discovered.clone(), &config);
-        return Self::Ndi(src, config, SourceRuntimeConfig::Ndi { discovered });
-    }
-
-    fn new_decklink(key: &SourceKey, config: decklink::DecklinkSourceConfig, supported_connections: decklink::VideoConnections) -> Self {
-        let src = decklink::DecklinkSource::spawn(key.source_ref.clone(), &config);
-        return Self::Decklink(src, config, SourceRuntimeConfig::Decklink { supported_connections });
-    }
-
-    #[cfg(target_os = "macos")]
-    fn new_syphon(key: &SourceKey, config: syphon::SyphonSourceConfig) -> Self {
-        let src = syphon::SyphonSource::spawn(key.source_ref.clone());
-        return Self::Syphon(src, config, SourceRuntimeConfig::Syphon);
-    }
-
-    #[cfg(target_os = "macos")]
-    fn new_avfoundation(key: &SourceKey, config: avfoundation::AvFoundationSourceConfig) -> Self {
-        let src = avfoundation::AvFoundationSource::spawn(key.source_ref.clone(), &config);
-        return Self::AvFoundation(src, config, SourceRuntimeConfig::AvFoundation);
-    }
-
-    #[cfg(target_os = "windows")]
-    fn new_spout(key: &SourceKey, config: spout::SpoutSourceConfig) -> Self {
-        let src = spout::SpoutSource::spawn(key.source_ref.clone());
-        return Self::Spout(src, config, SourceRuntimeConfig::Spout);
+    fn new(key: &SourceKey, config: SourceConfig, runtime: SourceRuntimeConfig) -> Self {
+        let source: Box<dyn VideoSource> = match (&config, &runtime) {
+            (SourceConfig::Test(c), SourceRuntimeConfig::Test) => {
+                Box::new(test::TestSource::spawn(key.source_ref.clone(), c))
+            }
+            (SourceConfig::Ndi(c), SourceRuntimeConfig::Ndi { discovered }) => Box::new(
+                ndi::NdiSource::spawn(key.source_ref.clone(), discovered.clone(), c),
+            ),
+            (SourceConfig::Decklink(c), SourceRuntimeConfig::Decklink { .. }) => {
+                Box::new(decklink::DecklinkSource::spawn(key.source_ref.clone(), c))
+            }
+            #[cfg(target_os = "macos")]
+            (SourceConfig::Syphon(_), SourceRuntimeConfig::Syphon) => {
+                Box::new(syphon::SyphonSource::spawn(key.source_ref.clone()))
+            }
+            #[cfg(target_os = "macos")]
+            (SourceConfig::AvFoundation(c), SourceRuntimeConfig::AvFoundation) => Box::new(
+                avfoundation::AvFoundationSource::spawn(key.source_ref.clone(), c),
+            ),
+            #[cfg(target_os = "windows")]
+            (SourceConfig::Spout(_), SourceRuntimeConfig::Spout) => {
+                Box::new(spout::SpoutSource::spawn(key.source_ref.clone()))
+            }
+            // Every add_* pairs one protocol's config with its own runtime
+            // variant; no other pairing can exist.
+            _ => unreachable!("source config paired with a foreign runtime config"),
+        };
+        return Self { source, config, runtime };
     }
 
     /// Rebuild this source under the same key from the config and runtime data
-    /// it already carries — neither can be derived from the key alone.
     fn respawn(self, key: &SourceKey) -> Self {
-        return match self {
-            Self::Test(_, config, SourceRuntimeConfig::Test) => Self::new_test(key, config),
-            Self::Ndi(_, config, SourceRuntimeConfig::Ndi { discovered }) => Self::new_ndi(key, config, discovered),
-            Self::Decklink(_, config, SourceRuntimeConfig::Decklink { supported_connections }) => Self::new_decklink(key, config, supported_connections),
-            #[cfg(target_os = "macos")]
-            Self::Syphon(_, config, SourceRuntimeConfig::Syphon) => Self::new_syphon(key, config),
-            #[cfg(target_os = "macos")]
-            Self::AvFoundation(_, config, SourceRuntimeConfig::AvFoundation) => Self::new_avfoundation(key, config),
-            #[cfg(target_os = "windows")]
-            Self::Spout(_, config, SourceRuntimeConfig::Spout) => Self::new_spout(key, config),
-            // Every kind is constructed with its own runtime variant; no other
-            // pairing can exist.
-            _ => unreachable!("source kind paired with a foreign runtime config"),
-        };
+        let Self { source: _, config, runtime } = self;
+        return Self::new(key, config, runtime);
     }
 
     pub fn latest(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Frame> {
-        match self {
-            SourceKind::Test(s, _, _) => s.latest(device, queue),
-            SourceKind::Ndi(s, _, _) => s.latest(device, queue),
-            SourceKind::Decklink(s, _, _) => s.latest(device, queue),
-            #[cfg(target_os = "macos")]
-            SourceKind::Syphon(s, _, _) => s.latest(device, queue),
-            #[cfg(target_os = "macos")]
-            SourceKind::AvFoundation(s, _, _) => s.latest(device, queue),
-            #[cfg(target_os = "windows")]
-            SourceKind::Spout(s, _, _) => s.latest(device, queue),
-        }
+        return self.source.latest(device, queue);
     }
 
     pub fn stats(&self) -> Arc<Mutex<SourceStats>> {
-        match self {
-            SourceKind::Test(s, _, _) => s.stats(),
-            SourceKind::Ndi(s, _, _) => s.stats(),
-            SourceKind::Decklink(s, _, _) => s.stats(),
-            #[cfg(target_os = "macos")]
-            SourceKind::Syphon(s, _, _) => s.stats(),
-            #[cfg(target_os = "macos")]
-            SourceKind::AvFoundation(s, _, _) => s.stats(),
-            #[cfg(target_os = "windows")]
-            SourceKind::Spout(s, _, _) => s.stats(),
-        }
+        return self.source.stats();
     }
 
     pub fn to_config(&self) -> SourceConfig {
-        match self {
-            SourceKind::Test(_, cfg, _) => SourceConfig::Test(cfg.clone()),
-            SourceKind::Ndi(_, cfg, _) => SourceConfig::Ndi(cfg.clone()),
-            SourceKind::Decklink(_, cfg, _) => SourceConfig::Decklink(cfg.clone()),
-            #[cfg(target_os = "macos")]
-            SourceKind::Syphon(_, cfg, _) => SourceConfig::Syphon(cfg.clone()),
-            #[cfg(target_os = "macos")]
-            SourceKind::AvFoundation(_, cfg, _) => SourceConfig::AvFoundation(cfg.clone()),
-            #[cfg(target_os = "windows")]
-            SourceKind::Spout(_, cfg, _) => SourceConfig::Spout(cfg.clone()),
-        }
+        return self.config.clone();
     }
 }
 
@@ -440,7 +390,11 @@ impl SourceRegistry {
                 break key;
             }
         };
-        let kind = SourceKind::new_test(&key, config.unwrap_or_default());
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::Test(config.unwrap_or_default()),
+            SourceRuntimeConfig::Test,
+        );
         return self.add(key, kind);
     }
 
@@ -448,7 +402,12 @@ impl SourceRegistry {
         if self.contains(&key) {
             return key;
         }
-        self.sources.insert(key.clone(), SourceKind::new_ndi(&key, config, discovered));
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::Ndi(config),
+            SourceRuntimeConfig::Ndi { discovered },
+        );
+        self.sources.insert(key.clone(), kind);
         return key;
     }
 
@@ -456,10 +415,12 @@ impl SourceRegistry {
         if self.contains(&key) {
             return key;
         }
-        self.sources.insert(
-            key.clone(),
-            SourceKind::new_decklink(&key, config, supported_connections),
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::Decklink(config),
+            SourceRuntimeConfig::Decklink { supported_connections },
         );
+        self.sources.insert(key.clone(), kind);
         return key;
     }
 
@@ -468,7 +429,8 @@ impl SourceRegistry {
         if self.contains(&key) {
             return key;
         }
-        self.sources.insert(key.clone(), SourceKind::new_syphon(&key, config));
+        let kind = SourceKind::new(&key, SourceConfig::Syphon(config), SourceRuntimeConfig::Syphon);
+        self.sources.insert(key.clone(), kind);
         return key;
     }
 
@@ -477,7 +439,12 @@ impl SourceRegistry {
         if self.contains(&key) {
             return key;
         }
-        self.sources.insert(key.clone(), SourceKind::new_avfoundation(&key, config));
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::AvFoundation(config),
+            SourceRuntimeConfig::AvFoundation,
+        );
+        self.sources.insert(key.clone(), kind);
         return key;
     }
 
@@ -486,7 +453,8 @@ impl SourceRegistry {
         if self.contains(&key) {
             return key;
         }
-        self.sources.insert(key.clone(), SourceKind::new_spout(&key, config));
+        let kind = SourceKind::new(&key, SourceConfig::Spout(config), SourceRuntimeConfig::Spout);
+        self.sources.insert(key.clone(), kind);
         return key;
     }
 
@@ -522,29 +490,28 @@ impl SourceRegistry {
         let Some(kind) = self.sources.remove(key) else {
             return;
         };
-        match kind {
-            kind @ SourceKind::Test(..) => {
-                self.sources.insert(key.clone(), kind.respawn(key));
-            }
+        let inline = match &kind.runtime {
+            SourceRuntimeConfig::Test => true,
             #[cfg(target_os = "windows")]
-            kind @ SourceKind::Spout(..) => {
-                self.sources.insert(key.clone(), kind.respawn(key));
-            }
-            kind => {
-                let key = key.clone();
-                self.pending_restarts.insert(key.clone());
-                let tx = self.restart_tx.clone();
-                let thread_name =
-                    format!("{}-restart-{}", key.protocol.name().to_lowercase(), key.source_ref);
-                std::thread::Builder::new()
-                    .name(thread_name)
-                    .spawn(move || {
-                        let kind = kind.respawn(&key);
-                        let _ = tx.send(RestartResult { key, kind });
-                    })
-                    .expect("spawn source restart thread");
-            }
+            SourceRuntimeConfig::Spout => true,
+            _ => false,
+        };
+        if inline {
+            self.sources.insert(key.clone(), kind.respawn(key));
+            return;
         }
+        let key = key.clone();
+        self.pending_restarts.insert(key.clone());
+        let tx = self.restart_tx.clone();
+        let thread_name =
+            format!("{}-restart-{}", key.protocol.name().to_lowercase(), key.source_ref);
+        std::thread::Builder::new()
+            .name(thread_name)
+            .spawn(move || {
+                let kind = kind.respawn(&key);
+                let _ = tx.send(RestartResult { key, kind });
+            })
+            .expect("spawn source restart thread");
     }
 
     pub fn apply_pending_restarts(&mut self) {
@@ -613,7 +580,11 @@ mod tests {
     fn keys_are_protocol_scoped() {
         let mut registry = SourceRegistry::new();
         let key = SourceKey::new(Protocol::Test, "Camera".into());
-        registry.add(key.clone(), SourceKind::new_test(&key, Default::default()));
+        registry.add(key.clone(), SourceKind::new(
+            &key,
+            SourceConfig::Test(Default::default()),
+            SourceRuntimeConfig::Test,
+        ));
 
         assert!(registry.contains(&key));
         let other_protocol = SourceKey::new(Protocol::Ndi, "Camera".into());
@@ -631,7 +602,11 @@ mod tests {
         let key = registry.add_test(None);
         let count = registry.iter().count();
 
-        let again = registry.add(key.clone(), SourceKind::new_test(&key, Default::default()));
+        let again = registry.add(key.clone(), SourceKind::new(
+            &key,
+            SourceConfig::Test(Default::default()),
+            SourceRuntimeConfig::Test,
+        ));
         assert_eq!(again, key);
         assert_eq!(registry.iter().count(), count);
         assert!(registry.get(&key).is_some());

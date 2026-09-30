@@ -1,4 +1,4 @@
-use crate::sources::{DecklinkSourceConfig, NdiSourceConfig, SourceKind, SourceRuntimeConfig, TestSourceConfig};
+use crate::sources::{DecklinkSourceConfig, NdiSourceConfig, SourceConfig, SourceKind, SourceRuntimeConfig, TestSourceConfig};
 use crate::sources::test::{TestPattern, RadarDirection};
 use crate::sources::decklink::{VideoConnection, VideoConnections};
 use crate::ui::side_panel::{settings_grid, settings_value};
@@ -11,17 +11,19 @@ use crate::sources::AvFoundationSourceConfig;
 use crate::sources::SpoutSourceConfig;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
-    match source {
-        SourceKind::Test(_, cfg, _) => test_settings_ui(cfg, ui),
-        SourceKind::Ndi(_, cfg, _) => ndi_settings_ui(cfg, ui),
-        SourceKind::Decklink(_, cfg, runtime) => decklink_settings_ui(cfg, runtime, ui),
+    return match &mut source.config {
+        SourceConfig::Test(cfg) => test_settings_ui(cfg, ui),
+        SourceConfig::Ndi(cfg) => ndi_settings_ui(cfg, ui),
+        SourceConfig::Decklink(cfg) => decklink_settings_ui(cfg, &source.runtime, ui),
         #[cfg(target_os = "macos")]
-        SourceKind::Syphon(_, cfg, _) => syphon_settings_ui(cfg, ui),
+        SourceConfig::Syphon(cfg) => syphon_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
-        SourceKind::AvFoundation(_, cfg, _) => avfoundation_settings_ui(cfg, ui),
+        SourceConfig::AvFoundation(cfg) => avfoundation_settings_ui(cfg, ui),
         #[cfg(target_os = "windows")]
-        SourceKind::Spout(_, cfg, _) => spout_settings_ui(cfg, ui),
-    }
+        SourceConfig::Spout(cfg) => spout_settings_ui(cfg, ui),
+        // Config from a platform that has this protocol; no runtime source.
+        SourceConfig::Unknown(_) => false,
+    };
 }
 
 fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {

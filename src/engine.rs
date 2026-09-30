@@ -648,10 +648,8 @@ impl Engine {
         self.dirty = true;
     }
 
-    /// Persisted config of the quad on `protocol` that references
-    /// `source_ref` — scoped by protocol so another protocol carrying the
-    /// same source_ref never leaks its config in.
-    fn quad_config(&self, protocol: &Protocol, source_ref: &str) -> Option<&SourceConfig> {
+    /// Persisted config of the quad on `protocol` that references `source_ref`
+    fn layer_config(&self, protocol: &Protocol, source_ref: &str) -> Option<&SourceConfig> {
         return self
             .cfg
             .canvas
@@ -670,7 +668,7 @@ impl Engine {
                 if let Some(ref discovery) = self.ndi
                     && let Some(src) = discovery.find_by_name(name)
                 {
-                    let config = match self.quad_config(&Protocol::Ndi, name) {
+                    let config = match self.layer_config(&Protocol::Ndi, name) {
                         Some(SourceConfig::Ndi(c)) => c.clone(),
                         _ => NdiSourceConfig::default(),
                     };
@@ -678,7 +676,7 @@ impl Engine {
                 }
             }
             Protocol::Decklink => {
-                let config = match self.quad_config(&Protocol::Decklink, name) {
+                let config = match self.layer_config(&Protocol::Decklink, name) {
                     Some(SourceConfig::Decklink(c)) => c.clone(),
                     _ => DecklinkSourceConfig::default(),
                 };
@@ -692,7 +690,7 @@ impl Engine {
             }
             #[cfg(target_os = "macos")]
             Protocol::Syphon => {
-                let config = match self.quad_config(&Protocol::Syphon, name) {
+                let config = match self.layer_config(&Protocol::Syphon, name) {
                     Some(SourceConfig::Syphon(c)) => c.clone(),
                     _ => SyphonSourceConfig::default(),
                 };
@@ -709,7 +707,7 @@ impl Engine {
             }
             #[cfg(target_os = "windows")]
             Protocol::Spout => {
-                let config = match self.quad_config(&Protocol::Spout, name) {
+                let config = match self.layer_config(&Protocol::Spout, name) {
                     Some(SourceConfig::Spout(c)) => c.clone(),
                     _ => SpoutSourceConfig::default(),
                 };
@@ -1975,6 +1973,7 @@ mod tests {
     /// protocol, even when the reference string is identical.
     #[test]
     fn sync_source_config_updates_quads_sharing_the_key() {
+        use crate::sources::decklink::VideoConnection;
         use crate::sources::NdiSourceConfig;
         let mut canvas = crate::config::Canvas {
             width: 1920,
@@ -2010,7 +2009,7 @@ mod tests {
             960.0, 540.0, 960, 540, 3, TextureMode::Fit, false, false,
         );
         quad_d.config = SourceConfig::Decklink(DecklinkSourceConfig {
-            connection: decklink::VideoConnection::Hdmi,
+            connection: VideoConnection::Hdmi,
         });
         canvas.sources.extend([quad_a, quad_b, quad_c, quad_d]);
         let mut engine = test_engine(canvas);
@@ -2036,7 +2035,7 @@ mod tests {
         let SourceConfig::Decklink(cd) = &d.config else {
             panic!("expected Decklink config")
         };
-        assert_eq!(cd.connection, decklink::VideoConnection::Hdmi);
+        assert_eq!(cd.connection, VideoConnection::Hdmi);
         assert!(engine.dirty);
     }
 }
