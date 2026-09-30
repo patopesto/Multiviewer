@@ -267,6 +267,24 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 fprintf(stderr, "[decklink] signal acquired %ldx%ld fmt=0x%08X flags=0x%08X\n", w, h, fmt, flags);
             }
 
+            // Validate before touching the buffer so no path can skip its release.
+            size_t frame_size = 0;
+            if (fmt == bmdFormat8BitBGRA) {
+                frame_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
+            } else if (fmt == bmdFormat8BitYUV) {
+                frame_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 2;
+            } else {
+                fprintf(stderr, "[decklink] unsupported pixel format 0x%08X\n", fmt);
+                return S_OK;
+            }
+
+            int back = back_idx_.load(std::memory_order_relaxed);
+            if (frame_size > buffer_[back].size()) {
+                fprintf(stderr, "[decklink] frame %ldx%ld exceeds pre-allocated buffer\n", w, h);
+                return S_OK;
+            }
+            uint8_t* dst = buffer_[back].data();
+
             long row_bytes = 0;
             const uint8_t* src = nullptr;
 
@@ -287,41 +305,43 @@ class CaptureCallback : public IDeckLinkInputCallback {
             CVPixelBufferLockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
             src = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddress(pixel_buffer));
             row_bytes = static_cast<long>(CVPixelBufferGetBytesPerRow(pixel_buffer));
+            if (!src || row_bytes <= 0) {
+                fprintf(stderr, "[decklink] empty CVPixelBuffer (%ld row bytes)\n", row_bytes);
+                CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
+                CFRelease(pixel_buffer);
+                return S_OK;
+            }
     #else
-            void* bytes = nullptr;
+            // GetBytes returns E_ACCESSDENIED unless StartAccess was called first.
             IDeckLinkVideoBuffer* vbuf = nullptr;
-            if (videoFrame->QueryInterface(IID_IDeckLinkVideoBuffer, (void**)&vbuf) == S_OK) {
-                vbuf->GetBytes(&bytes);
+            HRESULT hr = videoFrame->QueryInterface(IID_IDeckLinkVideoBuffer, (void**)&vbuf);
+            if (hr != S_OK || !vbuf) {
+                fprintf(stderr, "[decklink] QueryInterface IID_IDeckLinkVideoBuffer failed (0x%08X)\n", static_cast<unsigned int>(hr));
+                return S_OK;
+            }
+            hr = vbuf->StartAccess(bmdBufferAccessRead);
+            if (hr != S_OK) {
+                fprintf(stderr, "[decklink] StartAccess failed (0x%08X)\n", static_cast<unsigned int>(hr));
                 vbuf->Release();
+                return S_OK;
+            }
+            void* bytes = nullptr;
+            hr = vbuf->GetBytes(&bytes);
+            if (hr != S_OK || !bytes) {
+                fprintf(stderr, "[decklink] GetBytes failed (0x%08X)\n", static_cast<unsigned int>(hr));
+                vbuf->EndAccess(bmdBufferAccessRead);
+                vbuf->Release();
+                return S_OK;
             }
             src = static_cast<const uint8_t*>(bytes);
             row_bytes = videoFrame->GetRowBytes();
+            if (row_bytes <= 0) {
+                fprintf(stderr, "[decklink] invalid row bytes %ld\n", row_bytes);
+                vbuf->EndAccess(bmdBufferAccessRead);
+                vbuf->Release();
+                return S_OK;
+            }
     #endif
-
-            if (!src || row_bytes <= 0 || w <= 0 || h <= 0) {
-    #ifdef __APPLE__
-                CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
-                CFRelease(pixel_buffer);
-    #endif
-                return S_OK;
-            }
-
-            size_t frame_size = 0;
-            if (fmt == bmdFormat8BitBGRA) {
-                frame_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
-            } else if (fmt == bmdFormat8BitYUV) {
-                frame_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 2;
-            } else {
-                fprintf(stderr, "[decklink] unsupported pixel format 0x%08X\n", fmt);
-                return S_OK;
-            }
-
-            int back = back_idx_.load(std::memory_order_relaxed);
-            uint8_t* dst = buffer_[back].data();
-            if (frame_size > buffer_[back].size()) {
-                fprintf(stderr, "[decklink] frame %zux%zu exceeds pre-allocated buffer\n", w, h);
-                return S_OK;
-            }
 
             if (fmt == bmdFormat8BitBGRA) {
                 if (row_bytes == w * 4) {
@@ -344,6 +364,9 @@ class CaptureCallback : public IDeckLinkInputCallback {
     #ifdef __APPLE__
             CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
             CFRelease(pixel_buffer);
+    #else
+            vbuf->EndAccess(bmdBufferAccessRead);
+            vbuf->Release();
     #endif
 
             std::lock_guard<std::mutex> lock(mutex_);
