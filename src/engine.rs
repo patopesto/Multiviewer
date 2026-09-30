@@ -6,13 +6,13 @@ use crate::compositor::{self, Compositor, Draw, Rect};
 use crate::config::{Config, LayerId, Source, TextureMode};
 use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, SourceRegistry, OutputRegistry};
 use crate::sources::decklink::Discovery as DecklinkDiscovery;
-use crate::sources::decklink::{DecklinkSourceConfig, DecklinkOutputConfig};
+use crate::sources::decklink::DecklinkSourceConfig;
 use crate::sources::ndi::Discovery as NdiDiscovery;
-use crate::sources::ndi::{NdiSourceConfig, NdiOutputConfig};
+use crate::sources::ndi::NdiSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::syphon::Discovery as SyphonDiscovery;
 #[cfg(target_os = "macos")]
-use crate::sources::syphon::{SyphonSourceConfig, SyphonOutputConfig};
+use crate::sources::syphon::SyphonSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::avfoundation::Discovery as AvFoundationDiscovery;
 #[cfg(target_os = "macos")]
@@ -20,7 +20,7 @@ use crate::sources::avfoundation::AvFoundationSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::spout::Discovery as SpoutDiscovery;
 #[cfg(target_os = "windows")]
-use crate::sources::spout::{SpoutSourceConfig, SpoutOutputConfig};
+use crate::sources::spout::SpoutSourceConfig;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 20.0;
@@ -284,63 +284,13 @@ impl Engine {
                 output.uuid = uuid::Uuid::new_v4().to_string();
                 self.dirty = true;
             }
-            match output.protocol {
-                Protocol::Ndi => {
-                    let id = output.uuid.clone();
-                    let ndi_config = match &output.config {
-                        OutputConfig::Ndi(c) => c.clone(),
-                        _ => NdiOutputConfig::default(),
-                    };
-                    let name = if ndi_config.sender_name.is_empty() {
-                        output.name.clone()
-                    } else {
-                        ndi_config.sender_name.clone()
-                    };
-                    self.output_registry.add_ndi(id, name, ndi_config, output.enabled);
-                }
-                Protocol::Decklink => {
-                    let id = output.uuid.clone();
-                    let decklink_config = match &output.config {
-                        OutputConfig::Decklink(c) => c.clone(),
-                        _ => DecklinkOutputConfig::default(),
-                    };
-                    let name = if decklink_config.device_name.is_empty() {
-                        output.name.clone()
-                    } else {
-                        decklink_config.device_name.clone()
-                    };
-                    self.output_registry.add_decklink(id, name, decklink_config, output.enabled);
-                }
-                #[cfg(target_os = "macos")]
-                Protocol::Syphon => {
-                    let id = output.uuid.clone();
-                    let syphon_config = match &output.config {
-                        OutputConfig::Syphon(c) => c.clone(),
-                        _ => SyphonOutputConfig::default(),
-                    };
-                    let name = if syphon_config.server_name.is_empty() {
-                        output.name.clone()
-                    } else {
-                        syphon_config.server_name.clone()
-                    };
-                    self.output_registry.add_syphon(id, name, syphon_config, output.enabled);
-                }
-                #[cfg(target_os = "windows")]
-                Protocol::Spout => {
-                    let id = output.uuid.clone();
-                    let spout_config = match &output.config {
-                        OutputConfig::Spout(c) => c.clone(),
-                        _ => SpoutOutputConfig::default(),
-                    };
-                    let name = if spout_config.sender_name.is_empty() {
-                        output.name.clone()
-                    } else {
-                        spout_config.sender_name.clone()
-                    };
-                    self.output_registry.add_spout(id, name, spout_config, output.enabled);
-                }
-                _ => {}
-            }
+            self.output_registry.add(
+                &output.protocol,
+                output.uuid.clone(),
+                output.name.clone(),
+                &output.config,
+                output.enabled,
+            );
         }
     }
 
@@ -722,31 +672,10 @@ impl Engine {
         let output = crate::config::Output::new(name.clone(), protocol.clone(), true, config.clone());
         let id = output.uuid.clone();
         self.cfg.canvas.outputs.push(output);
-
-        match (protocol, config) {
-            (Protocol::Ndi, OutputConfig::Ndi(c)) => {
-                let output_name = if c.sender_name.is_empty() { name } else { c.sender_name.clone() };
-                self.output_registry.add_ndi(id.clone(), output_name, c, true);
-            }
-            (Protocol::Decklink, OutputConfig::Decklink(c)) => {
-                let output_name = if c.device_name.is_empty() { name } else { c.device_name.clone() };
-                self.output_registry.add_decklink(id.clone(), output_name, c, true);
-            }
-            #[cfg(target_os = "macos")]
-            (Protocol::Syphon, OutputConfig::Syphon(c)) => {
-                let output_name = if c.server_name.is_empty() { name } else { c.server_name.clone() };
-                self.output_registry.add_syphon(id.clone(), output_name, c, true);
-            }
-            #[cfg(target_os = "windows")]
-            (Protocol::Spout, OutputConfig::Spout(c)) => {
-                let output_name = if c.sender_name.is_empty() { name } else { c.sender_name.clone() };
-                self.output_registry.add_spout(id.clone(), output_name, c, true);
-            }
-            _ => {}
-        }
+        self.output_registry.add(&protocol, id.clone(), name, &config, true);
 
         self.dirty = true;
-        id
+        return id;
     }
 
     pub fn remove_output(&mut self, uuid: &str) {
@@ -779,29 +708,13 @@ impl Engine {
             None => return,
         };
 
-        self.output_registry.remove(&uuid.to_string());
-
-        match (&output.protocol, &output.config) {
-            (Protocol::Ndi, OutputConfig::Ndi(c)) => {
-                let name = if c.sender_name.is_empty() { output.name.clone() } else { c.sender_name.clone() };
-                self.output_registry.add_ndi(uuid.to_string(), name, c.clone(), output.enabled);
-            }
-            (Protocol::Decklink, OutputConfig::Decklink(c)) => {
-                let name = if c.device_name.is_empty() { output.name.clone() } else { c.device_name.clone() };
-                self.output_registry.add_decklink(uuid.to_string(), name, c.clone(), output.enabled);
-            }
-            #[cfg(target_os = "macos")]
-            (Protocol::Syphon, OutputConfig::Syphon(c)) => {
-                let name = if c.server_name.is_empty() { output.name.clone() } else { c.server_name.clone() };
-                self.output_registry.add_syphon(uuid.to_string(), name, c.clone(), output.enabled);
-            }
-            #[cfg(target_os = "windows")]
-            (Protocol::Spout, OutputConfig::Spout(c)) => {
-                let name = if c.sender_name.is_empty() { output.name.clone() } else { c.sender_name.clone() };
-                self.output_registry.add_spout(uuid.to_string(), name, c.clone(), output.enabled);
-            }
-            _ => {}
-        }
+        self.output_registry.restart(
+            &output.protocol,
+            uuid.to_string(),
+            output.name.clone(),
+            &output.config,
+            output.enabled,
+        );
 
         self.dirty = true;
     }
@@ -1949,6 +1862,7 @@ mod tests {
     /// checkbox silently flips back off while cfg says enabled.
     #[test]
     fn enabling_output_with_missing_runtime_recreates_it() {
+        use crate::sources::NdiOutputConfig;
         let mut engine = test_engine(crate::config::Canvas::default());
         let output = crate::config::Output::new(
             "NDI".to_string(),

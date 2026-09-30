@@ -45,11 +45,6 @@ impl SpoutOutput {
     /// `name` is the output's display name; a non-empty `config.sender_name`
     /// overrides it as the Spout sender name.
     pub fn new(id: OutputId, name: String, config: SpoutOutputConfig, enabled: bool) -> Self {
-        let name = if config.sender_name.is_empty() {
-            name
-        } else {
-            config.sender_name
-        };
         Self {
             id,
             name,

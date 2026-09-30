@@ -1,3 +1,4 @@
+use crate::APP_NAME;
 use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::sources::decklink::DisplayMode;
 use crate::engine::Engine;
@@ -207,7 +208,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         } else {
                             let name = "NDI Output".to_string();
                             let ndi_config = crate::sources::NdiOutputConfig {
-                                sender_name: "Multiviewer".to_string(),
+                                sender_name: APP_NAME.to_string(),
                             };
                             engine.add_output(Protocol::Ndi, name, OutputConfig::Ndi(ndi_config));
                         }
@@ -244,7 +245,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             } else {
                                 let name = "Syphon Output".to_string();
                                 let syphon_config = crate::sources::SyphonOutputConfig {
-                                    server_name: name.clone(),
+                                    server_name: APP_NAME.to_string(),
                                 };
                                 engine.add_output(Protocol::Syphon, name, OutputConfig::Syphon(syphon_config));
                             }
@@ -282,7 +283,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             } else {
                                 let name = "Spout Output".to_string();
                                 let spout_config = crate::sources::SpoutOutputConfig {
-                                    sender_name: "Multiviewer".to_string(),
+                                    sender_name: APP_NAME.to_string(),
                                 };
                                 engine.add_output(Protocol::Spout, name, OutputConfig::Spout(spout_config));
                             }

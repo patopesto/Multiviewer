@@ -55,6 +55,35 @@ impl Default for OutputConfig {
     }
 }
 
+impl OutputConfig {
+    /// Whether this config belongs to `protocol`.
+    fn matches(&self, protocol: &Protocol) -> bool {
+        return match (self, protocol) {
+            (OutputConfig::Ndi(_), Protocol::Ndi) => true,
+            (OutputConfig::Decklink(_), Protocol::Decklink) => true,
+            #[cfg(target_os = "macos")]
+            (OutputConfig::Syphon(_), Protocol::Syphon) => true,
+            #[cfg(target_os = "windows")]
+            (OutputConfig::Spout(_), Protocol::Spout) => true,
+            _ => false,
+        };
+    }
+
+    /// Default config for a protocol. Protocols without an output (Test,
+    /// AVFoundation, unavailable ones) fall back to the unknown default.
+    fn for_protocol(protocol: &Protocol) -> Self {
+        return match protocol {
+            Protocol::Ndi => OutputConfig::Ndi(ndi::NdiOutputConfig::default()),
+            Protocol::Decklink => OutputConfig::Decklink(decklink::DecklinkOutputConfig::default()),
+            #[cfg(target_os = "macos")]
+            Protocol::Syphon => OutputConfig::Syphon(syphon::SyphonOutputConfig::default()),
+            #[cfg(target_os = "windows")]
+            Protocol::Spout => OutputConfig::Spout(spout::SpoutOutputConfig::default()),
+            _ => OutputConfig::default(),
+        };
+    }
+}
+
 /// Known variants in their original wire format (internally tagged with
 /// `protocol`); used by both directions of the custom serde impls below.
 #[derive(Serialize, Deserialize)]
@@ -114,8 +143,59 @@ impl<'de> Deserialize<'de> for OutputConfig {
     }
 }
 
-/// Type-erased output handle stored in the registry.
-pub type OutputKind = Box<dyn VideoOutput>;
+/// A live output. Protocol-agnostic from the outside — construction is the
+/// only place that knows concrete types.
+pub struct OutputKind {
+    output: Box<dyn VideoOutput>,
+}
+
+impl OutputKind {
+    fn new(protocol: &Protocol, id: OutputId, name: String, config: &OutputConfig, enabled: bool) -> Option<Self> {
+        // A config written for another protocol (or missing entirely, e.g. a
+        // project file from before outputs had configs) falls back to the
+        // protocol default so the output still opens.
+        let config = if config.matches(protocol) {
+            config.clone()
+        } else {
+            OutputConfig::for_protocol(protocol)
+        };
+        let output: Box<dyn VideoOutput> = match &config {
+            OutputConfig::Ndi(c) => {
+                let name = if c.sender_name.is_empty() { name } else { c.sender_name.clone() };
+                Box::new(ndi::NdiOutput::new(id, name, c.clone(), enabled))
+            }
+            OutputConfig::Decklink(c) => {
+                let name = if c.device_name.is_empty() { name } else { c.device_name.clone() };
+                Box::new(decklink::DecklinkOutput::new(id, name, c.clone(), enabled))
+            }
+            #[cfg(target_os = "macos")]
+            OutputConfig::Syphon(c) => {
+                let name = if c.server_name.is_empty() { name } else { c.server_name.clone() };
+                Box::new(syphon::SyphonOutput::new(id, name, c.clone(), enabled))
+            }
+            #[cfg(target_os = "windows")]
+            OutputConfig::Spout(c) => {
+                let name = if c.sender_name.is_empty() { name } else { c.sender_name.clone() };
+                Box::new(spout::SpoutOutput::new(id, name, c.clone(), enabled))
+            }
+            // Protocol unavailable on this platform: no runtime object.
+            OutputConfig::Unknown(_) => return None,
+        };
+        return Some(Self { output });
+    }
+
+    pub fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
+        self.output.present(texture, width, height, device, queue);
+    }
+
+    pub fn enabled(&self) -> bool {
+        return self.output.enabled();
+    }
+
+    pub fn set_enabled(&self, enabled: bool) {
+        self.output.set_enabled(enabled);
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct OutputStats {
@@ -137,54 +217,26 @@ impl OutputRegistry {
         }
     }
 
-    pub fn add_ndi(
-        &mut self,
-        id: OutputId,
-        name: String,
-        config: ndi::NdiOutputConfig,
-        enabled: bool,
-    ) -> OutputId {
-        if self.outputs.contains_key(&id) {
-            return id;
+    /// Register the runtime output for `id`, unless one is already live.
+    pub fn add(&mut self, protocol: &Protocol, id: OutputId, name: String, config: &OutputConfig, enabled: bool) -> OutputId {
+        if !self.outputs.contains_key(&id) {
+            self.insert(protocol, id.clone(), name, config, enabled);
         }
-        let output = ndi::NdiOutput::new(id.clone(), name, config, enabled);
-        self.outputs.insert(id.clone(), Box::new(output));
-        id
+        return id;
     }
 
-    pub fn add_decklink(
-        &mut self,
-        id: OutputId,
-        name: String,
-        config: decklink::DecklinkOutputConfig,
-        enabled: bool,
-    ) -> OutputId {
-        if self.outputs.contains_key(&id) {
-            return id;
-        }
-        let output = decklink::DecklinkOutput::new(id.clone(), name, config, enabled);
-        self.outputs.insert(id.clone(), Box::new(output));
-        id
+    /// Replace the runtime output for `id` with one built from `config`
+    pub fn restart(&mut self, protocol: &Protocol, id: OutputId, name: String, config: &OutputConfig, enabled: bool) {
+        self.insert(protocol, id, name, config, enabled);
     }
 
-    #[cfg(target_os = "macos")]
-    pub fn add_syphon(&mut self, id: OutputId, name: String, config: syphon::SyphonOutputConfig, enabled: bool) -> OutputId {
-        if self.outputs.contains_key(&id) {
-            return id;
+    fn insert(&mut self, protocol: &Protocol, id: OutputId, name: String, config: &OutputConfig, enabled: bool) {
+        // Drop any previous runtime first; if the config cannot be built
+        // (protocol unavailable on this platform) nothing is reinserted.
+        self.outputs.remove(&id);
+        if let Some(kind) = OutputKind::new(protocol, id.clone(), name, config, enabled) {
+            self.outputs.insert(id, kind);
         }
-        let output = syphon::SyphonOutput::new(id.clone(), name, config, enabled);
-        self.outputs.insert(id.clone(), Box::new(output));
-        id
-    }
-
-    #[cfg(target_os = "windows")]
-    pub fn add_spout(&mut self, id: OutputId, name: String, config: spout::SpoutOutputConfig, enabled: bool) -> OutputId {
-        if self.outputs.contains_key(&id) {
-            return id;
-        }
-        let output = spout::SpoutOutput::new(id.clone(), name, config, enabled);
-        self.outputs.insert(id.clone(), Box::new(output));
-        id
     }
 
     pub fn get(&self, id: &OutputId) -> Option<&OutputKind> {
@@ -209,14 +261,7 @@ impl OutputRegistry {
         self.outputs.iter().any(|(_, ok)| ok.enabled())
     }
 
-    pub fn present_all(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) {
+    pub fn present_all(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
         for output in self.outputs.values() {
             if output.enabled() {
                 output.present(texture, width, height, device, queue);
