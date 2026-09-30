@@ -1,4 +1,6 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
 use crate::engine::Engine;
@@ -7,6 +9,10 @@ use crate::ui::side_panel::FileAction;
 
 const DEFAULT_PROJECT_NAME: &str = "Untitled";
 
+const UNFOCUSED_FPS: f64 = 60.0;
+const RENDER_FPS_WINDOW: Duration = Duration::from_secs(2);
+const MAX_RENDER_TIMESTAMPS: usize = 256;
+
 pub struct App {
     engine: Engine,
     image_loaders_installed: bool,
@@ -14,6 +20,48 @@ pub struct App {
     last_warning: Option<String>,
     pending_confirm: Option<Confirm>,
     ui_visible: bool,
+    render_stats: RenderStats,
+}
+
+// Moving-window FPS tracker over logic() calls.
+struct RenderStats {
+    recent_frames: VecDeque<Instant>,
+}
+
+impl RenderStats {
+    fn new() -> Self {
+        Self {
+            recent_frames: VecDeque::new(),
+        }
+    }
+
+    fn record_frame(&mut self) {
+        let now = Instant::now();
+        self.recent_frames.push_back(now);
+        while let Some(front) = self.recent_frames.front() {
+            if now.duration_since(*front) > RENDER_FPS_WINDOW {
+                self.recent_frames.pop_front();
+            } else {
+                break;
+            }
+        }
+        if self.recent_frames.len() > MAX_RENDER_TIMESTAMPS {
+            self.recent_frames.pop_front();
+        }
+    }
+
+    fn fps(&self) -> f64 {
+        if self.recent_frames.len() < 2 {
+            return 0.0;
+        }
+        let front = self.recent_frames.front().unwrap();
+        let back = self.recent_frames.back().unwrap();
+        let secs = back.duration_since(*front).as_secs_f64();
+        if secs <= 0.0 {
+            return 0.0;
+        }
+        return (self.recent_frames.len() - 1) as f64 / secs;
+    }
 }
 
 enum Confirm {
@@ -31,6 +79,7 @@ impl App {
             last_warning: None,
             pending_confirm: None,
             ui_visible: true,
+            render_stats: RenderStats::new(),
         };
         if let Some(path) = startup_path {
             if path.exists() {
@@ -297,13 +346,19 @@ impl App {
             } else {
                 "Saved".to_string()
             };
-            ui.label(status);
+            ui.horizontal(|ui| {
+                ui.label(status);
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.label(format!("{:.0} FPS", self.render_stats.fps()));
+                });
+            });
         });
     }
 }
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.render_stats.record_frame();
         if !self.image_loaders_installed {
             egui_extras::install_image_loaders(ctx);
             self.image_loaders_installed = true;
@@ -319,8 +374,11 @@ impl eframe::App for App {
             self.engine.render_outputs();
         }
 
-        // Keep the UI rendering continuously; without this egui only repaints on input events.
-        ctx.request_repaint();
+        if ctx.input(|i| i.viewport().focused).unwrap_or(true) {
+            ctx.request_repaint();
+        } else {
+            ctx.request_repaint_after(Duration::from_secs_f64(1.0 / UNFOCUSED_FPS));
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
