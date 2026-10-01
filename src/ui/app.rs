@@ -389,26 +389,26 @@ impl App {
             Confirm::Open => "Open project",
             Confirm::OpenPath(_) => "Open project",
         };
-        let mut open = true;
         let mut action: Option<Confirm> = None;
-        egui::Window::new(title)
-            .collapsible(false)
-            .resizable(false)
-            .movable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .open(&mut open)
+        let response = egui::Modal::new(egui::Id::new("confirm_modal"))
+            .backdrop_color(egui::Color32::from_black_alpha(175))
             .show(ctx, |ui| {
+                ui.set_min_width(360.0);
+                ui.label(egui::RichText::new(title).heading().strong());
+                ui.add_space(12.0);
                 ui.label("You have unsaved changes. Discard them?");
-                ui.horizontal(|ui| {
+                ui.add_space(20.0);
+                ui.separator();
+                egui::Sides::new().show(ui, |_ui| {}, |ui| { 
+                    if ui.add(egui::Button::new("Discard").fill(egui::Color32::from_rgb(140, 30, 30))).clicked() {
+                        action = self.pending_confirm.take();
+                    }
                     if ui.button("Cancel").clicked() {
                         self.pending_confirm = None;
                     }
-                    if ui.button("Discard").clicked() {
-                        action = self.pending_confirm.take();
-                    }
                 });
-            });
-        if !open {
+        });
+        if response.should_close() {
             self.pending_confirm = None;
         }
         if let Some(action) = action {
