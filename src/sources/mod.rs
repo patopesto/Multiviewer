@@ -9,6 +9,8 @@ pub mod ndi;
 pub mod syphon;
 #[cfg(target_os = "macos")]
 pub mod avfoundation;
+#[cfg(target_os = "macos")]
+pub mod screencapturekit;
 #[cfg(target_os = "windows")]
 pub mod spout;
 
@@ -43,6 +45,9 @@ pub use syphon::{SyphonSource, SyphonSourceConfig, SyphonOutput, SyphonOutputCon
 #[cfg(target_os = "macos")]
 #[allow(unused_imports)]
 pub use avfoundation::{AvFoundationSource, AvFoundationSourceConfig};
+#[cfg(target_os = "macos")]
+#[allow(unused_imports)]
+pub use screencapturekit::{ScreenCaptureKitSource, ScreenCaptureKitSourceConfig};
 #[cfg(target_os = "windows")]
 #[allow(unused_imports)]
 pub use spout::{SpoutSource, SpoutSourceConfig, SpoutOutput, SpoutOutputConfig};

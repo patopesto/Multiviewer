@@ -27,12 +27,13 @@
 
 | Protocol | Source | Output | Platforms | Notes |
 |----------|--------|--------|-----------|-------|
+| **Test Patterns** | ✅ | — | macOS, Windows, Linux | SMPTE color bars and generative patterns |
 | **NDI** | ✅ | ✅ | macOS, Windows, Linux |   |
 | **Blackmagic DeckLink** | ✅ | ✅ | macOS, Windows, Linux | Requires [DeckLink Desktop Video](https://www.blackmagicdesign.com/support/family/capture-and-playback) installed |
 | **Syphon** | ✅ | ✅ | macOS only | GPU-only, zero-copy texture sharing |
 | **Spout** | ✅ | ✅ | Windows only | GPU-only, zero-copy texture sharing |
 | **AVFoundation** | ✅ | — | macOS only | Webcams and capture devices |
-| **Test Patterns** | ✅ | — | macOS, Windows, Linux | CPU-generated color bars and patterns |
+| **ScreenCaptureKit** | ✅ | — | macOS only | Whole display screen capture |
 
 ---
 
@@ -43,8 +44,6 @@ Multiviewer is built with:
 - **[Rust](https://www.rust-lang.org/)** (Edition 2024) — systems programming language with fearless concurrency
 - **[egui](https://github.com/emilk/egui)** / **[eframe](https://github.com/emilk/egui/tree/master/crates/eframe)** — immediate-mode GUI toolkit
 - **[wgpu](https://wgpu.rs/)** — safe, portable WebGPU implementation for GPU compute and rendering
-- **[grafton-ndi](https://crates.io/crates/grafton-ndi)** — NDI receiver library
-- **[syphon-wgpu](https://github.com/intervalia/syphon-wgpu)** / **[syphon-core](https://github.com/intervalia/syphon-core)** — Syphon integration for macOS
 
 ---
 

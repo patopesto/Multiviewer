@@ -6,8 +6,11 @@ frameworks = [
   "vendor/syphon/Syphon.framework",
   "vendor/ndi/macos/sdk/lib/macOS/libndi.dylib",
 ]
-minimum-system-version = "12.0"
+# ScreenCaptureKit's shareable-content API (display discovery) needs 12.3+.
+minimum-system-version = "12.3"
 entitlements = "task/darwin/entitlements.plist"
+# Merged over cargo-packager's generated Info.plist (usage descriptions).
+info-plist-path = "task/darwin/Info.plist"
 # TODO: replace with your real Developer ID identity, e.g.
 # "Developer ID Application: Your Name (TEAM_ID)"
 # For CI, set APPLE_CERTIFICATE and APPLE_CERTIFICATE_PASSWORD env vars.

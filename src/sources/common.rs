@@ -10,6 +10,8 @@ pub enum Protocol {
     Syphon,
     #[cfg(target_os = "macos")]
     AvFoundation,
+    #[cfg(target_os = "macos")]
+    ScreenCaptureKit,
     #[cfg(target_os = "windows")]
     Spout,
     /// A protocol that is not available on this platform. Holds the original
@@ -30,6 +32,8 @@ impl Protocol {
             Protocol::Syphon => "Syphon",
             #[cfg(target_os = "macos")]
             Protocol::AvFoundation => "AvFoundation",
+            #[cfg(target_os = "macos")]
+            Protocol::ScreenCaptureKit => "ScreenCaptureKit",
             #[cfg(target_os = "windows")]
             Protocol::Spout => "Spout",
             Protocol::Unknown(name) => name,
@@ -45,6 +49,8 @@ impl Protocol {
             Protocol::Syphon => "Syphon".to_string(),
             #[cfg(target_os = "macos")]
             Protocol::AvFoundation => "AVFoundation".to_string(),
+            #[cfg(target_os = "macos")]
+            Protocol::ScreenCaptureKit => "macOS Screen Capture".to_string(),
             #[cfg(target_os = "windows")]
             Protocol::Spout => "Spout".to_string(),
             Protocol::Unknown(name) => format!("{name} (Unavailable)"),
@@ -69,6 +75,8 @@ impl<'de> Deserialize<'de> for Protocol {
             "Syphon" => Protocol::Syphon,
             #[cfg(target_os = "macos")]
             "AvFoundation" => Protocol::AvFoundation,
+            #[cfg(target_os = "macos")]
+            "ScreenCaptureKit" => Protocol::ScreenCaptureKit,
             #[cfg(target_os = "windows")]
             "Spout" => Protocol::Spout,
             other => Protocol::Unknown(other.to_string()),

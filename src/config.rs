@@ -497,6 +497,46 @@ mod tests {
         assert_eq!(saved["config"]["device_unique_id"], "0x802000000a5f123");
     }
 
+    /// A macOS-authored ScreenCaptureKit source must survive load + save on a
+    /// platform that has no ScreenCaptureKit.
+    #[test]
+    fn screencapturekit_source_round_trips_on_unavailable_platform() {
+        let json = r#"{
+            "uuid":"u1","name":"Screen","protocol":"ScreenCaptureKit",
+            "source_ref":"724561234","x":10.0,"y":20.0,
+            "width":1920,"height":1080,"z":3,"mode":"Fit",
+            "config":{"protocol":"ScreenCaptureKit","display_id":"724561234"}
+        }"#;
+        let parsed: Source = serde_json::from_str(json).unwrap();
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(parsed.protocol, Protocol::ScreenCaptureKit);
+            let SourceConfig::ScreenCaptureKit(c) = &parsed.config else {
+                panic!("expected ScreenCaptureKit config")
+            };
+            assert_eq!(c.display_id, "724561234");
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert_eq!(parsed.protocol, Protocol::Unknown("ScreenCaptureKit".to_string()));
+            assert_eq!(parsed.protocol.label(), "ScreenCaptureKit (Unavailable)");
+            let SourceConfig::Unknown(v) = &parsed.config else {
+                panic!("expected Unknown config")
+            };
+            assert_eq!(
+                v.get("display_id"),
+                Some(&serde_json::json!("724561234"))
+            );
+        }
+        // Layout is independent of protocol availability.
+        assert_eq!(parsed.name, "Screen");
+        assert_eq!(parsed.source_ref.as_deref(), Some("724561234"));
+
+        let saved = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(saved["protocol"], "ScreenCaptureKit");
+        assert_eq!(saved["config"]["display_id"], "724561234");
+    }
+
     /// A protocol this build has never heard of (the same code path Windows
     /// takes for Syphon) must load, keep its config, and save back untouched.
     #[test]

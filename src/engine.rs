@@ -17,6 +17,10 @@ use crate::sources::syphon::SyphonSourceConfig;
 use crate::sources::avfoundation::Discovery as AvFoundationDiscovery;
 #[cfg(target_os = "macos")]
 use crate::sources::avfoundation::AvFoundationSourceConfig;
+#[cfg(target_os = "macos")]
+use crate::sources::screencapturekit::Discovery as ScreenCaptureKitDiscovery;
+#[cfg(target_os = "macos")]
+use crate::sources::screencapturekit::ScreenCaptureKitSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::spout::Discovery as SpoutDiscovery;
 #[cfg(target_os = "windows")]
@@ -131,6 +135,8 @@ pub struct Engine {
     pub syphon: Option<SyphonDiscovery>,
     #[cfg(target_os = "macos")]
     pub avfoundation: Option<AvFoundationDiscovery>,
+    #[cfg(target_os = "macos")]
+    pub screencapturekit: Option<ScreenCaptureKitDiscovery>,
     #[cfg(target_os = "windows")]
     pub spout: Option<SpoutDiscovery>,
     comp: Option<Compositor>,
@@ -169,6 +175,10 @@ impl Engine {
         #[cfg(target_os = "macos")]
         let avfoundation = Some(AvFoundationDiscovery::start());
 
+        // Start ScreenCaptureKit display discovery on macOS
+        #[cfg(target_os = "macos")]
+        let screencapturekit = Some(ScreenCaptureKitDiscovery::start());
+
         // Start Spout sender discovery on Windows
         #[cfg(target_os = "windows")]
         let spout = Some(SpoutDiscovery::start());
@@ -183,6 +193,8 @@ impl Engine {
             syphon,
             #[cfg(target_os = "macos")]
             avfoundation,
+            #[cfg(target_os = "macos")]
+            screencapturekit,
             #[cfg(target_os = "windows")]
             spout,
             comp: None,
@@ -464,6 +476,33 @@ impl Engine {
             }
         }
 
+        // Auto-connect pending ScreenCaptureKit sources on macOS
+        #[cfg(target_os = "macos")]
+        {
+            if let Some(ref discovery) = self.screencapturekit {
+                let discovered = discovery.list();
+                for source in &self.cfg.canvas.sources {
+                    if source.protocol == Protocol::ScreenCaptureKit
+                        && let Some(ref source_ref) = source.source_ref
+                    {
+                        let key = SourceKey::new(Protocol::ScreenCaptureKit, source_ref.clone());
+                        if !self.registry.contains(&key)
+                            && let Some(device) =
+                                discovered.iter().find(|d| d.display_id == *source_ref)
+                        {
+                            let mut config = match &source.config {
+                                SourceConfig::ScreenCaptureKit(c) => c.clone(),
+                                _ => ScreenCaptureKitSourceConfig::default(),
+                            };
+                            config.display_id = device.display_id.clone();
+                            self.registry.add_screencapturekit(key, config, device.width, device.height);
+                            self.dirty = true;
+                        }
+                    }
+                }
+            }
+        }
+
         self.registry.apply_pending_restarts();
     }
 
@@ -663,6 +702,15 @@ impl Engine {
                         device_unique_id: device.unique_id.clone(),
                     };
                     self.registry.add_avfoundation(key, config);
+                }
+            }
+            #[cfg(target_os = "macos")]
+            Protocol::ScreenCaptureKit => {
+                if let Some(device) = self.screencapturekit.as_ref().and_then(|d| d.find_by_display_id(name)) {
+                    let config = ScreenCaptureKitSourceConfig {
+                        display_id: device.display_id.clone(),
+                    };
+                    self.registry.add_screencapturekit(key, config, device.width, device.height);
                 }
             }
             #[cfg(target_os = "windows")]
@@ -1279,6 +1327,8 @@ mod tests {
             syphon: None,
             #[cfg(target_os = "macos")]
             avfoundation: None,
+            #[cfg(target_os = "macos")]
+            screencapturekit: None,
             #[cfg(target_os = "windows")]
             spout: None,
             comp: None,

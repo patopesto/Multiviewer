@@ -559,26 +559,30 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         .width(ui.available_width())
                         .selected_text(source.protocol.label())
                         .show_ui(ui, |ui| {
-                            if ui.selectable_value(&mut source.protocol, Protocol::Test, "Test").clicked(){
+                            if ui.selectable_value(&mut source.protocol, Protocol::Test, Protocol::Test.label()).clicked(){
                                 protocol_changed = true;
                             }
-                            if ui.selectable_value(&mut source.protocol, Protocol::Ndi, "NDI").clicked(){
+                            if ui.selectable_value(&mut source.protocol, Protocol::Ndi, Protocol::Ndi.label()).clicked(){
                                 protocol_changed = true;
                             }
-                            if ui.selectable_value(&mut source.protocol, Protocol::Decklink, "DeckLink").clicked() {
+                            if ui.selectable_value(&mut source.protocol, Protocol::Decklink, Protocol::Decklink.label()).clicked() {
                                 protocol_changed = true;
                             }
 
                             #[cfg(target_os = "macos")]
-                            if ui.selectable_value(&mut source.protocol, Protocol::Syphon, "Syphon").clicked(){
+                            if ui.selectable_value(&mut source.protocol, Protocol::Syphon, Protocol::Syphon.label()).clicked(){
                                 protocol_changed = true;
                             }
                             #[cfg(target_os = "macos")]
-                            if ui.selectable_value(&mut source.protocol, Protocol::AvFoundation, "AVFoundation").clicked(){
+                            if ui.selectable_value(&mut source.protocol, Protocol::AvFoundation, Protocol::AvFoundation.label()).clicked(){
+                                protocol_changed = true;
+                            }
+                            #[cfg(target_os = "macos")]
+                            if ui.selectable_value(&mut source.protocol, Protocol::ScreenCaptureKit, Protocol::ScreenCaptureKit.label()).clicked(){
                                 protocol_changed = true;
                             }
                             #[cfg(target_os = "windows")]
-                            if ui.selectable_value(&mut source.protocol, Protocol::Spout, "Spout").clicked(){
+                            if ui.selectable_value(&mut source.protocol, Protocol::Spout, Protocol::Spout.label()).clicked(){
                                 protocol_changed = true;
                             }
                         });
@@ -779,6 +783,57 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         }
                                     }
                                     if avf_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        }
+                        #[cfg(target_os = "macos")]
+                        Protocol::ScreenCaptureKit => {
+                            let sck_sources: Vec<(String, String)> = engine
+                                .registry
+                                .list_sources(Protocol::ScreenCaptureKit)
+                                .into_iter()
+                                .map(|(key, kind)| {
+                                    let label = kind.display_label(&key.source_ref);
+                                    (key.source_ref.clone(), label)
+                                })
+                                .collect();
+                            let current = source.source_ref.as_deref().unwrap_or("");
+                            let current_label = sck_sources
+                                .iter()
+                                .find(|(id, _)| id == current)
+                                .map(|(_, label)| label.clone())
+                                .unwrap_or_else(|| current.to_string());
+                            let discovered = engine
+                                .screencapturekit
+                                .as_ref()
+                                .map(|d| d.list())
+                                .unwrap_or_default();
+                            egui::ComboBox::from_id_salt("screencapturekit_source")
+                                .width(ui.available_width())
+                                .height(1000.0)
+                                .selected_text(current_label)
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    // Already connected displays
+                                    for (id, label) in &sck_sources {
+                                        if ui.selectable_label(current == id, label).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    // Discovered displays not yet connected (auto-connect on select)
+                                    for device in &discovered {
+                                        let id = device.display_id.clone();
+                                        let label = device.label();
+                                        if !sck_sources.iter().any(|(c, _)| c == &id)
+                                            && ui.selectable_label(current == id, &label).clicked()
+                                        {
+                                            new_connect =
+                                                Some((Protocol::ScreenCaptureKit, id.clone()));
+                                            selected_source = Some(id);
+                                        }
+                                    }
+                                    if sck_sources.is_empty() && discovered.is_empty() {
                                         ui.weak("(scanning...)");
                                     }
                                 });

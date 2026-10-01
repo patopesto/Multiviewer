@@ -7,6 +7,8 @@ use crate::ui::side_panel::{settings_grid, settings_value};
 use crate::sources::SyphonSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::AvFoundationSourceConfig;
+#[cfg(target_os = "macos")]
+use crate::sources::ScreenCaptureKitSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::SpoutSourceConfig;
 
@@ -19,6 +21,8 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         SourceConfig::Syphon(cfg) => syphon_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
         SourceConfig::AvFoundation(cfg) => avfoundation_settings_ui(cfg, ui),
+        #[cfg(target_os = "macos")]
+        SourceConfig::ScreenCaptureKit(cfg) => screencapturekit_settings_ui(cfg, ui),
         #[cfg(target_os = "windows")]
         SourceConfig::Spout(cfg) => spout_settings_ui(cfg, ui),
         // Config from a platform that has this protocol; no runtime source.
@@ -276,6 +280,12 @@ fn syphon_settings_ui(_cfg: &mut SyphonSourceConfig, _ui: &mut egui::Ui) -> bool
 
 #[cfg(target_os = "macos")]
 fn avfoundation_settings_ui(_cfg: &mut AvFoundationSourceConfig, _ui: &mut egui::Ui) -> bool {
+    // No tunables yet
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn screencapturekit_settings_ui(_cfg: &mut ScreenCaptureKitSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
     false
 }

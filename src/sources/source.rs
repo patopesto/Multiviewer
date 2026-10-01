@@ -12,6 +12,8 @@ use super::syphon;
 #[cfg(target_os = "macos")]
 use super::avfoundation;
 #[cfg(target_os = "macos")]
+use super::screencapturekit;
+#[cfg(target_os = "macos")]
 use syphon_core::ServerInfo as SyphonServerInfo;
 #[cfg(target_os = "windows")]
 use super::spout;
@@ -52,6 +54,8 @@ pub enum SourceConfig {
     Syphon(syphon::SyphonSourceConfig),
     #[cfg(target_os = "macos")]
     AvFoundation(avfoundation::AvFoundationSourceConfig),
+    #[cfg(target_os = "macos")]
+    ScreenCaptureKit(screencapturekit::ScreenCaptureKitSourceConfig),
     #[cfg(target_os = "windows")]
     Spout(spout::SpoutSourceConfig),
     Unknown(serde_json::Value),
@@ -75,6 +79,8 @@ enum SourceConfigInner {
     Syphon(syphon::SyphonSourceConfig),
     #[cfg(target_os = "macos")]
     AvFoundation(avfoundation::AvFoundationSourceConfig),
+    #[cfg(target_os = "macos")]
+    ScreenCaptureKit(screencapturekit::ScreenCaptureKitSourceConfig),
     #[cfg(target_os = "windows")]
     Spout(spout::SpoutSourceConfig),
 }
@@ -89,6 +95,8 @@ impl From<SourceConfigInner> for SourceConfig {
             SourceConfigInner::Syphon(c) => SourceConfig::Syphon(c),
             #[cfg(target_os = "macos")]
             SourceConfigInner::AvFoundation(c) => SourceConfig::AvFoundation(c),
+            #[cfg(target_os = "macos")]
+            SourceConfigInner::ScreenCaptureKit(c) => SourceConfig::ScreenCaptureKit(c),
             #[cfg(target_os = "windows")]
             SourceConfigInner::Spout(c) => SourceConfig::Spout(c),
         }
@@ -110,6 +118,8 @@ impl Serialize for SourceConfig {
             SourceConfig::Syphon(c) => SourceConfigInner::Syphon(c.clone()).serialize(serializer),
             #[cfg(target_os = "macos")]
             SourceConfig::AvFoundation(c) => SourceConfigInner::AvFoundation(c.clone()).serialize(serializer),
+            #[cfg(target_os = "macos")]
+            SourceConfig::ScreenCaptureKit(c) => SourceConfigInner::ScreenCaptureKit(c.clone()).serialize(serializer),
             #[cfg(target_os = "windows")]
             SourceConfig::Spout(c) => SourceConfigInner::Spout(c.clone()).serialize(serializer),
         }
@@ -143,6 +153,8 @@ impl SourceConfig {
             Protocol::Syphon => SourceConfig::Syphon(syphon::SyphonSourceConfig::default()),
             #[cfg(target_os = "macos")]
             Protocol::AvFoundation => SourceConfig::AvFoundation(avfoundation::AvFoundationSourceConfig::default()),
+            #[cfg(target_os = "macos")]
+            Protocol::ScreenCaptureKit => SourceConfig::ScreenCaptureKit(screencapturekit::ScreenCaptureKitSourceConfig::default()),
             #[cfg(target_os = "windows")]
             Protocol::Spout => SourceConfig::Spout(spout::SpoutSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
@@ -173,6 +185,8 @@ pub enum SourceRuntimeConfig {
     Syphon { info: SyphonServerInfo },
     #[cfg(target_os = "macos")]
     AvFoundation,
+    #[cfg(target_os = "macos")]
+    ScreenCaptureKit { width: u32, height: u32 },
     #[cfg(target_os = "windows")]
     Spout,
 }
@@ -192,9 +206,9 @@ impl SourceKind {
             (SourceConfig::Test(c), SourceRuntimeConfig::Test) => {
                 Box::new(test::TestSource::spawn(key.source_ref.clone(), c))
             }
-            (SourceConfig::Ndi(c), SourceRuntimeConfig::Ndi { discovered }) => Box::new(
-                ndi::NdiSource::spawn(key.source_ref.clone(), discovered.clone(), c),
-            ),
+            (SourceConfig::Ndi(c), SourceRuntimeConfig::Ndi { discovered }) => {
+                Box::new(ndi::NdiSource::spawn(key.source_ref.clone(), discovered.clone(), c))
+            }
             (SourceConfig::Decklink(c), SourceRuntimeConfig::Decklink { .. }) => {
                 Box::new(decklink::DecklinkSource::spawn(key.source_ref.clone(), c))
             }
@@ -203,9 +217,13 @@ impl SourceKind {
                 Box::new(syphon::SyphonSource::spawn(key.source_ref.clone(), info.clone()))
             }
             #[cfg(target_os = "macos")]
-            (SourceConfig::AvFoundation(c), SourceRuntimeConfig::AvFoundation) => Box::new(
-                avfoundation::AvFoundationSource::spawn(key.source_ref.clone(), c),
-            ),
+            (SourceConfig::AvFoundation(c), SourceRuntimeConfig::AvFoundation) => {
+                Box::new(avfoundation::AvFoundationSource::spawn(key.source_ref.clone(), c))
+            }
+            #[cfg(target_os = "macos")]
+            (SourceConfig::ScreenCaptureKit(c), SourceRuntimeConfig::ScreenCaptureKit { .. }) => {
+                Box::new(screencapturekit::ScreenCaptureKitSource::spawn(key.source_ref.clone(), c))
+            }
             #[cfg(target_os = "windows")]
             (SourceConfig::Spout(_), SourceRuntimeConfig::Spout) => {
                 Box::new(spout::SpoutSource::spawn(key.source_ref.clone()))
@@ -235,13 +253,15 @@ impl SourceKind {
         return self.config.clone();
     }
 
-    /// Human-readable label. Syphon joins app + server name; every other
-    /// protocol's `source_ref` is already displayable as-is.
+    /// Human-readable label for source selection. Handles protocol specifics labels
     pub fn display_label(&self, source_ref: &str) -> String {
         #[cfg(target_os = "macos")]
         {
             if let SourceRuntimeConfig::Syphon { info } = &self.runtime {
                 return syphon::format_syphon_label(&info.app_name, &info.name);
+            }
+            if let SourceRuntimeConfig::ScreenCaptureKit { width, height } = &self.runtime {
+                return screencapturekit::format_display_label(source_ref, *width, *height);
             }
         }
         return source_ref.to_string();
@@ -461,6 +481,20 @@ impl SourceRegistry {
             &key,
             SourceConfig::AvFoundation(config),
             SourceRuntimeConfig::AvFoundation,
+        );
+        self.sources.insert(key.clone(), kind);
+        return key;
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn add_screencapturekit(&mut self, key: SourceKey, config: screencapturekit::ScreenCaptureKitSourceConfig, width: u32, height: u32) -> SourceKey {
+        if self.contains(&key) {
+            return key;
+        }
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::ScreenCaptureKit(config),
+            SourceRuntimeConfig::ScreenCaptureKit { width, height },
         );
         self.sources.insert(key.clone(), kind);
         return key;
