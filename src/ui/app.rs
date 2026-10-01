@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
 use crate::engine::Engine;
-use crate::ui::shortcuts::Shortcut;
-use crate::ui::side_panel::FileAction;
+use crate::ui::menu_bar::{self, MenuAction};
+use crate::ui::shortcuts::{self, Shortcut};
 
 const DEFAULT_PROJECT_NAME: &str = "Untitled";
 
@@ -15,10 +15,11 @@ const MAX_RENDER_TIMESTAMPS: usize = 256;
 
 pub struct App {
     engine: Engine,
-    image_loaders_installed: bool,
     last_error: Option<String>,
     last_warning: Option<String>,
     pending_confirm: Option<Confirm>,
+    show_about: bool,
+    show_shortcuts: bool,
     ui_visible: bool,
     render_stats: RenderStats,
 }
@@ -70,17 +71,22 @@ enum Confirm {
     OpenPath(PathBuf),
 }
 
+// Init stuff
 impl App {
-    pub fn new(startup_path: Option<PathBuf>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, startup_path: Option<PathBuf>) -> Self {
         let mut app = Self {
             engine: Engine::new_project(),
-            image_loaders_installed: false,
             last_error: None,
             last_warning: None,
             pending_confirm: None,
+            show_about: false,
+            show_shortcuts: false,
             ui_visible: true,
             render_stats: RenderStats::new(),
         };
+
+        Self::configure_egui(&cc.egui_ctx);
+
         if let Some(path) = startup_path {
             if path.exists() {
                 if let Err(e) = app.engine.open_project(&path) {
@@ -92,11 +98,78 @@ impl App {
                 app.last_error = Some(format!("Startup project not found: {}", path.display()));
             }
         }
-        app
+        return app;
     }
 
-    /// Promote warnings collected while loading the current project to the
-    /// status bar.
+    fn configure_egui(ctx: &egui::Context) {
+        // Lock to dark theme
+        ctx.set_theme(egui::ThemePreference::Dark);
+
+        // Enable image/SVG loading for asset icons
+        egui_extras::install_image_loaders(ctx);
+    
+        // Add "Hack" font to render glyphs (→, ←, ↓, ↑, etc..)
+        let mut fonts = egui::FontDefinitions::default();
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .push("Hack".to_owned());
+        ctx.set_fonts(fonts);
+    }
+}
+
+
+impl eframe::App for App {
+    // Called once per frame before ui(), should not perform any drawing here
+    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.render_stats.record_frame();
+
+        self.handle_dropped_files(ctx);
+        self.handle_platform_open_files();
+        self.engine.update();
+        self.engine.auto_save();
+        self.update_title(ctx);
+
+        if let Some(rs) = frame.wgpu_render_state() {
+            self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
+            self.engine.render_outputs();
+        }
+
+        if ctx.input(|i| i.viewport().focused).unwrap_or(true) {
+            ctx.request_repaint();
+        } else {
+            ctx.request_repaint_after(Duration::from_secs_f64(1.0 / UNFOCUSED_FPS));
+        }
+    }
+
+    // Draw function
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
+        if self.ui_visible {
+            let actions = menu_bar::draw(ui, &self.engine);
+            super::side_panel::draw(ui, &mut self.engine);
+            self.handle_menu_actions(&actions, ui);
+        }
+        self.handle_global_shortcuts(ui);
+        self.draw_confirmation_modal(&ctx);
+        self.draw_about_modal(&ctx);
+        self.draw_shortcuts_modal(&ctx);
+        if self.ui_visible {
+            self.draw_status_bar(ui);
+        }
+
+        egui::CentralPanel::default().show(ui, |ui| {
+            super::canvas::update(ui, &mut self.engine, &ctx, frame, self.ui_visible);
+        });
+    }
+}
+
+
+// Update stuff
+impl App {
+    /// Promote warnings collected while loading the current project to the status bar.
     fn refresh_warning(&mut self) {
         self.last_warning = if self.engine.load_warnings.is_empty() {
             None
@@ -158,19 +231,15 @@ impl App {
         }
     }
 
-    fn handle_actions(&mut self, actions: Vec<FileAction>) {
+    fn handle_menu_actions(&mut self, actions: &[MenuAction], ui: &egui::Ui) {
+        if self.pending_confirm.is_some() {
+            return;
+        }
         for action in actions {
             match action {
-                FileAction::New => self.confirm_or(Confirm::New),
-                FileAction::Open => self.confirm_or(Confirm::Open),
-                FileAction::Save => {
-                    if let Err(e) = self.engine.save_project() {
-                        self.last_error = Some(e.to_string());
-                    } else {
-                        self.last_error = None;
-                    }
-                }
-                FileAction::SaveAs => self.save_as_dialog(),
+                MenuAction::Shortcut(shortcut) => self.apply_shortcut(*shortcut, ui),
+                MenuAction::ShowAbout => self.show_about = true,
+                MenuAction::ShowShortcuts => self.show_shortcuts = true,
             }
         }
     }
@@ -193,6 +262,11 @@ impl App {
             }
         }
 
+        self.apply_shortcut(shortcut, ui);
+    }
+
+    /// Run one shortcut. Shared by keyboard detection and the menu bar so both paths behave identically.
+    fn apply_shortcut(&mut self, shortcut: Shortcut, ui: &egui::Ui) {
         let rect = ui.available_rect_before_wrap();
         let panel_rect = crate::compositor::Rect {
             x: rect.min.x,
@@ -200,6 +274,7 @@ impl App {
             w: rect.width(),
             h: rect.height(),
         };
+        let ctx = ui.ctx();
         let nudge_amount = if ctx.input(|i| i.modifiers.alt) { 10.0 } else { 1.0 };
 
         match shortcut {
@@ -331,72 +406,75 @@ impl App {
         }
     }
 
+    /// Project status shown in the bottom status bar.
+    fn status_text(&self) -> String {
+        if let Some(err) = &self.last_error {
+            return format!("Error: {err}");
+        }
+        if let Some(warn) = &self.last_warning {
+            return format!("Warning: {warn}");
+        }
+        if self.engine.dirty {
+            if self.engine.project_path.is_some() {
+                return "Unsaved changes".to_string();
+            }
+            return "Untitled — use Save As".to_string();
+        }
+        return "Saved".to_string();
+    }
+
     fn draw_status_bar(&self, ui: &mut egui::Ui) {
         egui::Panel::bottom("status_bar").show(ui, |ui| {
-            let status = if let Some(err) = &self.last_error {
-                format!("Error: {err}")
-            } else if let Some(warn) = &self.last_warning {
-                format!("Warning: {warn}")
-            } else if self.engine.dirty {
-                if self.engine.project_path.is_some() {
-                    "Unsaved changes".to_string()
-                } else {
-                    "Untitled — use Save As".to_string()
-                }
-            } else {
-                "Saved".to_string()
-            };
             ui.horizontal(|ui| {
-                ui.label(status);
+                ui.label(self.status_text());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(format!("{:.0} FPS", self.render_stats.fps()));
                 });
             });
         });
     }
-}
 
-impl eframe::App for App {
-    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.render_stats.record_frame();
-        if !self.image_loaders_installed {
-            egui_extras::install_image_loaders(ctx);
-            self.image_loaders_installed = true;
+    fn draw_about_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_about {
+            return;
         }
-        self.handle_dropped_files(ctx);
-        self.handle_platform_open_files();
-        self.engine.update();
-        self.engine.auto_save();
-        self.update_title(ctx);
-
-        if let Some(rs) = frame.wgpu_render_state() {
-            self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
-            self.engine.render_outputs();
-        }
-
-        if ctx.input(|i| i.viewport().focused).unwrap_or(true) {
-            ctx.request_repaint();
-        } else {
-            ctx.request_repaint_after(Duration::from_secs_f64(1.0 / UNFOCUSED_FPS));
+        let mut open = true;
+        egui::Window::new(format!("About {}", APP_NAME))
+            .collapsible(false)
+            .resizable(false)
+            .movable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.heading(APP_NAME);
+                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+                ui.label(env!("CARGO_PKG_DESCRIPTION"));
+            });
+        if !open {
+            self.show_about = false;
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
-
-        if self.ui_visible {
-            let actions = super::side_panel::draw(ui, &mut self.engine);
-            self.handle_actions(actions);
+    fn draw_shortcuts_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_shortcuts {
+            return;
         }
-        self.handle_global_shortcuts(ui);
-        self.draw_confirmation_modal(&ctx);
-        if self.ui_visible {
-            self.draw_status_bar(ui);
+        let mut open = true;
+        egui::Window::new("Keyboard Shortcuts")
+            .collapsible(false)
+            .resizable(true)
+            .movable(false)
+            .default_size([460.0, 520.0])
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    shortcuts::draw_reference(ui);
+                });
+            });
+        if !open {
+            self.show_shortcuts = false;
         }
-
-        egui::CentralPanel::default().show(ui, |ui| {
-            super::canvas::update(ui, &mut self.engine, &ctx, frame, self.ui_visible);
-        });
     }
 }
 
@@ -404,7 +482,7 @@ fn ensure_extension(mut path: std::path::PathBuf, ext: &str) -> std::path::PathB
     if path.extension().and_then(|e| e.to_str()) != Some(ext) {
         path.set_extension(ext);
     }
-    path
+    return path;
 }
 
 #[cfg(test)]
