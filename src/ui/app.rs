@@ -15,6 +15,7 @@ const MAX_RENDER_TIMESTAMPS: usize = 256;
 
 pub struct App {
     engine: Engine,
+    recent_projects: Vec<PathBuf>,
     last_error: Option<String>,
     last_warning: Option<String>,
     pending_confirm: Option<Confirm>,
@@ -76,6 +77,7 @@ impl App {
     pub fn new(cc: &eframe::CreationContext<'_>, startup_path: Option<PathBuf>) -> Self {
         let mut app = Self {
             engine: Engine::new_project(),
+            recent_projects: Vec::new(),
             last_error: None,
             last_warning: None,
             pending_confirm: None,
@@ -98,6 +100,7 @@ impl App {
                 app.last_error = Some(format!("Startup project not found: {}", path.display()));
             }
         }
+        app.refresh_recent();
         return app;
     }
 
@@ -148,7 +151,7 @@ impl eframe::App for App {
         let ctx = ui.ctx().clone();
 
         if self.ui_visible {
-            let actions = menu_bar::draw(ui, &self.engine);
+            let actions = menu_bar::draw(ui, &self.engine, &self.recent_projects);
             super::side_panel::draw(ui, &mut self.engine);
             self.handle_menu_actions(&actions, ui);
         }
@@ -184,7 +187,12 @@ impl App {
         } else {
             self.last_error = None;
             self.refresh_warning();
+            self.refresh_recent();
         }
+    }
+
+    fn refresh_recent(&mut self) {
+        self.recent_projects = crate::session::Session::load().recent_projects;
     }
 
     fn confirm_or(&mut self, action: Confirm) {
@@ -227,6 +235,7 @@ impl App {
                 self.last_error = Some(e.to_string());
             } else {
                 self.last_error = None;
+                self.refresh_recent();
             }
         }
     }
@@ -238,6 +247,7 @@ impl App {
         for action in actions {
             match action {
                 MenuAction::Shortcut(shortcut) => self.apply_shortcut(*shortcut, ui),
+                MenuAction::OpenRecent(path) => self.confirm_or(Confirm::OpenPath(path.clone())),
                 MenuAction::ShowAbout => self.show_about = true,
                 MenuAction::ShowShortcuts => self.show_shortcuts = true,
             }

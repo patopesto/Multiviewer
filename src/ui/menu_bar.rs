@@ -1,21 +1,25 @@
+use std::path::PathBuf;
+
 use crate::engine::Engine;
 use crate::ui::shortcuts::Shortcut;
 
 /// A menu-bar item the user activated this frame.
 pub enum MenuAction {
     Shortcut(Shortcut),
+    OpenRecent(PathBuf),
     ShowShortcuts,
     ShowAbout,
 }
 
 /// Draw the top menu bar (File / Edit / View / About).
-pub fn draw(ui: &mut egui::Ui, engine: &Engine) -> Vec<MenuAction> {
+pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuAction> {
     let mut actions = Vec::new();
     egui::Panel::top("menu_bar").show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
             menu_button(ui, "File", |ui| {
                 menu_item(ui, &mut actions, Shortcut::NewProject, true);
                 menu_item(ui, &mut actions, Shortcut::OpenProject, true);
+                open_recent_menu(ui, &mut actions, recent);
                 ui.separator();
                 menu_item(ui, &mut actions, Shortcut::SaveProject, true);
                 menu_item(ui, &mut actions, Shortcut::SaveProjectAs, true);
@@ -74,4 +78,23 @@ fn menu_item(ui: &mut egui::Ui, actions: &mut Vec<MenuAction>, shortcut: Shortcu
     if ui.add_enabled(enabled, button).clicked() {
         actions.push(MenuAction::Shortcut(shortcut));
     }
+}
+
+fn open_recent_menu(ui: &mut egui::Ui, actions: &mut Vec<MenuAction>, recent: &[PathBuf]) {
+    ui.menu_button("Open Recent", |ui| {
+        if recent.is_empty() {
+            ui.add_enabled(false, egui::Button::new("No Recent Projects"));
+            return;
+        }
+        for path in recent {
+            let label = path
+                .file_stem()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.display().to_string());
+            if ui.button(label).on_hover_text(path.display().to_string()).clicked() {
+                actions.push(MenuAction::OpenRecent(path.clone()));
+                ui.close();
+            }
+        }
+    });
 }

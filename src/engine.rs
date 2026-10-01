@@ -303,7 +303,9 @@ impl Engine {
         self.project_path = Some(path.clone());
         self.last_saved_at = Instant::now();
         self.dirty = false;
-        crate::session::Session::default().set_last_project(&path)?;
+        let mut session = crate::session::Session::load();
+        session.record_recent(&path);
+        session.save()?;
         Ok(())
     }
 
@@ -321,7 +323,9 @@ impl Engine {
         self.project_path = Some(path.clone());
         self.last_saved_at = Instant::now();
         self.dirty = false;
-        crate::session::Session::default().set_last_project(&path)?;
+        let mut session = crate::session::Session::load();
+        session.record_recent(&path);
+        session.save()?;
         Ok(())
     }
 
