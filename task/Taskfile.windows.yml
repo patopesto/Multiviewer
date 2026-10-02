@@ -50,7 +50,7 @@ tasks:
     deps:
       - :ndi:setup:windows
     cmds:
-      - cargo run --release -- --console
+      - cargo run --release -- --console {{.CLI_ARGS}}
 
   build:
     desc: Build the release binary for Windows

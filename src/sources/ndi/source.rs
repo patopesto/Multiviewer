@@ -122,6 +122,8 @@ impl NdiSource {
                 let mut seq = 0u64;
                 let mut warned_formats: HashSet<u32> = HashSet::new();
                 while running2.load(Ordering::Relaxed) {
+                    let frame_span = tracing::debug_span!("ndi_frame");
+                    let _frame_guard = frame_span.entered();
                     match receiver.video().capture(Duration::from_millis(100)) {
                         Ok(frame) => {
                             let w = frame.width() as u32;

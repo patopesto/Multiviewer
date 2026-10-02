@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 use core_foundation::base::{CFType, TCFType};
 use core_foundation::dictionary::CFDictionary;
@@ -41,6 +42,7 @@ define_class!(
 
     unsafe impl SCStreamOutput for StreamDelegate {
         #[unsafe(method(stream:didOutputSampleBuffer:ofType:))]
+        #[instrument(name = "screencapturekit_frame", level = "debug", skip_all)]
         unsafe fn stream_did_output_sample_buffer(
             &self,
             _stream: &SCStream,

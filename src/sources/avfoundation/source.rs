@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 use av_foundation::{
     capture_device::AVCaptureDevice,
@@ -49,6 +50,7 @@ define_class!(
 
     unsafe impl AVCaptureVideoDataOutputSampleBufferDelegate for CaptureDelegate {
         #[unsafe(method(captureOutput:didOutputSampleBuffer:fromConnection:))]
+        #[instrument(name = "avfoundation_frame", level = "debug", skip_all)]
         unsafe fn capture_output_did_output_sample_buffer(
             &self,
             _capture_output: &AVCaptureOutput,

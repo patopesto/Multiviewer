@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
+use tracing::instrument;
 
 use super::Protocol;
 use super::decklink;
@@ -184,6 +185,7 @@ impl OutputKind {
         return Some(Self { output });
     }
 
+    #[instrument(level = "debug", skip_all, fields(protocol = ?self.output.protocol(), output = %self.output.name()))]
     pub fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
         self.output.present(texture, width, height, device, queue);
     }
@@ -261,6 +263,7 @@ impl OutputRegistry {
         self.outputs.iter().any(|(_, ok)| ok.enabled())
     }
 
+    #[instrument(level = "debug", skip_all)]
     pub fn present_all(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
         for output in self.outputs.values() {
             if output.enabled() {

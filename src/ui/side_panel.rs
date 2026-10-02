@@ -1119,9 +1119,21 @@ fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
         });
         ui.end_row();
 
+        ui.label("Frames consumed");
+        settings_value(ui, |ui| {
+            ui.label(format!("{}", stats.frames_consumed));
+        });
+        ui.end_row();
+
         ui.label("Frames dropped");
         settings_value(ui, |ui| {
             ui.label(format!("{}", stats.frames_dropped));
+        });
+        ui.end_row();
+
+        ui.label("Receive");
+        settings_value(ui, |ui| {
+            ui.label(format!("{:.2} ms", stats.receive_time_ms));
         });
         ui.end_row();
 

@@ -144,10 +144,15 @@ impl SyphonOutput {
         }
 
         // Recreate the flipped texture/bind group if dimensions changed.
-        self.ensure_flipped_texture(device, width, height, texture);
+        {
+            let flip_span = tracing::debug_span!("flip");
+            let _flip_guard = flip_span.entered();
+            self.ensure_flipped_texture(device, width, height, texture);
+            self.render_flip(device, queue, width, height);
+        }
 
-        self.render_flip(device, queue, width, height);
-
+        let publish_span = tracing::debug_span!("publish");
+        let _publish_guard = publish_span.entered();
         if let Some(ref mut output) = *output_guard {
             let _flipped_view = self.flipped_view.lock().unwrap();
             let Some(ref _view) = *_flipped_view else {

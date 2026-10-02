@@ -173,30 +173,36 @@ impl SpoutOutput {
         // GPU copy into the intermediate texture. This submits on wgpu's command
         // queue, which Spout shares (passed to `with_device`), so the send below
         // is ordered after it.
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("spout-output"),
-        });
-        encoder.copy_texture_to_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyTextureInfo {
-                texture: &state.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-        );
-        queue.submit(Some(encoder.finish()));
+        {
+            let copy_span = tracing::debug_span!("copy");
+            let _copy_guard = copy_span.entered();
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("spout-output"),
+            });
+            encoder.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &state.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
+            queue.submit(Some(encoder.finish()));
+        }
 
+        let send_span = tracing::debug_span!("send");
+        let _send_guard = send_span.entered();
         let send_start = std::time::Instant::now();
         // Safety: `wrapped` was created from this sender and the copy above left the texture in `COPY_DEST`.
         let result = unsafe { state.sender.send_wrapped_resource(&state.wrapped) };

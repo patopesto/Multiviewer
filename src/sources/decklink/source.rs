@@ -87,6 +87,8 @@ impl DecklinkSource {
                         // published a new seq. The 5 ms poll otherwise returns the
                         // same front buffer repeatedly.
                         if got && seq != last_seq {
+                            let frame_span = tracing::debug_span!("decklink_frame");
+                            let _frame_guard = frame_span.entered();
                             let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
                             let pixel_format = match DecklinkPixelFormat::try_from(fmt) {
                                 Ok(DecklinkPixelFormat::Bgra8) => PixelFormat::Bgra8,

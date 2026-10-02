@@ -81,6 +81,8 @@ impl NdiOutput {
                         }
                     };
 
+                    let send_span = tracing::debug_span!("ndi_send");
+                    let _send_guard = send_span.entered();
                     let start = Instant::now();
                     // The returned async token borrows the buffer, so we cannot store it across
                     // loop iterations. Dropping it here flushes the frame before the next send.
@@ -131,32 +133,38 @@ impl VideoOutput for NdiOutput {
             mapped_at_creation: false,
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("ndi-output-readback"),
-        });
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &readback_buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 8,
-                    bytes_per_row: Some(bytes_per_row),
-                    rows_per_image: Some(height),
+        {
+            let readback_span = tracing::debug_span!("readback");
+            let _readback_guard = readback_span.entered();
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("ndi-output-readback"),
+            });
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
                 },
-            },
-            wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-        );
-        queue.submit(Some(encoder.finish()));
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &readback_buffer,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 8,
+                        bytes_per_row: Some(bytes_per_row),
+                        rows_per_image: Some(height),
+                    },
+                },
+                wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+            );
+            queue.submit(Some(encoder.finish()));
+        }
 
+        let wait_span = tracing::debug_span!("readback_wait");
+        let _wait_guard = wait_span.entered();
         let buffer_slice = readback_buffer.slice(..);
         let (tx, rx) = std::sync::mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {

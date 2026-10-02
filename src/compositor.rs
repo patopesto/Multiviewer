@@ -2,7 +2,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
+use tracing::instrument;
 
 use crate::config::{BorderVisibility, Canvas, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::sources::{ConvUniform, CpuFrame, Frame, PixelFormat, Protocol, SourceKey, SourceRegistry, SourceStats};
@@ -412,6 +414,7 @@ impl Compositor {
 
     /// Per-frame: upload changed source textures, build quads for all sources.
     #[allow(clippy::too_many_arguments)]
+    #[instrument(level = "debug", skip_all)]
     pub fn build(
         &mut self,
         device: &wgpu::Device,
@@ -461,7 +464,19 @@ impl Compositor {
                         let key = SourceKey::new(source.protocol.clone(), source_ref.to_string());
                         let src = registry.get(&key)?;
                         let stats = src.stats();
-                        match src.latest(device, queue)? {
+                        let latest_span = tracing::debug_span!("latest", source = %key.source_ref);
+                        let _latest_guard = latest_span.entered();
+                        // `latest()` is where Syphon's blocking receive and
+                        // Spout's mutex/CopyResource live, so time it here.
+                        let t = Instant::now();
+                        let frame = src.latest(device, queue)?;
+                        let receive_ms = t.elapsed().as_secs_f32() * 1000.0;
+                        {
+                            let mut s = stats.lock().unwrap();
+                            s.record_receive_time(receive_ms);
+                            s.record_consumed(frame.seq());
+                        }
+                        match frame {
                             Frame::Cpu(f) => {
                                 let st = self.ensure_texture(device, queue, &key, &f, Some(stats));
                                 Some((st.bg.clone(), f.w as f32 / f.h as f32, false, false))
@@ -810,10 +825,11 @@ impl Compositor {
             }
         }
 
-        Draw {
+        let draw = Draw {
             verts: Arc::new(verts),
             draws,
-        }
+        };
+        return draw;
     }
 
     fn rasterize_label(
@@ -995,6 +1011,7 @@ impl Compositor {
         (tex, bg, width, height)
     }
 
+    #[instrument(level = "debug", skip_all)]
     pub fn render_canvas(
         &mut self,
         device: &wgpu::Device,
@@ -1214,7 +1231,9 @@ impl Compositor {
             }
         });
         if st.seq != f.seq {
-            let t0 = std::time::Instant::now();
+            let upload_span = tracing::debug_span!("upload", source = %key.source_ref);
+            let _upload_guard = upload_span.entered();
+            let t0 = Instant::now();
             // Padded frames carry their native stride; 0 = tightly packed.
             let pitch = if f.pitch != 0 { f.pitch } else { f.w * bpp };
             queue.write_texture(

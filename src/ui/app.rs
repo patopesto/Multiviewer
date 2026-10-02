@@ -28,6 +28,7 @@ pub struct App {
     show_shortcuts: bool,
     ui_visible: bool,
     render_stats: RenderStats,
+    trace_guard: Option<tracing_chrome::FlushGuard>,
 }
 
 // Moving-window FPS tracker over logic() calls.
@@ -79,7 +80,11 @@ enum Confirm {
 
 // Init stuff
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>, startup_path: Option<PathBuf>) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        startup_path: Option<PathBuf>,
+        trace_guard: Option<tracing_chrome::FlushGuard>,
+    ) -> Self {
         let mut app = Self {
             engine: Engine::new_project(),
             recent_projects: Vec::new(),
@@ -90,6 +95,7 @@ impl App {
             show_shortcuts: false,
             ui_visible: true,
             render_stats: RenderStats::new(),
+            trace_guard,
         };
 
         Self::configure_egui(&cc.egui_ctx);
@@ -126,8 +132,6 @@ impl App {
         ctx.set_fonts(fonts);
     }
 }
-
-
 impl eframe::App for App {
     // Called once per frame before ui(), should not perform any drawing here
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
@@ -171,6 +175,10 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ui, |ui| {
             canvas::update(ui, &mut self.engine, &ctx, frame, self.ui_visible);
         });
+    }
+
+    fn on_exit(&mut self) {
+        drop(self.trace_guard.take());
     }
 }
 

@@ -122,7 +122,6 @@ pub struct GpuFrame {
     pub bg: Arc<wgpu::BindGroup>,
     pub w: u32,
     pub h: u32,
-    #[allow(dead_code)]
     pub seq: u64,
 }
 
@@ -133,4 +132,17 @@ pub enum Frame {
     Syphon(GpuFrame),
     #[cfg(target_os = "windows")]
     Spout(GpuFrame),
+}
+
+impl Frame {
+    /// The source's monotonic frame counter, for consumption accounting.
+    pub fn seq(&self) -> u64 {
+        return match self {
+            Frame::Cpu(f) => f.seq,
+            #[cfg(target_os = "macos")]
+            Frame::Syphon(f) => f.seq,
+            #[cfg(target_os = "windows")]
+            Frame::Spout(f) => f.seq,
+        };
+    }
 }

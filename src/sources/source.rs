@@ -285,13 +285,17 @@ pub struct SourceStats {
     pub frames_received: u64,
     pub frames_presented: u64,
     pub frames_dropped: u64,
+    pub receive_time_ms: f32, /// Main-thread cost of `latest()`
     pub copy_time_ms: f32,
     pub upload_time_ms: f32,
+    pub frames_consumed: u64, /// Distinct frames the compositor has seen; `received - consumed`
     pub computed_fps: f64,
     pub off_screen: bool, // For screencapturekit
     recent_frames: VecDeque<Instant>,
+    receive_times: VecDeque<f32>,
     copy_times: VecDeque<f32>,
     upload_times: VecDeque<f32>,
+    last_consumed_seq: Option<u64>,
 }
 
 impl Default for SourceStats {
@@ -304,13 +308,17 @@ impl Default for SourceStats {
             frames_received: 0,
             frames_presented: 0,
             frames_dropped: 0,
+            receive_time_ms: 0.0,
             copy_time_ms: 0.0,
             upload_time_ms: 0.0,
+            frames_consumed: 0,
             computed_fps: 0.0,
             off_screen: false,
             recent_frames: VecDeque::new(),
+            receive_times: VecDeque::new(),
             copy_times: VecDeque::new(),
             upload_times: VecDeque::new(),
+            last_consumed_seq: None,
         }
     }
 }
@@ -353,6 +361,22 @@ impl SourceStats {
             self.copy_times.pop_front();
         }
         self.copy_time_ms = self.average(&self.copy_times);
+    }
+
+    pub fn record_receive_time(&mut self, ms: f32) {
+        self.receive_times.push_back(ms);
+        if self.receive_times.len() > TIMING_WINDOW {
+            self.receive_times.pop_front();
+        }
+        self.receive_time_ms = self.average(&self.receive_times);
+    }
+
+    /// Count a frame the compositor observed with a new seq number
+    pub fn record_consumed(&mut self, seq: u64) {
+        if self.last_consumed_seq != Some(seq) {
+            self.last_consumed_seq = Some(seq);
+            self.frames_consumed += 1;
+        }
     }
 
     pub fn record_upload_time(&mut self, ms: f32) {
@@ -534,7 +558,6 @@ impl SourceRegistry {
         self.sources.get_mut(key)
     }
 
-    #[allow(dead_code)]
     pub fn iter(&self) -> impl Iterator<Item = (&SourceKey, &SourceKind)> {
         self.sources.iter()
     }
@@ -623,6 +646,8 @@ mod tests {
         s.record_frame(1920, 1080, "BGRA8", 30.0);
         s.record_copy_time(1.0);
         s.record_copy_time(3.0);
+        s.record_receive_time(0.5);
+        s.record_receive_time(1.5);
         s.record_upload_time(2.0);
         s.record_upload_time(4.0);
         s.record_dropped(1);
@@ -634,7 +659,21 @@ mod tests {
         assert_eq!(s.frames_presented, 2);
         assert_eq!(s.frames_dropped, 1);
         assert!((s.copy_time_ms - 2.0).abs() < 0.001);
+        assert!((s.receive_time_ms - 1.0).abs() < 0.001);
         assert!((s.upload_time_ms - 3.0).abs() < 0.001);
+    }
+
+    /// Only new seqs count as consumed; a source re-observed between frames
+    /// must not inflate the figure.
+    #[test]
+    fn stats_counts_consumed_once_per_seq() {
+        let mut s = SourceStats::new();
+        s.record_consumed(0);
+        s.record_consumed(0);
+        s.record_consumed(1);
+        s.record_consumed(1);
+        s.record_consumed(2);
+        assert_eq!(s.frames_consumed, 3);
     }
 
     /// A source_ref alone is not a registry identity: two protocols may carry

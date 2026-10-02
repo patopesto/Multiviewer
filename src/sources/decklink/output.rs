@@ -149,13 +149,19 @@ impl DecklinkOutput {
                         }
                     }
 
-                    let now = Instant::now();
-                    let elapsed = now.duration_since(last_frame_time);
-                    if elapsed < frame_interval {
-                        std::thread::sleep(frame_interval - elapsed);
+                    {
+                        let pacing_span = tracing::debug_span!("decklink_pacing");
+                        let _pacing_guard = pacing_span.entered();
+                        let now = Instant::now();
+                        let elapsed = now.duration_since(last_frame_time);
+                        if elapsed < frame_interval {
+                            std::thread::sleep(frame_interval - elapsed);
+                        }
+                        last_frame_time = Instant::now();
                     }
-                    last_frame_time = Instant::now();
 
+                    let send_span = tracing::debug_span!("decklink_send");
+                    let _send_guard = send_span.entered();
                     let start = Instant::now();
                     let ok = unsafe {
                         decklink_output_present_frame(
@@ -229,9 +235,13 @@ impl DecklinkOutput {
         self.width.store(out_w, Ordering::Relaxed);
         self.height.store(out_h, Ordering::Relaxed);
 
-        self.ensure_scale_resources(device, queue);
-        self.ensure_scaled_texture(device, out_w, out_h, texture);
-        self.render_scale(device, queue, out_w, out_h, width, height);
+        {
+            let scale_span = tracing::debug_span!("scale");
+            let _scale_guard = scale_span.entered();
+            self.ensure_scale_resources(device, queue);
+            self.ensure_scaled_texture(device, out_w, out_h, texture);
+            self.render_scale(device, queue, out_w, out_h, width, height);
+        }
 
         let bytes_per_row = out_w * 4;
         let aligned_bytes_per_row = (bytes_per_row + 255) & !255;
@@ -243,32 +253,38 @@ impl DecklinkOutput {
             mapped_at_creation: false,
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("decklink-output-readback"),
-        });
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: self.scaled_texture.lock().unwrap().as_ref().unwrap(),
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &readback_buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 16,
-                    bytes_per_row: Some(aligned_bytes_per_row),
-                    rows_per_image: Some(out_h),
+        {
+            let readback_span = tracing::debug_span!("readback");
+            let _readback_guard = readback_span.entered();
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("decklink-output-readback"),
+            });
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture: self.scaled_texture.lock().unwrap().as_ref().unwrap(),
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
                 },
-            },
-            wgpu::Extent3d {
-                width: out_w,
-                height: out_h,
-                depth_or_array_layers: 1,
-            },
-        );
-        queue.submit(Some(encoder.finish()));
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &readback_buffer,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 16,
+                        bytes_per_row: Some(aligned_bytes_per_row),
+                        rows_per_image: Some(out_h),
+                    },
+                },
+                wgpu::Extent3d {
+                    width: out_w,
+                    height: out_h,
+                    depth_or_array_layers: 1,
+                },
+            );
+            queue.submit(Some(encoder.finish()));
+        }
 
+        let wait_span = tracing::debug_span!("readback_wait");
+        let _wait_guard = wait_span.entered();
         let buffer_slice = readback_buffer.slice(..);
         let (tx, rx) = std::sync::mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
         buffer_slice.map_async(wgpu::MapMode::Read, move |result| {

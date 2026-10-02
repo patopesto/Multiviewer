@@ -160,39 +160,45 @@ impl TestSource {
 
                 while running2.load(Ordering::Relaxed) {
                     let frame_start = Instant::now();
-                    let t0 = Instant::now();
-                    match &pattern {
-                        TestPattern::Radar { width, speed, direction, line_color, bg_color } => {
-                            generate_radar(&mut back, w, h, *width, *speed, seq, direction, *line_color, *bg_color);
-                        }
-                        _ => {
-                            back.copy_from_slice(&base);
-                        }
-                    }
-                    if cursor.enabled {
-                        overlay_cursor(&mut back, w, h, seq, &cursor);
-                    }
-                    let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
+                    // Scope the span to frame work so the pacing sleep below
+                    // does not show up as producer cost in traces.
                     {
-                        let mut s = stats2.lock().unwrap();
-                        s.record_frame(w, h, PixelFormat::Rgba8.label(), NOMINAL_FPS);
-                        s.record_copy_time(copy_ms);
-                    }
-                    let frame = Frame::Cpu(CpuFrame {
-                        data: Arc::new(std::mem::take(&mut back)),
-                        w,
-                        h,
-                        fmt: PixelFormat::Rgba8,
-                        pitch: 0,
-                        seq,
-                    });
-                    let previous = writer.lock().unwrap().replace(frame);
-                    back = match previous {
-                        Some(Frame::Cpu(CpuFrame { data, .. })) => {
-                            Arc::try_unwrap(data).unwrap_or_else(|_| vec![0u8; size])
+                        let frame_span = tracing::debug_span!("test_frame");
+                        let _frame_guard = frame_span.entered();
+                        let t0 = Instant::now();
+                        match &pattern {
+                            TestPattern::Radar { width, speed, direction, line_color, bg_color } => {
+                                generate_radar(&mut back, w, h, *width, *speed, seq, direction, *line_color, *bg_color);
+                            }
+                            _ => {
+                                back.copy_from_slice(&base);
+                            }
                         }
-                        _ => vec![0u8; size],
-                    };
+                        if cursor.enabled {
+                            overlay_cursor(&mut back, w, h, seq, &cursor);
+                        }
+                        let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
+                        {
+                            let mut s = stats2.lock().unwrap();
+                            s.record_frame(w, h, PixelFormat::Rgba8.label(), NOMINAL_FPS);
+                            s.record_copy_time(copy_ms);
+                        }
+                        let frame = Frame::Cpu(CpuFrame {
+                            data: Arc::new(std::mem::take(&mut back)),
+                            w,
+                            h,
+                            fmt: PixelFormat::Rgba8,
+                            pitch: 0,
+                            seq,
+                        });
+                        let previous = writer.lock().unwrap().replace(frame);
+                        back = match previous {
+                            Some(Frame::Cpu(CpuFrame { data, .. })) => {
+                                Arc::try_unwrap(data).unwrap_or_else(|_| vec![0u8; size])
+                            }
+                            _ => vec![0u8; size],
+                        };
+                    }
                     seq += 1;
                     std::thread::sleep(frame_interval.saturating_sub(frame_start.elapsed()));
                 }

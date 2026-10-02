@@ -19,7 +19,7 @@ tasks:
   run:
     desc: Run the application in debug mode
     cmds:
-      - cargo run --release
+      - cargo run --release -- {{.CLI_ARGS}}
 
   build:
     desc: Build the release binary for macOS
