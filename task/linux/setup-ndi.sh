@@ -3,8 +3,8 @@
 #
 # Runs from the repository root. Expected environment (set by task/Taskfile.ndi.yml):
 #   NDI_VERSION       SDK version, from vendor/ndi/NDI_SDK_VERSION
-#   NDI_LINUX_URL     installer URL
-#   NDI_LINUX_SHA_FILE  allowlist of accepted SHA256 hashes
+#   NDI_SDK_URL       installer URL
+#   NDI_SHA_FILE      allowlist of accepted SHA256 hashes
 #   NDI_CACHE_DIR     download cache root
 #
 # Overridable with NDI_SDK_DIR to point at an existing install.
@@ -33,10 +33,10 @@ if [ ! -f "$sdk_dir/include/Processing.NDI.Lib.h" ]; then
         [ -z "$line" ] && continue
         case "$line" in \#*) continue ;; esac
         accepted_hashes+=("$(echo "$line" | tr '[:lower:]' '[:upper:]')")
-    done < "$NDI_LINUX_SHA_FILE"
+    done < "$NDI_SHA_FILE"
 
     if [ ${#accepted_hashes[@]} -eq 0 ]; then
-        echo "No SHA256 hashes found in $NDI_LINUX_SHA_FILE" >&2
+        echo "No SHA256 hashes found in $NDI_SHA_FILE" >&2
         exit 1
     fi
 
@@ -47,7 +47,7 @@ if [ ! -f "$sdk_dir/include/Processing.NDI.Lib.h" ]; then
 
     if [ ! -f "$installer_tar" ]; then
         echo "Downloading NDI SDK v$NDI_VERSION for Linux..."
-        curl -L -o "$installer_tar" "$NDI_LINUX_URL"
+        curl -L -o "$installer_tar" "$NDI_SDK_URL"
     else
         echo "Using cached NDI SDK installer at $installer_tar"
     fi
@@ -65,7 +65,7 @@ if [ ! -f "$sdk_dir/include/Processing.NDI.Lib.h" ]; then
         echo "NDI SDK SHA256 mismatch!" >&2
         echo "Expected: ${accepted_hashes[*]}" >&2
         echo "Actual:   $actual" >&2
-        echo "The upstream installer may have been rotated. Update $NDI_LINUX_SHA_FILE." >&2
+        echo "The upstream installer may have been rotated. Update $NDI_SHA_FILE." >&2
         exit 1
     fi
     echo "NDI SDK SHA256 verified."

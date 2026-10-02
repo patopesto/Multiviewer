@@ -13,14 +13,14 @@ if ($sdk_dir) {
 
 if (-not $sdk_dir) {
     $accepted_hashes = @()
-    foreach ($line in Get-Content $env:NDI_WINDOWS_SHA_FILE) {
+    foreach ($line in Get-Content $env:NDI_SHA_FILE) {
         $line = $line.Trim()
         if ($line -eq "" -or $line.StartsWith("#")) { continue }
         $accepted_hashes += $line.ToUpperInvariant()
     }
 
     if ($accepted_hashes.Count -eq 0) {
-        Write-Error "No SHA256 hashes found in $env:NDI_WINDOWS_SHA_FILE"
+        Write-Error "No SHA256 hashes found in $env:NDI_SHA_FILE"
         exit 1
     }
 
@@ -31,7 +31,7 @@ if (-not $sdk_dir) {
 
     if (-not (Test-Path $installer)) {
         Write-Host "Downloading NDI SDK v$env:NDI_VERSION for Windows..."
-        Invoke-WebRequest -Uri $env:NDI_WINDOWS_URL -OutFile $installer
+        Invoke-WebRequest -Uri $env:NDI_SDK_URL -OutFile $installer
     } else {
         Write-Host "Using cached NDI SDK installer at $installer"
     }
@@ -47,7 +47,7 @@ if (-not $sdk_dir) {
 
     if (-not $hash_ok) {
         Write-Error "NDI SDK SHA256 mismatch! Actual: $actual. Accepted: $($accepted_hashes -join ', ')"
-        Write-Error "The upstream installer may have been rotated. Update $env:NDI_WINDOWS_SHA_FILE."
+        Write-Error "The upstream installer may have been rotated. Update $env:NDI_SHA_FILE."
         exit 1
     }
     Write-Host "NDI SDK SHA256 verified."
