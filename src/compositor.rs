@@ -1215,6 +1215,8 @@ impl Compositor {
         });
         if st.seq != f.seq {
             let t0 = std::time::Instant::now();
+            // Padded frames carry their native stride; 0 = tightly packed.
+            let pitch = if f.pitch != 0 { f.pitch } else { f.w * bpp };
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &st._tex,
@@ -1225,7 +1227,7 @@ impl Compositor {
                 &f.data,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(f.w * bpp),
+                    bytes_per_row: Some(pitch),
                     rows_per_image: Some(f.h),
                 },
                 wgpu::Extent3d {

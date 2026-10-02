@@ -110,6 +110,8 @@ pub struct CpuFrame {
     pub w: u32,
     pub h: u32,
     pub fmt: PixelFormat,
+    /// Row stride in bytes; 0 means tightly packed (`w * bpp`).
+    pub pitch: u32,
     /// Monotonic per-source counter; compositor uploads only when this changes.
     pub seq: u64,
 }

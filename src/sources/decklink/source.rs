@@ -121,6 +121,7 @@ impl DecklinkSource {
                                 w: w as u32,
                                 h: h as u32,
                                 fmt: pixel_format,
+                                pitch: 0,
                                 seq,
                             });
                             drop(guard);

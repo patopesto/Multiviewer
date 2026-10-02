@@ -69,7 +69,11 @@ define_class!(
             }
 
             let bytes_per_row = pixel_buffer.get_bytes_per_row();
-            let expected = (w as usize) * (h as usize) * 4;
+            let rows = h as usize;
+            // One bulk copy at the buffer's native row stride; the compositor
+            // passes the stride straight to write_texture instead of us
+            // repacking every row each frame.
+            let copy_len = (bytes_per_row * rows).min(pixel_buffer.get_data_size());
             let t0 = Instant::now();
 
             let data = unsafe {
@@ -77,18 +81,10 @@ define_class!(
                     return;
                 }
                 let src = pixel_buffer.get_base_address() as *const u8;
-                let mut packed = vec![0u8; expected];
-                if bytes_per_row == (w as usize) * 4 {
-                    std::ptr::copy_nonoverlapping(src, packed.as_mut_ptr(), expected);
-                } else {
-                    for y in 0..(h as usize) {
-                        let src_row = src.add(y * bytes_per_row);
-                        let dst_row = packed.as_mut_ptr().add(y * (w as usize) * 4);
-                        std::ptr::copy_nonoverlapping(src_row, dst_row, (w as usize) * 4);
-                    }
-                }
+                let mut buf = vec![0u8; copy_len];
+                std::ptr::copy_nonoverlapping(src, buf.as_mut_ptr(), copy_len);
                 let _ = pixel_buffer.unlock_base_address(kCVPixelBufferLock_ReadOnly);
-                packed
+                buf
             };
 
             let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
@@ -108,6 +104,7 @@ define_class!(
                 w,
                 h,
                 fmt: PixelFormat::Bgra8,
+                pitch: bytes_per_row as u32,
                 seq,
             });
             let slot_arc = ivars.0.borrow();

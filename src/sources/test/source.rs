@@ -181,6 +181,7 @@ impl TestSource {
                         w,
                         h,
                         fmt: PixelFormat::Rgba8,
+                        pitch: 0,
                         seq,
                     });
                     let previous = writer.lock().unwrap().replace(frame);

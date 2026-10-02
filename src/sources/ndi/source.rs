@@ -145,21 +145,10 @@ impl NdiSource {
                                 LineStrideOrSize::LineStrideBytes(s) => s as usize,
                                 _ => (w as usize) * bpp,
                             };
-                            let expected = (w as usize) * (h as usize) * bpp;
                             let t0 = Instant::now();
-                            let data = if stride == (w as usize) * bpp {
-                                frame.data().to_vec()
-                            } else {
-                                let mut packed = vec![0u8; expected];
-                                for y in 0..h as usize {
-                                    let src = y * stride;
-                                    let dst = y * (w as usize) * bpp;
-                                    let row_bytes = (w as usize) * bpp;
-                                    packed[dst..dst + row_bytes]
-                                        .copy_from_slice(&frame.data()[src..src + row_bytes]);
-                                }
-                                packed
-                            };
+                            // Native stride passed through; the compositor
+                            // uploads with it instead of us repacking rows.
+                            let data = frame.data().to_vec();
                             let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
                             {
                                 let mut s = stats2.lock().unwrap();
@@ -171,6 +160,7 @@ impl NdiSource {
                                 w,
                                 h,
                                 fmt,
+                                pitch: stride as u32,
                                 seq,
                             }));
                             seq += 1;
