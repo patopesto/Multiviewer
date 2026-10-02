@@ -54,6 +54,10 @@ objc = "0.2"
 core-foundation = "0.10"
 av-foundation = "0.8.1"
 screen-capture-kit = "0.7.1"
+# CGPreflightScreenCaptureAccess/CGRequestScreenCaptureAccess wrappers plus
+# CGDisplay bounds/pixel size for the capture scale; same crate
+# screen-capture-kit already pulls in (with its `link` feature).
+core-graphics2 = { version = "0.6.1", default-features = false, features = ["display", "window"] }
 core-video = "0.6.1"
 core-media = "0.8.1"
 dispatch2 = "0.3"

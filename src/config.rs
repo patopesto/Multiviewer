@@ -339,6 +339,8 @@ mod tests {
     use super::*;
     #[cfg(target_os = "macos")]
     use crate::sources::syphon::SyphonOutputConfig;
+    #[cfg(target_os = "macos")]
+    use crate::sources::ScreenCaptureKitSourceConfig;
     #[cfg(target_os = "windows")]
     use crate::sources::SpoutOutputConfig;
     use crate::sources::{NdiSourceConfig, NdiOutputConfig, DecklinkSourceConfig, DecklinkOutputConfig, TestSourceConfig};
@@ -497,15 +499,15 @@ mod tests {
         assert_eq!(saved["config"]["device_unique_id"], "0x802000000a5f123");
     }
 
-    /// A macOS-authored ScreenCaptureKit source must survive load + save on a
-    /// platform that has no ScreenCaptureKit.
+    /// A macOS-authored ScreenCaptureKit source must survive load + save on a platform without it.
     #[test]
     fn screencapturekit_source_round_trips_on_unavailable_platform() {
         let json = r#"{
             "uuid":"u1","name":"Screen","protocol":"ScreenCaptureKit",
-            "source_ref":"724561234","x":10.0,"y":20.0,
+            "source_ref":"display:724561234","x":10.0,"y":20.0,
             "width":1920,"height":1080,"z":3,"mode":"Fit",
-            "config":{"protocol":"ScreenCaptureKit","display_id":"724561234"}
+            "config":{"protocol":"ScreenCaptureKit","kind":"display",
+                      "display_id":"724561234"}
         }"#;
         let parsed: Source = serde_json::from_str(json).unwrap();
         #[cfg(target_os = "macos")]
@@ -514,7 +516,10 @@ mod tests {
             let SourceConfig::ScreenCaptureKit(c) = &parsed.config else {
                 panic!("expected ScreenCaptureKit config")
             };
-            assert_eq!(c.display_id, "724561234");
+            let ScreenCaptureKitSourceConfig::Display { display_id } = c else {
+                panic!("expected display target, got {c:?}")
+            };
+            assert_eq!(display_id, "724561234");
         }
         #[cfg(not(target_os = "macos"))]
         {
@@ -530,11 +535,58 @@ mod tests {
         }
         // Layout is independent of protocol availability.
         assert_eq!(parsed.name, "Screen");
-        assert_eq!(parsed.source_ref.as_deref(), Some("724561234"));
+        assert_eq!(parsed.source_ref.as_deref(), Some("display:724561234"));
 
         let saved = serde_json::to_value(&parsed).unwrap();
         assert_eq!(saved["protocol"], "ScreenCaptureKit");
+        assert_eq!(saved["config"]["kind"], "display");
         assert_eq!(saved["config"]["display_id"], "724561234");
+    }
+
+    /// Window ScreenCaptureKit sources must survive load + save on a platform that has no ScreenCaptureKit.
+    #[test]
+    fn screencapturekit_window_source_round_trip() {
+        let window_json = r#"{
+            "uuid":"u1","name":"Doc","protocol":"ScreenCaptureKit",
+            "source_ref":"window:4242","x":10.0,"y":20.0,
+            "width":800,"height":600,"z":3,"mode":"Fit",
+            "config":{"protocol":"ScreenCaptureKit","kind":"window",
+                      "window_id":4242,"bundle_id":"com.apple.TextEdit",
+                      "title":"Untitled"}
+        }"#;
+        let parsed: Source = serde_json::from_str(window_json).unwrap();
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(parsed.protocol, Protocol::ScreenCaptureKit);
+            let SourceConfig::ScreenCaptureKit(c) = &parsed.config else {
+                panic!("expected ScreenCaptureKit config")
+            };
+            let ScreenCaptureKitSourceConfig::Window {
+                window_id,
+                bundle_id,
+                title,
+            } = c
+            else {
+                panic!("expected window target, got {c:?}")
+            };
+            assert_eq!(*window_id, 4242);
+            assert_eq!(bundle_id, "com.apple.TextEdit");
+            assert_eq!(title, "Untitled");
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let SourceConfig::Unknown(v) = &parsed.config else {
+                panic!("expected Unknown config")
+            };
+            assert_eq!(v.get("window_id"), Some(&serde_json::json!(4242)));
+            assert_eq!(parsed.protocol, Protocol::Unknown("ScreenCaptureKit".to_string()));
+        }
+        let saved = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(saved["config"]["kind"], "window");
+        assert_eq!(saved["config"]["window_id"], 4242);
+        assert_eq!(saved["config"]["title"], "Untitled");
+        // A target variant only carries its own fields.
+        assert!(saved["config"].get("display_id").is_none());
     }
 
     /// A protocol this build has never heard of (the same code path Windows

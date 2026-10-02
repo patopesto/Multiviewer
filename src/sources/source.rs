@@ -186,7 +186,7 @@ pub enum SourceRuntimeConfig {
     #[cfg(target_os = "macos")]
     AvFoundation,
     #[cfg(target_os = "macos")]
-    ScreenCaptureKit { width: u32, height: u32 },
+    ScreenCaptureKit { label: String },
     #[cfg(target_os = "windows")]
     Spout,
 }
@@ -260,8 +260,8 @@ impl SourceKind {
             if let SourceRuntimeConfig::Syphon { info } = &self.runtime {
                 return syphon::format_syphon_label(&info.app_name, &info.name);
             }
-            if let SourceRuntimeConfig::ScreenCaptureKit { width, height } = &self.runtime {
-                return screencapturekit::format_display_label(source_ref, *width, *height);
+            if let SourceRuntimeConfig::ScreenCaptureKit { label } = &self.runtime {
+                return label.clone();
             }
         }
         return source_ref.to_string();
@@ -286,6 +286,7 @@ pub struct SourceStats {
     pub copy_time_ms: f32,
     pub upload_time_ms: f32,
     pub computed_fps: f64,
+    pub off_screen: bool, // For screencapturekit
     recent_frames: VecDeque<Instant>,
     copy_times: VecDeque<f32>,
     upload_times: VecDeque<f32>,
@@ -304,6 +305,7 @@ impl Default for SourceStats {
             copy_time_ms: 0.0,
             upload_time_ms: 0.0,
             computed_fps: 0.0,
+            off_screen: false,
             recent_frames: VecDeque::new(),
             copy_times: VecDeque::new(),
             upload_times: VecDeque::new(),
@@ -362,6 +364,10 @@ impl SourceStats {
 
     pub fn record_dropped(&mut self, count: u64) {
         self.frames_dropped += count;
+    }
+
+    pub fn set_off_screen(&mut self, off_screen: bool) {
+        self.off_screen = off_screen;
     }
 
     fn average(&self, values: &VecDeque<f32>) -> f32 {
@@ -487,14 +493,16 @@ impl SourceRegistry {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn add_screencapturekit(&mut self, key: SourceKey, config: screencapturekit::ScreenCaptureKitSourceConfig, width: u32, height: u32) -> SourceKey {
+    pub fn add_screencapturekit(&mut self, key: SourceKey, config: screencapturekit::ScreenCaptureKitSourceConfig, label: String) -> SourceKey {
+        // First SCK source in the process triggers the one-time TCC prompt.
+        screencapturekit::ensure_screen_capture_access_requested();
         if self.contains(&key) {
             return key;
         }
         let kind = SourceKind::new(
             &key,
             SourceConfig::ScreenCaptureKit(config),
-            SourceRuntimeConfig::ScreenCaptureKit { width, height },
+            SourceRuntimeConfig::ScreenCaptureKit { label },
         );
         self.sources.insert(key.clone(), kind);
         return key;

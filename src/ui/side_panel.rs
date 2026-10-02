@@ -789,7 +789,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         }
                         #[cfg(target_os = "macos")]
                         Protocol::ScreenCaptureKit => {
-                            let sck_sources: Vec<(String, String)> = engine
+                            let mut sck_sources: Vec<(String, String)> = engine
                                 .registry
                                 .list_sources(Protocol::ScreenCaptureKit)
                                 .into_iter()
@@ -798,13 +798,14 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                     (key.source_ref.clone(), label)
                                 })
                                 .collect();
+                            sck_sources.sort_by_cached_key(|(_, label)| label.to_lowercase());
                             let current = source.source_ref.as_deref().unwrap_or("");
                             let current_label = sck_sources
                                 .iter()
                                 .find(|(id, _)| id == current)
                                 .map(|(_, label)| label.clone())
                                 .unwrap_or_else(|| current.to_string());
-                            let discovered = engine
+                            let targets = engine
                                 .screencapturekit
                                 .as_ref()
                                 .map(|d| d.list())
@@ -815,25 +816,37 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .selected_text(current_label)
                                 .truncate()
                                 .show_ui(ui, |ui| {
-                                    // Already connected displays
+                                    // Already connected targets
                                     for (id, label) in &sck_sources {
                                         if ui.selectable_label(current == id, label).clicked() {
                                             selected_source = Some(id.clone());
                                         }
                                     }
-                                    // Discovered displays not yet connected (auto-connect on select)
-                                    for device in &discovered {
-                                        let id = device.display_id.clone();
-                                        let label = device.label();
-                                        if !sck_sources.iter().any(|(c, _)| c == &id)
-                                            && ui.selectable_label(current == id, &label).clicked()
-                                        {
-                                            new_connect =
-                                                Some((Protocol::ScreenCaptureKit, id.clone()));
-                                            selected_source = Some(id);
+                                    // Discovered targets not yet connected, grouped by kind (auto-connect on select)
+                                    for (header, group) in [
+                                        ("Displays", &targets.displays),
+                                        ("Windows", &targets.windows),
+                                    ] {
+                                        let pending: Vec<_> = group
+                                            .iter()
+                                            .filter(|t| {
+                                                !sck_sources
+                                                    .iter()
+                                                    .any(|(c, _)| c == &t.source_ref)
+                                            })
+                                            .collect();
+                                        if pending.is_empty() {
+                                            continue;
+                                        }
+                                        ui.label(egui::RichText::new(header).weak());
+                                        for target in pending {
+                                            if ui.selectable_label(current == target.source_ref, &target.label).clicked() {
+                                                new_connect = Some((Protocol::ScreenCaptureKit, target.source_ref.clone()));
+                                                selected_source = Some(target.source_ref.clone());
+                                            }
                                         }
                                     }
-                                    if sck_sources.is_empty() && discovered.is_empty() {
+                                    if targets.is_empty() {
                                         ui.weak("(scanning...)");
                                     }
                                 });
@@ -1051,6 +1064,17 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
 
 fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
     settings_grid(ui, "source_stats_grid", |ui| {
+        if stats.off_screen {
+            ui.label("Status");
+            settings_value(ui, |ui| {
+                ui.colored_label(
+                    egui::Color32::YELLOW,
+                    "Off-screen \u{2014} holding last frame",
+                );
+            });
+            ui.end_row();
+        }
+
         ui.label("Resolution");
         settings_value(ui, |ui| {
             ui.label(format!(

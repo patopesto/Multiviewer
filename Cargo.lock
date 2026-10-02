@@ -11,6 +11,7 @@ dependencies = [
  "bytemuck",
  "cc",
  "core-foundation 0.10.1",
+ "core-graphics2",
  "core-media",
  "core-video",
  "dirs",

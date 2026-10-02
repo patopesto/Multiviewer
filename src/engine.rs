@@ -479,25 +479,43 @@ impl Engine {
         // Auto-connect pending ScreenCaptureKit sources on macOS
         #[cfg(target_os = "macos")]
         {
+            // Prompt once per source creation: discovery stays blank until permission exists.
+            if self
+                .cfg
+                .canvas
+                .sources
+                .iter()
+                .any(|s| s.protocol == Protocol::ScreenCaptureKit)
+            {
+                crate::sources::screencapturekit::ensure_screen_capture_access_requested();
+            }
             if let Some(ref discovery) = self.screencapturekit {
-                let discovered = discovery.list();
+                let targets = discovery.list();
                 for source in &self.cfg.canvas.sources {
-                    if source.protocol == Protocol::ScreenCaptureKit
-                        && let Some(ref source_ref) = source.source_ref
+                    if source.protocol != Protocol::ScreenCaptureKit {
+                        continue;
+                    }
+                    let Some(ref source_ref) = source.source_ref else {
+                        continue;
+                    };
+                    let key = SourceKey::new(Protocol::ScreenCaptureKit, source_ref.clone());
+                    if self.registry.contains(&key) {
+                        continue;
+                    }
+                    let default_config = ScreenCaptureKitSourceConfig::default();
+                    let layer_config = match &source.config {
+                        SourceConfig::ScreenCaptureKit(c) => Some(c),
+                        _ => None,
+                    };
+                    // Stale window ids re-match on app + title; exact source_ref needs no config.
+                    let candidate = layer_config.unwrap_or(&default_config);
+                    if let Some(target) = targets.iter().find(|t| t.matches(source_ref, candidate))
                     {
-                        let key = SourceKey::new(Protocol::ScreenCaptureKit, source_ref.clone());
-                        if !self.registry.contains(&key)
-                            && let Some(device) =
-                                discovered.iter().find(|d| d.display_id == *source_ref)
-                        {
-                            let mut config = match &source.config {
-                                SourceConfig::ScreenCaptureKit(c) => c.clone(),
-                                _ => ScreenCaptureKitSourceConfig::default(),
-                            };
-                            config.display_id = device.display_id.clone();
-                            self.registry.add_screencapturekit(key, config, device.width, device.height);
-                            self.dirty = true;
-                        }
+                        let config = target.to_config();
+                        let label = target.label.clone();
+                        self.registry
+                            .add_screencapturekit(key, config, label);
+                        self.dirty = true;
                     }
                 }
             }
@@ -706,11 +724,21 @@ impl Engine {
             }
             #[cfg(target_os = "macos")]
             Protocol::ScreenCaptureKit => {
-                if let Some(device) = self.screencapturekit.as_ref().and_then(|d| d.find_by_display_id(name)) {
-                    let config = ScreenCaptureKitSourceConfig {
-                        display_id: device.display_id.clone(),
-                    };
-                    self.registry.add_screencapturekit(key, config, device.width, device.height);
+                if let Some(target) = self
+                    .screencapturekit
+                    .as_ref()
+                    .and_then(|d| d.list().find_by_source_ref(name))
+                {
+                    let config = target.to_config();
+                    // Persist identity to every quad sharing this source (window re-match needs it).
+                    for quad in self.cfg.canvas.sources.iter_mut().filter(|s| {
+                        s.protocol == Protocol::ScreenCaptureKit
+                            && s.source_ref.as_deref() == Some(name)
+                    }) {
+                        quad.config = SourceConfig::ScreenCaptureKit(config.clone());
+                    }
+                    let label = target.label.clone();
+                    self.registry.add_screencapturekit(key, config, label);
                 }
             }
             #[cfg(target_os = "windows")]

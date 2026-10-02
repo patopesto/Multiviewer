@@ -33,7 +33,7 @@
 | **Syphon** | ✅ | ✅ | macOS only | GPU-only, zero-copy texture sharing |
 | **Spout** | ✅ | ✅ | Windows only | GPU-only, zero-copy texture sharing |
 | **AVFoundation** | ✅ | — | macOS only | Webcams and capture devices |
-| **ScreenCaptureKit** | ✅ | — | macOS only | Whole display screen capture |
+| **macOS Screen Capture** | ✅ | — | macOS only | Display and windows screen capture |
 
 ---
 
