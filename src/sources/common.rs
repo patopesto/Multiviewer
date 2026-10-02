@@ -116,6 +116,7 @@ pub struct CpuFrame {
     pub seq: u64,
 }
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 #[derive(Clone)]
 pub struct GpuFrame {
     pub bg: Arc<wgpu::BindGroup>,

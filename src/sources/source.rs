@@ -255,6 +255,7 @@ impl SourceKind {
     }
 
     /// Human-readable label for source selection. Handles protocol specifics labels
+    #[cfg(target_os = "macos")]
     pub fn display_label(&self, source_ref: &str) -> String {
         #[cfg(target_os = "macos")]
         {
@@ -367,6 +368,7 @@ impl SourceStats {
         self.frames_dropped += count;
     }
 
+    #[cfg(target_os = "macos")]
     pub fn set_off_screen(&mut self, off_screen: bool) {
         self.off_screen = off_screen;
     }
