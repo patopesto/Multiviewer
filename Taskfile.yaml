@@ -64,7 +64,6 @@ tasks:
     cmds:
       - task: darwin:generate:icons
       - task: windows:generate:icons
-      - task: linux:generate:icons
 
   test:
     desc: Run clippy and tests

@@ -8,6 +8,8 @@ vars:
   NDI_MACOS_URL: https://downloads.ndi.tv/SDK/NDI_SDK_Mac/Install_NDI_SDK_v6_Apple.pkg
   NDI_WINDOWS_SHA_FILE: vendor/ndi/windows/NDI_SDK_WINDOWS.sha256
   NDI_WINDOWS_URL: https://downloads.ndi.tv/SDK/NDI_SDK/NDI%206%20SDK.exe
+  NDI_LINUX_SHA_FILE: vendor/ndi/linux/NDI_SDK_LINUX.sha256
+  NDI_LINUX_URL: https://downloads.ndi.tv/SDK/NDI_SDK_Linux/Install_NDI_SDK_v6_Linux.tar.gz
 
 tasks:
   setup:
@@ -97,9 +99,14 @@ tasks:
       - powershell -NoProfile -ExecutionPolicy Bypass -File task/windows/setup-ndi.ps1
 
   setup:linux:
-    desc: Set up the NDI SDK for Linux (not yet implemented)
+    desc: Download, verify, and extract the Linux NDI SDK v{{.NDI_VERSION}}
+    env:
+      NDI_VERSION: '{{.NDI_VERSION}}'
+      NDI_LINUX_URL: '{{.NDI_LINUX_URL}}'
+      NDI_LINUX_SHA_FILE: '{{.NDI_LINUX_SHA_FILE}}'
+      NDI_CACHE_DIR: '{{.NDI_CACHE_DIR}}'
     cmds:
-      - echo "Linux NDI SDK setup not yet implemented"
+      - bash task/linux/setup-ndi.sh
 
   clean:
     desc: Clear the NDI SDK downloads

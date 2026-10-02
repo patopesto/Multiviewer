@@ -1,5 +1,8 @@
 # NDI runtime (vendored)
 
+`task setup` downloads and verifies the right SDK for your OS into `<os>/sdk/`
+— prefer that. The instructions below are for installing manually.
+
 The NDI runtime is proprietary and cannot be committed to this repo.
 Download the NDI SDK (https://ndi.video/ → "NDI SDK", license acceptance required)
 and drop the runtime libraries here:

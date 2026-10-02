@@ -36,6 +36,38 @@ build-macos:
       - dist/*
     expire_in: 1 day
 
+.build-linux:
+  stage: build
+  rules:
+    - if: $CI_COMMIT_TAG
+  before_script:
+    - rustup default stable
+  script:
+    - task setup
+    - task package
+  cache:
+    key: ${CI_JOB_NAME}
+    paths:
+      - target/
+      - .cargo/
+      - vendor/ndi/.cache
+  artifacts:
+    paths:
+      - dist/*
+    expire_in: 1 day
+
+build-linux-amd64:
+  extends: .build-linux
+  tags:
+    - linux
+    - amd64
+
+build-linux-arm64:
+  extends: .build-linux
+  tags:
+    - linux
+    - arm64
+
 
 upload:
   stage: release
@@ -44,6 +76,10 @@ upload:
     - docker
   needs:
     - job: build-macos
+      artifacts: true
+    - job: build-linux-amd64
+      artifacts: true
+    - job: build-linux-arm64
       artifacts: true
   rules:
     - if: $CI_COMMIT_TAG
@@ -67,6 +103,10 @@ release:
     - docker
   needs:
     - job: build-macos
+      artifacts: true
+    - job: build-linux-amd64
+      artifacts: true
+    - job: build-linux-arm64
       artifacts: true
     - job: upload
       artifacts: false

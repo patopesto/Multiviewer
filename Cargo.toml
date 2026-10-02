@@ -72,3 +72,11 @@ spout2 = { package = "spout2-rs", version = "0.1", default-features = false, fea
 # exposes; same 0.62 line wgpu-hal uses so the trait impls unify.
 windows = { version = "0.62", default-features = false }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# eframe's default features are off project-wide (macOS/Windows don't need a
+# backend), so Linux has to name its windowing backend explicitly.
+eframe = { version = "0.35", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
+# Reached only to enable `wayland-dlopen`; without it the build needs
+# libwayland-dev + libxkbcommon-dev installed.
+winit = { version = "0.30", default-features = false, features = ["wayland-dlopen"] }
+

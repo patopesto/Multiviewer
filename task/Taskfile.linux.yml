@@ -7,31 +7,31 @@ tasks:
       - task: :ndi:setup:linux
       - cargo install cargo-packager --locked
 
-  generate:icons:
-    desc: Generate assets/AppIcon.ico from assets/AppIcon.png
-    platforms: [darwin] # Note: sips is macOS-only
-    sources:
-      - assets/AppIcon.png
-    generates:
-      - assets/AppIcon.ico
+  setup:system-deps:
+    desc: Install the Linux build dependencies (Debian/Ubuntu; needs root or passwordless sudo)
     cmds:
-      - mkdir -p .tmp.ico
-      - sips --resampleHeightWidth 16 16 assets/AppIcon.png --out .tmp.ico/icon_16.png
-      - sips --resampleHeightWidth 24 24 assets/AppIcon.png --out .tmp.ico/icon_24.png
-      - sips --resampleHeightWidth 32 32 assets/AppIcon.png --out .tmp.ico/icon_32.png
-      - sips --resampleHeightWidth 48 48 assets/AppIcon.png --out .tmp.ico/icon_48.png
-      - sips --resampleHeightWidth 64 64 assets/AppIcon.png --out .tmp.ico/icon_64.png
-      - sips --resampleHeightWidth 128 128 assets/AppIcon.png --out .tmp.ico/icon_128.png
-      - png2ico assets/AppIcon.ico .tmp.ico/icon_16.png .tmp.ico/icon_24.png .tmp.ico/icon_32.png .tmp.ico/icon_48.png .tmp.ico/icon_64.png .tmp.ico/icon_128.png
-      - rm -rf .tmp.ico
+      - |
+        set -e
+        if ! command -v apt-get >/dev/null 2>&1; then
+          echo "No apt-get: install a C/C++ toolchain and libclang for your distribution." >&2
+          exit 1
+        fi
+        SUDO=""
+        [ "$(id -u)" -eq 0 ] || SUDO=sudo
+        $SUDO apt-get update -qq
+        $SUDO apt-get install -y build-essential clang libclang-dev curl
 
   run:
     desc: Run the application on Linux
+    deps:
+      - :ndi:setup:linux
     cmds:
       - cargo run --release
 
   build:
     desc: Build the release binary for Linux
+    deps:
+      - :ndi:setup:linux
     cmds:
       - cargo build --release
 

@@ -8,6 +8,11 @@ fn main() {
         setup_macos(&manifest_dir);
     }
 
+    #[cfg(target_os = "linux")]
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
+        setup_linux(&manifest_dir);
+    }
+
     #[cfg(target_os = "windows")]
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
         let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap_or_else(|_| ".".to_string()));
@@ -25,6 +30,8 @@ fn resolve_ndi_sdk_dir(manifest_dir: &Path) -> Option<PathBuf> {
 
     #[cfg(target_os = "macos")]
     let local = manifest_dir.join("vendor/ndi/macos/sdk");
+    #[cfg(target_os = "linux")]
+    let local = manifest_dir.join("vendor/ndi/linux/sdk");
     #[cfg(target_os = "windows")]
     let local = manifest_dir.join("vendor/ndi/windows/sdk");
 
@@ -34,6 +41,8 @@ fn resolve_ndi_sdk_dir(manifest_dir: &Path) -> Option<PathBuf> {
 
     #[cfg(target_os = "macos")]
     let system = Path::new("/Library/NDI SDK for Apple");
+    #[cfg(target_os = "linux")]
+    let system = Path::new("/usr/share/NDI SDK for Linux");
     #[cfg(target_os = "windows")]
     let system = Path::new(r"C:\Program Files\NDI\NDI 6 SDK");
 
@@ -74,6 +83,44 @@ fn setup_macos(manifest_dir: &Path) {
     // Link Carbon and CoreFoundation for AppleEvent handling
     println!("cargo:rustc-link-lib=framework=Carbon");
     println!("cargo:rustc-link-lib=framework=CoreFoundation");
+}
+
+#[cfg(target_os = "linux")]
+fn setup_linux(manifest_dir: &Path) {
+    let sdk = match resolve_ndi_sdk_dir(manifest_dir) {
+        Some(sdk) => sdk,
+        None => {
+            println!("cargo:warning=NDI SDK not found; app may fail at runtime");
+            return;
+        }
+    };
+
+    // The SDK ships one directory per target triple under lib/; grafton-ndi picks
+    // the one matching our target to link against. Emitting a rpath for every
+    // directory that exists keeps this arch-agnostic and costs nothing at runtime.
+    let lib_root = sdk.join("lib");
+    match std::fs::read_dir(&lib_root) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", entry.path().display());
+                }
+            }
+        }
+        Err(_) => {
+            println!(
+                "cargo:warning=NDI library directory not found at {}; app may fail at runtime",
+                lib_root.display()
+            );
+        }
+    }
+
+    // Installed layouts: deb puts resources in usr/lib/<product-name>, and
+    // linuxdeploy may relocate them to usr/lib inside an AppDir. Cover both.
+    // Cargo does not shell out for link args, so the literal $ORIGIN reaches ld
+    // and becomes a DT_RUNPATH entry.
+    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib/Multiviewer");
+    println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN/../lib");
 }
 
 #[cfg(target_os = "windows")]

@@ -77,6 +77,8 @@ task setup
 
 **Note:** This will download the NDI SDK to a local project directory which will be used during builds. You can also download and install the SDK system-wide from [NDI's website](https://ndi.video/download-ndi-sdk/)
 
+`task setup` only sets up the repository. On Linux it also needs a C/C++ toolchain and libclang (`grafton-ndi` runs `bindgen`): run `task linux:setup:system-deps` once on Debian/Ubuntu, or install `build-essential clang libclang-dev` yourself. The resulting `.deb` declares its runtime libraries in `depends`, so they are installed with the package.
+
 ### Run the App
 
 ```bash
