@@ -1,3 +1,6 @@
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
 use multiviewer_decklink::{DisplayMode, VideoConnections};
 use multiviewer_decklink::{
     decklink_source_discovery_new, decklink_source_discovery_free, decklink_source_discovery_count, decklink_source_discovery_get,
@@ -6,12 +9,10 @@ use multiviewer_decklink::{
     decklink_output_discovery_new, decklink_output_discovery_free, decklink_output_discovery_count,
     decklink_output_discovery_get, decklink_output_discovery_get_mode,
 };
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 /// A discovered DeckLink input port.
 #[derive(Clone)]
-pub struct Port {
+pub struct InputPort {
     pub name: String,
     #[allow(dead_code)]
     pub has_signal: bool,
@@ -37,14 +38,14 @@ pub struct OutputPort {
 
 /// Background DeckLink discovery thread.
 pub struct Discovery {
-    ports: Arc<Mutex<Vec<Port>>>,
+    input_ports: Arc<Mutex<Vec<InputPort>>>,
     output_ports: Arc<Mutex<Vec<OutputPort>>>,
 }
 
 impl Discovery {
     pub fn start() -> Self {
-        let ports = Arc::new(Mutex::new(Vec::new()));
-        let ports2 = ports.clone();
+        let input_ports = Arc::new(Mutex::new(Vec::new()));
+        let input_ports2 = input_ports.clone();
         let output_ports = Arc::new(Mutex::new(Vec::new()));
         let output_ports2 = output_ports.clone();
         std::thread::Builder::new()
@@ -74,13 +75,13 @@ impl Discovery {
                         );
                         let name_len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
                         let name = String::from_utf8_lossy(&name[..name_len]).to_string();
-                        list.push(Port {
+                        list.push(InputPort {
                             name,
                             has_signal,
                             connections: VideoConnections(connections),
                         });
                     }
-                    *ports2.lock().unwrap() = list;
+                    *input_ports2.lock().unwrap() = list;
                     decklink_source_discovery_free(d);
 
                     // Output discovery
@@ -141,15 +142,15 @@ impl Discovery {
                 }
             })
             .expect("spawn decklink-discovery");
-        Self { ports, output_ports }
+        Self { input_ports, output_ports }
     }
 
-    pub fn list(&self) -> Vec<Port> {
-        self.ports.lock().unwrap().clone()
+    pub fn list(&self) -> Vec<InputPort> {
+        self.input_ports.lock().unwrap().clone()
     }
 
-    pub fn find_by_name(&self, name: &str) -> Option<Port> {
-        self.ports
+    pub fn find_by_name(&self, name: &str) -> Option<InputPort> {
+        self.input_ports
             .lock()
             .unwrap()
             .iter()

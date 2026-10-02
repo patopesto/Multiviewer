@@ -1,9 +1,11 @@
-use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
+use grafton_ndi::{NDI, Receiver, ReceiverOptions, LineStrideOrSize};
+
+use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NdiSourceConfig {
@@ -86,8 +88,6 @@ pub struct NdiSource {
 
 impl NdiSource {
     pub fn spawn(source_ref: SourceRef, source: grafton_ndi::Source, cfg: &NdiSourceConfig) -> Self {
-        use grafton_ndi::{LineStrideOrSize, NDI, Receiver, ReceiverOptions};
-
         let slot = Arc::new(Mutex::new(None));
         let slot2 = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));

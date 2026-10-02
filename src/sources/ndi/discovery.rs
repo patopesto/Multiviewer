@@ -1,6 +1,6 @@
-use grafton_ndi::{Finder, FinderOptions, NDI};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use grafton_ndi::{NDI, Finder, FinderOptions};
 
 /// Background NDI discovery thread.
 pub struct Discovery {

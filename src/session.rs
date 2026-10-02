@@ -1,7 +1,9 @@
-use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+use serde::{Deserialize, Serialize};
+
 use crate::APP_NAME;
+
 const SESSION_FILENAME: &str = "session.json";
 
 const RECENT_MAX: usize = 10;

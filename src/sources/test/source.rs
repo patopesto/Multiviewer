@@ -1,8 +1,10 @@
-use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
 use serde::{Serialize, Deserialize};
+
+use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 const NOMINAL_FPS: f64 = 60.0;
 

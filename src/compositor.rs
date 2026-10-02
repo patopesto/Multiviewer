@@ -1,10 +1,11 @@
-use crate::config::{BorderVisibility, Canvas, LabelPosition, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
-use crate::sources::{ConvUniform, Frame, Protocol, SourceKey, SourceRegistry};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
+
+use crate::config::{BorderVisibility, Canvas, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
+use crate::sources::{ConvUniform, CpuFrame, Frame, PixelFormat, Protocol, SourceKey, SourceRegistry, SourceStats};
 
 const MAX_LAYERS: usize = 256;
 
@@ -680,7 +681,7 @@ impl Compositor {
             let label_visible = match source.label_visibility {
                 SourceLabelVisibility::Show => true,
                 SourceLabelVisibility::Hide => false,
-                SourceLabelVisibility::Inherit => canvas.label.visibility == crate::config::LabelVisibility::Show,
+                SourceLabelVisibility::Inherit => canvas.label.visibility == LabelVisibility::Show,
             };
             if label_visible && !source.name.is_empty() && !is_expanded_source {
                 if self.label_bg_color != canvas.label.background_color {
@@ -999,7 +1000,7 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         canvas: &Canvas,
-        registry: &crate::sources::SourceRegistry,
+        registry: &SourceRegistry,
         expanded_source: Option<&str>,
     ) {
         let canvas_w = canvas.width;
@@ -1106,10 +1107,9 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         key: &SourceKey,
-        f: &crate::sources::CpuFrame,
-        stats: Option<Arc<Mutex<crate::sources::SourceStats>>>,
+        f: &CpuFrame,
+        stats: Option<Arc<Mutex<SourceStats>>>,
     ) -> &SourceTex {
-        use crate::sources::PixelFormat;
         let (format, tex_w, bpp, mode) = match f.fmt {
             PixelFormat::Rgba8 => (
                 wgpu::TextureFormat::Rgba8Unorm,

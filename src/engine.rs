@@ -2,29 +2,32 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::compositor::{self, Compositor, Draw, Rect};
-use crate::config::{Config, LayerId, Source, TextureMode};
+use crate::compositor::{self, Compositor, Draw, Rect, Shared};
+use crate::config::{Config, ConfigError, LayerId, Output, Source, TextureMode};
+use crate::session::{Session, SessionError};
 use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, SourceRegistry, OutputRegistry};
-use crate::sources::decklink::Discovery as DecklinkDiscovery;
-use crate::sources::decklink::DecklinkSourceConfig;
-use crate::sources::ndi::Discovery as NdiDiscovery;
-use crate::sources::ndi::NdiSourceConfig;
+use crate::sources::DecklinkDiscovery;
+use crate::sources::DecklinkSourceConfig;
+use crate::sources::NdiDiscovery;
+use crate::sources::NdiSourceConfig;
 #[cfg(target_os = "macos")]
-use crate::sources::syphon::Discovery as SyphonDiscovery;
+use crate::sources::SyphonDiscovery;
 #[cfg(target_os = "macos")]
-use crate::sources::syphon::SyphonSourceConfig;
+use crate::sources::SyphonSourceConfig;
 #[cfg(target_os = "macos")]
-use crate::sources::avfoundation::Discovery as AvFoundationDiscovery;
+use crate::sources::AvFoundationDiscovery;
 #[cfg(target_os = "macos")]
-use crate::sources::avfoundation::AvFoundationSourceConfig;
+use crate::sources::AvFoundationSourceConfig;
 #[cfg(target_os = "macos")]
-use crate::sources::screencapturekit::Discovery as ScreenCaptureKitDiscovery;
+use crate::sources::ScreenCaptureKitDiscovery;
 #[cfg(target_os = "macos")]
-use crate::sources::screencapturekit::ScreenCaptureKitSourceConfig;
+use crate::sources::ScreenCaptureKitSourceConfig;
+#[cfg(target_os = "macos")]
+use crate::sources::ensure_screen_capture_access_requested;
 #[cfg(target_os = "windows")]
-use crate::sources::spout::Discovery as SpoutDiscovery;
+use crate::sources::SpoutDiscovery;
 #[cfg(target_os = "windows")]
-use crate::sources::spout::SpoutSourceConfig;
+use crate::sources::SpoutSourceConfig;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 20.0;
@@ -94,8 +97,8 @@ pub struct SnapCandidates {
 
 #[derive(Debug)]
 pub enum ProjectError {
-    Config(crate::config::ConfigError),
-    Session(crate::session::SessionError),
+    Config(ConfigError),
+    Session(SessionError),
     NoProjectPath,
 }
 
@@ -111,14 +114,14 @@ impl std::fmt::Display for ProjectError {
 
 impl std::error::Error for ProjectError {}
 
-impl From<crate::config::ConfigError> for ProjectError {
-    fn from(e: crate::config::ConfigError) -> Self {
+impl From<ConfigError> for ProjectError {
+    fn from(e: ConfigError) -> Self {
         ProjectError::Config(e)
     }
 }
 
-impl From<crate::session::SessionError> for ProjectError {
-    fn from(e: crate::session::SessionError) -> Self {
+impl From<SessionError> for ProjectError {
+    fn from(e: SessionError) -> Self {
         ProjectError::Session(e)
     }
 }
@@ -315,7 +318,7 @@ impl Engine {
         self.project_path = Some(path.clone());
         self.last_saved_at = Instant::now();
         self.dirty = false;
-        let mut session = crate::session::Session::load();
+        let mut session = Session::load();
         session.record_recent(&path);
         session.save()?;
         Ok(())
@@ -335,7 +338,7 @@ impl Engine {
         self.project_path = Some(path.clone());
         self.last_saved_at = Instant::now();
         self.dirty = false;
-        let mut session = crate::session::Session::load();
+        let mut session = Session::load();
         session.record_recent(&path);
         session.save()?;
         Ok(())
@@ -487,7 +490,7 @@ impl Engine {
                 .iter()
                 .any(|s| s.protocol == Protocol::ScreenCaptureKit)
             {
-                crate::sources::screencapturekit::ensure_screen_capture_access_requested();
+                ensure_screen_capture_access_requested();
             }
             if let Some(ref discovery) = self.screencapturekit {
                 let targets = discovery.list();
@@ -584,7 +587,7 @@ impl Engine {
         }
     }
 
-    pub fn shared(&self) -> Option<std::sync::Arc<crate::compositor::Shared>> {
+    pub fn shared(&self) -> Option<Arc<Shared>> {
         self.comp.as_ref().map(|c| c.shared.clone())
     }
 
@@ -755,7 +758,7 @@ impl Engine {
     }
 
     pub fn add_output(&mut self, protocol: Protocol, name: String, config: OutputConfig) -> String {
-        let output = crate::config::Output::new(name.clone(), protocol.clone(), true, config.clone());
+        let output = Output::new(name.clone(), protocol.clone(), true, config.clone());
         let id = output.uuid.clone();
         self.cfg.canvas.outputs.push(output);
         self.output_registry.add(&protocol, id.clone(), name, &config, true);
@@ -1343,10 +1346,12 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{Canvas, Output};
+    use crate::sources::{NdiOutputConfig, NdiSourceConfig, VideoConnection};
 
-    fn test_engine(canvas: crate::config::Canvas) -> Engine {
+    fn test_engine(canvas: Canvas) -> Engine {
         Engine {
-            cfg: crate::config::Config { canvas },
+            cfg: Config { canvas },
             registry: SourceRegistry::new(),
             output_registry: OutputRegistry::new(),
             ndi: None,
@@ -1401,7 +1406,7 @@ mod tests {
         let path = dir.join("show.multiviewer");
         std::fs::write(&path, json).unwrap();
 
-        let cfg = crate::config::Config::load_from(&path).unwrap();
+        let cfg = Config::load_from(&path).unwrap();
         let mut engine = test_engine(cfg.canvas);
         engine.rebuild_from_config();
 
@@ -1434,7 +1439,7 @@ mod tests {
 
     #[test]
     fn expand_and_clear_source() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1466,7 +1471,7 @@ mod tests {
 
     #[test]
     fn removing_expanded_source_clears_it() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1496,7 +1501,7 @@ mod tests {
 
     #[test]
     fn display_transform_is_base_at_default_zoom() {
-        let engine = test_engine(crate::config::Canvas {
+        let engine = test_engine(Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1519,7 +1524,7 @@ mod tests {
 
     #[test]
     fn recenter_fits_canvas_with_margin() {
-        let mut engine = test_engine(crate::config::Canvas {
+        let mut engine = test_engine(Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1542,7 +1547,7 @@ mod tests {
 
     #[test]
     fn recenter_expands_to_include_layers() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 100,
             height: 100,
             sources: vec![],
@@ -1593,7 +1598,7 @@ mod tests {
 
     #[test]
     fn resize_layer_handles_corners_and_edges() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1663,7 +1668,7 @@ mod tests {
 
     #[test]
     fn drag_layer_snaps_to_canvas_edge() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1701,7 +1706,7 @@ mod tests {
 
     #[test]
     fn resize_layer_snaps_to_other_layer_edge() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1753,7 +1758,7 @@ mod tests {
 
     #[test]
     fn drag_layer_hysteresis_releases_after_break_threshold() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1801,7 +1806,7 @@ mod tests {
 
     #[test]
     fn select_next_source_cycles_forward_and_wraps() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1834,7 +1839,7 @@ mod tests {
 
     #[test]
     fn select_previous_source_cycles_backward_and_wraps() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1864,7 +1869,7 @@ mod tests {
 
     #[test]
     fn nudge_selected_source_moves_by_delta() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1889,7 +1894,7 @@ mod tests {
 
     #[test]
     fn nudge_selected_source_ignores_when_expanded() {
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],
@@ -1920,7 +1925,7 @@ mod tests {
 
     #[test]
     fn auto_save_triggers_after_interval_when_dirty() {
-        let mut engine = test_engine(crate::config::Canvas::default());
+        let mut engine = test_engine(Canvas::default());
         engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
         engine.dirty = true;
         engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
@@ -1929,7 +1934,7 @@ mod tests {
 
     #[test]
     fn auto_save_does_not_trigger_when_clean() {
-        let mut engine = test_engine(crate::config::Canvas::default());
+        let mut engine = test_engine(Canvas::default());
         engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
         engine.dirty = false;
         engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
@@ -1938,7 +1943,7 @@ mod tests {
 
     #[test]
     fn auto_save_does_not_trigger_without_project_path() {
-        let mut engine = test_engine(crate::config::Canvas::default());
+        let mut engine = test_engine(Canvas::default());
         engine.project_path = None;
         engine.dirty = true;
         engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
@@ -1950,9 +1955,8 @@ mod tests {
     /// checkbox silently flips back off while cfg says enabled.
     #[test]
     fn enabling_output_with_missing_runtime_recreates_it() {
-        use crate::sources::NdiOutputConfig;
-        let mut engine = test_engine(crate::config::Canvas::default());
-        let output = crate::config::Output::new(
+        let mut engine = test_engine(Canvas::default());
+        let output = Output::new(
             "NDI".to_string(),
             Protocol::Ndi,
             false,
@@ -1975,9 +1979,7 @@ mod tests {
     /// protocol, even when the reference string is identical.
     #[test]
     fn sync_source_config_updates_quads_sharing_the_key() {
-        use crate::sources::decklink::VideoConnection;
-        use crate::sources::NdiSourceConfig;
-        let mut canvas = crate::config::Canvas {
+        let mut canvas = Canvas {
             width: 1920,
             height: 1080,
             sources: vec![],

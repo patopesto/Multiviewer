@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::APP_NAME;
 use crate::engine::Engine;
 use crate::ui::shortcuts::Shortcut;
 
@@ -51,7 +52,7 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
             });
 
             menu_button(ui, "About", |ui| {
-                if ui.button(format!("About {}", crate::APP_NAME)).clicked() {
+                if ui.button(format!("About {}", APP_NAME)).clicked() {
                     actions.push(MenuAction::ShowAbout);
                 }
                 if ui.button("Keyboard Shortcuts…").clicked() {

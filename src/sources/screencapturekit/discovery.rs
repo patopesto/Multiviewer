@@ -1,10 +1,11 @@
-use core_graphics2::window::{preflight_screen_capture_access, request_screen_capture_access};
-use objc2::rc::Retained;
-use screen_capture_kit::shareable_content::SCShareableContent;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use core_graphics2::window::{preflight_screen_capture_access, request_screen_capture_access};
+use objc2::rc::Retained;
+use screen_capture_kit::shareable_content::SCShareableContent;
 
 use super::source::ScreenCaptureKitSourceConfig;
 

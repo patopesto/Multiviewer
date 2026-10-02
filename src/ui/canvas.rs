@@ -1,7 +1,10 @@
-use crate::compositor::{self, Rect, Vert};
-use crate::engine::{DragState, Engine, ResizeHandle};
-use eframe::egui_wgpu;
 use std::sync::Arc;
+
+use eframe::egui_wgpu;
+
+use crate::compositor::{self, Rect, Vert};
+use crate::config::Canvas;
+use crate::engine::{DragState, Engine, ResizeHandle, SnapGuides};
 
 // Macro to load from the assets directory
 macro_rules! asset_image {
@@ -78,7 +81,7 @@ pub fn update(
     let primary_down = ctx.input(|i| i.pointer.primary_down());
     if !primary_down {
         engine.drag_state = DragState::None;
-        engine.snap_guides = crate::engine::SnapGuides::default();
+        engine.snap_guides = SnapGuides::default();
     } else if ui_visible
         && pressed
         && response.hovered()
@@ -244,7 +247,7 @@ fn cursor_for_handle(handle: ResizeHandle) -> egui::CursorIcon {
 }
 
 fn draw_overlays(
-    canvas: &crate::config::Canvas,
+    canvas: &Canvas,
     panel_rect: &Rect,
     painter: &egui::Painter,
     engine: &Engine,

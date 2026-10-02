@@ -1,5 +1,5 @@
-pub mod discovery;
-pub mod source;
+mod discovery;
+mod source;
 
-pub use discovery::{ensure_screen_capture_access_requested, Discovery};
+pub use discovery::{Discovery, ensure_screen_capture_access_requested};
 pub use source::{ScreenCaptureKitSource, ScreenCaptureKitSourceConfig};

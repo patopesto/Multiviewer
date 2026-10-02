@@ -1,7 +1,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
+#[cfg(target_os = "macos")]
+use syphon_core::ServerInfo as SyphonServerInfo;
 
 use super::{Protocol, Frame};
 use super::decklink;
@@ -13,8 +16,6 @@ use super::syphon;
 use super::avfoundation;
 #[cfg(target_os = "macos")]
 use super::screencapturekit;
-#[cfg(target_os = "macos")]
-use syphon_core::ServerInfo as SyphonServerInfo;
 #[cfg(target_os = "windows")]
 use super::spout;
 
@@ -388,8 +389,8 @@ pub struct SourceRegistry {
     sources: HashMap<SourceKey, SourceKind>,
     next_test: u32,
     pending_restarts: HashSet<SourceKey>,
-    restart_tx: std::sync::mpsc::Sender<RestartResult>,
-    restart_rx: std::sync::mpsc::Receiver<RestartResult>,
+    restart_tx: Sender<RestartResult>,
+    restart_rx: Receiver<RestartResult>,
 }
 
 impl SourceRegistry {

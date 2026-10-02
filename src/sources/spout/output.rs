@@ -2,6 +2,8 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
+use spout2::dx12::resource_state::COPY_DEST;
+use wgpu::hal::api::Dx12 as Dx12Api;
 
 use super::super::Protocol;
 use super::super::output::{OutputId, OutputStats, VideoOutput};
@@ -64,10 +66,10 @@ impl SpoutOutput {
         use windows::core::Interface;
         // Safety: device/queue outlive the sender; the app owns both for its lifetime.
         unsafe {
-            let Some(hal_device) = device.as_hal::<wgpu::hal::api::Dx12>() else {
+            let Some(hal_device) = device.as_hal::<Dx12Api>() else {
                 return Err("Spout requires wgpu's D3D12 backend".to_string());
             };
-            let Some(hal_queue) = queue.as_hal::<wgpu::hal::api::Dx12>() else {
+            let Some(hal_queue) = queue.as_hal::<Dx12Api>() else {
                 return Err("Spout requires wgpu's D3D12 backend".to_string());
             };
             let device_ptr = hal_device.raw_device().as_raw();
@@ -82,7 +84,7 @@ impl SpoutOutput {
         use windows::core::Interface;
         // Safety: the texture is alive for this call and shares the sender's device.
         unsafe {
-            let Some(hal_texture) = texture.as_hal::<wgpu::hal::api::Dx12>() else {
+            let Some(hal_texture) = texture.as_hal::<Dx12Api>() else {
                 return Err("Spout requires wgpu's D3D12 backend");
             };
             Ok(hal_texture.raw_resource().as_raw())
@@ -115,7 +117,7 @@ impl SpoutOutput {
         let ptr = Self::texture_ptr(&texture)?;
         // Safety: the texture lives on the sender's device; the copy below leaves it in `COPY_DEST`, the state `send_wrapped_resource` requires.
         let wrapped = unsafe {
-            sender.wrap_resource(ptr, spout2::dx12::resource_state::COPY_DEST)
+            sender.wrap_resource(ptr, COPY_DEST)
         }
         .map_err(|e| e.to_string())?;
         Ok(SendState {

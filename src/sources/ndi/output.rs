@@ -3,6 +3,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Instant;
 use serde::{Deserialize, Serialize};
+use grafton_ndi::{NDI, Sender, SenderOptions, BorrowedVideoFrame};
 
 use super::super::Protocol;
 use super::super::output::{OutputId, OutputStats, VideoOutput};
@@ -28,8 +29,6 @@ pub struct NdiOutput {
 
 impl NdiOutput {
     pub fn new(id: OutputId, name: String, config: NdiOutputConfig, enabled: bool) -> Self {
-        use grafton_ndi::{BorrowedVideoFrame, NDI, Sender, SenderOptions};
-
         let (frame_tx, frame_rx) = mpsc::sync_channel::<Vec<u8>>(2);
         let stats = Arc::new(Mutex::new(OutputStats::default()));
         let stats_clone = Arc::clone(&stats);

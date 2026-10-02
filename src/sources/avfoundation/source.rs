@@ -1,5 +1,5 @@
-use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 use std::cell::{Cell, RefCell};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,8 @@ use objc2::rc::{Allocated, Retained};
 use objc2::runtime::ProtocolObject;
 use objc2::{define_class, msg_send, AnyThread, DefinedClass};
 use objc2_foundation::{NSObject, NSObjectProtocol, NSNumber, NSString};
+
+use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 define_class!(
     #[unsafe(super(NSObject))]
@@ -136,7 +138,7 @@ pub struct AvFoundationSource {
     source_ref: SourceRef,
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
-    running: Arc<std::sync::atomic::AtomicBool>,
+    running: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -149,7 +151,7 @@ impl AvFoundationSource {
         let stats2 = stats.clone();
         let trace_ref = source_ref.clone();
         let device_unique_id = cfg.device_unique_id.clone();
-        let running = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
 
         let thread = std::thread::Builder::new()
@@ -173,7 +175,7 @@ impl AvFoundationSource {
         device_unique_id: String,
         slot: Arc<Mutex<Option<Frame>>>,
         stats: Arc<Mutex<SourceStats>>,
-        running: Arc<std::sync::atomic::AtomicBool>,
+        running: Arc<AtomicBool>,
     ) {
         let unique_id = NSString::from_str(&device_unique_id);
         let Some(device) = AVCaptureDevice::device_with_unique_id(&unique_id) else {
@@ -215,7 +217,7 @@ impl AvFoundationSource {
         let _delegate = delegate;
         session.start_running();
 
-        while running.load(std::sync::atomic::Ordering::Relaxed) {
+        while running.load(Ordering::Relaxed) {
             std::thread::sleep(Duration::from_millis(100));
         }
 
@@ -226,7 +228,7 @@ impl AvFoundationSource {
 impl Drop for AvFoundationSource {
     fn drop(&mut self) {
         self.running
-            .store(false, std::sync::atomic::Ordering::Relaxed);
+            .store(false, Ordering::Relaxed);
         if let Some(t) = self.thread.take() && let Err(e) = t.join() {
             tracing::error!(source=self.source_ref, "Thread join failed: {:?}", e);
         }

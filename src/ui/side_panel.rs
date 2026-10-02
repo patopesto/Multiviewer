@@ -1,11 +1,18 @@
-use crate::APP_NAME;
-use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
-use crate::sources::decklink::DisplayMode;
-#[cfg(target_os = "macos")]
-use crate::sources::syphon::format_syphon_label;
-use crate::engine::Engine;
-use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceStats, OutputConfig};
 use egui::{Align, Grid, InnerResponse, Layout, ScrollArea, Ui};
+
+use crate::APP_NAME;
+use crate::ui::source_settings;
+use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
+use crate::engine::Engine;
+use crate::sources::DisplayMode;
+use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceStats, OutputConfig};
+use crate::sources::{DecklinkOutputConfig, NdiOutputConfig};
+#[cfg(target_os = "macos")]
+use crate::sources::format_syphon_label;
+#[cfg(target_os = "macos")]
+use crate::sources::SyphonOutputConfig;
+#[cfg(target_os = "windows")]
+use crate::sources::SpoutOutputConfig;
 
 pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
     egui::Panel::left("panel")
@@ -176,7 +183,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             engine.set_output_enabled(&id, true);
                         } else {
                             let name = "NDI Output".to_string();
-                            let ndi_config = crate::sources::NdiOutputConfig {
+                            let ndi_config = NdiOutputConfig {
                                 sender_name: APP_NAME.to_string(),
                             };
                             engine.add_output(Protocol::Ndi, name, OutputConfig::Ndi(ndi_config));
@@ -213,7 +220,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                                 engine.set_output_enabled(&id, true);
                             } else {
                                 let name = "Syphon Output".to_string();
-                                let syphon_config = crate::sources::SyphonOutputConfig {
+                                let syphon_config = SyphonOutputConfig {
                                     server_name: name.clone(),
                                 };
                                 engine.add_output(Protocol::Syphon, name, OutputConfig::Syphon(syphon_config));
@@ -251,7 +258,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                                 engine.set_output_enabled(&id, true);
                             } else {
                                 let name = "Spout Output".to_string();
-                                let spout_config = crate::sources::SpoutOutputConfig {
+                                let spout_config = SpoutOutputConfig {
                                     sender_name: APP_NAME.to_string(),
                                 };
                                 engine.add_output(Protocol::Spout, name, OutputConfig::Spout(spout_config));
@@ -287,7 +294,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             engine.set_output_enabled(&id, true);
                         } else {
                             let name = "DeckLink Output".to_string();
-                            let decklink_config = crate::sources::DecklinkOutputConfig::default();
+                            let decklink_config = DecklinkOutputConfig::default();
                             engine.add_output(Protocol::Decklink, name, OutputConfig::Decklink(decklink_config));
                         }
                     } else if let Some(id) = registry_id {
@@ -1032,7 +1039,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         {
             ui.separator();
             collapsable_section(ui, "Protocol Settings", false, |ui| {
-                if super::source_settings::render_source_settings(runtime, ui) {
+                if source_settings::render_source_settings(runtime, ui) {
                     config_sync = Some(runtime.to_config());
                     restart_key = Some(key.clone());
                 }

@@ -1,11 +1,12 @@
-use crate::sources::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
-use multiviewer_decklink::{DecklinkPixelFormat, VideoConnection};
-use multiviewer_decklink::{decklink_source_new, decklink_source_free, decklink_source_set_connection, decklink_source_start, decklink_source_stop, decklink_source_poll_frame};
 use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
+use multiviewer_decklink::{DecklinkPixelFormat, VideoConnection};
+use multiviewer_decklink::{decklink_source_new, decklink_source_free, decklink_source_set_connection, decklink_source_start, decklink_source_stop, decklink_source_poll_frame};
+
+use crate::sources::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DecklinkSourceConfig {

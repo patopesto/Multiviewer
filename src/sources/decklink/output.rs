@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
-
 use serde::{Deserialize, Serialize};
 
 use multiviewer_decklink::{

@@ -1,5 +1,5 @@
-pub mod discovery;
-pub mod source;
+mod discovery;
+mod source;
 
 pub use discovery::Discovery;
 pub use source::{AvFoundationSource, AvFoundationSourceConfig};

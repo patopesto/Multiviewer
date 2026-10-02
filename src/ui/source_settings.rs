@@ -1,8 +1,7 @@
-use crate::sources::{DecklinkSourceConfig, NdiSourceConfig, SourceConfig, SourceKind, SourceRuntimeConfig, TestSourceConfig};
-use crate::sources::test::{TestPattern, RadarDirection};
-use crate::sources::decklink::{VideoConnection, VideoConnections};
 use crate::ui::side_panel::{settings_grid, settings_value};
-
+use crate::sources::{SourceKind, SourceRuntimeConfig, SourceConfig};
+use crate::sources::{TestPattern, RadarDirection, VideoConnection, VideoConnections};
+use crate::sources::{DecklinkSourceConfig, NdiSourceConfig, TestSourceConfig};
 #[cfg(target_os = "macos")]
 use crate::sources::SyphonSourceConfig;
 #[cfg(target_os = "macos")]

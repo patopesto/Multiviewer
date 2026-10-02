@@ -1,53 +1,47 @@
-pub mod common;
-pub mod source;
-pub mod output;
+mod common;
+mod source;
+mod output;
 
-pub mod test;
-pub mod decklink;
-pub mod ndi;
+mod test;
+mod decklink;
+mod ndi;
 #[cfg(target_os = "macos")]
-pub mod syphon;
+mod syphon;
 #[cfg(target_os = "macos")]
-pub mod avfoundation;
+mod avfoundation;
 #[cfg(target_os = "macos")]
-pub mod screencapturekit;
+mod screencapturekit;
 #[cfg(target_os = "windows")]
-pub mod spout;
+mod spout;
 
-#[allow(unused_imports)]
 pub use common::{Protocol, PixelFormat, Frame, CpuFrame, GpuFrame};
 
-#[allow(unused_imports)]
 pub use source::{
-    SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, VideoSource, SourceConfig,
-    SourceStats, SourceRegistry, RestartResult, ConvUniform,
+    SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
+    SourceStats, SourceRegistry, VideoSource, ConvUniform,
 };
-#[allow(unused_imports)]
-pub use output::{
-    OutputId, OutputKind, VideoOutput, OutputConfig, OutputStats,
-    OutputRegistry,
-};
+pub use output::{OutputConfig, OutputRegistry};
 
-#[allow(unused_imports)]
-pub use decklink::source::{DecklinkSource, DecklinkSourceConfig};
-#[allow(unused_imports)]
-pub use decklink::output::{DecklinkOutput, DecklinkOutputConfig};
-#[allow(unused_imports)]
-pub use decklink::VideoConnections;
-#[allow(unused_imports)]
-pub use ndi::{NdiSource, NdiSourceConfig, NdiOutput, NdiOutputConfig};
-#[allow(unused_imports)]
-pub use test::{TestSource, TestSourceConfig, TestPattern};
+pub use test::{TestSourceConfig, TestPattern, RadarDirection};
+pub use ndi::{NdiSourceConfig, NdiOutputConfig};
+pub use ndi::Discovery as NdiDiscovery;
+pub use decklink::{DecklinkSourceConfig, DecklinkOutputConfig, VideoConnection, VideoConnections, DisplayMode};
+pub use decklink::Discovery as DecklinkDiscovery;
 
 #[cfg(target_os = "macos")]
-#[allow(unused_imports)]
-pub use syphon::{SyphonSource, SyphonSourceConfig, SyphonOutput, SyphonOutputConfig};
+pub use syphon::{SyphonSourceConfig, SyphonOutputConfig, format_syphon_label};
 #[cfg(target_os = "macos")]
-#[allow(unused_imports)]
-pub use avfoundation::{AvFoundationSource, AvFoundationSourceConfig};
+pub use syphon::Discovery as SyphonDiscovery;
 #[cfg(target_os = "macos")]
-#[allow(unused_imports)]
-pub use screencapturekit::{ScreenCaptureKitSource, ScreenCaptureKitSourceConfig};
+pub use avfoundation::AvFoundationSourceConfig;
+#[cfg(target_os = "macos")]
+pub use avfoundation::Discovery as AvFoundationDiscovery;
+#[cfg(target_os = "macos")]
+pub use screencapturekit::{ScreenCaptureKitSourceConfig, ensure_screen_capture_access_requested};
+#[cfg(target_os = "macos")]
+pub use screencapturekit::Discovery as ScreenCaptureKitDiscovery;
+
 #[cfg(target_os = "windows")]
-#[allow(unused_imports)]
-pub use spout::{SpoutSource, SpoutSourceConfig, SpoutOutput, SpoutOutputConfig};
+pub use spout::{SpoutSourceConfig, SpoutOutputConfig};
+#[cfg(target_os = "windows")]
+pub use spout::Discovery as SpoutDiscovery;

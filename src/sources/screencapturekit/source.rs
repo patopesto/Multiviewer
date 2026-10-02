@@ -1,5 +1,3 @@
-use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
-use super::discovery::fetch_content;
 use std::cell::{Cell, RefCell};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -29,6 +27,9 @@ use screen_capture_kit::stream::{
     SCContentFilter, SCStream, SCStreamConfiguration, SCStreamDelegate, SCStreamOutput,
     SCStreamOutputType,
 };
+
+use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
+use super::discovery::fetch_content;
 
 define_class!(
     #[unsafe(super(NSObject))]

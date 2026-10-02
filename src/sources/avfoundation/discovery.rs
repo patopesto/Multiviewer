@@ -1,7 +1,8 @@
-use av_foundation::capture_device::AVCaptureDevice;
-use av_foundation::media_format::AVMediaTypeVideo;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+use av_foundation::capture_device::AVCaptureDevice;
+use av_foundation::media_format::AVMediaTypeVideo;
 
 #[derive(Clone, Debug)]
 pub struct Device {

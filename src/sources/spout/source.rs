@@ -1,8 +1,12 @@
-use super::super::{ConvUniform, Frame, GpuFrame, PixelFormat, SourceRef, SourceStats, VideoSource};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
+use wgpu::hal::api::Dx12 as Dx12Api;
+use windows::core::Interface;
+use spout2::dx12::format as Dx12Format;
+
+use super::super::{ConvUniform, Frame, GpuFrame, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SpoutSourceConfig {}
@@ -51,13 +55,12 @@ impl SpoutSource {
         queue: &wgpu::Queue,
         sender_name: &str,
     ) -> Result<spout2::dx12::Receiver, String> {
-        use windows::core::Interface;
         // Safety: device/queue outlive the receiver; the app owns both for its lifetime.
         unsafe {
-            let Some(hal_device) = device.as_hal::<wgpu::hal::api::Dx12>() else {
+            let Some(hal_device) = device.as_hal::<Dx12Api>() else {
                 return Err("Spout requires wgpu's D3D12 backend".to_string());
             };
-            let Some(hal_queue) = queue.as_hal::<wgpu::hal::api::Dx12>() else {
+            let Some(hal_queue) = queue.as_hal::<Dx12Api>() else {
                 return Err("Spout requires wgpu's D3D12 backend".to_string());
             };
             let device_ptr = hal_device.raw_device().as_raw();
@@ -69,10 +72,9 @@ impl SpoutSource {
 
     /// The raw `ID3D12Resource*` backing a wgpu texture, for Spout's receive.
     fn texture_ptr(texture: &wgpu::Texture) -> Result<*mut c_void, &'static str> {
-        use windows::core::Interface;
         // Safety: the texture is alive for this call and shares the receiver's device.
         unsafe {
-            let Some(hal_texture) = texture.as_hal::<wgpu::hal::api::Dx12>() else {
+            let Some(hal_texture) = texture.as_hal::<Dx12Api>() else {
                 return Err("Spout requires wgpu's D3D12 backend");
             };
             Ok(hal_texture.raw_resource().as_raw())
@@ -81,15 +83,14 @@ impl SpoutSource {
 
     /// Map the sender's `DXGI_FORMAT` to a wgpu texture format.
     fn wgpu_format(dxgi: u32) -> Option<wgpu::TextureFormat> {
-        use spout2::dx12::format as f;
         Some(match dxgi {
-            f::B8G8R8A8_UNORM => wgpu::TextureFormat::Bgra8Unorm,
-            f::R8G8B8A8_UNORM => wgpu::TextureFormat::Rgba8Unorm,
-            f::R8G8B8A8_UNORM_SRGB => wgpu::TextureFormat::Rgba8UnormSrgb,
+            Dx12Format::B8G8R8A8_UNORM => wgpu::TextureFormat::Bgra8Unorm,
+            Dx12Format::R8G8B8A8_UNORM => wgpu::TextureFormat::Rgba8Unorm,
+            Dx12Format::R8G8B8A8_UNORM_SRGB => wgpu::TextureFormat::Rgba8UnormSrgb,
             // DXGI_FORMAT_B8G8R8A8_UNORM_SRGB (no constant in spout2::dx12::format).
             91 => wgpu::TextureFormat::Bgra8UnormSrgb,
-            f::R10G10B10A2_UNORM => wgpu::TextureFormat::Rgb10a2Unorm,
-            f::R16G16B16A16_FLOAT => wgpu::TextureFormat::Rgba16Float,
+            Dx12Format::R10G10B10A2_UNORM => wgpu::TextureFormat::Rgb10a2Unorm,
+            Dx12Format::R16G16B16A16_FLOAT => wgpu::TextureFormat::Rgba16Float,
             _ => return None,
         })
     }

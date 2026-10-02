@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::path::Path;
+
+use serde::{Deserialize, Serialize};
 
 use crate::sources::{Protocol, SourceConfig, SourceRef, OutputConfig};
 
@@ -338,13 +339,13 @@ impl SourceBorderVisibility {
 mod tests {
     use super::*;
     #[cfg(target_os = "macos")]
-    use crate::sources::syphon::SyphonOutputConfig;
+    use crate::sources::SyphonOutputConfig;
     #[cfg(target_os = "macos")]
     use crate::sources::ScreenCaptureKitSourceConfig;
     #[cfg(target_os = "windows")]
     use crate::sources::SpoutOutputConfig;
     use crate::sources::{NdiSourceConfig, NdiOutputConfig, DecklinkSourceConfig, DecklinkOutputConfig, TestSourceConfig};
-    use crate::sources::decklink::VideoConnection;
+    use crate::sources::VideoConnection;
 
     // Syphon output types only exist on macOS; other platforms exercise the
     // same round-trip through the unavailable-protocol tests below.

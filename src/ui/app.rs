@@ -3,8 +3,13 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
+use crate::compositor::Rect;
 use crate::engine::Engine;
+use crate::platform::poll_open_file;
+use crate::session::Session;
+use crate::ui::canvas;
 use crate::ui::menu_bar::{self, MenuAction};
+use crate::ui::side_panel;
 use crate::ui::shortcuts::{self, Shortcut};
 
 const DEFAULT_PROJECT_NAME: &str = "Untitled";
@@ -152,7 +157,7 @@ impl eframe::App for App {
 
         if self.ui_visible {
             let actions = menu_bar::draw(ui, &self.engine, &self.recent_projects);
-            super::side_panel::draw(ui, &mut self.engine);
+            side_panel::draw(ui, &mut self.engine);
             self.handle_menu_actions(&actions, ui);
         }
         self.handle_global_shortcuts(ui);
@@ -164,7 +169,7 @@ impl eframe::App for App {
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
-            super::canvas::update(ui, &mut self.engine, &ctx, frame, self.ui_visible);
+            canvas::update(ui, &mut self.engine, &ctx, frame, self.ui_visible);
         });
     }
 }
@@ -192,7 +197,7 @@ impl App {
     }
 
     fn refresh_recent(&mut self) {
-        self.recent_projects = crate::session::Session::load().recent_projects;
+        self.recent_projects = Session::load().recent_projects;
     }
 
     fn confirm_or(&mut self, action: Confirm) {
@@ -278,7 +283,7 @@ impl App {
     /// Run one shortcut. Shared by keyboard detection and the menu bar so both paths behave identically.
     fn apply_shortcut(&mut self, shortcut: Shortcut, ui: &egui::Ui) {
         let rect = ui.available_rect_before_wrap();
-        let panel_rect = crate::compositor::Rect {
+        let panel_rect = Rect {
             x: rect.min.x,
             y: rect.min.y,
             w: rect.width(),
@@ -363,7 +368,7 @@ impl App {
     }
 
     fn handle_platform_open_files(&mut self) {
-        if let Some(path) = crate::platform::poll_open_file()
+        if let Some(path) = poll_open_file()
             && path.extension().and_then(|e| e.to_str()) == Some(PROJECT_FILE_EXTENSION)
         {
             self.confirm_or(Confirm::OpenPath(path));
