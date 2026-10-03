@@ -26,12 +26,12 @@ use objc2::runtime::ProtocolObject;
 use objc2::{define_class, msg_send, AnyThread, DefinedClass};
 use objc2_foundation::{NSObject, NSObjectProtocol, NSNumber, NSString};
 
-use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
+use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 define_class!(
     #[unsafe(super(NSObject))]
     #[name = "MVAvFoundationCaptureDelegate"]
-    #[ivars = (RefCell<Arc<Mutex<Option<Frame>>>>, RefCell<Arc<Mutex<SourceStats>>>, Cell<u64>)]
+    #[ivars = (RefCell<Arc<Mutex<Option<Frame>>>>, RefCell<Arc<Mutex<SourceStats>>>, Cell<u64>, RefCell<FramePool>)]
     struct CaptureDelegate;
 
     impl CaptureDelegate {
@@ -41,6 +41,7 @@ define_class!(
                 RefCell::new(Arc::new(Mutex::new(None))),
                 RefCell::new(Arc::new(Mutex::new(SourceStats::new()))),
                 Cell::new(0),
+                RefCell::new(FramePool::new()),
             ));
             unsafe { msg_send![super(this), init] }
         }
@@ -85,7 +86,7 @@ define_class!(
                     return;
                 }
                 let src = pixel_buffer.get_base_address() as *const u8;
-                let mut buf = vec![0u8; copy_len];
+                let mut buf = self.ivars().3.borrow_mut().take(copy_len);
                 std::ptr::copy_nonoverlapping(src, buf.as_mut_ptr(), copy_len);
                 let _ = pixel_buffer.unlock_base_address(kCVPixelBufferLock_ReadOnly);
                 buf
@@ -112,7 +113,9 @@ define_class!(
                 seq,
             });
             let slot_arc = ivars.0.borrow();
-            *slot_arc.lock().unwrap() = Some(frame);
+            let old = slot_arc.lock().unwrap().replace(frame);
+            drop(slot_arc);
+            ivars.3.borrow_mut().give(old);
         }
     }
 );
@@ -123,6 +126,7 @@ impl CaptureDelegate {
             RefCell::new(slot),
             RefCell::new(stats),
             Cell::new(0),
+            RefCell::new(FramePool::new()),
         ));
         let this: Option<Retained<Self>> = unsafe { msg_send![super(this), init] };
         this.expect("AVFoundation capture delegate init failed")

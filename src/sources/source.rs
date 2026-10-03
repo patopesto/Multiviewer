@@ -371,12 +371,18 @@ impl SourceStats {
         self.receive_time_ms = self.average(&self.receive_times);
     }
 
-    /// Count a frame the compositor observed with a new seq number
+    /// Count a frame the compositor observed with a new seq number.
     pub fn record_consumed(&mut self, seq: u64) {
-        if self.last_consumed_seq != Some(seq) {
-            self.last_consumed_seq = Some(seq);
-            self.frames_consumed += 1;
+        if self.last_consumed_seq == Some(seq) {
+            return;
         }
+        if let Some(last) = self.last_consumed_seq
+            && seq > last + 1
+        {
+            self.frames_dropped += seq - last - 1;
+        }
+        self.last_consumed_seq = Some(seq);
+        self.frames_consumed += 1;
     }
 
     pub fn record_upload_time(&mut self, ms: f32) {
@@ -386,10 +392,6 @@ impl SourceStats {
         }
         self.upload_time_ms = self.average(&self.upload_times);
         self.frames_presented += 1;
-    }
-
-    pub fn record_dropped(&mut self, count: u64) {
-        self.frames_dropped += count;
     }
 
     #[cfg(target_os = "macos")]
@@ -408,6 +410,56 @@ impl SourceStats {
 pub struct RestartResult {
     pub key: SourceKey,
     pub kind: SourceKind,
+}
+
+/// Reusable full-frame buffers to be used by VideoSource producers
+#[derive(Default)]
+pub struct FramePool {
+    free: Vec<Vec<u8>>,
+    pending: Option<Arc<Vec<u8>>>,
+}
+
+impl FramePool {
+    pub fn new() -> Self {
+        return Self::default();
+    }
+
+    /// A buffer of exactly `len` bytes, reusing the deferred one
+    pub fn take(&mut self, len: usize) -> Vec<u8> {
+        if let Some(arc) = self.pending.take() {
+            match Arc::try_unwrap(arc) {
+                Ok(vec) => self.free.push(vec),
+                Err(arc) => self.pending = Some(arc),
+            }
+        }
+        if let Some(i) = self.free.iter().position(|v| v.capacity() >= len) {
+            let mut vec = self.free.swap_remove(i);
+            vec.resize(len, 0);
+            return vec;
+        }
+        return vec![0u8; len];
+    }
+
+    /// Hand back a buffer that was taken but never published.
+    pub fn release(&mut self, vec: Vec<u8>) {
+        self.free.push(vec);
+    }
+
+    /// Recycle the frame just published into the slot.
+    pub fn give(&mut self, frame: Option<Frame>) {
+        let Some(Frame::Cpu(cpu)) = frame else {
+            return;
+        };
+        match Arc::try_unwrap(cpu.data) {
+            Ok(vec) => self.free.push(vec),
+            // Compositor still holds the clone: retry at the next `take`.
+            Err(arc) => {
+                if self.pending.is_none() {
+                    self.pending = Some(arc);
+                }
+            }
+        }
+    }
 }
 
 // Registry of all live sources. Owned by the UI thread; sources render on their own threads.
@@ -650,7 +702,8 @@ mod tests {
         s.record_receive_time(1.5);
         s.record_upload_time(2.0);
         s.record_upload_time(4.0);
-        s.record_dropped(1);
+        s.record_consumed(0);
+        s.record_consumed(2);
         assert_eq!(s.width, 1920);
         assert_eq!(s.height, 1080);
         assert_eq!(s.pixel_format, "BGRA8");
@@ -674,6 +727,52 @@ mod tests {
         s.record_consumed(1);
         s.record_consumed(2);
         assert_eq!(s.frames_consumed, 3);
+    }
+
+    /// A seq jump is frames produced but never displayed; same or lower seq
+    /// (double pull, source restart) must not count.
+    #[test]
+    fn stats_counts_seq_gaps_as_dropped() {
+        let mut s = SourceStats::new();
+        s.record_consumed(0);
+        s.record_consumed(4);
+        assert_eq!(s.frames_dropped, 3);
+        s.record_consumed(4);
+        s.record_consumed(2);
+        assert_eq!(s.frames_dropped, 3);
+        assert_eq!(s.frames_consumed, 3);
+    }
+
+    /// A held Arc defers reclaim; once released the same buffer is reused
+    /// instead of allocating.
+    #[test]
+    fn frame_pool_defers_reclaim_until_released() {
+        use super::super::{CpuFrame, PixelFormat};
+
+        let mut pool = FramePool::new();
+        let first = pool.take(64);
+        let ptr = first.as_ptr();
+        let data = Arc::new(first);
+        let held = data.clone();
+        pool.give(Some(Frame::Cpu(CpuFrame {
+            data,
+            w: 16,
+            h: 4,
+            fmt: PixelFormat::Rgba8,
+            pitch: 0,
+            seq: 0,
+        })));
+
+        // The clone is still held: this one must come from a fresh allocation.
+        let second = pool.take(64);
+        assert_ne!(second.as_ptr(), ptr);
+        drop(second);
+
+        // Clone released: the deferred buffer comes back.
+        drop(held);
+        let third = pool.take(64);
+        assert_eq!(third.as_ptr(), ptr);
+        assert!(pool.pending.is_none());
     }
 
     /// A source_ref alone is not a registry identity: two protocols may carry

@@ -7,7 +7,7 @@ use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
 use tracing::instrument;
 
 use crate::config::{BorderVisibility, Canvas, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
-use crate::sources::{ConvUniform, CpuFrame, Frame, PixelFormat, Protocol, SourceKey, SourceRegistry, SourceStats};
+use crate::sources::{ConvUniform, CpuFrame, Frame, PixelFormat, SourceKey, SourceRegistry, SourceStats};
 
 const MAX_LAYERS: usize = 256;
 
@@ -155,6 +155,7 @@ pub struct Compositor {
     bind_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     textures: HashMap<SourceKey, SourceTex>,
+    pulls: HashMap<SourceKey, ResolvedSource>, // Resolved sources for the current frame
     canvas_texture: Option<wgpu::Texture>,
     canvas_view: Option<wgpu::TextureView>,
     canvas_vb: wgpu::Buffer,
@@ -396,6 +397,7 @@ impl Compositor {
             bind_layout,
             sampler,
             textures: HashMap::new(),
+            pulls: HashMap::new(),
             canvas_texture: None,
             canvas_view: None,
             canvas_vb,
@@ -410,6 +412,75 @@ impl Compositor {
             label_bg_bg,
             text_pipeline,
         }
+    }
+
+    /// Start a new frame: drop the resolved-source cache so the next build pulls each source again.
+    pub fn begin_frame(&mut self) {
+        self.pulls.clear();
+    }
+
+    /// Pull every source this frame will need before any render runs
+    #[instrument(level = "debug", skip_all)]
+    pub fn prefetch_sources(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        registry: &SourceRegistry,
+        canvas: &Canvas,
+        expanded_source: Option<&str>,
+    ) {
+        for source in &canvas.sources {
+            if expanded_source.is_some() && expanded_source != Some(source.uuid.as_str()) {
+                continue;
+            }
+            if let Some(source_ref) = source.source_ref.as_deref() {
+                let key = SourceKey::new(source.protocol.clone(), source_ref.to_string());
+                self.resolve_source(&key, registry, device, queue);
+            }
+        }
+    }
+
+    /// Pull a source once per frame.
+    fn resolve_source(
+        &mut self,
+        key: &SourceKey,
+        registry: &SourceRegistry,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> ResolvedSource {
+        if let Some(cached) = self.pulls.get(key) {
+            return cached.clone();
+        }
+        let resolved: ResolvedSource = (|| {
+            let src = registry.get(key)?;
+            let stats = src.stats();
+            let latest_span = tracing::debug_span!("latest", source = %key.source_ref);
+            let _latest_guard = latest_span.entered();
+            let t = Instant::now();
+            let frame = src.latest(device, queue)?;
+            let receive_ms = t.elapsed().as_secs_f32() * 1000.0;
+            {
+                let mut s = stats.lock().unwrap();
+                s.record_receive_time(receive_ms);
+                s.record_consumed(frame.seq());
+            }
+            match frame {
+                Frame::Cpu(f) => {
+                    let st = self.ensure_texture(device, queue, key, &f, Some(stats));
+                    Some((st.bg.clone(), f.w as f32 / f.h as f32, false, false))
+                }
+                #[cfg(target_os = "macos")]
+                Frame::Syphon(f) => {
+                    Some((f.bg.clone(), f.w as f32 / f.h as f32, false, true))
+                }
+                #[cfg(target_os = "windows")]
+                Frame::Spout(f) => {
+                    Some((f.bg.clone(), f.w as f32 / f.h as f32, false, false))
+                }
+            }
+        })();
+        self.pulls.insert(key.clone(), resolved.clone());
+        return resolved;
     }
 
     /// Per-frame: upload changed source textures, build quads for all sources.
@@ -442,9 +513,6 @@ impl Compositor {
             ));
         }
 
-        // Dedupe per (protocol, source_ref): quads sharing a runtime source, resolve it once and reuse the bind group.
-        let mut seen: HashMap<(&Protocol, &str), ResolvedSource> = HashMap::new();
-
         let mut sources: Vec<_> = canvas.sources.iter().collect();
         sources.sort_by_key(|l| l.z);
 
@@ -458,40 +526,11 @@ impl Compositor {
                 continue;
             }
 
+            // Per-frame dedupe: quads sharing a runtime source resolve once,
+            // across builds of this frame and within this one.
             let entry = source.source_ref.as_deref().and_then(|source_ref| {
-                seen.entry((&source.protocol, source_ref))
-                    .or_insert_with(|| {
-                        let key = SourceKey::new(source.protocol.clone(), source_ref.to_string());
-                        let src = registry.get(&key)?;
-                        let stats = src.stats();
-                        let latest_span = tracing::debug_span!("latest", source = %key.source_ref);
-                        let _latest_guard = latest_span.entered();
-                        // `latest()` is where Syphon's blocking receive and
-                        // Spout's mutex/CopyResource live, so time it here.
-                        let t = Instant::now();
-                        let frame = src.latest(device, queue)?;
-                        let receive_ms = t.elapsed().as_secs_f32() * 1000.0;
-                        {
-                            let mut s = stats.lock().unwrap();
-                            s.record_receive_time(receive_ms);
-                            s.record_consumed(frame.seq());
-                        }
-                        match frame {
-                            Frame::Cpu(f) => {
-                                let st = self.ensure_texture(device, queue, &key, &f, Some(stats));
-                                Some((st.bg.clone(), f.w as f32 / f.h as f32, false, false))
-                            }
-                            #[cfg(target_os = "macos")]
-                            Frame::Syphon(f) => {
-                                Some((f.bg.clone(), f.w as f32 / f.h as f32, false, true))
-                            }
-                            #[cfg(target_os = "windows")]
-                            Frame::Spout(f) => {
-                                Some((f.bg.clone(), f.w as f32 / f.h as f32, false, false))
-                            }
-                        }
-                    })
-                    .clone()
+                let key = SourceKey::new(source.protocol.clone(), source_ref.to_string());
+                self.resolve_source(&key, registry, device, queue)
             });
 
             let (bg, aspect, src_flip_h, src_flip_v) = match entry {

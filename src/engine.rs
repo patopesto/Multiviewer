@@ -544,6 +544,23 @@ impl Engine {
         }
     }
 
+    /// Start a new frame: clear the compositor's per-frame source cache and pull every canvas source once
+    pub fn begin_frame(&mut self) {
+        let Some(comp) = self.comp.as_mut() else {
+            return;
+        };
+        comp.begin_frame();
+        if let (Some(device), Some(queue)) = (self.device.as_ref(), self.queue.as_ref()) {
+            comp.prefetch_sources(
+                device,
+                queue,
+                &self.registry,
+                &self.cfg.canvas,
+                self.expanded_layer_id.as_deref(),
+            );
+        }
+    }
+
     pub fn build_frame(
         &mut self,
         device: &wgpu::Device,

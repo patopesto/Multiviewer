@@ -29,13 +29,13 @@ use screen_capture_kit::stream::{
     SCStreamOutputType,
 };
 
-use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
+use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 use super::discovery::fetch_content;
 
 define_class!(
     #[unsafe(super(NSObject))]
     #[name = "MVScreenCaptureKitStreamDelegate"]
-    #[ivars = (RefCell<Arc<Mutex<Option<Frame>>>>, RefCell<Arc<Mutex<SourceStats>>>, Cell<u64>)]
+    #[ivars = (RefCell<Arc<Mutex<Option<Frame>>>>, RefCell<Arc<Mutex<SourceStats>>>, Cell<u64>, RefCell<FramePool>)]
     struct StreamDelegate;
 
     unsafe impl NSObjectProtocol for StreamDelegate {}
@@ -78,7 +78,7 @@ define_class!(
                     return;
                 }
                 let src = pixel_buffer.get_base_address() as *const u8;
-                let mut buf = vec![0u8; copy_len];
+                let mut buf = self.ivars().3.borrow_mut().take(copy_len);
                 std::ptr::copy_nonoverlapping(src, buf.as_mut_ptr(), copy_len);
                 let _ = pixel_buffer.unlock_base_address(kCVPixelBufferLock_ReadOnly);
                 buf
@@ -105,7 +105,9 @@ define_class!(
                 seq,
             });
             let slot_arc = ivars.0.borrow();
-            *slot_arc.lock().unwrap() = Some(frame);
+            let old = slot_arc.lock().unwrap().replace(frame);
+            drop(slot_arc);
+            ivars.3.borrow_mut().give(old);
         }
     }
 
@@ -126,6 +128,7 @@ impl StreamDelegate {
             RefCell::new(slot),
             RefCell::new(stats),
             Cell::new(0),
+            RefCell::new(FramePool::new()),
         ));
         let this: Option<Retained<Self>> = unsafe { msg_send![super(this), init] };
         this.expect("ScreenCaptureKit stream delegate init failed")

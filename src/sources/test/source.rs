@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Serialize, Deserialize};
 
-use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
+use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 const NOMINAL_FPS: f64 = 60.0;
 
@@ -156,15 +156,15 @@ impl TestSource {
                 let mut base = vec![0u8; size];
                 generate_base(&mut base, w, h, &pattern);
                 let base = Arc::new(base);
-                let mut back = vec![0u8; size];
+                let mut pool = FramePool::new();
 
                 while running2.load(Ordering::Relaxed) {
                     let frame_start = Instant::now();
-                    // Scope the span to frame work so the pacing sleep below
-                    // does not show up as producer cost in traces.
                     {
                         let frame_span = tracing::debug_span!("test_frame");
                         let _frame_guard = frame_span.entered();
+                        // Reclaims last frame's buffer if the compositor has dropped it; re-alloc only on lost race.
+                        let mut back = pool.take(size);
                         let t0 = Instant::now();
                         match &pattern {
                             TestPattern::Radar { width, speed, direction, line_color, bg_color } => {
@@ -184,7 +184,7 @@ impl TestSource {
                             s.record_copy_time(copy_ms);
                         }
                         let frame = Frame::Cpu(CpuFrame {
-                            data: Arc::new(std::mem::take(&mut back)),
+                            data: Arc::new(back),
                             w,
                             h,
                             fmt: PixelFormat::Rgba8,
@@ -192,12 +192,7 @@ impl TestSource {
                             seq,
                         });
                         let previous = writer.lock().unwrap().replace(frame);
-                        back = match previous {
-                            Some(Frame::Cpu(CpuFrame { data, .. })) => {
-                                Arc::try_unwrap(data).unwrap_or_else(|_| vec![0u8; size])
-                            }
-                            _ => vec![0u8; size],
-                        };
+                        pool.give(previous);
                     }
                     seq += 1;
                     std::thread::sleep(frame_interval.saturating_sub(frame_start.elapsed()));

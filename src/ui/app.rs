@@ -145,6 +145,7 @@ impl eframe::App for App {
 
         if let Some(rs) = frame.wgpu_render_state() {
             self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
+            self.engine.begin_frame();
             self.engine.render_outputs();
         }
 

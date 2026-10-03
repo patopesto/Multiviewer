@@ -20,7 +20,7 @@ pub use common::GpuFrame;
 
 pub use source::{
     SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
-    SourceStats, SourceRegistry, VideoSource, ConvUniform,
+    SourceStats, SourceRegistry, VideoSource, ConvUniform, FramePool,
 };
 pub use output::{OutputConfig, OutputRegistry};
 

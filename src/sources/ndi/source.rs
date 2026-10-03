@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
 use grafton_ndi::{NDI, Receiver, ReceiverOptions, LineStrideOrSize};
 
-use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
+use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NdiSourceConfig {
@@ -121,11 +121,13 @@ impl NdiSource {
                 };
                 let mut seq = 0u64;
                 let mut warned_formats: HashSet<u32> = HashSet::new();
+                let mut pool = FramePool::new();
                 while running2.load(Ordering::Relaxed) {
                     let frame_span = tracing::debug_span!("ndi_frame");
                     let _frame_guard = frame_span.entered();
-                    match receiver.video().capture(Duration::from_millis(100)) {
-                        Ok(frame) => {
+                    // Zero-copy poll: the SDK buffer is borrowed and copied straight into a pooled frame buffer
+                    match receiver.video().try_capture_ref(Duration::from_millis(100)) {
+                        Ok(Some(frame)) => {
                             let w = frame.width() as u32;
                             let h = frame.height() as u32;
                             let (fmt, bpp) = match frame.pixel_format() {
@@ -148,16 +150,16 @@ impl NdiSource {
                                 _ => (w as usize) * bpp,
                             };
                             let t0 = Instant::now();
-                            // Native stride passed through; the compositor
-                            // uploads with it instead of us repacking rows.
-                            let data = frame.data().to_vec();
+                            let src = frame.data();
+                            let mut data = pool.take(src.len());
+                            data.copy_from_slice(src);
                             let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
                             {
                                 let mut s = stats2.lock().unwrap();
                                 s.record_frame(w, h, fmt.label(), 0.0);
                                 s.record_copy_time(copy_ms);
                             }
-                            *slot2.lock().unwrap() = Some(Frame::Cpu(CpuFrame {
+                            let old = slot2.lock().unwrap().replace(Frame::Cpu(CpuFrame {
                                 data: Arc::new(data),
                                 w,
                                 h,
@@ -165,8 +167,11 @@ impl NdiSource {
                                 pitch: stride as u32,
                                 seq,
                             }));
+                            pool.give(old);
                             seq += 1;
                         }
+                        // No frame within the timeout, wait
+                        Ok(None) => std::thread::sleep(Duration::from_millis(10)),
                         Err(e) => {
                             tracing::warn!(source=trace_ref, "NDI capture timeout: {}", e);
                         }

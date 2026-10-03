@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use multiviewer_decklink::{DecklinkPixelFormat, VideoConnection};
 use multiviewer_decklink::{decklink_source_new, decklink_source_free, decklink_source_set_connection, decklink_source_start, decklink_source_stop, decklink_source_poll_frame};
 
-use crate::sources::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, VideoSource};
+use crate::sources::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DecklinkSourceConfig {
@@ -58,15 +58,15 @@ impl DecklinkSource {
                         decklink_source_free(src);
                         return;
                     }
-                    // Phase 1: pre-allocated buffer pool — avoid per-frame alloc/copy.
+                    // Reusable buffer for the C++ poll; the published frame's
+                    // buffer is reclaimed into the pool once the compositor
+                    // drops it (deferred to the next take, so a held clone
+                    // never forces a fresh 4K allocation).
                     const MAX_SIZE: usize = 3840 * 2160 * 4;
-                    let mut pool: Vec<Vec<u8>> = vec![vec![0u8; MAX_SIZE]; 3];
-                    let mut slot = 0usize;
+                    let mut pool = FramePool::new();
                     let mut last_seq = 0u64;
                     while running2.load(Ordering::Relaxed) {
-                        if pool[slot].len() < MAX_SIZE {
-                            pool[slot].resize(MAX_SIZE, 0);
-                        }
+                        let mut buf = pool.take(MAX_SIZE);
                         let mut w = 0;
                         let mut h = 0;
                         let mut seq = 0u64;
@@ -75,8 +75,8 @@ impl DecklinkSource {
                         let t0 = Instant::now();
                         let got = decklink_source_poll_frame(
                             src,
-                            pool[slot].as_mut_ptr(),
-                            pool[slot].len(),
+                            buf.as_mut_ptr(),
+                            buf.len(),
                             &mut w,
                             &mut h,
                             &mut seq,
@@ -100,7 +100,7 @@ impl DecklinkSource {
                                 _ => 4,
                             };
                             let data_size = (w * h * bpp) as usize;
-                            pool[slot].truncate(data_size);
+                            buf.truncate(data_size);
 
                             {
                                 let mut s = stats2.lock().unwrap();
@@ -111,16 +111,12 @@ impl DecklinkSource {
                                     nominal_fps,
                                 );
                                 s.record_copy_time(copy_ms);
-                                if last_seq != 0 && seq > last_seq + 1 {
-                                    s.record_dropped(seq - last_seq - 1);
-                                }
                             }
                             last_seq = seq;
 
                             let mut guard = latest2.lock().unwrap();
-                            let old = guard.take();
-                            *guard = Some(CpuFrame {
-                                data: Arc::new(std::mem::take(&mut pool[slot])),
+                            let old = guard.replace(CpuFrame {
+                                data: Arc::new(buf),
                                 w: w as u32,
                                 h: h as u32,
                                 fmt: pixel_format,
@@ -129,14 +125,9 @@ impl DecklinkSource {
                             });
                             drop(guard);
 
-                            // Try to reclaim the old frame's buffer back into the pool.
-                            if let Some(old_frame) = old
-                                && let Ok(mut vec) = Arc::try_unwrap(old_frame.data)
-                            {
-                                vec.resize(MAX_SIZE, 0);
-                                pool[slot] = vec;
-                            }
-                            slot = (slot + 1) % pool.len();
+                            pool.give(old.map(Frame::Cpu));
+                        } else {
+                            pool.release(buf);
                         }
                         std::thread::sleep(Duration::from_millis(5));
                     }
