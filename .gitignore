@@ -6,6 +6,10 @@ target/
 dist/
 .cargo*
 .task
+*.md
+
+# Trace / profiling data
+trace*.json
 
 # Generated cargo-packager configs
 .Packager.*.toml

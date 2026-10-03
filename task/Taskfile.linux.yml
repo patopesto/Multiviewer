@@ -26,7 +26,7 @@ tasks:
     deps:
       - :ndi:setup:linux
     cmds:
-      - cargo run --release -- {{.CLI_ARGS}}
+      - cargo run -- {{.CLI_ARGS}}
 
   build:
     desc: Build the release binary for Linux

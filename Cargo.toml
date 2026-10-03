@@ -24,8 +24,14 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-cli
 [lints]
 workspace = true
 
+[profile.dev]
+opt-level = 3
+
 [profile.release]
-debug = true
+debug = "line-tables-only"
+lto = "thin"
+codegen-units = 1
+panic = "abort"
 
 [dependencies]
 eframe = { version = "0.35", default-features = false, features = ["wgpu", "default_fonts"] }
