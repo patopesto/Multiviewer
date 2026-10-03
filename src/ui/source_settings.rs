@@ -9,6 +9,8 @@ use crate::sources::AvFoundationSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::ScreenCaptureKitSourceConfig;
 #[cfg(target_os = "windows")]
+use crate::sources::MediaFoundationSourceConfig;
+#[cfg(target_os = "windows")]
 use crate::sources::SpoutSourceConfig;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
@@ -24,6 +26,8 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         SourceConfig::ScreenCaptureKit(cfg) => screencapturekit_settings_ui(cfg, ui),
         #[cfg(target_os = "windows")]
         SourceConfig::Spout(cfg) => spout_settings_ui(cfg, ui),
+        #[cfg(target_os = "windows")]
+        SourceConfig::MediaFoundation(cfg) => mediafoundation_settings_ui(cfg, ui),
         // Config from a platform that has this protocol; no runtime source.
         SourceConfig::Unknown(_) => false,
     };
@@ -285,6 +289,12 @@ fn avfoundation_settings_ui(_cfg: &mut AvFoundationSourceConfig, _ui: &mut egui:
 
 #[cfg(target_os = "macos")]
 fn screencapturekit_settings_ui(_cfg: &mut ScreenCaptureKitSourceConfig, _ui: &mut egui::Ui) -> bool {
+    // No tunables yet
+    false
+}
+
+#[cfg(target_os = "windows")]
+fn mediafoundation_settings_ui(_cfg: &mut MediaFoundationSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
     false
 }

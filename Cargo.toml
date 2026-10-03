@@ -79,8 +79,15 @@ objc2-foundation = "0.3"
 # `dx12` is the backend matching wgpu's Windows backend (no `dx`/`gl` needed).
 spout2 = { package = "spout2-rs", version = "0.1", default-features = false, features = ["dx12"] }
 # For `windows::core::Interface::as_raw` on the raw D3D12 pointers wgpu-hal
-# exposes; same 0.62 line wgpu-hal uses so the trait impls unify.
-windows = { version = "0.62", default-features = false }
+# exposes (Spout), plus the Media Foundation capture source; same 0.62 line
+# wgpu-hal uses so the trait impls unify.
+windows = { version = "0.62", default-features = false, features = [
+    "Win32_Foundation",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # eframe's default features are off project-wide (macOS/Windows don't need a

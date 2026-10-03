@@ -18,6 +18,8 @@ use super::avfoundation;
 use super::screencapturekit;
 #[cfg(target_os = "windows")]
 use super::spout;
+#[cfg(target_os = "windows")]
+use super::mediafoundation;
 
 pub type SourceRef = String;
 
@@ -59,6 +61,8 @@ pub enum SourceConfig {
     ScreenCaptureKit(screencapturekit::ScreenCaptureKitSourceConfig),
     #[cfg(target_os = "windows")]
     Spout(spout::SpoutSourceConfig),
+    #[cfg(target_os = "windows")]
+    MediaFoundation(mediafoundation::MediaFoundationSourceConfig),
     Unknown(serde_json::Value),
 }
 
@@ -84,6 +88,8 @@ enum SourceConfigInner {
     ScreenCaptureKit(screencapturekit::ScreenCaptureKitSourceConfig),
     #[cfg(target_os = "windows")]
     Spout(spout::SpoutSourceConfig),
+    #[cfg(target_os = "windows")]
+    MediaFoundation(mediafoundation::MediaFoundationSourceConfig),
 }
 
 impl From<SourceConfigInner> for SourceConfig {
@@ -100,6 +106,8 @@ impl From<SourceConfigInner> for SourceConfig {
             SourceConfigInner::ScreenCaptureKit(c) => SourceConfig::ScreenCaptureKit(c),
             #[cfg(target_os = "windows")]
             SourceConfigInner::Spout(c) => SourceConfig::Spout(c),
+            #[cfg(target_os = "windows")]
+            SourceConfigInner::MediaFoundation(c) => SourceConfig::MediaFoundation(c),
         }
     }
 }
@@ -123,6 +131,8 @@ impl Serialize for SourceConfig {
             SourceConfig::ScreenCaptureKit(c) => SourceConfigInner::ScreenCaptureKit(c.clone()).serialize(serializer),
             #[cfg(target_os = "windows")]
             SourceConfig::Spout(c) => SourceConfigInner::Spout(c.clone()).serialize(serializer),
+            #[cfg(target_os = "windows")]
+            SourceConfig::MediaFoundation(c) => SourceConfigInner::MediaFoundation(c.clone()).serialize(serializer),
         }
     }
 }
@@ -158,6 +168,8 @@ impl SourceConfig {
             Protocol::ScreenCaptureKit => SourceConfig::ScreenCaptureKit(screencapturekit::ScreenCaptureKitSourceConfig::default()),
             #[cfg(target_os = "windows")]
             Protocol::Spout => SourceConfig::Spout(spout::SpoutSourceConfig::default()),
+            #[cfg(target_os = "windows")]
+            Protocol::MediaFoundation => SourceConfig::MediaFoundation(mediafoundation::MediaFoundationSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
         }
     }
@@ -190,6 +202,8 @@ pub enum SourceRuntimeConfig {
     ScreenCaptureKit { label: String },
     #[cfg(target_os = "windows")]
     Spout,
+    #[cfg(target_os = "windows")]
+    MediaFoundation { label: String },
 }
 
 /// A live source: its boxed runtime, the config persisted in the project, and
@@ -229,6 +243,10 @@ impl SourceKind {
             (SourceConfig::Spout(_), SourceRuntimeConfig::Spout) => {
                 Box::new(spout::SpoutSource::spawn(key.source_ref.clone()))
             }
+            #[cfg(target_os = "windows")]
+            (SourceConfig::MediaFoundation(c), SourceRuntimeConfig::MediaFoundation { .. }) => {
+                Box::new(mediafoundation::MediaFoundationSource::spawn(key.source_ref.clone(), c))
+            }
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
             _ => unreachable!("source config paired with a foreign runtime config"),
@@ -255,7 +273,7 @@ impl SourceKind {
     }
 
     /// Human-readable label for source selection. Handles protocol specifics labels
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     pub fn display_label(&self, source_ref: &str) -> String {
         #[cfg(target_os = "macos")]
         {
@@ -263,6 +281,12 @@ impl SourceKind {
                 return syphon::format_syphon_label(&info.app_name, &info.name);
             }
             if let SourceRuntimeConfig::ScreenCaptureKit { label } = &self.runtime {
+                return label.clone();
+            }
+        }
+        #[cfg(target_os = "windows")]
+        {
+            if let SourceRuntimeConfig::MediaFoundation { label } = &self.runtime {
                 return label.clone();
             }
         }
@@ -593,6 +617,21 @@ impl SourceRegistry {
             return key;
         }
         let kind = SourceKind::new(&key, SourceConfig::Spout(config), SourceRuntimeConfig::Spout);
+        self.sources.insert(key.clone(), kind);
+        return key;
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn add_mediafoundation(&mut self, key: SourceKey, config: mediafoundation::MediaFoundationSourceConfig, label: String) -> SourceKey {
+        if self.contains(&key) {
+            return key;
+        }
+        tracing::debug!(source_ref = %key.source_ref, label = %label, "add_mediafoundation");
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::MediaFoundation(config),
+            SourceRuntimeConfig::MediaFoundation { label },
+        );
         self.sources.insert(key.clone(), kind);
         return key;
     }

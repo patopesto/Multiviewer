@@ -592,6 +592,10 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             if ui.selectable_value(&mut source.protocol, Protocol::Spout, Protocol::Spout.label()).clicked(){
                                 protocol_changed = true;
                             }
+                            #[cfg(target_os = "windows")]
+                            if ui.selectable_value(&mut source.protocol, Protocol::MediaFoundation, Protocol::MediaFoundation.label()).clicked(){
+                                protocol_changed = true;
+                            }
                         });
                 });
                 ui.end_row();
@@ -889,6 +893,63 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         }
                                     }
                                     if spout_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        }
+                        #[cfg(target_os = "windows")]
+                        Protocol::MediaFoundation => {
+                            let discovered = engine
+                                .mediafoundation
+                                .as_ref()
+                                .map(|d| d.list())
+                                .unwrap_or_default();
+                            let mf_sources: Vec<(String, String)> = engine
+                                .registry
+                                .list_sources(Protocol::MediaFoundation)
+                                .into_iter()
+                                .map(|(key, kind)| {
+                                    // Prefer the live friendly name: the label
+                                    // stored at connect time can be the raw
+                                    // symbolic link if discovery missed then.
+                                    let label = discovered
+                                        .iter()
+                                        .find(|d| d.id == key.source_ref)
+                                        .map(|d| d.name.clone())
+                                        .unwrap_or_else(|| kind.display_label(&key.source_ref));
+                                    (key.source_ref.clone(), label)
+                                })
+                                .collect();
+                            let current = source.source_ref.as_deref().unwrap_or("");
+                            let current_label = mf_sources
+                                .iter()
+                                .find(|(id, _)| id == current)
+                                .map(|(_, label)| label.clone())
+                                .unwrap_or_else(|| current.to_string());
+                            egui::ComboBox::from_id_salt("mediafoundation_source")
+                                .width(ui.available_width())
+                                .height(1000.0)
+                                .selected_text(current_label)
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    // Already connected devices
+                                    for (id, label) in &mf_sources {
+                                        if ui.selectable_label(current == id, label).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    // Discovered devices not yet connected (auto-connect on select)
+                                    for device in &discovered {
+                                        if !mf_sources.iter().any(|(id, _)| id == &device.id)
+                                            && ui
+                                                .selectable_label(current == device.id, &device.name)
+                                                .clicked()
+                                        {
+                                            new_connect = Some((Protocol::MediaFoundation, device.id.clone()));
+                                            selected_source = Some(device.id.clone());
+                                        }
+                                    }
+                                    if mf_sources.is_empty() && discovered.is_empty() {
                                         ui.weak("(scanning...)");
                                     }
                                 });

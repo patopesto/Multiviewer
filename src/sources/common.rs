@@ -14,6 +14,8 @@ pub enum Protocol {
     ScreenCaptureKit,
     #[cfg(target_os = "windows")]
     Spout,
+    #[cfg(target_os = "windows")]
+    MediaFoundation,
     /// A protocol that is not available on this platform. Holds the original
     /// protocol name as serialized in the project file so it round-trips
     /// unchanged when the project is opened on a platform that supports it.
@@ -36,6 +38,8 @@ impl Protocol {
             Protocol::ScreenCaptureKit => "ScreenCaptureKit",
             #[cfg(target_os = "windows")]
             Protocol::Spout => "Spout",
+            #[cfg(target_os = "windows")]
+            Protocol::MediaFoundation => "MediaFoundation",
             Protocol::Unknown(name) => name,
         }
     }
@@ -53,6 +57,8 @@ impl Protocol {
             Protocol::ScreenCaptureKit => "macOS Screen Capture".to_string(),
             #[cfg(target_os = "windows")]
             Protocol::Spout => "Spout".to_string(),
+            #[cfg(target_os = "windows")]
+            Protocol::MediaFoundation => "MediaFoundation".to_string(),
             Protocol::Unknown(name) => format!("{name} (Unavailable)"),
         }
     }
@@ -77,6 +83,8 @@ impl<'de> Deserialize<'de> for Protocol {
             "AvFoundation" => Protocol::AvFoundation,
             #[cfg(target_os = "macos")]
             "ScreenCaptureKit" => Protocol::ScreenCaptureKit,
+            #[cfg(target_os = "windows")]
+            "MediaFoundation" => Protocol::MediaFoundation,
             #[cfg(target_os = "windows")]
             "Spout" => Protocol::Spout,
             other => Protocol::Unknown(other.to_string()),

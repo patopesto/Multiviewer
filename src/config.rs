@@ -500,6 +500,49 @@ mod tests {
         assert_eq!(saved["config"]["device_unique_id"], "0x802000000a5f123");
     }
 
+    /// A Windows-authored Media Foundation source (device-specific config) must
+    /// survive load + save on a platform that has no Media Foundation.
+    #[test]
+    fn mediafoundation_source_round_trips_on_unavailable_platform() {
+        let json = r#"{
+            "uuid":"u1","name":"Webcam","protocol":"MediaFoundation",
+            "source_ref":"\\\\?\\usb#vid_046d&pid_085b","x":10.0,"y":20.0,
+            "width":1920,"height":1080,"z":3,"mode":"Fit",
+            "config":{"protocol":"MediaFoundation","device_id":"\\\\?\\usb#vid_046d&pid_085b"}
+        }"#;
+        let parsed: Source = serde_json::from_str(json).unwrap();
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(parsed.protocol, Protocol::MediaFoundation);
+            let SourceConfig::MediaFoundation(c) = &parsed.config else {
+                panic!("expected MediaFoundation config")
+            };
+            assert_eq!(c.device_id, r"\\?\usb#vid_046d&pid_085b");
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(parsed.protocol, Protocol::Unknown("MediaFoundation".to_string()));
+            assert_eq!(parsed.protocol.label(), "MediaFoundation (Unavailable)");
+            let SourceConfig::Unknown(v) = &parsed.config else {
+                panic!("expected Unknown config")
+            };
+            assert_eq!(
+                v.get("device_id"),
+                Some(&serde_json::json!(r"\\?\usb#vid_046d&pid_085b"))
+            );
+        }
+        // Layout is independent of protocol availability.
+        assert_eq!(parsed.name, "Webcam");
+        assert_eq!(parsed.x, 10.0);
+
+        let saved = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(saved["protocol"], "MediaFoundation");
+        assert_eq!(
+            saved["config"]["device_id"],
+            r"\\?\usb#vid_046d&pid_085b"
+        );
+    }
+
     /// A macOS-authored ScreenCaptureKit source must survive load + save on a platform without it.
     #[test]
     fn screencapturekit_source_round_trips_on_unavailable_platform() {

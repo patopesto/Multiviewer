@@ -28,6 +28,10 @@ use crate::sources::ensure_screen_capture_access_requested;
 use crate::sources::SpoutDiscovery;
 #[cfg(target_os = "windows")]
 use crate::sources::SpoutSourceConfig;
+#[cfg(target_os = "windows")]
+use crate::sources::MediaFoundationDiscovery;
+#[cfg(target_os = "windows")]
+use crate::sources::MediaFoundationSourceConfig;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 20.0;
@@ -142,6 +146,8 @@ pub struct Engine {
     pub screencapturekit: Option<ScreenCaptureKitDiscovery>,
     #[cfg(target_os = "windows")]
     pub spout: Option<SpoutDiscovery>,
+    #[cfg(target_os = "windows")]
+    pub mediafoundation: Option<MediaFoundationDiscovery>,
     comp: Option<Compositor>,
     device: Option<Arc<wgpu::Device>>,
     queue: Option<Arc<wgpu::Queue>>,
@@ -186,6 +192,10 @@ impl Engine {
         #[cfg(target_os = "windows")]
         let spout = Some(SpoutDiscovery::start());
 
+        // Start Media Foundation device discovery on Windows
+        #[cfg(target_os = "windows")]
+        let mediafoundation = Some(MediaFoundationDiscovery::start());
+
         let mut engine = Self {
             cfg,
             registry,
@@ -200,6 +210,8 @@ impl Engine {
             screencapturekit,
             #[cfg(target_os = "windows")]
             spout,
+            #[cfg(target_os = "windows")]
+            mediafoundation,
             comp: None,
             device: None,
             queue: None,
@@ -454,31 +466,6 @@ impl Engine {
             }
         }
 
-        // Auto-connect pending Spout sources on Windows
-        #[cfg(target_os = "windows")]
-        {
-            if let Some(ref discovery) = self.spout {
-                let discovered = discovery.list();
-                for source in &self.cfg.canvas.sources {
-                    if source.protocol == Protocol::Spout
-                        && let Some(ref source_ref) = source.source_ref
-                    {
-                        let key = SourceKey::new(Protocol::Spout, source_ref.clone());
-                        if !self.registry.contains(&key)
-                            && discovered.iter().any(|s| s == source_ref)
-                        {
-                            let config = match &source.config {
-                                SourceConfig::Spout(c) => c.clone(),
-                                _ => SpoutSourceConfig::default(),
-                            };
-                            self.registry.add_spout(key, config);
-                            self.dirty = true;
-                        }
-                    }
-                }
-            }
-        }
-
         // Auto-connect pending ScreenCaptureKit sources on macOS
         #[cfg(target_os = "macos")]
         {
@@ -519,6 +506,57 @@ impl Engine {
                         self.registry
                             .add_screencapturekit(key, config, label);
                         self.dirty = true;
+                    }
+                }
+            }
+        }
+
+        // Auto-connect pending Spout sources on Windows
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(ref discovery) = self.spout {
+                let discovered = discovery.list();
+                for source in &self.cfg.canvas.sources {
+                    if source.protocol == Protocol::Spout
+                        && let Some(ref source_ref) = source.source_ref
+                    {
+                        let key = SourceKey::new(Protocol::Spout, source_ref.clone());
+                        if !self.registry.contains(&key)
+                            && discovered.iter().any(|s| s == source_ref)
+                        {
+                            let config = match &source.config {
+                                SourceConfig::Spout(c) => c.clone(),
+                                _ => SpoutSourceConfig::default(),
+                            };
+                            self.registry.add_spout(key, config);
+                            self.dirty = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Auto-connect pending Media Foundation sources on Windows
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(ref discovery) = self.mediafoundation {
+                let discovered = discovery.list();
+                for source in &self.cfg.canvas.sources {
+                    if source.protocol == Protocol::MediaFoundation
+                        && let Some(ref source_ref) = source.source_ref
+                    {
+                        let key = SourceKey::new(Protocol::MediaFoundation, source_ref.clone());
+                        if !self.registry.contains(&key)
+                            && let Some(device) = discovered.iter().find(|d| &d.id == source_ref)
+                        {
+                            let mut config = match &source.config {
+                                SourceConfig::MediaFoundation(c) => c.clone(),
+                                _ => MediaFoundationSourceConfig::default(),
+                            };
+                            config.device_id = device.id.clone();
+                            self.registry.add_mediafoundation(key, config, device.name.clone());
+                            self.dirty = true;
+                        }
                     }
                 }
             }
@@ -768,6 +806,23 @@ impl Engine {
                     _ => SpoutSourceConfig::default(),
                 };
                 self.registry.add_spout(key, config);
+            }
+            #[cfg(target_os = "windows")]
+            Protocol::MediaFoundation => {
+                let device = self
+                    .mediafoundation
+                    .as_ref()
+                    .and_then(|d| d.find_by_id(name));
+                let mut config = match self.layer_config(&Protocol::MediaFoundation, name) {
+                    Some(SourceConfig::MediaFoundation(c)) => c.clone(),
+                    _ => MediaFoundationSourceConfig::default(),
+                };
+                config.device_id = device
+                    .as_ref()
+                    .map(|d| d.id.clone())
+                    .unwrap_or_else(|| name.to_string());
+                let label = device.map(|d| d.name).unwrap_or_else(|| name.to_string());
+                self.registry.add_mediafoundation(key, config, label);
             }
             // Unavailable protocols have no runtime source to connect.
             Protocol::Unknown(_) => {}
@@ -1381,6 +1436,8 @@ mod tests {
             screencapturekit: None,
             #[cfg(target_os = "windows")]
             spout: None,
+            #[cfg(target_os = "windows")]
+            mediafoundation: None,
             comp: None,
             device: None,
             queue: None,
