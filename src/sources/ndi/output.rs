@@ -23,6 +23,8 @@ pub struct NdiOutput {
     height: AtomicU32,
     stats: Arc<Mutex<OutputStats>>,
     frame_tx: mpsc::SyncSender<Vec<u8>>,
+    pending: Arc<AtomicBool>,
+    readback: Mutex<Option<wgpu::Buffer>>,
     #[allow(dead_code)]
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -32,6 +34,8 @@ impl NdiOutput {
         let (frame_tx, frame_rx) = mpsc::sync_channel::<Vec<u8>>(2);
         let stats = Arc::new(Mutex::new(OutputStats::default()));
         let stats_clone = Arc::clone(&stats);
+        let pending = Arc::new(AtomicBool::new(false));
+        let pending_t = Arc::clone(&pending);
 
         let thread_name = name.clone();
         let thread = thread::Builder::new()
@@ -56,6 +60,7 @@ impl NdiOutput {
                 };
 
                 while let Ok(buffer) = frame_rx.recv() {
+                    pending_t.store(false, Ordering::Release);
                     if buffer.len() < 16 {
                         continue;
                     }
@@ -108,6 +113,8 @@ impl NdiOutput {
             height: AtomicU32::new(0),
             stats,
             frame_tx,
+            pending,
+            readback: Mutex::new(None),
             thread: Some(thread),
         }
     }
@@ -118,6 +125,9 @@ impl VideoOutput for NdiOutput {
         if !self.enabled.load(Ordering::Relaxed) {
             return;
         }
+        if self.pending.load(Ordering::Acquire) {
+            return;
+        }
 
         let width = texture.width();
         let height = texture.height();
@@ -126,12 +136,16 @@ impl VideoOutput for NdiOutput {
 
         let bytes_per_row = width * 4;
         let buffer_size = (bytes_per_row * height) as u64;
-        let readback_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ndi-output-readback"),
-            size: buffer_size + 8,
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        let mut readback_slot = self.readback.lock().unwrap();
+        if readback_slot.as_ref().is_none_or(|b| b.size() != buffer_size + 8) {
+            *readback_slot = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("ndi-output-readback"),
+                size: buffer_size + 8,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            }));
+        }
+        let readback_buffer = readback_slot.as_ref().unwrap();
 
         {
             let readback_span = tracing::debug_span!("readback");
@@ -147,7 +161,7 @@ impl VideoOutput for NdiOutput {
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::TexelCopyBufferInfo {
-                    buffer: &readback_buffer,
+                    buffer: readback_buffer,
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: 8,
                         bytes_per_row: Some(bytes_per_row),
@@ -189,7 +203,9 @@ impl VideoOutput for NdiOutput {
         buffer[0..4].copy_from_slice(&width.to_le_bytes());
         buffer[4..8].copy_from_slice(&height.to_le_bytes());
 
-        if self.frame_tx.try_send(buffer).is_err() {
+        if self.frame_tx.try_send(buffer).is_ok() {
+            self.pending.store(true, Ordering::Release);
+        } else {
             let mut s = self.stats.lock().unwrap();
             s.frames_dropped += 1;
         }
@@ -201,6 +217,10 @@ impl VideoOutput for NdiOutput {
 
     fn enabled(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
+    }
+
+    fn busy(&self) -> bool {
+        return self.pending.load(Ordering::Acquire);
     }
 
     fn set_enabled(&self, enabled: bool) {

@@ -143,6 +143,12 @@ impl SyphonOutput {
             }
         }
 
+        // A server with no client would flip and publish into the void every
+        // cycle; the server object stays alive so clients can still find it.
+        if output_guard.as_ref().map(|o| o.client_count()).unwrap_or(0) == 0 {
+            return;
+        }
+
         // Recreate the flipped texture/bind group if dimensions changed.
         {
             let flip_span = tracing::debug_span!("flip");

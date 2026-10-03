@@ -581,7 +581,7 @@ impl Engine {
     }
 
     pub fn render_outputs(&mut self) {
-        if !self.output_registry.any_enabled() {
+        if !self.output_registry.any_ready() {
             return;
         }
         let Some(ref device) = self.device else {

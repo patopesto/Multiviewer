@@ -610,6 +610,7 @@ impl SourceRegistry {
         self.sources.get_mut(key)
     }
 
+    #[allow(dead_code)] 
     pub fn iter(&self) -> impl Iterator<Item = (&SourceKey, &SourceKind)> {
         self.sources.iter()
     }

@@ -30,6 +30,9 @@ pub trait VideoOutput: Send {
     fn set_enabled(&self, enabled: bool);
     fn stats(&self) -> Arc<Mutex<OutputStats>>;
     fn protocol(&self) -> Protocol;
+    fn busy(&self) -> bool { // overriden by VideoOutputs. true if consumer hasn't taken previous frame
+        return false;
+    }
 }
 
 /// Protocol-specific output configuration stored in the config file.
@@ -194,6 +197,10 @@ impl OutputKind {
         return self.output.enabled();
     }
 
+    pub fn busy(&self) -> bool {
+        return self.output.busy();
+    }
+
     pub fn set_enabled(&self, enabled: bool) {
         self.output.set_enabled(enabled);
     }
@@ -261,6 +268,10 @@ impl OutputRegistry {
 
     pub fn any_enabled(&self) -> bool {
         self.outputs.iter().any(|(_, ok)| ok.enabled())
+    }
+
+    pub fn any_ready(&self) -> bool {
+        return self.outputs.iter().any(|(_, ok)| ok.enabled() && !ok.busy());
     }
 
     #[instrument(level = "debug", skip_all)]
