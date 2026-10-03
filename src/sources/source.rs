@@ -213,8 +213,8 @@ pub enum SourceRuntimeConfig {
     #[cfg(target_os = "windows")]
     MediaFoundation {
         label: String,
+        /// Modes the device advertises; filled by the capture thread on open.
         modes: Arc<Mutex<Vec<mediafoundation::MediaFoundationMode>>>,
-        active: Arc<Mutex<Option<mediafoundation::MediaFoundationMode>>>,
     },
 }
 
@@ -256,8 +256,8 @@ impl SourceKind {
                 Box::new(spout::SpoutSource::spawn(key.source_ref.clone()))
             }
             #[cfg(target_os = "windows")]
-            (SourceConfig::MediaFoundation(c), SourceRuntimeConfig::MediaFoundation { modes, active, .. }) => {
-                Box::new(mediafoundation::MediaFoundationSource::spawn(key.source_ref.clone(), c, modes.clone(), active.clone()))
+            (SourceConfig::MediaFoundation(c), SourceRuntimeConfig::MediaFoundation { modes, .. }) => {
+                Box::new(mediafoundation::MediaFoundationSource::spawn(key.source_ref.clone(), c, modes.clone()))
             }
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
@@ -645,7 +645,6 @@ impl SourceRegistry {
             SourceRuntimeConfig::MediaFoundation {
                 label,
                 modes: Arc::new(Mutex::new(Vec::new())),
-                active: Arc::new(Mutex::new(None)),
             },
         );
         self.sources.insert(key.clone(), kind);

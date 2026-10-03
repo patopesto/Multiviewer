@@ -36,11 +36,15 @@ pub struct Vert {
 }
 
 #[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ConvMode {
     Passthrough = 0,
     UyvyBt601 = 1,
     UyvyBt709 = 2,
+    Yuy2Bt601 = 3,
+    Yuy2Bt709 = 4,
+    Nv12Bt601 = 5,
+    Nv12Bt709 = 6,
 }
 
 const SHADER: &str = r#"
@@ -65,27 +69,48 @@ struct ConvUniform {
 @group(0) @binding(1) var samp: sampler;
 @group(0) @binding(2) var<uniform> conv: ConvUniform;
 
-fn uyvy_to_rgb(sample: vec4<f32>, x: f32, mode: u32) -> vec3<f32> {
-    let u = sample.r - 0.5;
-    let v = sample.b - 0.5;
-    let is_even = (x % 2.0) < 0.5;
-    let y = select(sample.a, sample.g, is_even) - 0.062745098;
+// YUV -> RGB (limited range, 8-bit). Shared by every 4:2:2/4:2:0 path;
+fn yuv_to_rgb(yuv: vec3<f32>, bt709: bool) -> vec3<f32> {
+    let y = yuv.x - 0.062745098; // 16/255
+    let u = yuv.y - 0.5;
+    let v = yuv.z - 0.5;
 
     var r: f32;
     var g: f32;
     var b: f32;
-    if (mode == 1u) {
-        // BT.601
-        r = 1.164 * y + 1.596 * v;
-        g = 1.164 * y - 0.391 * u - 0.813 * v;
-        b = 1.164 * y + 2.018 * u;
-    } else {
-        // BT.709
+    if (bt709) {
         r = 1.164 * y + 1.793 * v;
         g = 1.164 * y - 0.213 * u - 0.533 * v;
         b = 1.164 * y + 2.112 * u;
+    } else {
+        r = 1.164 * y + 1.596 * v;
+        g = 1.164 * y - 0.391 * u - 0.813 * v;
+        b = 1.164 * y + 2.018 * u;
     }
     return clamp(vec3<f32>(r, g, b), vec3<f32>(0.0), vec3<f32>(1.0));
+}
+
+// Packed 4:2:2 stored as half-width Rgba8: one texel = two pixels.
+//   UYVY: bytes (U, Y0, V, Y1) -> even x is Y0 (g), odd x is Y1 (a)
+//   YUY2: bytes (Y0, U, Y1, V) -> even x is Y0 (r), odd x is Y1 (b)
+fn fetch_422(x: i32, y: i32, yuy2: bool) -> vec3<f32> {
+    let s = textureLoad(tex, vec2<i32>(x / 2, y), 0);
+    let even = (x & 1) == 0;
+    if (yuy2) {
+        return vec3<f32>(select(s.b, s.r, even), s.g, s.a);
+    }
+    return vec3<f32>(select(s.a, s.g, even), s.r, s.b);
+}
+
+// NV12: one R8 texture, height 1.5h, Y plane then interleaved UV plane.
+// The UV row for image row y lives at `plane + y/2`.
+fn fetch_nv12_packed(x: i32, y: i32, plane: i32) -> vec3<f32> {
+    let yy = textureLoad(tex, vec2<i32>(x, y), 0).r;
+    let uvx = x & ~1;
+    let uvrow = plane + y / 2;
+    let uu = textureLoad(tex, vec2<i32>(uvx, uvrow), 0).r;
+    let vv = textureLoad(tex, vec2<i32>(uvx + 1, uvrow), 0).r;
+    return vec3<f32>(yy, uu, vv);
 }
 
 @fragment fn fs_main(in: VertOut) -> @location(0) vec4<f32> {
@@ -93,14 +118,21 @@ fn uyvy_to_rgb(sample: vec4<f32>, x: f32, mode: u32) -> vec3<f32> {
         return textureSample(tex, samp, in.uv);
     }
 
-    let size = textureDimensions(tex);
-    let max_x = i32(size.x * 2u) - 1;
-    let x = clamp(i32(in.uv.x * conv.width), 0, max_x);
-    let y = clamp(i32(in.uv.y * conv.height), 0, i32(size.y) - 1);
-    let macro_x = x / 2;
-    let s = textureLoad(tex, vec2<i32>(macro_x, y), 0);
-    let rgb = uyvy_to_rgb(s, f32(x), conv.mode);
-    return vec4<f32>(rgb, 1.0);
+    let x = clamp(i32(in.uv.x * conv.width), 0, i32(conv.width) - 1);
+    let y = clamp(i32(in.uv.y * conv.height), 0, i32(conv.height) - 1);
+
+    var yuv: vec3<f32>;
+    var bt709: bool;
+    if (conv.mode <= 4u) {
+        yuv = fetch_422(x, y, conv.mode >= 3u);
+        bt709 = (conv.mode == 2u) || (conv.mode == 4u);
+    } else {
+        let size = textureDimensions(tex);
+        let plane = i32(size.y) * 2 / 3;
+        yuv = fetch_nv12_packed(x, y, plane);
+        bt709 = conv.mode == 6u;
+    }
+    return vec4<f32>(yuv_to_rgb(yuv, bt709), 1.0);
 }
 "#;
 
@@ -120,8 +152,10 @@ struct SourceTex {
     w: u32,
     h: u32,
     tex_w: u32,
+    tex_h: u32,
     seq: u64,
     format: wgpu::TextureFormat,
+    mode: ConvMode,
 }
 
 struct LabelTex {
@@ -1166,40 +1200,27 @@ impl Compositor {
         f: &CpuFrame,
         stats: Option<Arc<Mutex<SourceStats>>>,
     ) -> &SourceTex {
-        let (format, tex_w, bpp, mode) = match f.fmt {
-            PixelFormat::Rgba8 => (
-                wgpu::TextureFormat::Rgba8Unorm,
-                f.w,
-                4,
-                ConvMode::Passthrough,
-            ),
-            PixelFormat::Bgra8 => (
-                wgpu::TextureFormat::Bgra8Unorm,
-                f.w,
-                4,
-                ConvMode::Passthrough,
-            ),
-            // UYVY 4:2:2 is packed as Rgba8 at half width; shader does YUV→RGB.
-            PixelFormat::Uyvy422 => {
-                if !f.w.is_multiple_of(2) {
-                    tracing::warn!(
-                        "compositor {}: UYVY frame has odd width {}, last column will be dropped",
-                        key.source_ref,
-                        f.w
-                    );
-                }
-                let mode = if f.h <= 576 {
-                    ConvMode::UyvyBt601
-                } else {
-                    ConvMode::UyvyBt709
-                };
-                (wgpu::TextureFormat::Rgba8Unorm, f.w / 2, 2, mode)
-            }
-        };
+        let (format, tex_w, tex_h, bpp, mode) = source_layout(f.fmt, f.w, f.h);
+        if matches!(f.fmt, PixelFormat::Uyvy422 | PixelFormat::Yuy2 | PixelFormat::Nv12)
+            && !f.w.is_multiple_of(2)
+        {
+            tracing::warn!("compositor {}: {} frame has odd width {}, last column will be dropped", key.source_ref, f.fmt.label(), f.w);
+        }
+        if f.fmt == PixelFormat::Nv12 && !f.h.is_multiple_of(2) {
+            tracing::warn!("compositor {}: NV12 frame has odd height {}, last row will be dropped", key.source_ref, f.h);
+        }
+        
         let stale = self
             .textures
             .get(key)
-            .map(|t| t.w != f.w || t.h != f.h || t.format != format || t.tex_w != tex_w)
+            .map(|t| {
+                t.w != f.w
+                    || t.h != f.h
+                    || t.format != format
+                    || t.tex_w != tex_w
+                    || t.tex_h != tex_h
+                    || t.mode != mode
+            })
             .unwrap_or(false);
         if stale {
             self.textures.remove(key);
@@ -1209,7 +1230,7 @@ impl Compositor {
                 label: Some(key.source_ref.as_str()),
                 size: wgpu::Extent3d {
                     width: tex_w,
-                    height: f.h,
+                    height: tex_h,
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,
@@ -1265,8 +1286,10 @@ impl Compositor {
                 w: f.w,
                 h: f.h,
                 tex_w,
+                tex_h,
                 seq: u64::MAX,
                 format,
+                mode,
             }
         });
         if st.seq != f.seq {
@@ -1286,11 +1309,11 @@ impl Compositor {
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(pitch),
-                    rows_per_image: Some(f.h),
+                    rows_per_image: Some(tex_h),
                 },
                 wgpu::Extent3d {
                     width: tex_w,
-                    height: f.h,
+                    height: tex_h,
                     depth_or_array_layers: 1,
                 },
             );
@@ -1303,6 +1326,33 @@ impl Compositor {
         }
         st
     }
+}
+
+/// Texture layout for a CPU frame
+fn source_layout(
+    fmt: PixelFormat,
+    w: u32,
+    h: u32,
+) -> (wgpu::TextureFormat, u32, u32, u32, ConvMode) {
+    let hd = h > 576;
+    return match fmt {
+        PixelFormat::Rgba8 => (wgpu::TextureFormat::Rgba8Unorm, w, h, 4, ConvMode::Passthrough),
+        PixelFormat::Bgra8 => (wgpu::TextureFormat::Bgra8Unorm, w, h, 4, ConvMode::Passthrough),
+        // 4:2:2 packed as Rgba8 at half width (two pixels per texel).
+        PixelFormat::Uyvy422 => {
+            let mode = if hd { ConvMode::UyvyBt709 } else { ConvMode::UyvyBt601 };
+            (wgpu::TextureFormat::Rgba8Unorm, w / 2, h, 2, mode)
+        }
+        PixelFormat::Yuy2 => {
+            let mode = if hd { ConvMode::Yuy2Bt709 } else { ConvMode::Yuy2Bt601 };
+            (wgpu::TextureFormat::Rgba8Unorm, w / 2, h, 2, mode)
+        }
+        // 4:2:0: one R8 texture, Y plane then interleaved UV plane (height 1.5h).
+        PixelFormat::Nv12 => {
+            let mode = if hd { ConvMode::Nv12Bt709 } else { ConvMode::Nv12Bt601 };
+            (wgpu::TextureFormat::R8Unorm, w, h + h / 2, 1, mode)
+        }
+    };
 }
 
 /// Compute the scale and offset to letterbox the canvas inside the panel.
@@ -1526,5 +1576,61 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn source_layout_matches_each_format() {
+        use super::{source_layout, ConvMode};
+        use crate::sources::PixelFormat;
+        use wgpu::TextureFormat;
+
+        assert_eq!(
+            source_layout(PixelFormat::Bgra8, 1280, 720),
+            (TextureFormat::Bgra8Unorm, 1280, 720, 4, ConvMode::Passthrough)
+        );
+        // 4:2:2 packs two pixels per texel: half width, so Rgba8 rows are w*2 bytes.
+        assert_eq!(
+            source_layout(PixelFormat::Uyvy422, 1280, 720),
+            (TextureFormat::Rgba8Unorm, 640, 720, 2, ConvMode::UyvyBt709)
+        );
+        assert_eq!(
+            source_layout(PixelFormat::Yuy2, 640, 480),
+            (TextureFormat::Rgba8Unorm, 320, 480, 2, ConvMode::Yuy2Bt601)
+        );
+        // NV12 keeps full width; the texture is 1.5x tall (Y + interleaved UV).
+        assert_eq!(
+            source_layout(PixelFormat::Nv12, 1920, 1080),
+            (TextureFormat::R8Unorm, 1920, 1620, 1, ConvMode::Nv12Bt709)
+        );
+    }
+
+    /// The WGSL is normally only parsed/validated when the app starts; this
+    /// catches syntax/semantic errors without a GPU device.
+    #[test]
+    fn shader_parses_and_validates() {
+        let module =
+            wgpu::naga::front::wgsl::parse_str(super::SHADER).expect("WGSL failed to parse");
+        let mut validator = wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::all(),
+        );
+        validator
+            .validate(&module)
+            .expect("WGSL failed validation");
+    }
+
+    /// UYVY and YUY2 produce the same texture format/dimensions, so `mode` must
+    /// be part of the texture staleness key — otherwise switching between them
+    /// reuses the wrong shader decode (YUY2 bytes decoded as UYVY gives the
+    /// green/pink artefact).
+    #[test]
+    fn uyvy_and_yuy2_share_layout_but_differ_in_mode() {
+        use super::source_layout;
+        use crate::sources::PixelFormat;
+
+        let (f1, w1, h1, _, m1) = source_layout(PixelFormat::Uyvy422, 1280, 720);
+        let (f2, w2, h2, _, m2) = source_layout(PixelFormat::Yuy2, 1280, 720);
+        assert_eq!((f1, w1, h1), (f2, w2, h2));
+        assert_ne!(m1, m2);
     }
 }

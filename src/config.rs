@@ -344,6 +344,8 @@ mod tests {
     use crate::sources::ScreenCaptureKitSourceConfig;
     #[cfg(target_os = "windows")]
     use crate::sources::SpoutOutputConfig;
+    #[cfg(target_os = "windows")]
+    use crate::sources::PixelFormat;
     use crate::sources::{NdiSourceConfig, NdiOutputConfig, DecklinkSourceConfig, DecklinkOutputConfig, TestSourceConfig};
     use crate::sources::VideoConnection;
 
@@ -508,7 +510,7 @@ mod tests {
             "uuid":"u1","name":"Webcam","protocol":"MediaFoundation",
             "source_ref":"\\\\?\\usb#vid_046d&pid_085b","x":10.0,"y":20.0,
             "width":1920,"height":1080,"z":3,"mode":"Fit",
-            "config":{"protocol":"MediaFoundation","device_id":"\\\\?\\usb#vid_046d&pid_085b"}
+            "config":{"protocol":"MediaFoundation","device_id":"\\\\?\\usb#vid_046d&pid_085b","pixel_format":"Bgra8"}
         }"#;
         let parsed: Source = serde_json::from_str(json).unwrap();
         #[cfg(target_os = "windows")]
@@ -518,6 +520,7 @@ mod tests {
                 panic!("expected MediaFoundation config")
             };
             assert_eq!(c.device_id, r"\\?\usb#vid_046d&pid_085b");
+            assert_eq!(c.pixel_format, Some(PixelFormat::Bgra8));
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -530,6 +533,7 @@ mod tests {
                 v.get("device_id"),
                 Some(&serde_json::json!(r"\\?\usb#vid_046d&pid_085b"))
             );
+            assert_eq!(v.get("pixel_format"), Some(&serde_json::json!("Bgra8")));
         }
         // Layout is independent of protocol availability.
         assert_eq!(parsed.name, "Webcam");
@@ -541,6 +545,7 @@ mod tests {
             saved["config"]["device_id"],
             r"\\?\usb#vid_046d&pid_085b"
         );
+        assert_eq!(saved["config"]["pixel_format"], "Bgra8");
     }
 
     /// A macOS-authored ScreenCaptureKit source must survive load + save on a platform without it.

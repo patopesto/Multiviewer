@@ -14,6 +14,8 @@ use crate::sources::SpoutSourceConfig;
 use crate::sources::MediaFoundationSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::MediaFoundationMode;
+#[cfg(target_os = "windows")]
+use crate::sources::PixelFormat;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
     return match &mut source.config {
@@ -178,7 +180,7 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
     cfg.width != old_w || cfg.height != old_h || cfg.pattern != old_pattern || cfg.cursor != old_cursor
 }
 
-fn color_format_label(cf: grafton_ndi::ReceiverColorFormat) -> String {
+fn ndi_format_label(cf: grafton_ndi::ReceiverColorFormat) -> String {
     match cf {
         grafton_ndi::ReceiverColorFormat::BGRX_BGRA => "BGRX/BGRA".to_string(),
         grafton_ndi::ReceiverColorFormat::UYVY_BGRA => "UYVY/BGRA".to_string(),
@@ -200,25 +202,17 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
                 .width(ui.available_width())
                 .selected_text(format!("{:?}", cfg.bandwidth))
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(
-                        &mut cfg.bandwidth,
-                        grafton_ndi::ReceiverBandwidth::Highest,
-                        "Highest",
-                    );
-                    ui.selectable_value(
-                        &mut cfg.bandwidth,
-                        grafton_ndi::ReceiverBandwidth::Lowest,
-                        "Lowest",
-                    );
+                    ui.selectable_value(&mut cfg.bandwidth, grafton_ndi::ReceiverBandwidth::Highest, "Highest");
+                    ui.selectable_value(&mut cfg.bandwidth, grafton_ndi::ReceiverBandwidth::Lowest, "Lowest");
                 });
         });
         ui.end_row();
 
-        ui.label("Color");
+        ui.label("Pixel Format");
         settings_value(ui, |ui| {
-            egui::ComboBox::from_id_salt("ndi_color")
+            egui::ComboBox::from_id_salt("ndi_pixel_format")
                 .width(ui.available_width())
-                .selected_text(color_format_label(cfg.color_format))
+                .selected_text(ndi_format_label(cfg.color_format))
                 .show_ui(ui, |ui| {
                     for variant in [
                         grafton_ndi::ReceiverColorFormat::BGRX_BGRA,
@@ -228,11 +222,7 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
                         // grafton_ndi::ReceiverColorFormat::Fastest, // TODO: support UYVY+A format
                         // grafton_ndi::ReceiverColorFormat::Best,    // TODO: support PA16 and P216 formats
                     ] {
-                        ui.selectable_value(
-                            &mut cfg.color_format,
-                            variant,
-                            color_format_label(variant),
-                        );
+                        ui.selectable_value(&mut cfg.color_format, variant, ndi_format_label(variant));
                     }
                 });
         });
@@ -302,18 +292,12 @@ fn spout_settings_ui(_cfg: &mut SpoutSourceConfig, _ui: &mut egui::Ui) -> bool {
 }
 
 #[cfg(target_os = "windows")]
-fn mediafoundation_settings_ui(
-    cfg: &mut MediaFoundationSourceConfig,
-    runtime: &SourceRuntimeConfig,
-    ui: &mut egui::Ui,
-) -> bool {
-    // modes are enumerated by the capture thread on open; absent a live
-    // source (or before enumeration finishes) only "Auto" is offered.
-    let (modes, active) = match runtime {
-        SourceRuntimeConfig::MediaFoundation { modes, active, .. } => {
-            (modes.lock().unwrap().clone(), *active.lock().unwrap())
-        }
-        _ => (Vec::new(), None),
+fn mediafoundation_settings_ui(cfg: &mut MediaFoundationSourceConfig, runtime: &SourceRuntimeConfig, ui: &mut egui::Ui) -> bool {
+    // modes are enumerated by the capture thread on open; absent a live source
+    // (or before enumeration finishes) only "Auto" is offered.
+    let modes = match runtime {
+        SourceRuntimeConfig::MediaFoundation { modes, .. } => modes.lock().unwrap().clone(),
+        _ => Vec::new(),
     };
     let mut modes = modes;
     modes.sort_unstable();
@@ -329,7 +313,22 @@ fn mediafoundation_settings_ui(
     } else {
         None
     };
-    let old = (cfg.width, cfg.height, cfg.fps_num, cfg.fps_den);
+    let old = (
+        cfg.width,
+        cfg.height,
+        cfg.fps_num,
+        cfg.fps_den,
+        cfg.pixel_format,
+    );
+
+    // Formats the compositor can render, plus Auto (the device default).
+    const PIXEL_FORMATS: [Option<PixelFormat>; 5] = [
+        None,
+        Some(PixelFormat::Bgra8),
+        Some(PixelFormat::Uyvy422),
+        Some(PixelFormat::Yuy2),
+        Some(PixelFormat::Nv12),
+    ];
 
     settings_grid(ui, "mediafoundation_settings_grid", |ui| {
         ui.label("Mode");
@@ -337,16 +336,13 @@ fn mediafoundation_settings_ui(
             let text = current
                 .map(|m| m.label())
                 .unwrap_or_else(|| "Auto (device default)".to_string());
-            egui::ComboBox::from_id_salt("mediafoundation_format")
+            egui::ComboBox::from_id_salt("mediafoundation_mode")
                 .width(ui.available_width())
                 .height(1000.0)
                 .selected_text(text)
                 .truncate()
                 .show_ui(ui, |ui| {
-                    if ui
-                        .selectable_label(current.is_none(), "Auto (device default)")
-                        .clicked()
-                    {
+                    if ui.selectable_label(current.is_none(), "Auto (device default)").clicked() {
                         cfg.width = 0;
                         cfg.height = 0;
                         cfg.fps_num = 0;
@@ -367,17 +363,40 @@ fn mediafoundation_settings_ui(
         });
         ui.end_row();
 
-        ui.label("Active");
-        settings_value(ui, |ui| match &active {
-            Some(m) => {
-                ui.label(m.label());
-            }
-            None => {
-                ui.weak("(not streaming)");
-            }
+        ui.label("Pixel Format");
+        settings_value(ui, |ui| {
+            egui::ComboBox::from_id_salt("mediafoundation_pixel_format")
+                .width(ui.available_width())
+                .selected_text(mediafoundation_format_label(cfg.pixel_format))
+                .show_ui(ui, |ui| {
+                    for choice in PIXEL_FORMATS {
+                        if ui.selectable_label(cfg.pixel_format == choice, mediafoundation_format_label(choice)).clicked() {
+                            cfg.pixel_format = choice;
+                        }
+                    }
+                });
         });
         ui.end_row();
     });
 
-    (cfg.width, cfg.height, cfg.fps_num, cfg.fps_den) != old
+    (
+        cfg.width,
+        cfg.height,
+        cfg.fps_num,
+        cfg.fps_den,
+        cfg.pixel_format,
+    ) != old
+}
+
+/// Display label for a requested Media Foundation output format; `None` is Auto.
+#[cfg(target_os = "windows")]
+fn mediafoundation_format_label(format: Option<PixelFormat>) -> &'static str {
+    return match format {
+        None => "Auto (device default)",
+        Some(PixelFormat::Bgra8) => "RGB32",
+        Some(PixelFormat::Uyvy422) => "UYVY 4:2:2",
+        Some(PixelFormat::Yuy2) => "YUY2 4:2:2",
+        Some(PixelFormat::Nv12) => "NV12 4:2:0",
+        Some(PixelFormat::Rgba8) => "RGBA8",
+    };
 }

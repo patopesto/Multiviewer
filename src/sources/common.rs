@@ -92,7 +92,7 @@ impl<'de> Deserialize<'de> for Protocol {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PixelFormat {
     // RGBA 4:4:4, 8 bit per channel, 4 bytes per pixel.
     Rgba8,
@@ -100,6 +100,10 @@ pub enum PixelFormat {
     Bgra8,
     // YUV 4:2:2 (UYVY), Packed into 2 bytes per pixel.
     Uyvy422,
+    // YUV 4:2:2 (YUY2), Packed into 2 bytes per pixel; chroma order swapped vs UYVY (Y0 U Y1 V instead of U Y0 V Y1).
+    Yuy2,
+    // YUV 4:2:0 (NV12): full-res Y plane followed by a half-res interleaved U/V plane.
+    Nv12,
 }
 
 impl PixelFormat {
@@ -108,6 +112,8 @@ impl PixelFormat {
             PixelFormat::Rgba8 => "RGBA8",
             PixelFormat::Bgra8 => "BGRA8",
             PixelFormat::Uyvy422 => "UYVY",
+            PixelFormat::Yuy2 => "YUY2",
+            PixelFormat::Nv12 => "NV12",
         }
     }
 }
