@@ -481,7 +481,7 @@ mod tests {
         #[cfg(not(target_os = "macos"))]
         {
             assert_eq!(parsed.protocol, Protocol::Unknown("AvFoundation".to_string()));
-            assert_eq!(parsed.protocol.label(), "AVFoundation (Unavailable)");
+            assert_eq!(parsed.protocol.label(), "AvFoundation (Unavailable)");
             let SourceConfig::Unknown(v) = &parsed.config else {
                 panic!("expected Unknown config")
             };

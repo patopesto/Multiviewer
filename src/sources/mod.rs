@@ -50,6 +50,6 @@ pub use spout::{SpoutSourceConfig, SpoutOutputConfig};
 #[cfg(target_os = "windows")]
 pub use spout::Discovery as SpoutDiscovery;
 #[cfg(target_os = "windows")]
-pub use mediafoundation::MediaFoundationSourceConfig;
+pub use mediafoundation::{MediaFoundationSourceConfig, MediaFoundationMode};
 #[cfg(target_os = "windows")]
 pub use mediafoundation::Discovery as MediaFoundationDiscovery;

@@ -6,13 +6,15 @@ use serde::{Deserialize, Serialize};
 use windows::Win32::Foundation::{E_ACCESSDENIED, RPC_E_CHANGED_MODE};
 use windows::Win32::Media::MediaFoundation::{
     IMFActivate, IMFMediaSource, IMFMediaType, IMFSourceReader, MFCreateAttributes,
-    MFCreateMediaType, MFCreateSourceReaderFromMediaSource, MFEnumDeviceSources, MFStartup,
-    MFSTARTUP_LITE, MF_VERSION, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+    MFCreateMediaType, MFCreateSourceReaderFromMediaSource, MFEnumDeviceSources,
+    MFStartup, MFSTARTUP_LITE, MF_VERSION, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
     MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
-    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE,
-    MF_MT_SUBTYPE, MFMediaType_Video, MFVideoFormat_RGB32,
-    MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-    MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR,
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, MF_E_HW_MFT_FAILED_START_STREAMING,
+    MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE, MF_MT_FRAME_RATE_RANGE_MAX,
+    MF_MT_FRAME_RATE_RANGE_MIN, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
+    MFMediaType_Video, MFVideoFormat_RGB32, MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN,
+    MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
+    MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR,
 };
 use windows::Win32::System::Com::{
     CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED,
@@ -22,11 +24,53 @@ use windows::core::{Error, PWSTR};
 use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 use super::discovery::activate_array;
 
+/// One mode the device advertises natively (`IMFSourceReader::GetNativeMediaType`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CaptureMode {
+    pub width: u32,
+    pub height: u32,
+    pub fps_num: u32,
+    pub fps_den: u32,
+}
+
+impl CaptureMode {
+    /// Human-readable `WxH @ fps` label (`fps` shown as a fraction when non-integral).
+    pub fn label(&self) -> String {
+        let fps = if self.fps_num == 0 || self.fps_den == 0 {
+            "?".to_string()
+        } else if self.fps_den == 1 {
+            format!("{}", self.fps_num)
+        } else {
+            format!("{:.2}", self.fps_num as f64 / self.fps_den as f64)
+        };
+        return format!("{}x{} @ {}", self.width, self.height, fps);
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct MediaFoundationSourceConfig {
     /// Symbolic link of the capture device; empty uses the first discovered one.
     pub device_id: String,
+    /// Requested frame width in pixels; 0 lets the device pick its default.
+    #[serde(default)]
+    pub width: u32,
+    /// Requested frame height in pixels; 0 lets the device pick its default.
+    #[serde(default)]
+    pub height: u32,
+    /// Requested frame-rate numerator; 0 lets the device pick its default.
+    #[serde(default)]
+    pub fps_num: u32,
+    /// Requested frame-rate denominator (stored exactly, e.g. 1001 for 29.97).
+    #[serde(default)]
+    pub fps_den: u32,
 }
+
+/// Justifies the `unsafe impl Send`: the reader is created and driven on the
+/// capture thread inside an MTA apartment. It is shared only so `Drop` can call
+/// `Flush` from another thread to unblock a synchronous `ReadSample`; MF
+/// objects are free-threaded.
+struct SendReader(IMFSourceReader);
+unsafe impl Send for SendReader {}
 
 /// Active Media Foundation capture source on its own thread.
 pub struct MediaFoundationSource {
@@ -34,25 +78,35 @@ pub struct MediaFoundationSource {
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     running: Arc<AtomicBool>,
+    reader: Arc<Mutex<Option<SendReader>>>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl MediaFoundationSource {
-    pub fn spawn(source_ref: SourceRef, cfg: &MediaFoundationSourceConfig) -> Self {
+    /// `modes` is filled with the device's advertised modes on open; `active`
+    /// with the mode actually negotiated — both are read by the settings UI.
+    pub fn spawn(
+        source_ref: SourceRef,
+        cfg: &MediaFoundationSourceConfig,
+        modes: Arc<Mutex<Vec<CaptureMode>>>,
+        active: Arc<Mutex<Option<CaptureMode>>>,
+    ) -> Self {
         let slot = Arc::new(Mutex::new(None::<Frame>));
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let running = Arc::new(AtomicBool::new(true));
+        let reader = Arc::new(Mutex::new(None));
 
         let slot2 = slot.clone();
         let stats2 = stats.clone();
         let running2 = running.clone();
+        let reader2 = reader.clone();
         let trace_ref = source_ref.clone();
-        let device_id = cfg.device_id.clone();
+        let config = cfg.clone();
 
         let thread = std::thread::Builder::new()
             .name(format!("mediafoundation-in-{source_ref}"))
             .spawn(move || {
-                run_capture(trace_ref, device_id, slot2, stats2, running2);
+                run_capture(trace_ref, config, slot2, stats2, running2, reader2, modes, active);
             })
             .expect("spawn mediafoundation capture thread");
 
@@ -61,6 +115,7 @@ impl MediaFoundationSource {
             slot,
             stats,
             running,
+            reader,
             thread: Some(thread),
         }
     }
@@ -69,11 +124,19 @@ impl MediaFoundationSource {
 impl Drop for MediaFoundationSource {
     fn drop(&mut self) {
         self.running.store(false, Ordering::Relaxed);
+        // A synchronous ReadSample can block indefinitely (e.g. an unplugged
+        // device), so signal the reader to flush before joining.
+        if let Some(reader) = self.reader.lock().unwrap().as_ref() {
+            unsafe {
+                let _ = reader.0.Flush(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32);
+            }
+        }
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
             tracing::error!(source = self.source_ref, "MediaFoundation thread join failed: {:?}", e);
         }
+        *self.reader.lock().unwrap() = None;
     }
 }
 
@@ -88,14 +151,20 @@ impl VideoSource for MediaFoundationSource {
 }
 
 /// The full capture loop; owns the thread's COM/MF apartment for its lifetime.
+// Each argument is a distinct shared handle the loop needs; bundling them into
+// a struct would add indirection for no behavior change.
+#[allow(clippy::too_many_arguments)]
 fn run_capture(
     source_ref: SourceRef,
-    device_id: String,
+    cfg: MediaFoundationSourceConfig,
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     running: Arc<AtomicBool>,
+    reader_slot: Arc<Mutex<Option<SendReader>>>,
+    modes: Arc<Mutex<Vec<CaptureMode>>>,
+    active: Arc<Mutex<Option<CaptureMode>>>,
 ) {
-    tracing::info!(source = source_ref, device_id = device_id, "MediaFoundation capture thread starting");
+    tracing::info!(source = source_ref, device_id = cfg.device_id, "MediaFoundation capture thread starting");
     unsafe {
         let coinit = CoInitializeEx(None, COINIT_MULTITHREADED);
         if coinit.is_err() && coinit != RPC_E_CHANGED_MODE {
@@ -109,7 +178,14 @@ fn run_capture(
         }
     }
 
-    let reader = match unsafe { open_reader(&device_id) } {
+    tracing::debug!(
+        source = source_ref,
+        width = cfg.width,
+        height = cfg.height,
+        fps = format!("{}/{}", cfg.fps_num, cfg.fps_den),
+        "MediaFoundation requested format"
+    );
+    let reader = match unsafe { open_reader(&cfg) } {
         Ok(reader) => reader,
         Err(e) => {
             tracing::error!(source = source_ref, "MediaFoundation open failed: {e}");
@@ -117,7 +193,19 @@ fn run_capture(
             return;
         }
     };
-    log_negotiated_format(&source_ref, &reader);
+    // Share a reference so `Drop` can flush a blocked ReadSample.
+    *reader_slot.lock().unwrap() = Some(SendReader(reader.clone()));
+
+    let info = log_negotiated_format(&source_ref, &reader);
+    if info.0 > 0 && info.1 > 0 {
+        *active.lock().unwrap() = Some(CaptureMode {
+            width: info.0,
+            height: info.1,
+            fps_num: info.3,
+            fps_den: info.4,
+        });
+    }
+    *modes.lock().unwrap() = unsafe { enumerate_modes(&reader) };
 
     // A synchronous ReadSample blocks when the device never streams the
     // negotiated type, so a loop-side timeout can't fire; this watchdog reports
@@ -143,30 +231,46 @@ fn run_capture(
 
     capture_frames(&source_ref, &reader, &slot, &stats, &running);
 
+    // Release the reader before MFShutdown so the device is freed promptly;
+    // otherwise a quick restart can find it still held (preempted).
+    *reader_slot.lock().unwrap() = None;
+    drop(reader);
     unsafe { shutdown() };
 }
 
 /// Log what the reader actually negotiated, so a silent zero-size skip is
-/// visible without a debugger.
-fn log_negotiated_format(source_ref: &str, reader: &IMFSourceReader) {
-    let (w, h) = unsafe { frame_size(reader) };
+/// visible without a debugger. Returns `(width, height, stride, fps_num,
+/// fps_den)` for the caller's "active format" readout.
+fn log_negotiated_format(source_ref: &str, reader: &IMFSourceReader) -> (u32, u32, u32, u32, u32) {
+    let info = unsafe { frame_info(reader) };
+    let (w, h, stride, num, den) = info;
     if w == 0 || h == 0 {
         tracing::warn!(source = source_ref, "MediaFoundation: negotiated type has no frame size");
-        return;
+        return info;
     }
     let subtype = unsafe { reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32) }
         .ok()
         .and_then(|mt| unsafe { mt.GetGUID(&MF_MT_SUBTYPE) }.ok())
         .map(|g| format!("{g:?}"))
         .unwrap_or_else(|| "unknown".to_string());
-    tracing::info!(source = source_ref, "MediaFoundation opened: {w}x{h} subtype={subtype}");
+    let fps = if den == 0 { 0.0 } else { num as f64 / den as f64 };
+    tracing::info!(
+        source = source_ref,
+        "MediaFoundation opened: {w}x{h} stride={stride} ~{fps:.0}fps subtype={subtype}"
+    );
+    return info;
 }
 
-/// Map an MF HRESULT to a message, calling out the camera-privacy case.
+/// Map an MF HRESULT to a message, calling out the common device failures.
 fn mf_err(context: &str, e: Error) -> String {
     if e.code() == E_ACCESSDENIED {
         return format!(
             "{context}: access denied — check Windows Settings > Privacy & security > Camera [{e}]"
+        );
+    }
+    if e.code() == MF_E_HW_MFT_FAILED_START_STREAMING {
+        return format!(
+            "{context}: camera is in use or was preempted by another app — close other camera apps (or it was not released yet after a restart) [{e}]"
         );
     }
     return format!("{context}: {e}");
@@ -181,24 +285,47 @@ unsafe fn shutdown() {
 
 /// Open the device by symbolic link (or the first device when empty) and
 /// negotiate RGB32 output so the compositor needs no YUV path.
-unsafe fn open_reader(device_id: &str) -> Result<IMFSourceReader, String> {
-    let activate = unsafe { find_activate(device_id)? };
+unsafe fn open_reader(cfg: &MediaFoundationSourceConfig) -> Result<IMFSourceReader, String> {
+    let activate = unsafe { find_activate(&cfg.device_id)? };
     let source: IMFMediaSource =
         unsafe { activate.ActivateObject() }.map_err(|e| mf_err("ActivateObject", e))?;
 
-    let mut attributes = None;
-    unsafe { MFCreateAttributes(&mut attributes, 1) }.map_err(|e| mf_err("MFCreateAttributes", e))?;
-    let attributes = attributes.ok_or("MFCreateAttributes returned null")?;
-    unsafe { attributes.SetUINT32(&MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, 1) }
-        .map_err(|e| mf_err("enable video processing", e))?;
+    // Advanced processing first: it is the only mode that does video resizing
+    // and frame-rate conversion, so a requested size/rate is honored. Legacy
+    // ("limited") processing can only color-convert, so it silently keeps the
+    // device's native mode — use it only as a fallback for devices with no
+    // advanced processor.
+    match unsafe { create_reader(&source, cfg, true) } {
+        Ok(reader) => Ok(reader),
+        Err(advanced) => unsafe { create_reader(&source, cfg, false) }.map_err(|legacy| {
+            format!("RGB32 negotiation failed — advanced: {advanced}; legacy: {legacy}")
+        }),
+    }
+}
 
-    let reader = unsafe { MFCreateSourceReaderFromMediaSource(&source, &attributes) }
+unsafe fn create_reader(
+    source: &IMFMediaSource,
+    cfg: &MediaFoundationSourceConfig,
+    advanced: bool,
+) -> Result<IMFSourceReader, String> {
+    let mut attributes = None;
+    unsafe { MFCreateAttributes(&mut attributes, 2) }.map_err(|e| mf_err("MFCreateAttributes", e))?;
+    let attributes = attributes.ok_or("MFCreateAttributes returned null")?;
+    let flag = if advanced {
+        &MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING
+    } else {
+        &MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING
+    };
+    unsafe { attributes.SetUINT32(flag, 1) }.map_err(|e| mf_err("enable video processing", e))?;
+    unsafe { attributes.SetUINT32(&MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN, 1) }
+        .map_err(|e| mf_err("disconnect on shutdown", e))?;
+
+    let reader = unsafe { MFCreateSourceReaderFromMediaSource(source, &attributes) }
         .map_err(|e| mf_err("create source reader", e))?;
 
-    let target = unsafe { build_rgb32_type() }?;
+    let target = unsafe { build_output_type(cfg) }?;
     unsafe {
-        reader
-            .SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, None, &target)
+        reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, None, &target)
     }
     .map_err(|e| mf_err("select RGB32 output", e))?;
 
@@ -255,17 +382,27 @@ unsafe fn read_string(attributes: &IMFActivate, key: &windows::core::GUID) -> Op
     Some(s)
 }
 
-unsafe fn build_rgb32_type() -> Result<IMFMediaType, String> {
+/// RGB32 output type. An explicit size/rate pins the device to a requested
+/// mode; leaving them unset lets the device pick its default.
+unsafe fn build_output_type(cfg: &MediaFoundationSourceConfig) -> Result<IMFMediaType, String> {
     let media_type = unsafe { MFCreateMediaType() }.map_err(|e| e.to_string())?;
-    unsafe {
-        media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)
+    unsafe { media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video) }
+        .map_err(|e| e.to_string())?;
+    unsafe { media_type.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32) }
+        .map_err(|e| e.to_string())?;
+    if cfg.width > 0 && cfg.height > 0 {
+        unsafe { media_type.SetUINT64(&MF_MT_FRAME_SIZE, pack_u32_pair(cfg.width, cfg.height)) }
+            .map_err(|e| e.to_string())?;
     }
-    .map_err(|e| e.to_string())?;
-    unsafe {
-        media_type.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32)
+    if cfg.fps_num > 0 && cfg.fps_den > 0 {
+        unsafe { media_type.SetUINT64(&MF_MT_FRAME_RATE, pack_u32_pair(cfg.fps_num, cfg.fps_den)) }
+            .map_err(|e| e.to_string())?;
     }
-    .map_err(|e| e.to_string())?;
     Ok(media_type)
+}
+
+fn pack_u32_pair(high: u32, low: u32) -> u64 {
+    ((high as u64) << 32) | low as u64
 }
 
 /// Poll samples until `running` is cleared, publishing each new frame.
@@ -337,7 +474,7 @@ fn capture_frames(
             continue;
         }
 
-        let (w, h) = unsafe { frame_size(reader) };
+        let (w, h, media_stride, fps_num, fps_den) = unsafe { frame_info(reader) };
         if w == 0 || h == 0 {
             if !warned_zero_size {
                 warned_zero_size = true;
@@ -346,8 +483,9 @@ fn capture_frames(
             let _ = unsafe { buffer.Unlock() };
             continue;
         }
-        let row_len = (w * 4) as usize;
-        let copy_len = (row_len * h as usize).min(current_len as usize);
+        let nominal_fps = if fps_den == 0 { 0.0 } else { fps_num as f64 / fps_den as f64 };
+        let pitch = effective_pitch(media_stride, current_len, w, h);
+        let copy_len = (pitch as usize * h as usize).min(current_len as usize);
 
         let t0 = std::time::Instant::now();
         let mut buf = pool.take(copy_len);
@@ -358,12 +496,12 @@ fn capture_frames(
         seq += 1;
         {
             let mut s = stats.lock().unwrap();
-            s.record_frame(w, h, PixelFormat::Bgra8.label(), 0.0);
+            s.record_frame(w, h, PixelFormat::Bgra8.label(), nominal_fps);
             s.record_copy_time(copy_ms);
         }
         if !logged_first_frame {
             logged_first_frame = true;
-            tracing::debug!(source = source_ref, "MediaFoundation: first frame {w}x{h} ({} bytes)", copy_len);
+            tracing::debug!(source = source_ref, "MediaFoundation: first frame {w}x{h} pitch={pitch} ({copy_len} bytes)");
         }
 
         let old = {
@@ -373,7 +511,7 @@ fn capture_frames(
                 w,
                 h,
                 fmt: PixelFormat::Bgra8,
-                pitch: row_len as u32,
+                pitch,
                 seq,
             }))
         };
@@ -381,15 +519,129 @@ fn capture_frames(
     }
 }
 
-/// RGB32 frame dimensions, decoded from the packed `MF_MT_FRAME_SIZE` attribute.
-unsafe fn frame_size(reader: &IMFSourceReader) -> (u32, u32) {
+/// Negotiated dimensions, absolute row stride and frame rate from the current
+/// media type. Stride 0 means the attribute was absent.
+unsafe fn frame_info(reader: &IMFSourceReader) -> (u32, u32, u32, u32, u32) {
     let stream = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
     let Ok(media_type) = (unsafe { reader.GetCurrentMediaType(stream) }) else {
-        return (0, 0);
+        return (0, 0, 0, 0, 0);
     };
-    let Ok(packed) = (unsafe { media_type.GetUINT64(&MF_MT_FRAME_SIZE) }) else {
-        return (0, 0);
-    };
-    return ((packed >> 32) as u32, (packed & 0xFFFF_FFFF) as u32);
+    let (w, h) = unsafe { media_type.GetUINT64(&MF_MT_FRAME_SIZE) }
+        .map(|p| ((p >> 32) as u32, (p & 0xFFFF_FFFF) as u32))
+        .unwrap_or((0, 0));
+    let stride = unsafe { media_type.GetUINT32(&MF_MT_DEFAULT_STRIDE) }
+        .map(|s| (s as i32).unsigned_abs())
+        .unwrap_or(0);
+    let (num, den) = unsafe { media_type.GetUINT64(&MF_MT_FRAME_RATE) }
+        .map(|p| ((p >> 32) as u32, (p & 0xFFFF_FFFF) as u32))
+        .unwrap_or((0, 0));
+    return (w, h, stride, num, den);
 }
 
+/// Enumerate the device's advertised modes via `GetNativeMediaType`, deduped
+/// and sorted. A mode with no frame rate is kept with `fps_num/den == 0/0`.
+unsafe fn enumerate_modes(reader: &IMFSourceReader) -> Vec<CaptureMode> {
+    let stream = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
+    let mut modes = Vec::new();
+    let mut index = 0u32;
+    loop {
+        // Any error means we ran past the last native type (`MF_E_NO_MORE_TYPES`).
+        let Ok(media_type) = (unsafe { reader.GetNativeMediaType(stream, index) }) else {
+            break;
+        };
+        if let Some((w, h)) = unsafe { media_size(&media_type) }
+            && w > 0
+            && h > 0
+        {
+            for (fps_num, fps_den) in unsafe { media_frame_rates(&media_type) } {
+                modes.push(CaptureMode {
+                    width: w,
+                    height: h,
+                    fps_num,
+                    fps_den,
+                });
+            }
+        }
+        index += 1;
+    }
+    return normalize_modes(modes);
+}
+
+unsafe fn media_size(media_type: &IMFMediaType) -> Option<(u32, u32)> {
+    let packed = unsafe { media_type.GetUINT64(&MF_MT_FRAME_SIZE) }.ok()?;
+    return Some(((packed >> 32) as u32, (packed & 0xFFFF_FFFF) as u32));
+}
+
+/// Frame rate(s) advertised by a native type: the discrete `MF_MT_FRAME_RATE`
+/// if present, else the min/max of the rate range. `(0, 0)` when unknown.
+unsafe fn media_frame_rates(media_type: &IMFMediaType) -> Vec<(u32, u32)> {
+    if let Ok(packed) = unsafe { media_type.GetUINT64(&MF_MT_FRAME_RATE) } {
+        return vec![((packed >> 32) as u32, (packed & 0xFFFF_FFFF) as u32)];
+    }
+    let mut rates = Vec::new();
+    for key in [&MF_MT_FRAME_RATE_RANGE_MIN, &MF_MT_FRAME_RATE_RANGE_MAX] {
+        if let Ok(packed) = unsafe { media_type.GetUINT64(key) } {
+            rates.push(((packed >> 32) as u32, (packed & 0xFFFF_FFFF) as u32));
+        }
+    }
+    if rates.is_empty() {
+        rates.push((0, 0));
+    }
+    return rates;
+}
+
+fn normalize_modes(mut modes: Vec<CaptureMode>) -> Vec<CaptureMode> {
+    modes.sort_unstable();
+    modes.dedup();
+    return modes;
+}
+
+/// Row stride used for the upload. Prefer the media type's stride when it fits
+/// the locked buffer; otherwise derive it from the buffer length (a padded
+/// buffer reports `pitch * height` bytes), falling back to a tight `w * 4`.
+/// Sign is dropped: a bottom-up (negative) stride still occupies `|stride|`
+/// bytes per row; orientation is left to the per-source Flip V property.
+fn effective_pitch(media_stride: u32, buffer_len: u32, w: u32, h: u32) -> u32 {
+    let tight = w.saturating_mul(4);
+    if h == 0 || tight == 0 {
+        return tight.max(4);
+    }
+    let rows = h as usize;
+    let stride = media_stride as usize;
+    if stride >= tight as usize && stride * rows <= buffer_len as usize {
+        return stride as u32;
+    }
+    let len = buffer_len as usize;
+    if len.is_multiple_of(rows) && (len / rows) as u32 >= tight {
+        return (len / rows) as u32;
+    }
+    return tight;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_modes_sorts_and_dedupes() {
+        let input = vec![
+            CaptureMode { width: 1920, height: 1080, fps_num: 30, fps_den: 1 },
+            CaptureMode { width: 1280, height: 720, fps_num: 60, fps_den: 1 },
+            CaptureMode { width: 1920, height: 1080, fps_num: 30, fps_den: 1 },
+        ];
+        let out = normalize_modes(input);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].width, 1280);
+        assert_eq!(out[1].width, 1920);
+    }
+
+    #[test]
+    fn format_label_renders_integral_and_fractional_rates() {
+        let integral = CaptureMode { width: 1280, height: 720, fps_num: 30, fps_den: 1 };
+        assert_eq!(integral.label(), "1280x720 @ 30");
+        let ntsc = CaptureMode { width: 1920, height: 1080, fps_num: 30000, fps_den: 1001 };
+        assert_eq!(ntsc.label(), "1920x1080 @ 29.97");
+        let unknown = CaptureMode { width: 640, height: 480, fps_num: 0, fps_den: 0 };
+        assert_eq!(unknown.label(), "640x480 @ ?");
+    }
+}

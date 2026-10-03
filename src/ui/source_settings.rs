@@ -9,9 +9,11 @@ use crate::sources::AvFoundationSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::ScreenCaptureKitSourceConfig;
 #[cfg(target_os = "windows")]
+use crate::sources::SpoutSourceConfig;
+#[cfg(target_os = "windows")]
 use crate::sources::MediaFoundationSourceConfig;
 #[cfg(target_os = "windows")]
-use crate::sources::SpoutSourceConfig;
+use crate::sources::MediaFoundationMode;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
     return match &mut source.config {
@@ -27,7 +29,7 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         #[cfg(target_os = "windows")]
         SourceConfig::Spout(cfg) => spout_settings_ui(cfg, ui),
         #[cfg(target_os = "windows")]
-        SourceConfig::MediaFoundation(cfg) => mediafoundation_settings_ui(cfg, ui),
+        SourceConfig::MediaFoundation(cfg) => mediafoundation_settings_ui(cfg, &source.runtime, ui),
         // Config from a platform that has this protocol; no runtime source.
         SourceConfig::Unknown(_) => false,
     };
@@ -294,13 +296,88 @@ fn screencapturekit_settings_ui(_cfg: &mut ScreenCaptureKitSourceConfig, _ui: &m
 }
 
 #[cfg(target_os = "windows")]
-fn mediafoundation_settings_ui(_cfg: &mut MediaFoundationSourceConfig, _ui: &mut egui::Ui) -> bool {
+fn spout_settings_ui(_cfg: &mut SpoutSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
     false
 }
 
 #[cfg(target_os = "windows")]
-fn spout_settings_ui(_cfg: &mut SpoutSourceConfig, _ui: &mut egui::Ui) -> bool {
-    // No tunables yet
-    false
+fn mediafoundation_settings_ui(
+    cfg: &mut MediaFoundationSourceConfig,
+    runtime: &SourceRuntimeConfig,
+    ui: &mut egui::Ui,
+) -> bool {
+    // modes are enumerated by the capture thread on open; absent a live
+    // source (or before enumeration finishes) only "Auto" is offered.
+    let (modes, active) = match runtime {
+        SourceRuntimeConfig::MediaFoundation { modes, active, .. } => {
+            (modes.lock().unwrap().clone(), *active.lock().unwrap())
+        }
+        _ => (Vec::new(), None),
+    };
+    let mut modes = modes;
+    modes.sort_unstable();
+    modes.dedup();
+
+    let current = if cfg.width > 0 && cfg.height > 0 && cfg.fps_num > 0 && cfg.fps_den > 0 {
+        Some(MediaFoundationMode {
+            width: cfg.width,
+            height: cfg.height,
+            fps_num: cfg.fps_num,
+            fps_den: cfg.fps_den,
+        })
+    } else {
+        None
+    };
+    let old = (cfg.width, cfg.height, cfg.fps_num, cfg.fps_den);
+
+    settings_grid(ui, "mediafoundation_settings_grid", |ui| {
+        ui.label("Mode");
+        settings_value(ui, |ui| {
+            let text = current
+                .map(|m| m.label())
+                .unwrap_or_else(|| "Auto (device default)".to_string());
+            egui::ComboBox::from_id_salt("mediafoundation_format")
+                .width(ui.available_width())
+                .height(1000.0)
+                .selected_text(text)
+                .truncate()
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(current.is_none(), "Auto (device default)")
+                        .clicked()
+                    {
+                        cfg.width = 0;
+                        cfg.height = 0;
+                        cfg.fps_num = 0;
+                        cfg.fps_den = 0;
+                    }
+                    for m in &modes {
+                        if ui.selectable_label(current == Some(*m), m.label()).clicked() {
+                            cfg.width = m.width;
+                            cfg.height = m.height;
+                            cfg.fps_num = m.fps_num;
+                            cfg.fps_den = m.fps_den;
+                        }
+                    }
+                    if modes.is_empty() {
+                        ui.weak("(no modes reported)");
+                    }
+                });
+        });
+        ui.end_row();
+
+        ui.label("Active");
+        settings_value(ui, |ui| match &active {
+            Some(m) => {
+                ui.label(m.label());
+            }
+            None => {
+                ui.weak("(not streaming)");
+            }
+        });
+        ui.end_row();
+    });
+
+    (cfg.width, cfg.height, cfg.fps_num, cfg.fps_den) != old
 }

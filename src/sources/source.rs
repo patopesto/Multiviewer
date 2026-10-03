@@ -203,7 +203,13 @@ pub enum SourceRuntimeConfig {
     #[cfg(target_os = "windows")]
     Spout,
     #[cfg(target_os = "windows")]
-    MediaFoundation { label: String },
+    MediaFoundation {
+        label: String,
+        /// Modes the device advertises; filled by the capture thread on open.
+        modes: Arc<Mutex<Vec<mediafoundation::MediaFoundationMode>>>,
+        /// Mode actually negotiated; read by the settings UI.
+        active: Arc<Mutex<Option<mediafoundation::MediaFoundationMode>>>,
+    },
 }
 
 /// A live source: its boxed runtime, the config persisted in the project, and
@@ -244,8 +250,8 @@ impl SourceKind {
                 Box::new(spout::SpoutSource::spawn(key.source_ref.clone()))
             }
             #[cfg(target_os = "windows")]
-            (SourceConfig::MediaFoundation(c), SourceRuntimeConfig::MediaFoundation { .. }) => {
-                Box::new(mediafoundation::MediaFoundationSource::spawn(key.source_ref.clone(), c))
+            (SourceConfig::MediaFoundation(c), SourceRuntimeConfig::MediaFoundation { modes, active, .. }) => {
+                Box::new(mediafoundation::MediaFoundationSource::spawn(key.source_ref.clone(), c, modes.clone(), active.clone()))
             }
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
@@ -286,7 +292,7 @@ impl SourceKind {
         }
         #[cfg(target_os = "windows")]
         {
-            if let SourceRuntimeConfig::MediaFoundation { label } = &self.runtime {
+            if let SourceRuntimeConfig::MediaFoundation { label, .. } = &self.runtime {
                 return label.clone();
             }
         }
@@ -630,7 +636,11 @@ impl SourceRegistry {
         let kind = SourceKind::new(
             &key,
             SourceConfig::MediaFoundation(config),
-            SourceRuntimeConfig::MediaFoundation { label },
+            SourceRuntimeConfig::MediaFoundation {
+                label,
+                modes: Arc::new(Mutex::new(Vec::new())),
+                active: Arc::new(Mutex::new(None)),
+            },
         );
         self.sources.insert(key.clone(), kind);
         return key;
