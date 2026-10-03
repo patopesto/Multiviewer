@@ -12,14 +12,15 @@ use windows::Win32::Media::MediaFoundation::{
     MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, MF_E_HW_MFT_FAILED_START_STREAMING,
     MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE, MF_MT_FRAME_RATE_RANGE_MAX,
     MF_MT_FRAME_RATE_RANGE_MIN, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
-    MFMediaType_Video, MFVideoFormat_RGB32, MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN,
+    MFMediaType_Video, MFVideoFormat_MJPG, MFVideoFormat_NV12, MFVideoFormat_RGB32,
+    MFVideoFormat_UYVY, MFVideoFormat_YUY2, MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN,
     MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
     MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR,
 };
 use windows::Win32::System::Com::{
     CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED,
 };
-use windows::core::{Error, PWSTR};
+use windows::core::{Error, GUID, PWSTR};
 
 use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 use super::discovery::activate_array;
@@ -206,6 +207,9 @@ fn run_capture(
         });
     }
     *modes.lock().unwrap() = unsafe { enumerate_modes(&reader) };
+    // The negotiated subtype decides how the compositor reads the bytes; see
+    // `pixel_format_for_subtype` for the (surprising) RGB32 mapping.
+    let (pixel_format, bpp) = negotiated_pixel_format(&reader).unwrap_or((PixelFormat::Bgra8, 4));
 
     // A synchronous ReadSample blocks when the device never streams the
     // negotiated type, so a loop-side timeout can't fire; this watchdog reports
@@ -221,15 +225,12 @@ fn run_capture(
                 if running.load(Ordering::Relaxed)
                     && stats.lock().unwrap().frames_received == 0
                 {
-                    tracing::warn!(
-                        source = source_ref,
-                        "MediaFoundation: no frames 3s after opening — reader opened but ReadSample yields nothing"
-                    );
+                    tracing::warn!(source = source_ref, "MediaFoundation: no frames 3s after opening — reader opened but ReadSample yields nothing");
                 }
             });
     }
 
-    capture_frames(&source_ref, &reader, &slot, &stats, &running);
+    capture_frames(&source_ref, &reader, &slot, &stats, &running, pixel_format, bpp);
 
     // Release the reader before MFShutdown so the device is freed promptly;
     // otherwise a quick restart can find it still held (preempted).
@@ -254,10 +255,7 @@ fn log_negotiated_format(source_ref: &str, reader: &IMFSourceReader) -> (u32, u3
         .map(|g| format!("{g:?}"))
         .unwrap_or_else(|| "unknown".to_string());
     let fps = if den == 0 { 0.0 } else { num as f64 / den as f64 };
-    tracing::info!(
-        source = source_ref,
-        "MediaFoundation opened: {w}x{h} stride={stride} ~{fps:.0}fps subtype={subtype}"
-    );
+    tracing::info!(source = source_ref, "MediaFoundation opened: {w}x{h} stride={stride} ~{fps:.0}fps subtype={subtype}");
     return info;
 }
 
@@ -284,30 +282,53 @@ unsafe fn shutdown() {
 }
 
 /// Open the device by symbolic link (or the first device when empty) and
-/// negotiate RGB32 output so the compositor needs no YUV path.
+/// negotiate an output subtype the compositor can render.
 unsafe fn open_reader(cfg: &MediaFoundationSourceConfig) -> Result<IMFSourceReader, String> {
     let activate = unsafe { find_activate(&cfg.device_id)? };
     let source: IMFMediaSource =
         unsafe { activate.ActivateObject() }.map_err(|e| mf_err("ActivateObject", e))?;
 
+    // Output subtypes we can feed the compositor in preference order
+    // let candidates = [&MFVideoFormat_RGB32, &MFVideoFormat_UYVY];
+    let candidates = [&MFVideoFormat_UYVY, &MFVideoFormat_RGB32];
+
+    let mut last_err = String::new();
+    let mut enum_reader: Option<IMFSourceReader> = None;
     // Advanced processing first: it is the only mode that does video resizing
     // and frame-rate conversion, so a requested size/rate is honored. Legacy
-    // ("limited") processing can only color-convert, so it silently keeps the
-    // device's native mode — use it only as a fallback for devices with no
-    // advanced processor.
-    match unsafe { create_reader(&source, cfg, true) } {
-        Ok(reader) => Ok(reader),
-        Err(advanced) => unsafe { create_reader(&source, cfg, false) }.map_err(|legacy| {
-            format!("RGB32 negotiation failed — advanced: {advanced}; legacy: {legacy}")
-        }),
+    // ("limited") processing is only a fallback for devices with no advanced
+    // processor.
+    for advanced in [true, false] {
+        let reader = match unsafe { create_reader(&source, advanced) } {
+            Ok(reader) => reader,
+            Err(e) => {
+                last_err = e;
+                continue;
+            }
+        };
+        for subtype in candidates {
+            match unsafe { set_output_type(&reader, cfg, subtype) } {
+                Ok(()) => return Ok(reader),
+                Err(e) => {
+                    last_err = e;
+                    if enum_reader.is_none() {
+                        enum_reader = Some(reader.clone());
+                    }
+                }
+            }
+        }
     }
+
+    // Report what the device actually advertises so a device that exposes
+    // neither RGB32 nor UYVY (e.g. YUY2/NV12 only) is obvious in the log.
+    let offered = enum_reader
+        .as_ref()
+        .map(|r| unsafe { advertised_subtypes(r) })
+        .unwrap_or_default();
+    return Err(format!("no supported output format ({last_err}); device offers [{}]", offered.join(", ")));
 }
 
-unsafe fn create_reader(
-    source: &IMFMediaSource,
-    cfg: &MediaFoundationSourceConfig,
-    advanced: bool,
-) -> Result<IMFSourceReader, String> {
+unsafe fn create_reader(source: &IMFMediaSource, advanced: bool) -> Result<IMFSourceReader, String> {
     let mut attributes = None;
     unsafe { MFCreateAttributes(&mut attributes, 2) }.map_err(|e| mf_err("MFCreateAttributes", e))?;
     let attributes = attributes.ok_or("MFCreateAttributes returned null")?;
@@ -322,14 +343,20 @@ unsafe fn create_reader(
 
     let reader = unsafe { MFCreateSourceReaderFromMediaSource(source, &attributes) }
         .map_err(|e| mf_err("create source reader", e))?;
+    return Ok(reader);
+}
 
-    let target = unsafe { build_output_type(cfg) }?;
+unsafe fn set_output_type(
+    reader: &IMFSourceReader,
+    cfg: &MediaFoundationSourceConfig,
+    subtype: &GUID,
+) -> Result<(), String> {
+    let target = unsafe { build_output_type(cfg, subtype) }?;
     unsafe {
         reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, None, &target)
     }
-    .map_err(|e| mf_err("select RGB32 output", e))?;
-
-    Ok(reader)
+    .map_err(|e| mf_err("select output type", e))?;
+    return Ok(());
 }
 
 /// Locate the `IMFActivate` for `device_id`, or the first video device when
@@ -370,7 +397,7 @@ unsafe fn find_activate(device_id: &str) -> Result<IMFActivate, String> {
     chosen.ok_or_else(|| format!("no Media Foundation device matches {device_id:?}"))
 }
 
-unsafe fn read_string(attributes: &IMFActivate, key: &windows::core::GUID) -> Option<String> {
+unsafe fn read_string(attributes: &IMFActivate, key: &GUID) -> Option<String> {
     let mut value = PWSTR::null();
     let mut len = 0u32;
     unsafe { attributes.GetAllocatedString(key, &mut value, &mut len) }.ok()?;
@@ -382,14 +409,17 @@ unsafe fn read_string(attributes: &IMFActivate, key: &windows::core::GUID) -> Op
     Some(s)
 }
 
-/// RGB32 output type. An explicit size/rate pins the device to a requested
-/// mode; leaving them unset lets the device pick its default.
-unsafe fn build_output_type(cfg: &MediaFoundationSourceConfig) -> Result<IMFMediaType, String> {
+/// Output media type for the requested subtype. An explicit size/rate pins the
+/// device to a requested mode; leaving them unset lets the device pick its
+/// default.
+unsafe fn build_output_type(
+    cfg: &MediaFoundationSourceConfig,
+    subtype: &GUID,
+) -> Result<IMFMediaType, String> {
     let media_type = unsafe { MFCreateMediaType() }.map_err(|e| e.to_string())?;
     unsafe { media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video) }
         .map_err(|e| e.to_string())?;
-    unsafe { media_type.SetGUID(&MF_MT_SUBTYPE, &MFVideoFormat_RGB32) }
-        .map_err(|e| e.to_string())?;
+    unsafe { media_type.SetGUID(&MF_MT_SUBTYPE, subtype) }.map_err(|e| e.to_string())?;
     if cfg.width > 0 && cfg.height > 0 {
         unsafe { media_type.SetUINT64(&MF_MT_FRAME_SIZE, pack_u32_pair(cfg.width, cfg.height)) }
             .map_err(|e| e.to_string())?;
@@ -399,6 +429,70 @@ unsafe fn build_output_type(cfg: &MediaFoundationSourceConfig) -> Result<IMFMedi
             .map_err(|e| e.to_string())?;
     }
     Ok(media_type)
+}
+
+/// Map a Media Foundation subtype to our internal pixel format plus its bytes
+/// per pixel (used for the tightly-packed pitch fallback).
+///
+/// NOTE: `MFVideoFormat_RGB32` is **not** RGBA byte order despite the name. It
+/// is `D3DFMT_X8R8G8B8` (GUID `...00000016...`), which is stored little-endian
+/// as bytes **B, G, R, X** (BGRX). It must map to `PixelFormat::Bgra8`
+/// (uploaded as `Bgra8Unorm`) — mapping it to `Rgba8` would swap red and blue.
+/// `MFVideoFormat_ARGB32` (`D3DFMT_A8R8G8B8`) is likewise BGRA in memory; only
+/// `D3DFMT_A8B8G8R8` / `MFVideoFormat_ABGR32` is true RGBA.
+fn pixel_format_for_subtype(subtype: &GUID) -> Option<(PixelFormat, u32)> {
+    if *subtype == MFVideoFormat_RGB32 {
+        return Some((PixelFormat::Bgra8, 4));
+    }
+    if *subtype == MFVideoFormat_UYVY {
+        return Some((PixelFormat::Uyvy422, 2));
+    }
+    return None;
+}
+
+fn negotiated_pixel_format(reader: &IMFSourceReader) -> Option<(PixelFormat, u32)> {
+    let media_type =
+        unsafe { reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32) }.ok()?;
+    let subtype = unsafe { media_type.GetGUID(&MF_MT_SUBTYPE) }.ok()?;
+    return pixel_format_for_subtype(&subtype);
+}
+
+fn subtype_name(subtype: &GUID) -> &'static str {
+    if *subtype == MFVideoFormat_RGB32 {
+        return "RGB32";
+    }
+    if *subtype == MFVideoFormat_UYVY {
+        return "UYVY";
+    }
+    if *subtype == MFVideoFormat_YUY2 {
+        return "YUY2";
+    }
+    if *subtype == MFVideoFormat_NV12 {
+        return "NV12";
+    }
+    if *subtype == MFVideoFormat_MJPG {
+        return "MJPG";
+    }
+    return "other";
+}
+
+/// Distinct native subtypes the device advertises, for negotiation diagnostics.
+unsafe fn advertised_subtypes(reader: &IMFSourceReader) -> Vec<&'static str> {
+    let stream = MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32;
+    let mut names = Vec::new();
+    let mut index = 0u32;
+    loop {
+        let Ok(media_type) = (unsafe { reader.GetNativeMediaType(stream, index) }) else {
+            break;
+        };
+        if let Ok(subtype) = unsafe { media_type.GetGUID(&MF_MT_SUBTYPE) } {
+            names.push(subtype_name(&subtype));
+        }
+        index += 1;
+    }
+    names.sort_unstable();
+    names.dedup();
+    return names;
 }
 
 fn pack_u32_pair(high: u32, low: u32) -> u64 {
@@ -412,6 +506,8 @@ fn capture_frames(
     slot: &Arc<Mutex<Option<Frame>>>,
     stats: &Arc<Mutex<SourceStats>>,
     running: &Arc<AtomicBool>,
+    pixel_format: PixelFormat,
+    bpp: u32,
 ) {
     let mut pool = FramePool::new();
     let mut seq = 0u64;
@@ -484,7 +580,7 @@ fn capture_frames(
             continue;
         }
         let nominal_fps = if fps_den == 0 { 0.0 } else { fps_num as f64 / fps_den as f64 };
-        let pitch = effective_pitch(media_stride, current_len, w, h);
+        let pitch = effective_pitch(media_stride, current_len, w, h, bpp);
         let copy_len = (pitch as usize * h as usize).min(current_len as usize);
 
         let t0 = std::time::Instant::now();
@@ -496,12 +592,12 @@ fn capture_frames(
         seq += 1;
         {
             let mut s = stats.lock().unwrap();
-            s.record_frame(w, h, PixelFormat::Bgra8.label(), nominal_fps);
+            s.record_frame(w, h, pixel_format.label(), nominal_fps);
             s.record_copy_time(copy_ms);
         }
         if !logged_first_frame {
             logged_first_frame = true;
-            tracing::debug!(source = source_ref, "MediaFoundation: first frame {w}x{h} pitch={pitch} ({copy_len} bytes)");
+            tracing::debug!(source = source_ref, "MediaFoundation: first frame {w}x{h} {} pitch={pitch} ({copy_len} bytes)", pixel_format.label());
         }
 
         let old = {
@@ -510,7 +606,7 @@ fn capture_frames(
                 data: Arc::new(buf),
                 w,
                 h,
-                fmt: PixelFormat::Bgra8,
+                fmt: pixel_format,
                 pitch,
                 seq,
             }))
@@ -598,13 +694,14 @@ fn normalize_modes(mut modes: Vec<CaptureMode>) -> Vec<CaptureMode> {
 
 /// Row stride used for the upload. Prefer the media type's stride when it fits
 /// the locked buffer; otherwise derive it from the buffer length (a padded
-/// buffer reports `pitch * height` bytes), falling back to a tight `w * 4`.
-/// Sign is dropped: a bottom-up (negative) stride still occupies `|stride|`
-/// bytes per row; orientation is left to the per-source Flip V property.
-fn effective_pitch(media_stride: u32, buffer_len: u32, w: u32, h: u32) -> u32 {
-    let tight = w.saturating_mul(4);
+/// buffer reports `pitch * height` bytes), falling back to a tightly packed
+/// `w * bpp`. Sign is dropped: a bottom-up (negative) stride still occupies
+/// `|stride|` bytes per row; orientation is left to the per-source Flip V
+/// property.
+fn effective_pitch(media_stride: u32, buffer_len: u32, w: u32, h: u32, bpp: u32) -> u32 {
+    let tight = w.saturating_mul(bpp);
     if h == 0 || tight == 0 {
-        return tight.max(4);
+        return tight.max(bpp.max(1));
     }
     let rows = h as usize;
     let stride = media_stride as usize;
@@ -643,5 +740,37 @@ mod tests {
         assert_eq!(ntsc.label(), "1920x1080 @ 29.97");
         let unknown = CaptureMode { width: 640, height: 480, fps_num: 0, fps_den: 0 };
         assert_eq!(unknown.label(), "640x480 @ ?");
+    }
+
+    /// RGB32 is BGRX in memory, so it must map to Bgra8 — never Rgba8 (which
+    /// would swap red and blue). Regression guard for the naming trap.
+    #[test]
+    fn rgb32_maps_to_bgra_not_rgba() {
+        assert_eq!(
+            pixel_format_for_subtype(&MFVideoFormat_RGB32),
+            Some((PixelFormat::Bgra8, 4))
+        );
+    }
+
+    #[test]
+    fn uyvy_maps_to_uyvy422() {
+        assert_eq!(
+            pixel_format_for_subtype(&MFVideoFormat_UYVY),
+            Some((PixelFormat::Uyvy422, 2))
+        );
+        assert_eq!(pixel_format_for_subtype(&MFVideoFormat_YUY2), None);
+        assert_eq!(pixel_format_for_subtype(&MFVideoFormat_NV12), None);
+    }
+
+    #[test]
+    fn effective_pitch_uses_format_bpp() {
+        // Tight RGB32 and UYVY rows.
+        assert_eq!(effective_pitch(0, 1280 * 4 * 720, 1280, 720, 4), 1280 * 4);
+        assert_eq!(effective_pitch(0, 1280 * 2 * 720, 1280, 720, 2), 1280 * 2);
+        // A padded media-type stride wins when it fits the buffer.
+        assert_eq!(
+            effective_pitch(1280 * 2 + 64, (1280 * 2 + 64) * 720, 1280, 720, 2),
+            1280 * 2 + 64
+        );
     }
 }

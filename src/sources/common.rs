@@ -92,7 +92,7 @@ impl<'de> Deserialize<'de> for Protocol {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PixelFormat {
     // RGBA 4:4:4, 8 bit per channel, 4 bytes per pixel.
     Rgba8,

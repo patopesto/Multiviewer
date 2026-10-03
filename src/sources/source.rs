@@ -192,22 +192,28 @@ pub struct ConvUniform {
 #[derive(Clone, Debug)]
 pub enum SourceRuntimeConfig {
     Test,
-    Ndi { discovered: grafton_ndi::Source },
-    Decklink { supported_connections: decklink::VideoConnections },
+    Ndi {
+        discovered: grafton_ndi::Source
+    },
+    Decklink {
+        supported_connections: decklink::VideoConnections
+    },
     #[cfg(target_os = "macos")]
-    Syphon { info: SyphonServerInfo },
+    Syphon {
+        info: SyphonServerInfo
+    },
     #[cfg(target_os = "macos")]
     AvFoundation,
     #[cfg(target_os = "macos")]
-    ScreenCaptureKit { label: String },
+    ScreenCaptureKit {
+        label: String
+    },
     #[cfg(target_os = "windows")]
     Spout,
     #[cfg(target_os = "windows")]
     MediaFoundation {
         label: String,
-        /// Modes the device advertises; filled by the capture thread on open.
         modes: Arc<Mutex<Vec<mediafoundation::MediaFoundationMode>>>,
-        /// Mode actually negotiated; read by the settings UI.
         active: Arc<Mutex<Option<mediafoundation::MediaFoundationMode>>>,
     },
 }
