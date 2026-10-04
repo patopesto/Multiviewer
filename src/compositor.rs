@@ -1315,7 +1315,7 @@ impl Compositor {
             let upload_ms = t0.elapsed().as_secs_f32() * 1000.0;
             if let Some(stats) = stats {
                 let mut s = stats.lock().unwrap();
-                s.record_upload_time(upload_ms);
+                s.record_upload_time(upload_ms, pitch as u64 * tex_h as u64);
             }
             st.seq = f.seq;
         }

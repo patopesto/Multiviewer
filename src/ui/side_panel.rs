@@ -1,4 +1,4 @@
-use egui::{Align, Grid, InnerResponse, Layout, ScrollArea, Ui};
+use egui::{Align, Grid, InnerResponse, Layout, ScrollArea, Separator, Ui};
 
 use crate::APP_NAME;
 use crate::ui::source_settings;
@@ -20,12 +20,12 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
         .max_size(400.0)
         .show(ui, |ui| {
             ScrollArea::vertical().show(ui, |ui| {
-                collapsable_section(ui, "Global Settings", true, |ui| {
+                collapsable_section(ui, "Global Settings", true, true, |ui| {
                     draw_global_section(ui, engine);
                 });
 
                 ui.separator();
-                collapsable_section(ui, "Sources", true, |ui| {
+                collapsable_section(ui, "Sources", true, true, |ui| {
                     draw_sources_section(ui, engine);
                 });
 
@@ -59,7 +59,8 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
         ui.end_row();
     });
 
-    collapsable_section(ui, "Labels", false, |ui| {
+    subsection_separator(ui);
+    collapsable_section(ui, "Labels", false, false, |ui| {
         let label = &mut engine.cfg.canvas.label;
         settings_grid(ui, "labels_grid", |ui| {
             ui.label("Visibility");
@@ -107,9 +108,10 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
             color_picker_rgba_row(ui, "Text Color", &mut label.text_color);
             color_picker_rgba_row(ui, "Background", &mut label.background_color);
         });
+        subsection_separator(ui);
     });
 
-    collapsable_section(ui, "Borders", false, |ui| {
+    collapsable_section(ui, "Borders", false, false, |ui| {
         let border = &mut engine.cfg.canvas.border;
         settings_grid(ui, "borders_grid", |ui| {
             ui.label("Visibility");
@@ -155,9 +157,10 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
             });
             ui.end_row();
         });
+        subsection_separator(ui);
     });
 
-    collapsable_section(ui, "Outputs", false, |ui| {
+    collapsable_section(ui, "Outputs", false, false, |ui| {
         settings_grid(ui, "output_grid", |ui| {
             ui.label("NDI Output");
             settings_value(ui, |ui| {
@@ -393,6 +396,31 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 ui.end_row();
             }
         });
+
+        if !engine.cfg.canvas.outputs.is_empty() {
+            collapsable_section(ui, "Output Stats", false, false, |ui| {
+                settings_grid(ui, "output_stats_grid", |ui| {
+                    for output in &engine.cfg.canvas.outputs {
+                        let Some(ok) = engine.output_registry.get(&output.uuid) else {
+                            continue;
+                        };
+                        let stats = ok.stats();
+                        let (sent, dropped, fps) = {
+                            let s = stats.lock().unwrap();
+                            (s.frames_sent, s.frames_dropped, s.computed_fps)
+                        };
+                        ui.label(format!("{} Stats", output.protocol.label()));
+                        settings_value(ui, |ui| {
+                            ui.label(format!(
+                                "{} sent \u{2022} {} dropped \u{2022} {:.1} fps",
+                                sent, dropped, fps
+                            ));
+                        });
+                        ui.end_row();
+                    }
+                });
+            });
+        }
     });
 
     if let Some(idx) = decklink_restart_idx {
@@ -547,7 +575,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         .find(|l| l.uuid == selected_uuid)
     {
         ui.separator();
-        collapsable_section(ui, "Properties", true, |ui| {
+        collapsable_section(ui, "Properties", true, true, |ui| {
             settings_grid(ui, "layer_properties_grid", |ui| {
                 ui.label("Name");
                 settings_value(ui, |ui| {
@@ -1192,6 +1220,32 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                 });
                 ui.end_row();
             });
+            
+            // Source-specific settings and stats, looked up by the quad's own
+            // (protocol, source_ref) key — never by another protocol's source.
+            let settings_key = source
+                .source_ref
+                .clone()
+                .map(|source_ref| SourceKey::new(source.protocol.clone(), source_ref));
+            if let Some(key) = settings_key
+                && let Some(runtime) = engine.registry.get_mut(&key)
+            {
+                subsection_separator(ui);
+                collapsable_section(ui, "Protocol Settings", false, true, |ui| {
+                    if source_settings::render_source_settings(runtime, ui) {
+                        config_sync = Some(runtime.to_config());
+                        restart_key = Some(key.clone());
+                    }
+                });
+
+                subsection_separator(ui);
+                collapsable_section(ui, "Source Stats", false, false, |ui| {
+                    let stats_arc = runtime.stats();
+                    let stats = stats_arc.lock().unwrap();
+                    draw_source_stats_section(&stats, ui);
+                });
+            }
+
         });
 
         if protocol_changed {
@@ -1212,31 +1266,6 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         if new_test_source {
             source.source_ref = Some(engine.registry.add_test(None).source_ref);
             engine.dirty = true;
-        }
-
-        // Source-specific settings and stats, looked up by the quad's own
-        // (protocol, source_ref) key — never by another protocol's source.
-        let settings_key = source
-            .source_ref
-            .clone()
-            .map(|source_ref| SourceKey::new(source.protocol.clone(), source_ref));
-        if let Some(key) = settings_key
-            && let Some(runtime) = engine.registry.get_mut(&key)
-        {
-            ui.separator();
-            collapsable_section(ui, "Protocol Settings", false, |ui| {
-                if source_settings::render_source_settings(runtime, ui) {
-                    config_sync = Some(runtime.to_config());
-                    restart_key = Some(key.clone());
-                }
-            });
-
-            ui.separator();
-            collapsable_section(ui, "Source Stats", false, |ui| {
-                let stats_arc = runtime.stats();
-                let stats = stats_arc.lock().unwrap();
-                draw_source_stats_section(&stats, ui);
-            });
         }
     }
 
@@ -1299,12 +1328,6 @@ fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
         });
         ui.end_row();
 
-        ui.label("Frames presented");
-        settings_value(ui, |ui| {
-            ui.label(format!("{}", stats.frames_presented));
-        });
-        ui.end_row();
-
         ui.label("Frames consumed");
         settings_value(ui, |ui| {
             ui.label(format!("{}", stats.frames_consumed));
@@ -1334,16 +1357,32 @@ fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
             ui.label(format!("{:.2} ms", stats.upload_time_ms));
         });
         ui.end_row();
+
+        ui.label("GPU bandwidth");
+        settings_value(ui, |ui| {
+            ui.label(format!("{:.1} MB/s", stats.upload_mbps));
+        });
+        ui.end_row();
     });
 }
 
 // Helpers
 const SETTINGS_GRID_SPACING: [f32; 2] = [8.0, 4.0];
 const SETTINGS_GRID_LEFT_MIN_WIDTH: f32 = 120.0;
+const SUBSECTION_SEPARATOR_INSET: f32 = 16.0;
 
-pub fn collapsable_section<R>(ui: &mut Ui, title: &str, heading: bool, contents: impl FnOnce(&mut Ui) -> R) {
+fn subsection_separator(ui: &mut Ui) {
+    ui.add(Separator::default().shrink(SUBSECTION_SEPARATOR_INSET));
+}
+
+pub fn collapsable_section<R>(
+    ui: &mut Ui,
+    title: &str,
+    heading: bool,
+    default_open: bool,
+    contents: impl FnOnce(&mut Ui) -> R,
+) {
     let id = ui.make_persistent_id(title);
-    let default_open = heading;
     egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open)
         .show_header(ui, |ui| {
             if heading {

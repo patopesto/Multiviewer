@@ -2,8 +2,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use serde::{Deserialize, Serialize};
 
-use super::super::Protocol;
-use super::super::output::{OutputId, OutputStats, VideoOutput};
+use super::super::{OutputStats, Protocol};
+use super::super::output::{OutputId, VideoOutput};
 
 const FLIP_SHADER: &str = r#"
 struct VertexOutput {
@@ -184,7 +184,7 @@ impl SyphonOutput {
             s.send_time_ms = elapsed;
             match status {
                 syphon_wgpu::PublishStatus::ZeroCopy | syphon_wgpu::PublishStatus::CpuFallback => {
-                    s.frames_sent += 1;
+                    s.record_sent();
                 }
                 syphon_wgpu::PublishStatus::NoClients
                 | syphon_wgpu::PublishStatus::PoolExhausted => {

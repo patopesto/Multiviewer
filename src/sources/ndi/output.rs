@@ -5,8 +5,8 @@ use std::time::Instant;
 use serde::{Deserialize, Serialize};
 use grafton_ndi::{NDI, Sender, SenderOptions, BorrowedVideoFrame};
 
-use super::super::Protocol;
-use super::super::output::{OutputId, OutputStats, VideoOutput};
+use super::super::{OutputStats, Protocol};
+use super::super::output::{OutputId, VideoOutput};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct NdiOutputConfig {
@@ -96,7 +96,7 @@ impl NdiOutput {
                         let mut s = stats_clone.lock().unwrap();
                         s.width = frame_w;
                         s.height = frame_h;
-                        s.frames_sent += 1;
+                        s.record_sent();
                         s.send_time_ms = start.elapsed().as_secs_f32() * 1000.0;
                     }
                 }

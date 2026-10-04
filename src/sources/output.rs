@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
 use tracing::instrument;
 
-use super::Protocol;
+use super::{OutputStats, Protocol};
 use super::decklink;
 use super::ndi;
 #[cfg(target_os = "macos")]
@@ -204,15 +204,10 @@ impl OutputKind {
     pub fn set_enabled(&self, enabled: bool) {
         self.output.set_enabled(enabled);
     }
-}
 
-#[derive(Debug, Clone, Default)]
-pub struct OutputStats {
-    pub width: u32,
-    pub height: u32,
-    pub frames_sent: u64,
-    pub frames_dropped: u64,
-    pub send_time_ms: f32,
+    pub fn stats(&self) -> Arc<Mutex<OutputStats>> {
+        return self.output.stats();
+    }
 }
 
 pub struct OutputRegistry {

@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use spout2::dx12::resource_state::COPY_DEST;
 use wgpu::hal::api::Dx12 as Dx12Api;
 
-use super::super::Protocol;
-use super::super::output::{OutputId, OutputStats, VideoOutput};
+use super::super::{OutputStats, Protocol};
+use super::super::output::{OutputId, VideoOutput};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SpoutOutputConfig {
@@ -211,7 +211,7 @@ impl SpoutOutput {
         let mut s = self.stats.lock().unwrap();
         s.send_time_ms = send_start.elapsed().as_secs_f32() * 1000.0;
         match result {
-            Ok(()) => s.frames_sent += 1,
+            Ok(()) => s.record_sent(),
             Err(e) => {
                 s.frames_dropped += 1;
                 tracing::error!(output=self.name, "Spout send failed: {}", e);

@@ -10,8 +10,8 @@ use multiviewer_decklink::{
     decklink_output_start, decklink_output_stop, DisplayMode,
 };
 
-use super::super::Protocol;
-use super::super::output::{OutputId, OutputStats, VideoOutput};
+use super::super::{OutputStats, Protocol};
+use super::super::output::{OutputId, VideoOutput};
 
 const SCALE_SHADER: &str = r#"
 struct VertexOutput {
@@ -184,7 +184,7 @@ impl DecklinkOutput {
                         s.height = frame_h;
                         s.send_time_ms = start.elapsed().as_secs_f32() * 1000.0;
                         if ok {
-                            s.frames_sent += 1;
+                            s.record_sent();
                         } else {
                             s.frames_dropped += 1;
                         }

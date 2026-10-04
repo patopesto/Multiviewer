@@ -545,9 +545,9 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
         });
         ui.end_row();
 
-        ui.label("Border");
+        ui.label("Borders");
         settings_value(ui, |ui| {
-            egui::ComboBox::from_id_salt("windowscapture_border")
+            egui::ComboBox::from_id_salt("windowscapture_borders")
                 .width(ui.available_width())
                 .selected_text(settings.border.label())
                 .show_ui(ui, |ui| {

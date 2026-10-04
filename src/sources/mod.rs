@@ -1,6 +1,7 @@
 mod common;
 mod source;
 mod output;
+mod stats;
 
 mod test;
 mod decklink;
@@ -23,9 +24,10 @@ mod windowscapture;
 pub use common::{Protocol, PixelFormat, Frame, CpuFrame, GpuFrame};
 pub use source::{
     SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
-    SourceStats, SourceRegistry, VideoSource, ConvUniform, FramePool,
+    SourceRegistry, VideoSource, ConvUniform, FramePool,
 };
 pub use output::{OutputConfig, OutputRegistry};
+pub use stats::{OutputStats, SourceStats};
 
 pub use test::{TestSourceConfig, TestPattern, RadarDirection};
 pub use ndi::{NdiDiscovery, NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, NdiReceiverColorFormat, NdiSourceInfo};
