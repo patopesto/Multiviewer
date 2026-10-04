@@ -319,6 +319,34 @@ unsafe fn open_reader(cfg: &MediaFoundationSourceConfig) -> Result<IMFSourceRead
     return Err(format!("no supported output format ({last_err}); device offers [{}]", offered.join(", ")));
 }
 
+/// Whether `activate` can be opened and negotiated to a compositor-supported
+/// output type. Open-only: no samples are read, so this is cheap but cannot
+/// detect a device that opens and never streams.
+///
+/// Discovery uses this to drop devices Media Foundation enumerates but cannot
+/// open (e.g. Blackmagic's WDM-only capture cards).
+///
+/// ponytail: open-only per plan; if a device opens yet never streams and still
+/// shows up, escalate by reading one sample with a bounded `Flush` watchdog.
+pub(super) unsafe fn probe_activate(activate: &IMFActivate) -> bool {
+    let Ok(source) = (unsafe { activate.ActivateObject::<IMFMediaSource>() }) else {
+        return false;
+    };
+    let cfg = MediaFoundationSourceConfig::default();
+    let candidates = candidates_for(None);
+    for advanced in [true, false] {
+        let Ok(reader) = (unsafe { create_reader(&source, advanced) }) else {
+            continue;
+        };
+        for &subtype in &candidates {
+            if unsafe { set_output_type(&reader, &cfg, subtype) }.is_ok() {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 unsafe fn create_reader(source: &IMFMediaSource, advanced: bool) -> Result<IMFSourceReader, String> {
     let mut attributes = None;
     unsafe { MFCreateAttributes(&mut attributes, 2) }.map_err(|e| mf_err("MFCreateAttributes", e))?;
