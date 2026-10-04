@@ -5,9 +5,6 @@ vars:
   TARGET: aarch64-apple-darwin
   DIST_DMG: "{{.DIST_DIR}}/{{.APP_NAME}}_{{.VERSION}}_{{.ARCH}}.dmg"
 
-env:
-  SDKROOT: /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
-
 tasks:
   setup:
     desc: Setup the development environment for macOS

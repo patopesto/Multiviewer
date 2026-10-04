@@ -286,9 +286,11 @@ impl SourceKind {
         return Self { source, config, runtime };
     }
 
-    /// Rebuild this source under the same key from the config and runtime data
+    /// Rebuild this source under the same key from the config and runtime data.
+    /// The old runtime is dropped before the new one is constructed.
     fn respawn(self, key: &SourceKey) -> Self {
-        let Self { source: _, config, runtime } = self;
+        let Self { source, config, runtime } = self;
+        drop(source);
         return Self::new(key, config, runtime);
     }
 
