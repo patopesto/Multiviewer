@@ -503,13 +503,8 @@ impl Compositor {
                     let st = self.ensure_texture(device, queue, key, &f, Some(stats));
                     Some((st.bg.clone(), f.w as f32 / f.h as f32, false, false))
                 }
-                #[cfg(target_os = "macos")]
-                Frame::Syphon(f) => {
-                    Some((f.bg.clone(), f.w as f32 / f.h as f32, false, true))
-                }
-                #[cfg(target_os = "windows")]
-                Frame::Spout(f) => {
-                    Some((f.bg.clone(), f.w as f32 / f.h as f32, false, false))
+                Frame::Gpu(f) => {
+                    Some((f.bg.clone(), f.w as f32 / f.h as f32, false, f.flip_v))
                 }
             }
         })();

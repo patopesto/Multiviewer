@@ -110,11 +110,12 @@ impl SpoutSource {
         let dims = self.dims.lock().unwrap();
         let bg = self.bg.lock().unwrap();
         bg.as_ref().map(|bg| {
-            Frame::Spout(GpuFrame {
+            Frame::Gpu(GpuFrame {
                 bg: bg.clone(),
                 w: dims.0,
                 h: dims.1,
                 seq: self.seq.load(Ordering::Relaxed),
+                flip_v: false,
             })
         })
     }
@@ -310,20 +311,22 @@ impl VideoSource for SpoutSource {
                 s.record_frame(w, h, Self::format_label(receiver.sender_format()), 0.0);
                 s.record_copy_time(0.0);
             }
-            return Some(Frame::Spout(GpuFrame {
+            return Some(Frame::Gpu(GpuFrame {
                 bg: bg.as_ref().unwrap().clone(),
                 w,
                 h,
                 seq,
+                flip_v: false,
             }));
         }
 
         // Return the cached frame even if no new frame arrived.
-        Some(Frame::Spout(GpuFrame {
+        Some(Frame::Gpu(GpuFrame {
             bg: bg.as_ref().unwrap().clone(),
             w: dims.0,
             h: dims.1,
             seq: self.seq.load(Ordering::Relaxed),
+            flip_v: false,
         }))
     }
 

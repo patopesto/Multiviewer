@@ -138,22 +138,21 @@ pub struct CpuFrame {
     pub seq: u64,
 }
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
+#[allow(dead_code)] // No GPU-native source on Linux yet.
 #[derive(Clone)]
 pub struct GpuFrame {
     pub bg: Arc<wgpu::BindGroup>,
     pub w: u32,
     pub h: u32,
     pub seq: u64,
+    pub flip_v: bool, // for syphon which has it's UV bottom-up.
 }
 
 #[derive(Clone)]
 pub enum Frame {
     Cpu(CpuFrame),
-    #[cfg(target_os = "macos")]
-    Syphon(GpuFrame),
-    #[cfg(target_os = "windows")]
-    Spout(GpuFrame),
+    #[allow(dead_code)] // No GPU-native source on Linux yet.
+    Gpu(GpuFrame),
 }
 
 impl Frame {
@@ -161,10 +160,7 @@ impl Frame {
     pub fn seq(&self) -> u64 {
         return match self {
             Frame::Cpu(f) => f.seq,
-            #[cfg(target_os = "macos")]
-            Frame::Syphon(f) => f.seq,
-            #[cfg(target_os = "windows")]
-            Frame::Spout(f) => f.seq,
+            Frame::Gpu(f) => f.seq,
         };
     }
 }

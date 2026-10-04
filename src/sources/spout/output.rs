@@ -37,6 +37,7 @@ pub struct SpoutOutput {
     #[allow(dead_code)]
     id: OutputId,
     name: String,
+    config: SpoutOutputConfig,
     enabled: AtomicBool,
     stats: Arc<Mutex<OutputStats>>,
     state: Mutex<Option<SendState>>,
@@ -50,6 +51,7 @@ impl SpoutOutput {
         Self {
             id,
             name,
+            config,
             enabled: AtomicBool::new(enabled),
             stats: Arc::new(Mutex::new(OutputStats::default())),
             state: Mutex::new(None),
@@ -150,7 +152,7 @@ impl SpoutOutput {
             .unwrap_or(true);
 
         if recreate {
-            match Self::create_state(device, queue, &self.name, width, height) {
+            match Self::create_state(device, queue, &self.config.sender_name, width, height) {
                 Ok(state) => {
                     tracing::info!(output=self.name, "Spout output created: ({}x{})", width, height);
                     *state_guard = Some(state);
