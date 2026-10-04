@@ -463,7 +463,7 @@ unsafe fn apply_and_enumerate_modes(
                 let size_ok = !want || (w == cfg.width && h == cfg.height);
                 let fps_ok =
                     cfg.fps_num == 0 || (fps_num == cfg.fps_num && fps_den == cfg.fps_den);
-                if size_ok && fps_ok && best_rank.map_or(true, |b| rank < b) {
+                if size_ok && fps_ok && best_rank.is_none_or(|b| rank < b) {
                     match unsafe { config.SetFormat(media_type) } {
                         Ok(()) => {
                             best_rank = Some(rank);
@@ -591,7 +591,7 @@ unsafe fn interpret_connected(mt: &AM_MEDIA_TYPE) -> Result<ConnectedFormat, Str
             return Err(format!("unsupported subtype {}", subtype_name(&mt.subtype)));
         }
     };
-    let pitch = ((width * bits + 31) / 32) * 4;
+    let pitch = (width * bits).div_ceil(32) * 4;
     let rows = if pixel_format == PixelFormat::Nv12 { height + height / 2 } else { height };
     // DirectShow RGB/YUV is bottom-up when biHeight is positive; flip so the
     // compositor sees a top-down image.
