@@ -19,6 +19,8 @@ use crate::sources::DirectShowSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::DirectShowMode;
 #[cfg(target_os = "windows")]
+use crate::sources::WindowsCaptureSourceConfig;
+#[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
@@ -38,6 +40,8 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         SourceConfig::MediaFoundation(cfg) => mediafoundation_settings_ui(cfg, &source.runtime, ui),
         #[cfg(target_os = "windows")]
         SourceConfig::DirectShow(cfg) => directshow_settings_ui(cfg, &source.runtime, ui),
+        #[cfg(target_os = "windows")]
+        SourceConfig::WindowsCapture(cfg) => windowscapture_settings_ui(cfg, ui),
         // Config from a platform that has this protocol; no runtime source.
         SourceConfig::Unknown(_) => false,
     };
@@ -515,4 +519,10 @@ fn directshow_settings_ui(cfg: &mut DirectShowSourceConfig, runtime: &SourceRunt
         cfg.fps_den,
         cfg.pixel_format,
     ) != old
+}
+
+#[cfg(target_os = "windows")]
+fn windowscapture_settings_ui(_cfg: &mut WindowsCaptureSourceConfig, _ui: &mut egui::Ui) -> bool {
+    // No tunables yet
+    false
 }

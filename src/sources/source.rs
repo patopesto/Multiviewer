@@ -22,6 +22,8 @@ use super::spout;
 use super::mediafoundation;
 #[cfg(target_os = "windows")]
 use super::directshow;
+#[cfg(target_os = "windows")]
+use super::windowscapture;
 
 pub type SourceRef = String;
 
@@ -67,6 +69,8 @@ pub enum SourceConfig {
     MediaFoundation(mediafoundation::MediaFoundationSourceConfig),
     #[cfg(target_os = "windows")]
     DirectShow(directshow::DirectShowSourceConfig),
+    #[cfg(target_os = "windows")]
+    WindowsCapture(windowscapture::WindowsCaptureSourceConfig),
     Unknown(serde_json::Value),
 }
 
@@ -96,6 +100,8 @@ enum SourceConfigInner {
     MediaFoundation(mediafoundation::MediaFoundationSourceConfig),
     #[cfg(target_os = "windows")]
     DirectShow(directshow::DirectShowSourceConfig),
+    #[cfg(target_os = "windows")]
+    WindowsCapture(windowscapture::WindowsCaptureSourceConfig),
 }
 
 impl From<SourceConfigInner> for SourceConfig {
@@ -116,6 +122,8 @@ impl From<SourceConfigInner> for SourceConfig {
             SourceConfigInner::MediaFoundation(c) => SourceConfig::MediaFoundation(c),
             #[cfg(target_os = "windows")]
             SourceConfigInner::DirectShow(c) => SourceConfig::DirectShow(c),
+            #[cfg(target_os = "windows")]
+            SourceConfigInner::WindowsCapture(c) => SourceConfig::WindowsCapture(c),
         }
     }
 }
@@ -143,6 +151,8 @@ impl Serialize for SourceConfig {
             SourceConfig::MediaFoundation(c) => SourceConfigInner::MediaFoundation(c.clone()).serialize(serializer),
             #[cfg(target_os = "windows")]
             SourceConfig::DirectShow(c) => SourceConfigInner::DirectShow(c.clone()).serialize(serializer),
+            #[cfg(target_os = "windows")]
+            SourceConfig::WindowsCapture(c) => SourceConfigInner::WindowsCapture(c.clone()).serialize(serializer),
         }
     }
 }
@@ -182,6 +192,8 @@ impl SourceConfig {
             Protocol::MediaFoundation => SourceConfig::MediaFoundation(mediafoundation::MediaFoundationSourceConfig::default()),
             #[cfg(target_os = "windows")]
             Protocol::DirectShow => SourceConfig::DirectShow(directshow::DirectShowSourceConfig::default()),
+            #[cfg(target_os = "windows")]
+            Protocol::WindowsCapture => SourceConfig::WindowsCapture(windowscapture::WindowsCaptureSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
         }
     }
@@ -232,6 +244,10 @@ pub enum SourceRuntimeConfig {
         label: String,
         modes: Arc<Mutex<Vec<directshow::DirectShowMode>>>,
     },
+    #[cfg(target_os = "windows")]
+    WindowsCapture {
+        label: String,
+    },
 }
 
 /// A live source: its boxed runtime, the config persisted in the project, and
@@ -279,6 +295,10 @@ impl SourceKind {
             (SourceConfig::DirectShow(c), SourceRuntimeConfig::DirectShow { modes, .. }) => {
                 Box::new(directshow::DirectShowSource::spawn(key.source_ref.clone(), c, modes.clone()))
             }
+            #[cfg(target_os = "windows")]
+            (SourceConfig::WindowsCapture(c), SourceRuntimeConfig::WindowsCapture { .. }) => {
+                Box::new(windowscapture::WindowsCaptureSource::spawn(key.source_ref.clone(), c))
+            }
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
             _ => unreachable!("source config paired with a foreign runtime config"),
@@ -324,6 +344,9 @@ impl SourceKind {
                 return label.clone();
             }
             if let SourceRuntimeConfig::DirectShow { label, .. } = &self.runtime {
+                return label.clone();
+            }
+            if let SourceRuntimeConfig::WindowsCapture { label } = &self.runtime {
                 return label.clone();
             }
         }
@@ -689,6 +712,21 @@ impl SourceRegistry {
                 label,
                 modes: Arc::new(Mutex::new(Vec::new())),
             },
+        );
+        self.sources.insert(key.clone(), kind);
+        return key;
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn add_windows_capture(&mut self, key: SourceKey, config: windowscapture::WindowsCaptureSourceConfig, label: String) -> SourceKey {
+        if self.contains(&key) {
+            return key;
+        }
+        tracing::debug!(source_ref = %key.source_ref, label = %label, "add_windows_capture");
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::WindowsCapture(config),
+            SourceRuntimeConfig::WindowsCapture { label },
         );
         self.sources.insert(key.clone(), kind);
         return key;

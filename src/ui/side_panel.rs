@@ -600,6 +600,10 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             if ui.selectable_value(&mut source.protocol, Protocol::DirectShow, Protocol::DirectShow.label()).clicked(){
                                 protocol_changed = true;
                             }
+                            #[cfg(target_os = "windows")]
+                            if ui.selectable_value(&mut source.protocol, Protocol::WindowsCapture, Protocol::WindowsCapture.label()).clicked(){
+                                protocol_changed = true;
+                            }
                         });
                 });
                 ui.end_row();
@@ -1008,6 +1012,70 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         }
                                     }
                                     if ds_sources.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        }
+                        #[cfg(target_os = "windows")]
+                        Protocol::WindowsCapture => {
+                            let mut wc_sources: Vec<(String, String)> = engine
+                                .registry
+                                .list_sources(Protocol::WindowsCapture)
+                                .into_iter()
+                                .map(|(key, kind)| {
+                                    let label = kind.display_label(&key.source_ref);
+                                    (key.source_ref.clone(), label)
+                                })
+                                .collect();
+                            wc_sources.sort_by_cached_key(|(_, label)| label.to_lowercase());
+                            let current = source.source_ref.as_deref().unwrap_or("");
+                            let current_label = wc_sources
+                                .iter()
+                                .find(|(id, _)| id == current)
+                                .map(|(_, label)| label.clone())
+                                .unwrap_or_else(|| current.to_string());
+                            let targets = engine
+                                .windowscapture
+                                .as_ref()
+                                .map(|d| d.list())
+                                .unwrap_or_default();
+                            egui::ComboBox::from_id_salt("windowscapture_source")
+                                .width(ui.available_width())
+                                .height(1000.0)
+                                .selected_text(current_label)
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    // Already connected targets
+                                    for (id, label) in &wc_sources {
+                                        if ui.selectable_label(current == id, label).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    // Discovered targets not yet connected, grouped by kind
+                                    for (header, group) in [
+                                        ("Displays", &targets.displays),
+                                        ("Windows", &targets.windows),
+                                    ] {
+                                        let pending: Vec<_> = group
+                                            .iter()
+                                            .filter(|t| {
+                                                !wc_sources
+                                                    .iter()
+                                                    .any(|(c, _)| c == &t.source_ref)
+                                            })
+                                            .collect();
+                                        if pending.is_empty() {
+                                            continue;
+                                        }
+                                        ui.label(egui::RichText::new(header).weak());
+                                        for target in pending {
+                                            if ui.selectable_label(current == target.source_ref, &target.label).clicked() {
+                                                new_connect = Some((Protocol::WindowsCapture, target.source_ref.clone()));
+                                                selected_source = Some(target.source_ref.clone());
+                                            }
+                                        }
+                                    }
+                                    if targets.is_empty() {
                                         ui.weak("(scanning...)");
                                     }
                                 });

@@ -36,6 +36,10 @@ use crate::sources::MediaFoundationSourceConfig;
 use crate::sources::DirectShowDiscovery;
 #[cfg(target_os = "windows")]
 use crate::sources::DirectShowSourceConfig;
+#[cfg(target_os = "windows")]
+use crate::sources::WindowsCaptureDiscovery;
+#[cfg(target_os = "windows")]
+use crate::sources::WindowsCaptureSourceConfig;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 20.0;
@@ -154,6 +158,8 @@ pub struct Engine {
     pub mediafoundation: Option<MediaFoundationDiscovery>,
     #[cfg(target_os = "windows")]
     pub directshow: Option<DirectShowDiscovery>,
+    #[cfg(target_os = "windows")]
+    pub windowscapture: Option<WindowsCaptureDiscovery>,
     comp: Option<Compositor>,
     device: Option<Arc<wgpu::Device>>,
     queue: Option<Arc<wgpu::Queue>>,
@@ -206,6 +212,10 @@ impl Engine {
         #[cfg(target_os = "windows")]
         let directshow = Some(DirectShowDiscovery::start());
 
+        // Start Windows Graphics Capture discovery on Windows
+        #[cfg(target_os = "windows")]
+        let windowscapture = Some(WindowsCaptureDiscovery::start());
+
         let mut engine = Self {
             cfg,
             registry,
@@ -224,6 +234,8 @@ impl Engine {
             mediafoundation,
             #[cfg(target_os = "windows")]
             directshow,
+            #[cfg(target_os = "windows")]
+            windowscapture,
             comp: None,
             device: None,
             queue: None,
@@ -600,6 +612,38 @@ impl Engine {
             }
         }
 
+        // Auto-connect pending Windows Graphics Capture sources on Windows
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(ref discovery) = self.windowscapture {
+                let targets = discovery.list();
+                for source in &self.cfg.canvas.sources {
+                    if source.protocol != Protocol::WindowsCapture {
+                        continue;
+                    }
+                    let Some(ref source_ref) = source.source_ref else {
+                        continue;
+                    };
+                    let key = SourceKey::new(Protocol::WindowsCapture, source_ref.clone());
+                    if self.registry.contains(&key) {
+                        continue;
+                    }
+                    let default_config = WindowsCaptureSourceConfig::default();
+                    let layer_config = match &source.config {
+                        SourceConfig::WindowsCapture(c) => Some(c),
+                        _ => None,
+                    };
+                    let candidate = layer_config.unwrap_or(&default_config);
+                    if let Some(target) = targets.iter().find(|t| t.matches(source_ref, candidate)) {
+                        let config = target.to_config();
+                        let label = target.label.clone();
+                        self.registry.add_windows_capture(key, config, label);
+                        self.dirty = true;
+                    }
+                }
+            }
+        }
+
         self.registry.apply_pending_restarts();
     }
 
@@ -878,6 +922,24 @@ impl Engine {
                     .unwrap_or_else(|| name.to_string());
                 let label = device.map(|d| d.name).unwrap_or_else(|| name.to_string());
                 self.registry.add_directshow(key, config, label);
+            }
+            #[cfg(target_os = "windows")]
+            Protocol::WindowsCapture => {
+                if let Some(target) = self
+                    .windowscapture
+                    .as_ref()
+                    .and_then(|d| d.list().find_by_source_ref(name))
+                {
+                    let config = target.to_config();
+                    for quad in self.cfg.canvas.sources.iter_mut().filter(|s| {
+                        s.protocol == Protocol::WindowsCapture
+                            && s.source_ref.as_deref() == Some(name)
+                    }) {
+                        quad.config = SourceConfig::WindowsCapture(config.clone());
+                    }
+                    let label = target.label.clone();
+                    self.registry.add_windows_capture(key, config, label);
+                }
             }
             // Unavailable protocols have no runtime source to connect.
             Protocol::Unknown(_) => {}

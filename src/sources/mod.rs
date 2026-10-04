@@ -17,6 +17,8 @@ mod spout;
 mod mediafoundation;
 #[cfg(target_os = "windows")]
 mod directshow;
+#[cfg(target_os = "windows")]
+mod windowscapture;
 
 pub use common::{Protocol, PixelFormat, Frame, CpuFrame, GpuFrame};
 
@@ -57,3 +59,7 @@ pub use mediafoundation::Discovery as MediaFoundationDiscovery;
 pub use directshow::{DirectShowSourceConfig, DirectShowMode};
 #[cfg(target_os = "windows")]
 pub use directshow::Discovery as DirectShowDiscovery;
+#[cfg(target_os = "windows")]
+pub use windowscapture::WindowsCaptureSourceConfig;
+#[cfg(target_os = "windows")]
+pub use windowscapture::Discovery as WindowsCaptureDiscovery;

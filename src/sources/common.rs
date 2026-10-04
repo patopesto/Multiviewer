@@ -18,6 +18,8 @@ pub enum Protocol {
     MediaFoundation,
     #[cfg(target_os = "windows")]
     DirectShow,
+    #[cfg(target_os = "windows")]
+    WindowsCapture,
     /// A protocol that is not available on this platform. Holds the original
     /// protocol name as serialized in the project file so it round-trips
     /// unchanged when the project is opened on a platform that supports it.
@@ -44,6 +46,8 @@ impl Protocol {
             Protocol::MediaFoundation => "MediaFoundation",
             #[cfg(target_os = "windows")]
             Protocol::DirectShow => "DirectShow",
+            #[cfg(target_os = "windows")]
+            Protocol::WindowsCapture => "WindowsCapture",
             Protocol::Unknown(name) => name,
         }
     }
@@ -65,6 +69,8 @@ impl Protocol {
             Protocol::MediaFoundation => "MediaFoundation".to_string(),
             #[cfg(target_os = "windows")]
             Protocol::DirectShow => "DirectShow (WDM)".to_string(),
+            #[cfg(target_os = "windows")]
+            Protocol::WindowsCapture => "Windows Screen Capture".to_string(),
             Protocol::Unknown(name) => format!("{name} (Unavailable)"),
         }
     }
@@ -95,6 +101,8 @@ impl<'de> Deserialize<'de> for Protocol {
             "MediaFoundation" => Protocol::MediaFoundation,
             #[cfg(target_os = "windows")]
             "DirectShow" => Protocol::DirectShow,
+            #[cfg(target_os = "windows")]
+            "WindowsCapture" => Protocol::WindowsCapture,
             other => Protocol::Unknown(other.to_string()),
         })
     }
