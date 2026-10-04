@@ -60,6 +60,6 @@ pub use directshow::{DirectShowSourceConfig, DirectShowMode};
 #[cfg(target_os = "windows")]
 pub use directshow::Discovery as DirectShowDiscovery;
 #[cfg(target_os = "windows")]
-pub use windowscapture::WindowsCaptureSourceConfig;
+pub use windowscapture::{WindowsCaptureSourceConfig, WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows};
 #[cfg(target_os = "windows")]
 pub use windowscapture::Discovery as WindowsCaptureDiscovery;

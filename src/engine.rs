@@ -635,7 +635,9 @@ impl Engine {
                     };
                     let candidate = layer_config.unwrap_or(&default_config);
                     if let Some(target) = targets.iter().find(|t| t.matches(source_ref, candidate)) {
-                        let config = target.to_config();
+                        let mut config = target.to_config();
+                        // Discovery only supplies target identity; keep the settings already chosen for this source.
+                        *config.settings_mut() = candidate.settings().clone();
                         let label = target.label.clone();
                         self.registry.add_windows_capture(key, config, label);
                         self.dirty = true;
@@ -930,7 +932,13 @@ impl Engine {
                     .as_ref()
                     .and_then(|d| d.list().find_by_source_ref(name))
                 {
-                    let config = target.to_config();
+                    let mut config = target.to_config();
+                    // Discovery only supplies target identity; keep the settings already chosen for this source.
+                    if let Some(SourceConfig::WindowsCapture(existing)) =
+                        self.layer_config(&Protocol::WindowsCapture, name)
+                    {
+                        *config.settings_mut() = existing.settings().clone();
+                    }
                     for quad in self.cfg.canvas.sources.iter_mut().filter(|s| {
                         s.protocol == Protocol::WindowsCapture
                             && s.source_ref.as_deref() == Some(name)
@@ -1557,6 +1565,8 @@ mod tests {
             mediafoundation: None,
             #[cfg(target_os = "windows")]
             directshow: None,
+            #[cfg(target_os = "windows")]
+            windowscapture: None,
             comp: None,
             device: None,
             queue: None,

@@ -4,7 +4,7 @@ use std::time::Duration;
 use windows_capture::monitor::Monitor;
 use windows_capture::window::Window;
 
-use super::source::WindowsCaptureSourceConfig;
+use super::source::{WindowsCaptureSettings, WindowsCaptureSourceConfig};
 
 const INCLUDE_UNTITLED_WINDOWS: bool = false;
 
@@ -77,6 +77,7 @@ impl Target {
         return match &self.kind {
             TargetKind::Display { device_name } => WindowsCaptureSourceConfig::Display {
                 device_name: device_name.clone(),
+                settings: WindowsCaptureSettings::default(),
             },
             TargetKind::Window {
                 hwnd,
@@ -86,6 +87,7 @@ impl Target {
                 hwnd: *hwnd,
                 process_name: process_name.clone(),
                 title: title.clone(),
+                settings: WindowsCaptureSettings::default(),
             },
         };
     }
@@ -147,12 +149,11 @@ fn fetch_targets() -> Result<Targets, String> {
     }
     sort_windows(&mut windows);
 
-    let mut targets = Targets::default();
-    targets.displays = displays;
-    for (hwnd, process_name, title) in windows {
-        targets.windows.push(Target::window(hwnd, process_name, title));
-    }
-    return Ok(targets);
+    let windows = windows
+        .into_iter()
+        .map(|(hwnd, process_name, title)| Target::window(hwnd, process_name, title))
+        .collect();
+    return Ok(Targets { displays, windows });
 }
 
 /// Order windows by process name, then title (both case-insensitive).
@@ -243,6 +244,7 @@ mod tests {
             hwnd: 9999,
             process_name: "notepad.exe".into(),
             title: "Notes".into(),
+            settings: WindowsCaptureSettings::default(),
         };
         assert!(target.matches("window:9999", &config));
 
@@ -250,6 +252,7 @@ mod tests {
             hwnd: 9999,
             process_name: "notepad.exe".into(),
             title: "Other".into(),
+            settings: WindowsCaptureSettings::default(),
         };
         assert!(!target.matches("window:9999", &wrong_title));
     }

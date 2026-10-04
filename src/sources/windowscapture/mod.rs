@@ -2,4 +2,7 @@ mod discovery;
 mod source;
 
 pub use discovery::Discovery;
-pub use source::{WindowsCaptureSource, WindowsCaptureSourceConfig};
+pub use source::{
+    WindowsCaptureSource, WindowsCaptureSourceConfig,
+    WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows,
+};

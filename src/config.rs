@@ -345,7 +345,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     use crate::sources::SpoutOutputConfig;
     #[cfg(target_os = "windows")]
-    use crate::sources::WindowsCaptureSourceConfig;
+    use crate::sources::{WindowsCaptureSourceConfig, WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows};
     #[cfg(target_os = "windows")]
     use crate::sources::PixelFormat;
     use crate::sources::{NdiSourceConfig, NdiOutputConfig, DecklinkSourceConfig, DecklinkOutputConfig, TestSourceConfig};
@@ -689,10 +689,10 @@ mod tests {
     fn windows_capture_source_round_trips_on_unavailable_platform() {
         let json = r#"{
             "uuid":"u1","name":"Screen","protocol":"WindowsCapture",
-            "source_ref":"display:\\.\\DISPLAY1","x":10.0,"y":20.0,
+            "source_ref":"display:\\\\.\\DISPLAY1","x":10.0,"y":20.0,
             "width":1920,"height":1080,"z":3,"mode":"Fit",
             "config":{"protocol":"WindowsCapture","kind":"display",
-                      "device_name":"\\.\\DISPLAY1"}
+                      "device_name":"\\\\.\\DISPLAY1"}
         }"#;
         let parsed: Source = serde_json::from_str(json).unwrap();
         #[cfg(target_os = "windows")]
@@ -701,7 +701,7 @@ mod tests {
             let SourceConfig::WindowsCapture(c) = &parsed.config else {
                 panic!("expected WindowsCapture config")
             };
-            let WindowsCaptureSourceConfig::Display { device_name } = c else {
+            let WindowsCaptureSourceConfig::Display { device_name, .. } = c else {
                 panic!("expected display target, got {c:?}")
             };
             assert_eq!(device_name, "\\\\.\\DISPLAY1");
@@ -715,16 +715,16 @@ mod tests {
             };
             assert_eq!(
                 v.get("device_name"),
-                Some(&serde_json::json!("\\.\\DISPLAY1"))
+                Some(&serde_json::json!("\\\\.\\DISPLAY1"))
             );
         }
         assert_eq!(parsed.name, "Screen");
-        assert_eq!(parsed.source_ref.as_deref(), Some("display:\\.\\DISPLAY1"));
+        assert_eq!(parsed.source_ref.as_deref(), Some("display:\\\\.\\DISPLAY1"));
 
         let saved = serde_json::to_value(&parsed).unwrap();
         assert_eq!(saved["protocol"], "WindowsCapture");
         assert_eq!(saved["config"]["kind"], "display");
-        assert_eq!(saved["config"]["device_name"], "\\.\\DISPLAY1");
+        assert_eq!(saved["config"]["device_name"], "\\\\.\\DISPLAY1");
     }
 
     /// Window Windows Graphics Capture sources must survive load + save on a
@@ -737,7 +737,10 @@ mod tests {
             "width":800,"height":600,"z":3,"mode":"Fit",
             "config":{"protocol":"WindowsCapture","kind":"window",
                       "hwnd":4242,"process_name":"notepad.exe",
-                      "title":"Untitled"}
+                      "title":"Untitled",
+                      "settings":{"cursor":"hide",
+                                  "border":"hide",
+                                  "secondary_windows":"include"}}
         }"#;
         let parsed: Source = serde_json::from_str(window_json).unwrap();
         #[cfg(target_os = "windows")]
@@ -750,6 +753,7 @@ mod tests {
                 hwnd,
                 process_name,
                 title,
+                settings,
             } = c
             else {
                 panic!("expected window target, got {c:?}")
@@ -757,6 +761,12 @@ mod tests {
             assert_eq!(*hwnd, 4242);
             assert_eq!(process_name, "notepad.exe");
             assert_eq!(title, "Untitled");
+            assert_eq!(settings.cursor, WindowsCaptureCursor::Hide);
+            assert_eq!(settings.border, WindowsCaptureBorder::Hide);
+            assert_eq!(
+                settings.secondary_windows,
+                WindowsCaptureSecondaryWindows::Include
+            );
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -764,12 +774,16 @@ mod tests {
                 panic!("expected Unknown config")
             };
             assert_eq!(v.get("hwnd"), Some(&serde_json::json!(4242)));
+            assert_eq!(v["settings"]["cursor"], serde_json::json!("hide"));
             assert_eq!(parsed.protocol, Protocol::Unknown("WindowsCapture".to_string()));
         }
         let saved = serde_json::to_value(&parsed).unwrap();
         assert_eq!(saved["config"]["kind"], "window");
         assert_eq!(saved["config"]["hwnd"], 4242);
         assert_eq!(saved["config"]["title"], "Untitled");
+        assert_eq!(saved["config"]["settings"]["cursor"], "hide");
+        assert_eq!(saved["config"]["settings"]["border"], "hide");
+        assert_eq!(saved["config"]["settings"]["secondary_windows"], "include");
         assert!(saved["config"].get("device_name").is_none());
     }
 

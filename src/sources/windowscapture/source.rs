@@ -7,7 +7,7 @@ use windows_capture::capture::{
     CaptureControl, Context, GraphicsCaptureApiError, GraphicsCaptureApiHandler,
 };
 use windows_capture::frame::Frame as WgcFrame;
-use windows_capture::graphics_capture_api::InternalCaptureControl;
+use windows_capture::graphics_capture_api::{Error as CaptureApiError, InternalCaptureControl};
 use windows_capture::monitor::Monitor;
 use windows_capture::settings::{
     ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
@@ -19,19 +19,117 @@ use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceSta
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
-/// Capture target, tagged on the wire as `kind`; older flat configs do not parse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowsCaptureCursor {
+    #[default]
+    Default,
+    Show,
+    Hide,
+}
+
+impl WindowsCaptureCursor {
+    pub fn label(&self) -> &'static str {
+        return match self {
+            Self::Default => "Default",
+            Self::Show => "Show",
+            Self::Hide => "Hide",
+        };
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowsCaptureBorder {
+    #[default]
+    Default,
+    Show,
+    Hide,
+}
+
+impl WindowsCaptureBorder {
+    pub fn label(&self) -> &'static str {
+        return match self {
+            Self::Default => "Default",
+            Self::Show => "Show",
+            Self::Hide => "Hide",
+        };
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowsCaptureSecondaryWindows {
+    #[default]
+    Default,
+    Include,
+    Exclude,
+}
+
+impl WindowsCaptureSecondaryWindows {
+    pub fn label(&self) -> &'static str {
+        return match self {
+            Self::Default => "Default",
+            Self::Include => "Include",
+            Self::Exclude => "Exclude",
+        };
+    }
+}
+
+/// Session tunables applied when the capture starts; changing one restarts the source.
+#[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+pub struct WindowsCaptureSettings {
+    #[serde(default)]
+    pub cursor: WindowsCaptureCursor,
+    #[serde(default)]
+    pub border: WindowsCaptureBorder,
+    #[serde(default)]
+    pub secondary_windows: WindowsCaptureSecondaryWindows,
+}
+
+impl WindowsCaptureSettings {
+    pub fn is_default(&self) -> bool {
+        return self == &Self::default();
+    }
+}
+
+/// Capture target plus session tunables, tagged on the wire as `kind`; older flat configs do not parse.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum WindowsCaptureSourceConfig {
     Display {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         device_name: String,
+        #[serde(default)]
+        settings: WindowsCaptureSettings,
     },
     Window {
         hwnd: u64,
         process_name: String,
         title: String,
+        #[serde(default)]
+        settings: WindowsCaptureSettings,
     },
+}
+
+impl WindowsCaptureSourceConfig {
+    pub fn settings(&self) -> &WindowsCaptureSettings {
+        return match self {
+            Self::Display { settings, .. } => settings,
+            Self::Window { settings, .. } => settings,
+        };
+    }
+
+    pub fn settings_mut(&mut self) -> &mut WindowsCaptureSettings {
+        return match self {
+            Self::Display { settings, .. } => settings,
+            Self::Window { settings, .. } => settings,
+        };
+    }
+
+    pub fn is_window(&self) -> bool {
+        return matches!(self, Self::Window { .. });
+    }
 }
 
 impl Default for WindowsCaptureSourceConfig {
@@ -39,6 +137,7 @@ impl Default for WindowsCaptureSourceConfig {
     fn default() -> Self {
         return Self::Display {
             device_name: String::new(),
+            settings: WindowsCaptureSettings::default(),
         };
     }
 }
@@ -114,7 +213,7 @@ enum CaptureItem {
 
 fn resolve_target(config: &WindowsCaptureSourceConfig) -> Result<CaptureItem, String> {
     return match config {
-        WindowsCaptureSourceConfig::Display { device_name } => {
+        WindowsCaptureSourceConfig::Display { device_name, .. } => {
             let name = device_name.as_str();
             let monitors = Monitor::enumerate()
                 .map_err(|e| format!("could not enumerate monitors: {e}"))?;
@@ -128,6 +227,7 @@ fn resolve_target(config: &WindowsCaptureSourceConfig) -> Result<CaptureItem, St
             hwnd,
             process_name,
             title,
+            ..
         } => {
             let window = Window::from_raw_hwnd((*hwnd as usize) as *mut c_void);
             if window.is_valid() {
@@ -155,26 +255,95 @@ fn resolve_target(config: &WindowsCaptureSourceConfig) -> Result<CaptureItem, St
     };
 }
 
+/// Start capture, retrying with defaults once if the OS build rejects a
+/// requested setting; `None` means the source stays frozen.
 fn start_capture<T>(
+    source_ref: &str,
     item: T,
+    settings: &WindowsCaptureSettings,
+    is_window: bool,
+    slot: Arc<Mutex<Option<Frame>>>,
+    stats: Arc<Mutex<SourceStats>>,
+) -> Option<CaptureControl<CaptureHandler, BoxError>>
+where
+    T: TryInto<GraphicsCaptureItemType> + Send + 'static + Copy,
+{
+    match try_start(item, settings, is_window, slot.clone(), stats.clone()) {
+        Ok(control) => return Some(control),
+        Err(e) if !settings.is_default() && is_unsupported_settings(&e) => {
+            tracing::warn!(
+                source = %source_ref,
+                "Requested Windows Capture settings unsupported on this build ({e}); retrying with defaults"
+            );
+        }
+        Err(e) => {
+            tracing::error!(source = %source_ref, "Failed to start Windows capture: {e}");
+            return None;
+        }
+    }
+    return match try_start(item, &WindowsCaptureSettings::default(), is_window, slot, stats) {
+        Ok(control) => Some(control),
+        Err(e) => {
+            tracing::error!(source = %source_ref, "Failed to start Windows capture with defaults: {e}");
+            None
+        }
+    };
+}
+
+fn try_start<T>(
+    item: T,
+    settings: &WindowsCaptureSettings,
+    is_window: bool,
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
 ) -> Result<CaptureControl<CaptureHandler, BoxError>, GraphicsCaptureApiError<BoxError>>
 where
     T: TryInto<GraphicsCaptureItemType> + Send + 'static,
 {
-    let settings = Settings::new(
+    let cursor = match settings.cursor {
+        WindowsCaptureCursor::Default => CursorCaptureSettings::Default,
+        WindowsCaptureCursor::Show => CursorCaptureSettings::WithCursor,
+        WindowsCaptureCursor::Hide => CursorCaptureSettings::WithoutCursor,
+    };
+    let border = match settings.border {
+        WindowsCaptureBorder::Default => DrawBorderSettings::Default,
+        WindowsCaptureBorder::Show => DrawBorderSettings::WithBorder,
+        WindowsCaptureBorder::Hide => DrawBorderSettings::WithoutBorder,
+    };
+    // Secondary windows only apply to window targets.
+    let secondary = if !is_window {
+        SecondaryWindowSettings::Default
+    } else {
+        match settings.secondary_windows {
+            WindowsCaptureSecondaryWindows::Default => SecondaryWindowSettings::Default,
+            WindowsCaptureSecondaryWindows::Include => SecondaryWindowSettings::Include,
+            WindowsCaptureSecondaryWindows::Exclude => SecondaryWindowSettings::Exclude,
+        }
+    };
+
+    let crate_settings = Settings::new(
         item,
-        CursorCaptureSettings::Default,
-        DrawBorderSettings::Default,
-        SecondaryWindowSettings::Default,
+        cursor,
+        border,
+        secondary,
         MinimumUpdateIntervalSettings::Default,
         DirtyRegionSettings::Default,
         ColorFormat::Bgra8,
         (slot, stats),
     );
 
-    return <CaptureHandler as GraphicsCaptureApiHandler>::start_free_threaded(settings);
+    return <CaptureHandler as GraphicsCaptureApiHandler>::start_free_threaded(crate_settings);
+}
+
+fn is_unsupported_settings(e: &GraphicsCaptureApiError<BoxError>) -> bool {
+    return matches!(
+        e,
+        GraphicsCaptureApiError::GraphicsCaptureApiError(
+            CaptureApiError::CursorConfigUnsupported
+                | CaptureApiError::BorderConfigUnsupported
+                | CaptureApiError::SecondaryWindowsUnsupported
+        )
+    );
 }
 
 /// Active Windows Graphics Capture session.
@@ -189,41 +358,35 @@ impl WindowsCaptureSource {
     pub fn spawn(source_ref: SourceRef, cfg: &WindowsCaptureSourceConfig) -> Self {
         let slot = Arc::new(Mutex::new(None::<Frame>));
         let stats = Arc::new(Mutex::new(SourceStats::new()));
-        let control = Mutex::new(None);
 
-        match resolve_target(cfg) {
-            Ok(CaptureItem::Monitor(monitor)) => {
-                match start_capture(monitor, slot.clone(), stats.clone()) {
-                    Ok(c) => *control.lock().unwrap() = Some(c),
-                    Err(e) => {
-                        tracing::error!(
-                            source = %source_ref,
-                            "Failed to start Windows monitor capture: {e}"
-                        );
-                    }
-                }
-            }
-            Ok(CaptureItem::Window(window)) => {
-                match start_capture(window, slot.clone(), stats.clone()) {
-                    Ok(c) => *control.lock().unwrap() = Some(c),
-                    Err(e) => {
-                        tracing::error!(
-                            source = %source_ref,
-                            "Failed to start Windows window capture: {e}"
-                        );
-                    }
-                }
-            }
+        let control = match resolve_target(cfg) {
+            Ok(CaptureItem::Monitor(monitor)) => start_capture(
+                &source_ref,
+                monitor,
+                cfg.settings(),
+                false,
+                slot.clone(),
+                stats.clone(),
+            ),
+            Ok(CaptureItem::Window(window)) => start_capture(
+                &source_ref,
+                window,
+                cfg.settings(),
+                true,
+                slot.clone(),
+                stats.clone(),
+            ),
             Err(e) => {
                 tracing::error!(source = %source_ref, "Windows Capture target not found: {e}");
+                None
             }
-        }
+        };
 
         return Self {
             source_ref,
             slot,
             stats,
-            control,
+            control: Mutex::new(control),
         };
     }
 }
@@ -231,13 +394,13 @@ impl WindowsCaptureSource {
 impl Drop for WindowsCaptureSource {
     fn drop(&mut self) {
         let control = self.control.get_mut().ok().and_then(|slot| slot.take());
-        if let Some(control) = control {
-            if let Err(e) = control.stop() {
-                tracing::error!(
-                    source = %self.source_ref,
-                    "Failed to stop Windows capture: {e}"
-                );
-            }
+        if let Some(control) = control
+            && let Err(e) = control.stop()
+        {
+            tracing::error!(
+                source = %self.source_ref,
+                "Failed to stop Windows capture: {e}"
+            );
         }
     }
 }

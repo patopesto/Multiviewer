@@ -19,7 +19,10 @@ use crate::sources::DirectShowSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::DirectShowMode;
 #[cfg(target_os = "windows")]
-use crate::sources::WindowsCaptureSourceConfig;
+use crate::sources::{
+    WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows,
+    WindowsCaptureSourceConfig,
+};
 #[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 
@@ -522,7 +525,70 @@ fn directshow_settings_ui(cfg: &mut DirectShowSourceConfig, runtime: &SourceRunt
 }
 
 #[cfg(target_os = "windows")]
-fn windowscapture_settings_ui(_cfg: &mut WindowsCaptureSourceConfig, _ui: &mut egui::Ui) -> bool {
-    // No tunables yet
-    false
+fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egui::Ui) -> bool {
+    let is_window = cfg.is_window();
+    let settings = cfg.settings_mut();
+    let old = settings.clone();
+
+    settings_grid(ui, "windowscapture_settings_grid", |ui| {
+        ui.label("Cursor");
+        settings_value(ui, |ui| {
+            egui::ComboBox::from_id_salt("windowscapture_cursor")
+                .width(ui.available_width())
+                .selected_text(settings.cursor.label())
+                .show_ui(ui, |ui| {
+                    for value in [
+                        WindowsCaptureCursor::Default,
+                        WindowsCaptureCursor::Show,
+                        WindowsCaptureCursor::Hide,
+                    ] {
+                        ui.selectable_value(&mut settings.cursor, value, value.label());
+                    }
+                });
+        });
+        ui.end_row();
+
+        ui.label("Border");
+        settings_value(ui, |ui| {
+            egui::ComboBox::from_id_salt("windowscapture_border")
+                .width(ui.available_width())
+                .selected_text(settings.border.label())
+                .show_ui(ui, |ui| {
+                    for value in [
+                        WindowsCaptureBorder::Default,
+                        WindowsCaptureBorder::Show,
+                        WindowsCaptureBorder::Hide,
+                    ] {
+                        ui.selectable_value(&mut settings.border, value, value.label());
+                    }
+                });
+        });
+        ui.end_row();
+
+        // Secondary windows only apply to a window target.
+        if is_window {
+            ui.label("Secondary Windows");
+            settings_value(ui, |ui| {
+                egui::ComboBox::from_id_salt("windowscapture_secondary_windows")
+                    .width(ui.available_width())
+                    .selected_text(settings.secondary_windows.label())
+                    .show_ui(ui, |ui| {
+                        for value in [
+                            WindowsCaptureSecondaryWindows::Default,
+                            WindowsCaptureSecondaryWindows::Include,
+                            WindowsCaptureSecondaryWindows::Exclude,
+                        ] {
+                            ui.selectable_value(
+                                &mut settings.secondary_windows,
+                                value,
+                                value.label(),
+                            );
+                        }
+                    });
+            });
+            ui.end_row();
+        }
+    });
+
+    return *settings != old;
 }
