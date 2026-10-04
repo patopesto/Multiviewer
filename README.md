@@ -34,6 +34,7 @@
 | **Spout** | ✅ | ✅ | Windows only | GPU-only, zero-copy texture sharing |
 | **AVFoundation** | ✅ | — | macOS only | Webcams and capture devices |
 | **MediaFoundation** | ✅ | — | Windows only | Webcams and capture devices |
+| **DirectShow** | ✅ | — | Windows only | Webcams and WDM capture devices |
 | **macOS Screen Capture** | ✅ | — | macOS only | Display and window screen capture |
 
 ---

@@ -15,6 +15,10 @@ use crate::sources::MediaFoundationSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::MediaFoundationMode;
 #[cfg(target_os = "windows")]
+use crate::sources::DirectShowSourceConfig;
+#[cfg(target_os = "windows")]
+use crate::sources::DirectShowMode;
+#[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
@@ -32,6 +36,8 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         SourceConfig::Spout(cfg) => spout_settings_ui(cfg, ui),
         #[cfg(target_os = "windows")]
         SourceConfig::MediaFoundation(cfg) => mediafoundation_settings_ui(cfg, &source.runtime, ui),
+        #[cfg(target_os = "windows")]
+        SourceConfig::DirectShow(cfg) => directshow_settings_ui(cfg, &source.runtime, ui),
         // Config from a platform that has this protocol; no runtime source.
         SourceConfig::Unknown(_) => false,
     };
@@ -399,4 +405,114 @@ fn mediafoundation_format_label(format: Option<PixelFormat>) -> &'static str {
         Some(PixelFormat::Nv12) => "NV12 4:2:0",
         Some(PixelFormat::Rgba8) => "RGBA8",
     };
+}
+
+/// Display label for a requested DirectShow output format; `None` is Auto (RGB32).
+#[cfg(target_os = "windows")]
+fn directshow_format_label(format: Option<PixelFormat>) -> &'static str {
+    return match format {
+        None => "Auto (device default)",
+        Some(PixelFormat::Bgra8) => "RGB32",
+        Some(PixelFormat::Uyvy422) => "UYVY 4:2:2",
+        Some(PixelFormat::Yuy2) => "YUY2 4:2:2",
+        Some(PixelFormat::Nv12) => "NV12 4:2:0",
+        Some(PixelFormat::Rgba8) => "RGBA8",
+    };
+}
+
+#[cfg(target_os = "windows")]
+fn directshow_settings_ui(cfg: &mut DirectShowSourceConfig, runtime: &SourceRuntimeConfig, ui: &mut egui::Ui) -> bool {
+    // modes are enumerated by the capture thread on open; absent a live source
+    // (or before enumeration finishes) only "Auto" is offered.
+    let modes = match runtime {
+        SourceRuntimeConfig::DirectShow { modes, .. } => modes.lock().unwrap().clone(),
+        _ => Vec::new(),
+    };
+    let mut modes = modes;
+    modes.sort_unstable();
+    modes.dedup();
+
+    let current = if cfg.width > 0 && cfg.height > 0 && cfg.fps_num > 0 && cfg.fps_den > 0 {
+        Some(DirectShowMode {
+            width: cfg.width,
+            height: cfg.height,
+            fps_num: cfg.fps_num,
+            fps_den: cfg.fps_den,
+        })
+    } else {
+        None
+    };
+    let old = (
+        cfg.width,
+        cfg.height,
+        cfg.fps_num,
+        cfg.fps_den,
+        cfg.pixel_format,
+    );
+
+    // Formats the compositor can render, plus Auto (the device default).
+    const PIXEL_FORMATS: [Option<PixelFormat>; 5] = [
+        None,
+        Some(PixelFormat::Bgra8),
+        Some(PixelFormat::Uyvy422),
+        Some(PixelFormat::Yuy2),
+        Some(PixelFormat::Nv12),
+    ];
+
+    settings_grid(ui, "directshow_settings_grid", |ui| {
+        ui.label("Mode");
+        settings_value(ui, |ui| {
+            let text = current
+                .map(|m| m.label())
+                .unwrap_or_else(|| "Auto (device default)".to_string());
+            egui::ComboBox::from_id_salt("directshow_mode")
+                .width(ui.available_width())
+                .height(1000.0)
+                .selected_text(text)
+                .truncate()
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(current.is_none(), "Auto (device default)").clicked() {
+                        cfg.width = 0;
+                        cfg.height = 0;
+                        cfg.fps_num = 0;
+                        cfg.fps_den = 0;
+                    }
+                    for m in &modes {
+                        if ui.selectable_label(current == Some(*m), m.label()).clicked() {
+                            cfg.width = m.width;
+                            cfg.height = m.height;
+                            cfg.fps_num = m.fps_num;
+                            cfg.fps_den = m.fps_den;
+                        }
+                    }
+                    if modes.is_empty() {
+                        ui.weak("(no modes reported)");
+                    }
+                });
+        });
+        ui.end_row();
+
+        ui.label("Pixel Format");
+        settings_value(ui, |ui| {
+            egui::ComboBox::from_id_salt("directshow_pixel_format")
+                .width(ui.available_width())
+                .selected_text(directshow_format_label(cfg.pixel_format))
+                .show_ui(ui, |ui| {
+                    for choice in PIXEL_FORMATS {
+                        if ui.selectable_label(cfg.pixel_format == choice, directshow_format_label(choice)).clicked() {
+                            cfg.pixel_format = choice;
+                        }
+                    }
+                });
+        });
+        ui.end_row();
+    });
+
+    (
+        cfg.width,
+        cfg.height,
+        cfg.fps_num,
+        cfg.fps_den,
+        cfg.pixel_format,
+    ) != old
 }

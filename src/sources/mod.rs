@@ -12,9 +12,11 @@ mod avfoundation;
 #[cfg(target_os = "macos")]
 mod screencapturekit;
 #[cfg(target_os = "windows")]
+mod spout;
+#[cfg(target_os = "windows")]
 mod mediafoundation;
 #[cfg(target_os = "windows")]
-mod spout;
+mod directshow;
 
 pub use common::{Protocol, PixelFormat, Frame, CpuFrame};
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -53,3 +55,7 @@ pub use spout::Discovery as SpoutDiscovery;
 pub use mediafoundation::{MediaFoundationSourceConfig, MediaFoundationMode};
 #[cfg(target_os = "windows")]
 pub use mediafoundation::Discovery as MediaFoundationDiscovery;
+#[cfg(target_os = "windows")]
+pub use directshow::{DirectShowSourceConfig, DirectShowMode};
+#[cfg(target_os = "windows")]
+pub use directshow::Discovery as DirectShowDiscovery;

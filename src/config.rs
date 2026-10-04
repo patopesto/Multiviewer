@@ -548,6 +548,49 @@ mod tests {
         assert_eq!(saved["config"]["pixel_format"], "Bgra8");
     }
 
+    /// A Windows-authored DirectShow source (device-specific config) must
+    /// survive load + save on a platform that has no DirectShow.
+    #[test]
+    fn directshow_source_round_trips_on_unavailable_platform() {
+        let json = r#"{
+            "uuid":"u1","name":"DeckLink","protocol":"DirectShow",
+            "source_ref":"\\\\?\\usb#vid_1edb&pid_bd3f","x":10.0,"y":20.0,
+            "width":1920,"height":1080,"z":3,"mode":"Fit",
+            "config":{"protocol":"DirectShow","device_id":"\\\\?\\usb#vid_1edb&pid_bd3f","pixel_format":"Yuy2"}
+        }"#;
+        let parsed: Source = serde_json::from_str(json).unwrap();
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(parsed.protocol, Protocol::DirectShow);
+            let SourceConfig::DirectShow(c) = &parsed.config else {
+                panic!("expected DirectShow config")
+            };
+            assert_eq!(c.device_id, r"\\?\usb#vid_1edb&pid_bd3f");
+            assert_eq!(c.pixel_format, Some(PixelFormat::Yuy2));
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            assert_eq!(parsed.protocol, Protocol::Unknown("DirectShow".to_string()));
+            assert_eq!(parsed.protocol.label(), "DirectShow (Unavailable)");
+            let SourceConfig::Unknown(v) = &parsed.config else {
+                panic!("expected Unknown config")
+            };
+            assert_eq!(
+                v.get("device_id"),
+                Some(&serde_json::json!(r"\\?\usb#vid_1edb&pid_bd3f"))
+            );
+            assert_eq!(v.get("pixel_format"), Some(&serde_json::json!("Yuy2")));
+        }
+        assert_eq!(parsed.name, "DeckLink");
+
+        let saved = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(saved["protocol"], "DirectShow");
+        assert_eq!(
+            saved["config"]["device_id"],
+            r"\\?\usb#vid_1edb&pid_bd3f"
+        );
+    }
+
     /// A macOS-authored ScreenCaptureKit source must survive load + save on a platform without it.
     #[test]
     fn screencapturekit_source_round_trips_on_unavailable_platform() {

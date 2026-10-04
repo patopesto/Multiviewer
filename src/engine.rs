@@ -32,6 +32,10 @@ use crate::sources::SpoutSourceConfig;
 use crate::sources::MediaFoundationDiscovery;
 #[cfg(target_os = "windows")]
 use crate::sources::MediaFoundationSourceConfig;
+#[cfg(target_os = "windows")]
+use crate::sources::DirectShowDiscovery;
+#[cfg(target_os = "windows")]
+use crate::sources::DirectShowSourceConfig;
 
 pub const MIN_ZOOM: f32 = 0.1;
 pub const MAX_ZOOM: f32 = 20.0;
@@ -148,6 +152,8 @@ pub struct Engine {
     pub spout: Option<SpoutDiscovery>,
     #[cfg(target_os = "windows")]
     pub mediafoundation: Option<MediaFoundationDiscovery>,
+    #[cfg(target_os = "windows")]
+    pub directshow: Option<DirectShowDiscovery>,
     comp: Option<Compositor>,
     device: Option<Arc<wgpu::Device>>,
     queue: Option<Arc<wgpu::Queue>>,
@@ -196,6 +202,10 @@ impl Engine {
         #[cfg(target_os = "windows")]
         let mediafoundation = Some(MediaFoundationDiscovery::start());
 
+        // Start DirectShow device discovery on Windows
+        #[cfg(target_os = "windows")]
+        let directshow = Some(DirectShowDiscovery::start());
+
         let mut engine = Self {
             cfg,
             registry,
@@ -212,6 +222,8 @@ impl Engine {
             spout,
             #[cfg(target_os = "windows")]
             mediafoundation,
+            #[cfg(target_os = "windows")]
+            directshow,
             comp: None,
             device: None,
             queue: None,
@@ -562,6 +574,32 @@ impl Engine {
             }
         }
 
+        // Auto-connect pending DirectShow sources on Windows
+        #[cfg(target_os = "windows")]
+        {
+            if let Some(ref discovery) = self.directshow {
+                let discovered = discovery.list();
+                for source in &self.cfg.canvas.sources {
+                    if source.protocol == Protocol::DirectShow
+                        && let Some(ref source_ref) = source.source_ref
+                    {
+                        let key = SourceKey::new(Protocol::DirectShow, source_ref.clone());
+                        if !self.registry.contains(&key)
+                            && let Some(device) = discovered.iter().find(|d| &d.id == source_ref)
+                        {
+                            let mut config = match &source.config {
+                                SourceConfig::DirectShow(c) => c.clone(),
+                                _ => DirectShowSourceConfig::default(),
+                            };
+                            config.device_id = device.id.clone();
+                            self.registry.add_directshow(key, config, device.name.clone());
+                            self.dirty = true;
+                        }
+                    }
+                }
+            }
+        }
+
         self.registry.apply_pending_restarts();
     }
 
@@ -823,6 +861,23 @@ impl Engine {
                     .unwrap_or_else(|| name.to_string());
                 let label = device.map(|d| d.name).unwrap_or_else(|| name.to_string());
                 self.registry.add_mediafoundation(key, config, label);
+            }
+            #[cfg(target_os = "windows")]
+            Protocol::DirectShow => {
+                let device = self
+                    .directshow
+                    .as_ref()
+                    .and_then(|d| d.find_by_id(name));
+                let mut config = match self.layer_config(&Protocol::DirectShow, name) {
+                    Some(SourceConfig::DirectShow(c)) => c.clone(),
+                    _ => DirectShowSourceConfig::default(),
+                };
+                config.device_id = device
+                    .as_ref()
+                    .map(|d| d.id.clone())
+                    .unwrap_or_else(|| name.to_string());
+                let label = device.map(|d| d.name).unwrap_or_else(|| name.to_string());
+                self.registry.add_directshow(key, config, label);
             }
             // Unavailable protocols have no runtime source to connect.
             Protocol::Unknown(_) => {}
@@ -1438,6 +1493,8 @@ mod tests {
             spout: None,
             #[cfg(target_os = "windows")]
             mediafoundation: None,
+            #[cfg(target_os = "windows")]
+            directshow: None,
             comp: None,
             device: None,
             queue: None,

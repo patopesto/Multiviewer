@@ -20,6 +20,8 @@ use super::screencapturekit;
 use super::spout;
 #[cfg(target_os = "windows")]
 use super::mediafoundation;
+#[cfg(target_os = "windows")]
+use super::directshow;
 
 pub type SourceRef = String;
 
@@ -63,6 +65,8 @@ pub enum SourceConfig {
     Spout(spout::SpoutSourceConfig),
     #[cfg(target_os = "windows")]
     MediaFoundation(mediafoundation::MediaFoundationSourceConfig),
+    #[cfg(target_os = "windows")]
+    DirectShow(directshow::DirectShowSourceConfig),
     Unknown(serde_json::Value),
 }
 
@@ -90,6 +94,8 @@ enum SourceConfigInner {
     Spout(spout::SpoutSourceConfig),
     #[cfg(target_os = "windows")]
     MediaFoundation(mediafoundation::MediaFoundationSourceConfig),
+    #[cfg(target_os = "windows")]
+    DirectShow(directshow::DirectShowSourceConfig),
 }
 
 impl From<SourceConfigInner> for SourceConfig {
@@ -108,6 +114,8 @@ impl From<SourceConfigInner> for SourceConfig {
             SourceConfigInner::Spout(c) => SourceConfig::Spout(c),
             #[cfg(target_os = "windows")]
             SourceConfigInner::MediaFoundation(c) => SourceConfig::MediaFoundation(c),
+            #[cfg(target_os = "windows")]
+            SourceConfigInner::DirectShow(c) => SourceConfig::DirectShow(c),
         }
     }
 }
@@ -133,6 +141,8 @@ impl Serialize for SourceConfig {
             SourceConfig::Spout(c) => SourceConfigInner::Spout(c.clone()).serialize(serializer),
             #[cfg(target_os = "windows")]
             SourceConfig::MediaFoundation(c) => SourceConfigInner::MediaFoundation(c.clone()).serialize(serializer),
+            #[cfg(target_os = "windows")]
+            SourceConfig::DirectShow(c) => SourceConfigInner::DirectShow(c.clone()).serialize(serializer),
         }
     }
 }
@@ -170,6 +180,8 @@ impl SourceConfig {
             Protocol::Spout => SourceConfig::Spout(spout::SpoutSourceConfig::default()),
             #[cfg(target_os = "windows")]
             Protocol::MediaFoundation => SourceConfig::MediaFoundation(mediafoundation::MediaFoundationSourceConfig::default()),
+            #[cfg(target_os = "windows")]
+            Protocol::DirectShow => SourceConfig::DirectShow(directshow::DirectShowSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
         }
     }
@@ -213,8 +225,12 @@ pub enum SourceRuntimeConfig {
     #[cfg(target_os = "windows")]
     MediaFoundation {
         label: String,
-        /// Modes the device advertises; filled by the capture thread on open.
         modes: Arc<Mutex<Vec<mediafoundation::MediaFoundationMode>>>,
+    },
+    #[cfg(target_os = "windows")]
+    DirectShow {
+        label: String,
+        modes: Arc<Mutex<Vec<directshow::DirectShowMode>>>,
     },
 }
 
@@ -259,6 +275,10 @@ impl SourceKind {
             (SourceConfig::MediaFoundation(c), SourceRuntimeConfig::MediaFoundation { modes, .. }) => {
                 Box::new(mediafoundation::MediaFoundationSource::spawn(key.source_ref.clone(), c, modes.clone()))
             }
+            #[cfg(target_os = "windows")]
+            (SourceConfig::DirectShow(c), SourceRuntimeConfig::DirectShow { modes, .. }) => {
+                Box::new(directshow::DirectShowSource::spawn(key.source_ref.clone(), c, modes.clone()))
+            }
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
             _ => unreachable!("source config paired with a foreign runtime config"),
@@ -299,6 +319,9 @@ impl SourceKind {
         #[cfg(target_os = "windows")]
         {
             if let SourceRuntimeConfig::MediaFoundation { label, .. } = &self.runtime {
+                return label.clone();
+            }
+            if let SourceRuntimeConfig::DirectShow { label, .. } = &self.runtime {
                 return label.clone();
             }
         }
@@ -643,6 +666,24 @@ impl SourceRegistry {
             &key,
             SourceConfig::MediaFoundation(config),
             SourceRuntimeConfig::MediaFoundation {
+                label,
+                modes: Arc::new(Mutex::new(Vec::new())),
+            },
+        );
+        self.sources.insert(key.clone(), kind);
+        return key;
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn add_directshow(&mut self, key: SourceKey, config: directshow::DirectShowSourceConfig, label: String) -> SourceKey {
+        if self.contains(&key) {
+            return key;
+        }
+        tracing::debug!(source_ref = %key.source_ref, label = %label, "add_directshow");
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::DirectShow(config),
+            SourceRuntimeConfig::DirectShow {
                 label,
                 modes: Arc::new(Mutex::new(Vec::new())),
             },

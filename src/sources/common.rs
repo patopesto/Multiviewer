@@ -16,6 +16,8 @@ pub enum Protocol {
     Spout,
     #[cfg(target_os = "windows")]
     MediaFoundation,
+    #[cfg(target_os = "windows")]
+    DirectShow,
     /// A protocol that is not available on this platform. Holds the original
     /// protocol name as serialized in the project file so it round-trips
     /// unchanged when the project is opened on a platform that supports it.
@@ -40,6 +42,8 @@ impl Protocol {
             Protocol::Spout => "Spout",
             #[cfg(target_os = "windows")]
             Protocol::MediaFoundation => "MediaFoundation",
+            #[cfg(target_os = "windows")]
+            Protocol::DirectShow => "DirectShow",
             Protocol::Unknown(name) => name,
         }
     }
@@ -59,6 +63,8 @@ impl Protocol {
             Protocol::Spout => "Spout".to_string(),
             #[cfg(target_os = "windows")]
             Protocol::MediaFoundation => "MediaFoundation".to_string(),
+            #[cfg(target_os = "windows")]
+            Protocol::DirectShow => "DirectShow (WDM)".to_string(),
             Protocol::Unknown(name) => format!("{name} (Unavailable)"),
         }
     }
@@ -84,9 +90,11 @@ impl<'de> Deserialize<'de> for Protocol {
             #[cfg(target_os = "macos")]
             "ScreenCaptureKit" => Protocol::ScreenCaptureKit,
             #[cfg(target_os = "windows")]
+            "Spout" => Protocol::Spout,
+            #[cfg(target_os = "windows")]
             "MediaFoundation" => Protocol::MediaFoundation,
             #[cfg(target_os = "windows")]
-            "Spout" => Protocol::Spout,
+            "DirectShow" => Protocol::DirectShow,
             other => Protocol::Unknown(other.to_string()),
         })
     }
