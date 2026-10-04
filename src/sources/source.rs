@@ -3,15 +3,15 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
-#[cfg(target_os = "macos")]
-use syphon_core::ServerInfo as SyphonServerInfo;
 
-use super::{Protocol, Frame};
+use super::{Protocol, Frame, NdiSourceInfo};
 use super::decklink;
 use super::ndi;
 use super::test;
 #[cfg(target_os = "macos")]
 use super::syphon;
+#[cfg(target_os = "macos")]
+use super::SyphonServerInfo;
 #[cfg(target_os = "macos")]
 use super::avfoundation;
 #[cfg(target_os = "macos")]
@@ -217,10 +217,10 @@ pub struct ConvUniform {
 pub enum SourceRuntimeConfig {
     Test,
     Ndi {
-        discovered: grafton_ndi::Source
+        discovered: NdiSourceInfo
     },
     Decklink {
-        supported_connections: decklink::VideoConnections
+        supported_connections: decklink::DecklinkVideoConnections
     },
     #[cfg(target_os = "macos")]
     Syphon {
@@ -601,7 +601,7 @@ impl SourceRegistry {
         return self.add(key, kind);
     }
 
-    pub fn add_ndi(&mut self, key: SourceKey, config: ndi::NdiSourceConfig, discovered: grafton_ndi::Source) -> SourceKey {
+    pub fn add_ndi(&mut self, key: SourceKey, config: ndi::NdiSourceConfig, discovered: NdiSourceInfo) -> SourceKey {
         if self.contains(&key) {
             return key;
         }
@@ -614,7 +614,7 @@ impl SourceRegistry {
         return key;
     }
 
-    pub fn add_decklink(&mut self, key: SourceKey, config: decklink::DecklinkSourceConfig, supported_connections: decklink::VideoConnections) -> SourceKey {
+    pub fn add_decklink(&mut self, key: SourceKey, config: decklink::DecklinkSourceConfig, supported_connections: decklink::DecklinkVideoConnections) -> SourceKey {
         if self.contains(&key) {
             return key;
         }

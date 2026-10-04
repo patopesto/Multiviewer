@@ -4,9 +4,8 @@ use crate::APP_NAME;
 use crate::ui::source_settings;
 use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::engine::Engine;
-use crate::sources::DisplayMode;
 use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceStats, OutputConfig};
-use crate::sources::{DecklinkOutputConfig, NdiOutputConfig};
+use crate::sources::{DecklinkOutputConfig, NdiOutputConfig, DecklinkMode};
 #[cfg(target_os = "macos")]
 use crate::sources::format_syphon_label;
 #[cfg(target_os = "macos")]
@@ -320,7 +319,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
 
                 let (current_device, current_mode) = match &engine.cfg.canvas.outputs[idx].config {
                     OutputConfig::Decklink(c) => (c.device_name.clone(), c.display_mode),
-                    _ => (String::new(), DisplayMode::Hd1080p6000),
+                    _ => (String::new(), DecklinkMode::Hd1080p6000),
                 };
 
                 ui.label("Decklink Device");

@@ -21,14 +21,14 @@ type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum WindowsCaptureCursor {
+pub enum CaptureCursor {
     #[default]
     Default,
     Show,
     Hide,
 }
 
-impl WindowsCaptureCursor {
+impl CaptureCursor {
     pub fn label(&self) -> &'static str {
         return match self {
             Self::Default => "Default",
@@ -40,14 +40,14 @@ impl WindowsCaptureCursor {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum WindowsCaptureBorder {
+pub enum CaptureBorder {
     #[default]
     Default,
     Show,
     Hide,
 }
 
-impl WindowsCaptureBorder {
+impl CaptureBorder {
     pub fn label(&self) -> &'static str {
         return match self {
             Self::Default => "Default",
@@ -59,14 +59,14 @@ impl WindowsCaptureBorder {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
-pub enum WindowsCaptureSecondaryWindows {
+pub enum CaptureSecondaryWindows {
     #[default]
     Default,
     Include,
     Exclude,
 }
 
-impl WindowsCaptureSecondaryWindows {
+impl CaptureSecondaryWindows {
     pub fn label(&self) -> &'static str {
         return match self {
             Self::Default => "Default",
@@ -80,11 +80,11 @@ impl WindowsCaptureSecondaryWindows {
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct WindowsCaptureSettings {
     #[serde(default)]
-    pub cursor: WindowsCaptureCursor,
+    pub cursor: CaptureCursor,
     #[serde(default)]
-    pub border: WindowsCaptureBorder,
+    pub border: CaptureBorder,
     #[serde(default)]
-    pub secondary_windows: WindowsCaptureSecondaryWindows,
+    pub secondary_windows: CaptureSecondaryWindows,
 }
 
 impl WindowsCaptureSettings {
@@ -301,23 +301,23 @@ where
     T: TryInto<GraphicsCaptureItemType> + Send + 'static,
 {
     let cursor = match settings.cursor {
-        WindowsCaptureCursor::Default => CursorCaptureSettings::Default,
-        WindowsCaptureCursor::Show => CursorCaptureSettings::WithCursor,
-        WindowsCaptureCursor::Hide => CursorCaptureSettings::WithoutCursor,
+        CaptureCursor::Default => CursorCaptureSettings::Default,
+        CaptureCursor::Show => CursorCaptureSettings::WithCursor,
+        CaptureCursor::Hide => CursorCaptureSettings::WithoutCursor,
     };
     let border = match settings.border {
-        WindowsCaptureBorder::Default => DrawBorderSettings::Default,
-        WindowsCaptureBorder::Show => DrawBorderSettings::WithBorder,
-        WindowsCaptureBorder::Hide => DrawBorderSettings::WithoutBorder,
+        CaptureBorder::Default => DrawBorderSettings::Default,
+        CaptureBorder::Show => DrawBorderSettings::WithBorder,
+        CaptureBorder::Hide => DrawBorderSettings::WithoutBorder,
     };
     // Secondary windows only apply to window targets.
     let secondary = if !is_window {
         SecondaryWindowSettings::Default
     } else {
         match settings.secondary_windows {
-            WindowsCaptureSecondaryWindows::Default => SecondaryWindowSettings::Default,
-            WindowsCaptureSecondaryWindows::Include => SecondaryWindowSettings::Include,
-            WindowsCaptureSecondaryWindows::Exclude => SecondaryWindowSettings::Exclude,
+            CaptureSecondaryWindows::Default => SecondaryWindowSettings::Default,
+            CaptureSecondaryWindows::Include => SecondaryWindowSettings::Include,
+            CaptureSecondaryWindows::Exclude => SecondaryWindowSettings::Exclude,
         }
     };
 

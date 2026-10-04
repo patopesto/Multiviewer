@@ -1,6 +1,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use syphon_core::{ServerInfo, SyphonServerDirectory};
+use syphon_core::SyphonServerDirectory;
+
+use super::SyphonServerInfo;
 
 /// UI label for a discovered server: `"<app> - <name>"`.
 pub fn format_syphon_label(app_name: &str, name: &str) -> String {
@@ -15,7 +17,7 @@ pub fn format_syphon_label(app_name: &str, name: &str) -> String {
 
 /// Background Syphon server discovery.
 pub struct Discovery {
-    servers: Arc<Mutex<Vec<ServerInfo>>>,
+    servers: Arc<Mutex<Vec<SyphonServerInfo>>>,
 }
 
 impl Discovery {
@@ -35,11 +37,11 @@ impl Discovery {
         Self { servers }
     }
 
-    pub fn list(&self) -> Vec<ServerInfo> {
+    pub fn list(&self) -> Vec<SyphonServerInfo> {
         self.servers.lock().unwrap().clone()
     }
 
-    pub fn find_by_display_name(&self, name: &str) -> Option<ServerInfo> {
+    pub fn find_by_display_name(&self, name: &str) -> Option<SyphonServerInfo> {
         SyphonServerDirectory::servers()
             .into_iter()
             .find(|s| s.display_name() == name)

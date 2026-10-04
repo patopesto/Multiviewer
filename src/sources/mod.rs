@@ -21,7 +21,6 @@ mod directshow;
 mod windowscapture;
 
 pub use common::{Protocol, PixelFormat, Frame, CpuFrame, GpuFrame};
-
 pub use source::{
     SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
     SourceStats, SourceRegistry, VideoSource, ConvUniform, FramePool,
@@ -29,37 +28,27 @@ pub use source::{
 pub use output::{OutputConfig, OutputRegistry};
 
 pub use test::{TestSourceConfig, TestPattern, RadarDirection};
-pub use ndi::{NdiSourceConfig, NdiOutputConfig};
-pub use ndi::Discovery as NdiDiscovery;
-pub use decklink::{DecklinkSourceConfig, DecklinkOutputConfig, VideoConnection, VideoConnections, DisplayMode};
-pub use decklink::Discovery as DecklinkDiscovery;
+pub use ndi::{NdiDiscovery, NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, NdiReceiverColorFormat, NdiSourceInfo};
+pub use decklink::{
+    DecklinkDiscovery, DecklinkSourceConfig, DecklinkOutputConfig,
+    DecklinkVideoConnection, DecklinkVideoConnections, DecklinkMode,
+};
 
 #[cfg(target_os = "macos")]
-pub use syphon::{SyphonSourceConfig, SyphonOutputConfig, format_syphon_label};
+pub use syphon::{SyphonDiscovery, SyphonSourceConfig, SyphonOutputConfig, format_syphon_label, SyphonServerInfo};
 #[cfg(target_os = "macos")]
-pub use syphon::Discovery as SyphonDiscovery;
+pub use avfoundation::{AvFoundationDiscovery, AvFoundationSourceConfig};
 #[cfg(target_os = "macos")]
-pub use avfoundation::AvFoundationSourceConfig;
-#[cfg(target_os = "macos")]
-pub use avfoundation::Discovery as AvFoundationDiscovery;
-#[cfg(target_os = "macos")]
-pub use screencapturekit::{ScreenCaptureKitSourceConfig, ensure_screen_capture_access_requested};
-#[cfg(target_os = "macos")]
-pub use screencapturekit::Discovery as ScreenCaptureKitDiscovery;
+pub use screencapturekit::{ScreenCaptureKitDiscovery, ScreenCaptureKitSourceConfig, ensure_screen_capture_access_requested};
 
 #[cfg(target_os = "windows")]
-pub use spout::{SpoutSourceConfig, SpoutOutputConfig};
+pub use spout::{SpoutDiscovery, SpoutSourceConfig, SpoutOutputConfig};
 #[cfg(target_os = "windows")]
-pub use spout::Discovery as SpoutDiscovery;
+pub use mediafoundation::{MediaFoundationDiscovery, MediaFoundationSourceConfig, MediaFoundationMode};
 #[cfg(target_os = "windows")]
-pub use mediafoundation::{MediaFoundationSourceConfig, MediaFoundationMode};
+pub use directshow::{DirectShowDiscovery, DirectShowSourceConfig, DirectShowMode};
 #[cfg(target_os = "windows")]
-pub use mediafoundation::Discovery as MediaFoundationDiscovery;
-#[cfg(target_os = "windows")]
-pub use directshow::{DirectShowSourceConfig, DirectShowMode};
-#[cfg(target_os = "windows")]
-pub use directshow::Discovery as DirectShowDiscovery;
-#[cfg(target_os = "windows")]
-pub use windowscapture::{WindowsCaptureSourceConfig, WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows};
-#[cfg(target_os = "windows")]
-pub use windowscapture::Discovery as WindowsCaptureDiscovery;
+pub use windowscapture::{
+    WindowsCaptureDiscovery, WindowsCaptureSourceConfig,
+    WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows,
+};

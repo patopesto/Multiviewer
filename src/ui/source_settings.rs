@@ -1,7 +1,10 @@
 use crate::ui::side_panel::{settings_grid, settings_value};
 use crate::sources::{SourceKind, SourceRuntimeConfig, SourceConfig};
-use crate::sources::{TestPattern, RadarDirection, VideoConnection, VideoConnections};
-use crate::sources::{DecklinkSourceConfig, NdiSourceConfig, TestSourceConfig};
+use crate::sources::{TestSourceConfig, TestPattern, RadarDirection};
+use crate::sources::{NdiSourceConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
+use crate::sources::{DecklinkSourceConfig, DecklinkVideoConnection, DecklinkVideoConnections};
+#[cfg(target_os = "windows")]
+use crate::sources::PixelFormat;
 #[cfg(target_os = "macos")]
 use crate::sources::SyphonSourceConfig;
 #[cfg(target_os = "macos")]
@@ -11,20 +14,14 @@ use crate::sources::ScreenCaptureKitSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::SpoutSourceConfig;
 #[cfg(target_os = "windows")]
-use crate::sources::MediaFoundationSourceConfig;
+use crate::sources::{MediaFoundationSourceConfig, MediaFoundationMode};
 #[cfg(target_os = "windows")]
-use crate::sources::MediaFoundationMode;
-#[cfg(target_os = "windows")]
-use crate::sources::DirectShowSourceConfig;
-#[cfg(target_os = "windows")]
-use crate::sources::DirectShowMode;
+use crate::sources::{DirectShowSourceConfig, DirectShowMode};
 #[cfg(target_os = "windows")]
 use crate::sources::{
     WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows,
     WindowsCaptureSourceConfig,
 };
-#[cfg(target_os = "windows")]
-use crate::sources::PixelFormat;
 
 pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
     return match &mut source.config {
@@ -193,14 +190,14 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
     cfg.width != old_w || cfg.height != old_h || cfg.pattern != old_pattern || cfg.cursor != old_cursor
 }
 
-fn ndi_format_label(cf: grafton_ndi::ReceiverColorFormat) -> String {
+fn ndi_format_label(cf: NdiReceiverColorFormat) -> String {
     match cf {
-        grafton_ndi::ReceiverColorFormat::BGRX_BGRA => "BGRX/BGRA".to_string(),
-        grafton_ndi::ReceiverColorFormat::UYVY_BGRA => "UYVY/BGRA".to_string(),
-        grafton_ndi::ReceiverColorFormat::RGBX_RGBA => "RGBX/RGBA".to_string(),
-        grafton_ndi::ReceiverColorFormat::UYVY_RGBA => "UYVY/RGBA".to_string(),
-        grafton_ndi::ReceiverColorFormat::Fastest => "Fastest".to_string(),
-        grafton_ndi::ReceiverColorFormat::Best => "Best".to_string(),
+        NdiReceiverColorFormat::BGRX_BGRA => "BGRX/BGRA".to_string(),
+        NdiReceiverColorFormat::UYVY_BGRA => "UYVY/BGRA".to_string(),
+        NdiReceiverColorFormat::RGBX_RGBA => "RGBX/RGBA".to_string(),
+        NdiReceiverColorFormat::UYVY_RGBA => "UYVY/RGBA".to_string(),
+        NdiReceiverColorFormat::Fastest => "Fastest".to_string(),
+        NdiReceiverColorFormat::Best => "Best".to_string(),
         _ => format!("{:?}", cf),
     }
 }
@@ -215,8 +212,8 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
                 .width(ui.available_width())
                 .selected_text(format!("{:?}", cfg.bandwidth))
                 .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut cfg.bandwidth, grafton_ndi::ReceiverBandwidth::Highest, "Highest");
-                    ui.selectable_value(&mut cfg.bandwidth, grafton_ndi::ReceiverBandwidth::Lowest, "Lowest");
+                    ui.selectable_value(&mut cfg.bandwidth, NdiReceiverBandwidth::Highest, "Highest");
+                    ui.selectable_value(&mut cfg.bandwidth, NdiReceiverBandwidth::Lowest, "Lowest");
                 });
         });
         ui.end_row();
@@ -228,12 +225,12 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
                 .selected_text(ndi_format_label(cfg.color_format))
                 .show_ui(ui, |ui| {
                     for variant in [
-                        grafton_ndi::ReceiverColorFormat::BGRX_BGRA,
-                        grafton_ndi::ReceiverColorFormat::UYVY_BGRA,
-                        grafton_ndi::ReceiverColorFormat::RGBX_RGBA,
-                        grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
-                        // grafton_ndi::ReceiverColorFormat::Fastest, // TODO: support UYVY+A format
-                        // grafton_ndi::ReceiverColorFormat::Best,    // TODO: support PA16 and P216 formats
+                        NdiReceiverColorFormat::BGRX_BGRA,
+                        NdiReceiverColorFormat::UYVY_BGRA,
+                        NdiReceiverColorFormat::RGBX_RGBA,
+                        NdiReceiverColorFormat::UYVY_RGBA,
+                        // NdiReceiverColorFormat::Fastest, // TODO: support UYVY+A format
+                        // NdiReceiverColorFormat::Best,    // TODO: support PA16 and P216 formats
                     ] {
                         ui.selectable_value(&mut cfg.color_format, variant, ndi_format_label(variant));
                     }
@@ -254,11 +251,11 @@ fn decklink_settings_ui(
     // in the persisted config; absent a live source, offer every connection.
     let supported = match runtime {
         SourceRuntimeConfig::Decklink { supported_connections } => *supported_connections,
-        _ => VideoConnections::EMPTY,
+        _ => DecklinkVideoConnections::EMPTY,
     };
 
-    let available: Vec<VideoConnection> = if supported.is_empty() {
-        VideoConnection::ALL.to_vec()
+    let available: Vec<DecklinkVideoConnection> = if supported.is_empty() {
+        DecklinkVideoConnection::ALL.to_vec()
     } else {
         supported.iter().collect()
     };

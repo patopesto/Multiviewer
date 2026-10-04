@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 
+use super::SyphonServerInfo;
 use super::super::{ConvUniform, Frame, GpuFrame, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -10,7 +11,7 @@ pub struct SyphonSourceConfig {}
 /// GPU-only Syphon receiver.
 pub struct SyphonSource {
     source_ref: SourceRef,
-    info: syphon_core::ServerInfo,
+    info: SyphonServerInfo,
     input: Mutex<Option<syphon_wgpu::SyphonWgpuInput>>,
     layout: Mutex<Option<Arc<wgpu::BindGroupLayout>>>,
     sampler: Mutex<Option<Arc<wgpu::Sampler>>>,
@@ -21,7 +22,7 @@ pub struct SyphonSource {
 }
 
 impl SyphonSource {
-    pub fn spawn(source_ref: SourceRef, info: syphon_core::ServerInfo) -> Self {
+    pub fn spawn(source_ref: SourceRef, info: SyphonServerInfo) -> Self {
         Self {
             source_ref,
             info,

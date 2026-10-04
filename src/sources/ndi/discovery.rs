@@ -2,9 +2,11 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use grafton_ndi::{NDI, Finder, FinderOptions};
 
+use super::NdiSourceInfo;
+
 /// Background NDI discovery thread.
 pub struct Discovery {
-    sources: Arc<Mutex<Vec<grafton_ndi::Source>>>,
+    sources: Arc<Mutex<Vec<NdiSourceInfo>>>,
 }
 
 impl Discovery {
@@ -46,12 +48,12 @@ impl Discovery {
         Self { sources }
     }
 
-    pub fn list(&self) -> Vec<grafton_ndi::Source> {
+    pub fn list(&self) -> Vec<NdiSourceInfo> {
         self.sources.lock().unwrap().clone()
     }
 
     #[allow(dead_code)]
-    pub fn find_by_name(&self, name: &str) -> Option<grafton_ndi::Source> {
+    pub fn find_by_name(&self, name: &str) -> Option<NdiSourceInfo> {
         self.sources
             .lock()
             .unwrap()

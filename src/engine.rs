@@ -1544,7 +1544,7 @@ impl Engine {
 mod tests {
     use super::*;
     use crate::config::{Canvas, Output};
-    use crate::sources::{NdiOutputConfig, NdiSourceConfig, VideoConnection};
+    use crate::sources::{NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection, NdiReceiverBandwidth, NdiReceiverColorFormat};
 
     fn test_engine(canvas: Canvas) -> Engine {
         Engine {
@@ -2191,10 +2191,10 @@ mod tests {
         };
         let ndi = |bw| SourceConfig::Ndi(NdiSourceConfig {
             bandwidth: bw,
-            color_format: grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
+            color_format: NdiReceiverColorFormat::UYVY_RGBA,
         });
-        let highest = grafton_ndi::ReceiverBandwidth::Highest;
-        let lowest = grafton_ndi::ReceiverBandwidth::Lowest;
+        let highest = NdiReceiverBandwidth::Highest;
+        let lowest = NdiReceiverBandwidth::Lowest;
 
         let mut quad_a = Source::new(
             "Quad A".into(), Protocol::Ndi, Some("Cam (1)".into()),
@@ -2216,7 +2216,7 @@ mod tests {
             960.0, 540.0, 960, 540, 3, TextureMode::Fit, false, false,
         );
         quad_d.config = SourceConfig::Decklink(DecklinkSourceConfig {
-            connection: VideoConnection::Hdmi,
+            connection: DecklinkVideoConnection::Hdmi,
         });
         canvas.sources.extend([quad_a, quad_b, quad_c, quad_d]);
         let mut engine = test_engine(canvas);
@@ -2242,7 +2242,7 @@ mod tests {
         let SourceConfig::Decklink(cd) = &d.config else {
             panic!("expected Decklink config")
         };
-        assert_eq!(cd.connection, VideoConnection::Hdmi);
+        assert_eq!(cd.connection, DecklinkVideoConnection::Hdmi);
         assert!(engine.dirty);
     }
 }

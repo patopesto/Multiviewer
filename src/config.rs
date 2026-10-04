@@ -338,6 +338,11 @@ impl SourceBorderVisibility {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sources::TestSourceConfig;
+    use crate::sources::{NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
+    use crate::sources::{DecklinkSourceConfig, DecklinkOutputConfig, DecklinkVideoConnection, DecklinkMode};
+    #[cfg(target_os = "windows")]
+    use crate::sources::PixelFormat;
     #[cfg(target_os = "macos")]
     use crate::sources::SyphonOutputConfig;
     #[cfg(target_os = "macos")]
@@ -346,10 +351,6 @@ mod tests {
     use crate::sources::SpoutOutputConfig;
     #[cfg(target_os = "windows")]
     use crate::sources::{WindowsCaptureSourceConfig, WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows};
-    #[cfg(target_os = "windows")]
-    use crate::sources::PixelFormat;
-    use crate::sources::{NdiSourceConfig, NdiOutputConfig, DecklinkSourceConfig, DecklinkOutputConfig, TestSourceConfig};
-    use crate::sources::VideoConnection;
 
     // Syphon output types only exist on macOS; other platforms exercise the
     // same round-trip through the unavailable-protocol tests below.
@@ -844,14 +845,13 @@ mod tests {
 
     #[test]
     fn decklink_output_config_round_trips() {
-        use multiviewer_decklink::DisplayMode;
         let output = Output::new(
             "My DeckLink".into(),
             Protocol::Decklink,
             true,
             OutputConfig::Decklink(DecklinkOutputConfig {
                 device_name: "DeckLink Mini Monitor".into(),
-                display_mode: DisplayMode::Hd1080p6000,
+                display_mode: DecklinkMode::Hd1080p6000,
                 width: 1920,
                 height: 1080,
                 fps: 60.0,
@@ -864,7 +864,7 @@ mod tests {
         match parsed.config {
             OutputConfig::Decklink(c) => {
                 assert_eq!(c.device_name, "DeckLink Mini Monitor");
-                assert_eq!(c.display_mode, DisplayMode::Hd1080p6000);
+                assert_eq!(c.display_mode, DecklinkMode::Hd1080p6000);
             }
             _ => panic!("expected Decklink config"),
         }
@@ -927,15 +927,15 @@ mod tests {
             false, false,
         );
         source.config = SourceConfig::Ndi(NdiSourceConfig {
-            bandwidth: grafton_ndi::ReceiverBandwidth::Highest,
-            color_format: grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
+            bandwidth: NdiReceiverBandwidth::Highest,
+            color_format: NdiReceiverColorFormat::UYVY_RGBA,
         });
         let json = serde_json::to_string(&source).unwrap();
         let parsed: Source = serde_json::from_str(&json).unwrap();
         match parsed.config {
             SourceConfig::Ndi(c) => {
-                assert_eq!(c.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
-                assert_eq!(c.color_format, grafton_ndi::ReceiverColorFormat::UYVY_RGBA);
+                assert_eq!(c.bandwidth, NdiReceiverBandwidth::Highest);
+                assert_eq!(c.color_format, NdiReceiverColorFormat::UYVY_RGBA);
             }
             _ => panic!("expected Ndi source config"),
         }
@@ -952,13 +952,13 @@ mod tests {
             false, false,
         );
         source.config = SourceConfig::Decklink(DecklinkSourceConfig {
-            connection: VideoConnection::Hdmi,
+            connection: DecklinkVideoConnection::Hdmi,
         });
         let json = serde_json::to_string(&source).unwrap();
         let parsed: Source = serde_json::from_str(&json).unwrap();
         match parsed.config {
             SourceConfig::Decklink(c) => {
-                assert_eq!(c.connection, VideoConnection::Hdmi);
+                assert_eq!(c.connection, DecklinkVideoConnection::Hdmi);
             }
             _ => panic!("expected Decklink source config"),
         }
@@ -1030,8 +1030,8 @@ mod tests {
         let (SourceConfig::Ndi(ca), SourceConfig::Ndi(cb)) = (&a.config, &b.config) else {
             panic!("expected Ndi configs")
         };
-        assert_eq!(ca.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
-        assert_eq!(cb.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
+        assert_eq!(ca.bandwidth, NdiReceiverBandwidth::Highest);
+        assert_eq!(cb.bandwidth, NdiReceiverBandwidth::Highest);
 
         // Round-trip keeps the shared source_ref and config on both quads.
         let saved = serde_json::to_string(&cfg).unwrap();
@@ -1044,7 +1044,7 @@ mod tests {
         let (SourceConfig::Ndi(ca), SourceConfig::Ndi(cb)) = (&a.config, &b.config) else {
             panic!("expected Ndi configs")
         };
-        assert_eq!(ca.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
-        assert_eq!(cb.bandwidth, grafton_ndi::ReceiverBandwidth::Highest);
+        assert_eq!(ca.bandwidth, NdiReceiverBandwidth::Highest);
+        assert_eq!(cb.bandwidth, NdiReceiverBandwidth::Highest);
     }
 }

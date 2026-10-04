@@ -5,12 +5,13 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize, Deserializer, Serializer};
 use grafton_ndi::{NDI, Receiver, ReceiverOptions, LineStrideOrSize};
 
+use super::{NdiReceiverBandwidth, NdiReceiverColorFormat, NdiSourceInfo};
 use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NdiSourceConfig {
-    pub bandwidth: grafton_ndi::ReceiverBandwidth,
-    pub color_format: grafton_ndi::ReceiverColorFormat,
+    pub bandwidth: NdiReceiverBandwidth,
+    pub color_format: NdiReceiverColorFormat,
 }
 
 impl Serialize for NdiSourceConfig {
@@ -21,16 +22,16 @@ impl Serialize for NdiSourceConfig {
         use serde::ser::SerializeStruct;
         let mut state = serializer.serialize_struct("NdiSourceConfig", 2)?;
         let bandwidth_str = match self.bandwidth {
-            grafton_ndi::ReceiverBandwidth::Highest => "Highest",
+            NdiReceiverBandwidth::Highest => "Highest",
             _ => "Lowest",
         };
         let color_format_str = match self.color_format {
-            grafton_ndi::ReceiverColorFormat::BGRX_BGRA => "BGRX_BGRA",
-            grafton_ndi::ReceiverColorFormat::UYVY_BGRA => "UYVY_BGRA",
-            grafton_ndi::ReceiverColorFormat::RGBX_RGBA => "RGBX_RGBA",
-            grafton_ndi::ReceiverColorFormat::UYVY_RGBA => "UYVY_RGBA",
-            grafton_ndi::ReceiverColorFormat::Fastest => "Fastest",
-            grafton_ndi::ReceiverColorFormat::Best => "Best",
+            NdiReceiverColorFormat::BGRX_BGRA => "BGRX_BGRA",
+            NdiReceiverColorFormat::UYVY_BGRA => "UYVY_BGRA",
+            NdiReceiverColorFormat::RGBX_RGBA => "RGBX_RGBA",
+            NdiReceiverColorFormat::UYVY_RGBA => "UYVY_RGBA",
+            NdiReceiverColorFormat::Fastest => "Fastest",
+            NdiReceiverColorFormat::Best => "Best",
             _ => "UYVY_RGBA",
         };
         state.serialize_field("bandwidth", bandwidth_str)?;
@@ -51,17 +52,17 @@ impl<'de> Deserialize<'de> for NdiSourceConfig {
         }
         let helper = Helper::deserialize(deserializer)?;
         let bandwidth = match helper.bandwidth.as_str() {
-            "Highest" => grafton_ndi::ReceiverBandwidth::Highest,
-            _ => grafton_ndi::ReceiverBandwidth::Lowest,
+            "Highest" => NdiReceiverBandwidth::Highest,
+            _ => NdiReceiverBandwidth::Lowest,
         };
         let color_format = match helper.color_format.as_str() {
-            "BGRX_BGRA" => grafton_ndi::ReceiverColorFormat::BGRX_BGRA,
-            "UYVY_BGRA" => grafton_ndi::ReceiverColorFormat::UYVY_BGRA,
-            "RGBX_RGBA" => grafton_ndi::ReceiverColorFormat::RGBX_RGBA,
-            "UYVY_RGBA" => grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
-            "Fastest" => grafton_ndi::ReceiverColorFormat::Fastest,
-            "Best" => grafton_ndi::ReceiverColorFormat::Best,
-            _ => grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
+            "BGRX_BGRA" => NdiReceiverColorFormat::BGRX_BGRA,
+            "UYVY_BGRA" => NdiReceiverColorFormat::UYVY_BGRA,
+            "RGBX_RGBA" => NdiReceiverColorFormat::RGBX_RGBA,
+            "UYVY_RGBA" => NdiReceiverColorFormat::UYVY_RGBA,
+            "Fastest" => NdiReceiverColorFormat::Fastest,
+            "Best" => NdiReceiverColorFormat::Best,
+            _ => NdiReceiverColorFormat::UYVY_RGBA,
         };
         Ok(NdiSourceConfig { bandwidth, color_format })
     }
@@ -70,9 +71,9 @@ impl<'de> Deserialize<'de> for NdiSourceConfig {
 impl Default for NdiSourceConfig {
     fn default() -> Self {
         Self {
-            bandwidth: grafton_ndi::ReceiverBandwidth::Lowest,
+            bandwidth: NdiReceiverBandwidth::Lowest,
             // Request UYVY for lower bandwidth; the SDK falls back to RGBA for alpha sources.
-            color_format: grafton_ndi::ReceiverColorFormat::UYVY_RGBA,
+            color_format: NdiReceiverColorFormat::UYVY_RGBA,
         }
     }
 }
@@ -87,7 +88,7 @@ pub struct NdiSource {
 }
 
 impl NdiSource {
-    pub fn spawn(source_ref: SourceRef, source: grafton_ndi::Source, cfg: &NdiSourceConfig) -> Self {
+    pub fn spawn(source_ref: SourceRef, source: NdiSourceInfo, cfg: &NdiSourceConfig) -> Self {
         let slot = Arc::new(Mutex::new(None));
         let slot2 = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
