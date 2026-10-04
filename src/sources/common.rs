@@ -1,6 +1,8 @@
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
+pub use crate::compositor::ConvUniform;
+
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Protocol {
     Test,

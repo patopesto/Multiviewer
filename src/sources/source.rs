@@ -198,17 +198,6 @@ impl SourceConfig {
     }
 }
 
-/// Uniform block consumed by the compositor's fragment shader.
-/// Must stay in sync with the `ConvUniform` struct in `compositor.rs`.
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ConvUniform {
-    pub mode: u32, // 0 = passthrough, 1 = UYVY BT.601, 2 = UYVY BT.709
-    pub width: f32,
-    pub height: f32,
-    pub _pad: f32,
-}
-
 /// Data a source needs to open that cannot be derived from the `SourceKey`
 /// alone. Never persisted — it lives only in the registry so respawn can
 /// reopen the source without rediscovery.

@@ -7,7 +7,7 @@ use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
 use tracing::instrument;
 
 use crate::config::{BorderVisibility, Canvas, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
-use crate::sources::{ConvUniform, CpuFrame, Frame, PixelFormat, SourceKey, SourceRegistry, SourceStats};
+use crate::sources::{CpuFrame, Frame, PixelFormat, SourceKey, SourceRegistry, SourceStats};
 
 const MAX_LAYERS: usize = 256;
 
@@ -45,6 +45,17 @@ enum ConvMode {
     Yuy2Bt709 = 4,
     Nv12Bt601 = 5,
     Nv12Bt709 = 6,
+}
+
+/// Uniform block consumed by the compositor's fragment shader.
+/// Must stay in sync with the `ConvUniform` struct inside `SHADER`.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ConvUniform {
+    pub mode: u32, // ConvMode
+    pub width: f32,
+    pub height: f32,
+    pub _pad: f32,
 }
 
 const SHADER: &str = r#"
