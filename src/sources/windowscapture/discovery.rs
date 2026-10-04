@@ -115,8 +115,6 @@ impl Targets {
 }
 
 fn fetch_targets() -> Result<Targets, String> {
-    let self_pid = std::process::id();
-
     let monitors = Monitor::enumerate().map_err(|e| format!("monitor enumeration failed: {e}"))?;
     let mut displays = Vec::with_capacity(monitors.len());
     for monitor in monitors {
@@ -133,10 +131,6 @@ fn fetch_targets() -> Result<Targets, String> {
         Window::enumerate().map_err(|e| format!("window enumeration failed: {e}"))?;
     let mut windows = Vec::new();
     for window in raw_windows {
-        let pid = window.process_id().unwrap_or(0);
-        if pid == self_pid {
-            continue;
-        }
         let title = window.title().unwrap_or_default();
         if !INCLUDE_UNTITLED_WINDOWS && title.is_empty() {
             continue;

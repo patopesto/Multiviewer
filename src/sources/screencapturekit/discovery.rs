@@ -147,7 +147,6 @@ pub(super) fn fetch_content() -> Result<Retained<SCShareableContent>, String> {
 
 fn fetch_targets() -> Result<Targets, String> {
     let content = fetch_content()?;
-    let self_pid = std::process::id() as i32;
 
     // Layer-0 windows of other apps, on any Space.
     let mut windows = Vec::new();
@@ -162,9 +161,6 @@ fn fetch_targets() -> Result<Targets, String> {
         let Some(owner) = window.owning_application() else {
             continue;
         };
-        if owner.process_id() == self_pid {
-            continue;
-        }
         let title = window.title().map(|t| t.to_string()).unwrap_or_default();
         if !INCLUDE_UNTITLED_WINDOWS && title.is_empty() {
             continue;
