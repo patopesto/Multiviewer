@@ -29,7 +29,7 @@ pub fn draw(ui: &mut egui::Ui, engine: &mut Engine) {
                     draw_sources_section(ui, engine);
                 });
 
-                if let Some(selected_uuid) = engine.selected_layer_id.clone() {
+                if let Some(selected_uuid) = engine.selected_source_id.clone() {
                     draw_source_properties_section(ui, engine, &selected_uuid);
                 }
 
@@ -116,7 +116,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
         settings_grid(ui, "borders_grid", |ui| {
             ui.label("Visibility");
             settings_value(ui, |ui| {
-                egui::ComboBox::from_id_salt("global_layer_borders")
+                egui::ComboBox::from_id_salt("global_source_borders")
                     .width(ui.available_width())
                     .selected_text(border.visibility.label())
                     .show_ui(ui, |ui| {
@@ -441,7 +441,7 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
         .map(|(i, l)| (i, l.uuid.clone(), l.name.clone()))
         .collect();
 
-    let previous_selected = engine.selected_layer_id.clone();
+    let previous_selected = engine.selected_source_id.clone();
 
     const MAX_VISIBLE_SOURCE_ROWS: f32 = 18.0;
     let row_height = ui.spacing().interact_size.y;
@@ -456,7 +456,7 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     ui.horizontal(|ui| {
                         // Custom drag handle (drawn, not a font glyph) so it always renders.
                         ui.dnd_drag_source(
-                            egui::Id::new("layer_drag").with(&uuid),
+                            egui::Id::new("source_drag").with(&uuid),
                             uuid.clone(),
                             |ui| {
                                 let size = egui::vec2(12.0, 16.0);
@@ -475,7 +475,7 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         );
 
                         // Full-width, left-aligned selectable label.
-                        let selected = engine.selected_layer_id.as_deref() == Some(&uuid);
+                        let selected = engine.selected_source_id.as_deref() == Some(&uuid);
                         let available_width = ui.available_width();
                         let label = egui::Button::selectable(selected, name.to_string())
                             .min_size(egui::vec2(available_width, 0.0))
@@ -483,7 +483,7 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             .truncate();
                         let row_response = ui.add(label);
                         if row_response.clicked() {
-                            engine.selected_layer_id = Some(uuid.clone());
+                            engine.selected_source_id = Some(uuid.clone());
                         }
                         if selected {
                             selected_row_rect = Some(row_response.rect);
@@ -535,26 +535,26 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     } else {
                         if from_index < index { index } else { index + 1 }
                     };
-                    engine.move_layer(from_index, to_index);
+                    engine.move_source(from_index, to_index);
                 }
             }
 
             // Keep the selected row visible when selection changes (e.g. via global shortcuts).
-            if engine.selected_layer_id != previous_selected && let Some(rect) = selected_row_rect {
+            if engine.selected_source_id != previous_selected && let Some(rect) = selected_row_rect {
                 ui.scroll_to_rect(rect, None);
             }
         });
 
     ui.horizontal(|ui| {
         if ui.button("+ Add Source").clicked() {
-            let uuid = engine.add_layer();
-            engine.selected_layer_id = Some(uuid);
+            let uuid = engine.add_source();
+            engine.selected_source_id = Some(uuid);
         }
-        let is_layer_selected = engine.selected_layer_id.is_some();
-        if ui.add_enabled(is_layer_selected, egui::Button::new("- Delete Source")).clicked()
-            && let Some(uuid) = engine.selected_layer_id.take()
+        let is_source_selected = engine.selected_source_id.is_some();
+        if ui.add_enabled(is_source_selected, egui::Button::new("- Delete Source")).clicked()
+            && let Some(uuid) = engine.selected_source_id.take()
         {
-            engine.remove_layer(&uuid);
+            engine.remove_source(&uuid);
         }
     });
 }
@@ -576,7 +576,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
     {
         ui.separator();
         collapsable_section(ui, "Properties", true, true, |ui| {
-            settings_grid(ui, "layer_properties_grid", |ui| {
+            settings_grid(ui, "source_properties_grid", |ui| {
                 ui.label("Name");
                 settings_value(ui, |ui| {
                     let text_edit = egui::TextEdit::singleline(&mut source.name)
@@ -589,7 +589,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
 
                 ui.label("Protocol");
                 settings_value(ui, |ui| {
-                    egui::ComboBox::from_id_salt("layer_protocol")
+                    egui::ComboBox::from_id_salt("source_protocol")
                         .width(ui.available_width())
                         .selected_text(source.protocol.label())
                         .show_ui(ui, |ui| {
@@ -1184,7 +1184,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
 
                 ui.label("Label");
                 settings_value(ui, |ui| {
-                    egui::ComboBox::from_id_salt("layer_label_visibility")
+                    egui::ComboBox::from_id_salt("source_label_visibility")
                         .width(ui.available_width())
                         .selected_text(source.label_visibility.label())
                         .show_ui(ui, |ui| {
@@ -1203,7 +1203,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
 
                 ui.label("Borders");
                 settings_value(ui, |ui| {
-                    egui::ComboBox::from_id_salt("layer_border_visibility")
+                    egui::ComboBox::from_id_salt("source_border_visibility")
                         .width(ui.available_width())
                         .selected_text(source.border_visibility.label())
                         .show_ui(ui, |ui| {

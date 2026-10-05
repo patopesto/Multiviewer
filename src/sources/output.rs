@@ -261,10 +261,6 @@ impl OutputRegistry {
         self.outputs.remove(id);
     }
 
-    pub fn any_enabled(&self) -> bool {
-        self.outputs.iter().any(|(_, ok)| ok.enabled())
-    }
-
     pub fn any_ready(&self) -> bool {
         return self.outputs.iter().any(|(_, ok)| ok.enabled() && !ok.busy());
     }

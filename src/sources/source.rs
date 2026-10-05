@@ -419,7 +419,7 @@ impl SourceRegistry {
     }
 
     /// Register a live source under its key. A key that is already live or
-    /// mid-restart is left alone, so every quad binding it shares one receiver.
+    /// mid-restart is left alone, so every placement binding it shares one receiver.
     fn add(&mut self, key: SourceKey, kind: SourceKind) -> SourceKey {
         if !self.contains(&key) {
             self.sources.insert(key.clone(), kind);
@@ -731,7 +731,7 @@ mod tests {
         assert_eq!(registry.list_sources(Protocol::Ndi).len(), 0);
     }
 
-    /// A second quad binding the same protocol + source_ref shares the one
+    /// A second placement binding the same protocol + source_ref shares the one
     /// live receiver instead of spawning another.
     #[test]
     fn duplicate_key_shares_one_runtime_source() {

@@ -317,34 +317,34 @@ impl App {
             }
             Shortcut::SaveProjectAs => self.save_as_dialog(),
             Shortcut::AddSource => {
-                let uuid = self.engine.add_layer();
-                self.engine.selected_layer_id = Some(uuid);
+                let uuid = self.engine.add_source();
+                self.engine.selected_source_id = Some(uuid);
             }
             Shortcut::DeleteSource => {
                 // Avoid deleting while a source is expanded; user can press Esc first.
-                if self.engine.expanded_layer_id.is_some() {
+                if self.engine.expanded_source_id.is_some() {
                     return;
                 }
-                if let Some(uuid) = self.engine.selected_layer_id.take() {
-                    self.engine.remove_layer(&uuid);
+                if let Some(uuid) = self.engine.selected_source_id.take() {
+                    self.engine.remove_source(&uuid);
                 }
             }
             Shortcut::ExpandSource => {
-                if self.engine.expanded_layer_id.is_some() {
+                if self.engine.expanded_source_id.is_some() {
                     self.engine.clear_expanded_source();
-                } else if let Some(uuid) = self.engine.selected_layer_id.clone() {
+                } else if let Some(uuid) = self.engine.selected_source_id.clone() {
                     self.engine.expand_source(uuid);
                 }
             }
             Shortcut::ExitExpanded => {
-                if self.engine.expanded_layer_id.is_some() {
+                if self.engine.expanded_source_id.is_some() {
                     self.engine.clear_expanded_source();
                 } else {
-                    self.engine.selected_layer_id = None;
+                    self.engine.selected_source_id = None;
                 }
             }
-            Shortcut::SelectNextSource => self.engine.select_next_source(),
-            Shortcut::SelectPreviousSource => self.engine.select_previous_source(),
+            Shortcut::SelectNextSource => self.engine.select_source(1),
+            Shortcut::SelectPreviousSource => self.engine.select_source(-1),
             Shortcut::NudgeUp => {
                 self.engine.nudge_selected_source(0.0, -nudge_amount);
             }

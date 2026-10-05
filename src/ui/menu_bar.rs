@@ -28,15 +28,15 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
 
             menu_button(ui, "Edit", |ui| {
                 menu_item(ui, &mut actions, Shortcut::AddSource, true);
-                menu_item(ui, &mut actions, Shortcut::DeleteSource, engine.selected_layer_id.is_some());
+                menu_item(ui, &mut actions, Shortcut::DeleteSource, engine.selected_source_id.is_some());
                 ui.separator();
-                menu_item(ui, &mut actions, Shortcut::ExpandSource, engine.selected_layer_id.is_some() || engine.expanded_layer_id.is_some());
-                menu_item(ui, &mut actions, Shortcut::ExitExpanded, engine.expanded_layer_id.is_some());
+                menu_item(ui, &mut actions, Shortcut::ExpandSource, engine.selected_source_id.is_some() || engine.expanded_source_id.is_some());
+                menu_item(ui, &mut actions, Shortcut::ExitExpanded, engine.expanded_source_id.is_some());
                 ui.separator();
                 menu_item(ui, &mut actions, Shortcut::SelectPreviousSource, true);
                 menu_item(ui, &mut actions, Shortcut::SelectNextSource, true);
                 ui.separator();
-                let nudge = engine.selected_layer_id.is_some();
+                let nudge = engine.selected_source_id.is_some();
                 menu_item(ui, &mut actions, Shortcut::NudgeUp, nudge);
                 menu_item(ui, &mut actions, Shortcut::NudgeDown, nudge);
                 menu_item(ui, &mut actions, Shortcut::NudgeLeft, nudge);
