@@ -58,7 +58,6 @@ const FLIP_INDICES: [u16; 6] = [0, 1, 2, 2, 1, 3];
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SyphonOutputConfig {
-    #[serde(default)]
     pub server_name: String,
 }
 

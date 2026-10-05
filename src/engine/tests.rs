@@ -1,13 +1,13 @@
 use super::*;
 use crate::compositor::{self, Rect};
-use crate::config::{Canvas, Output, Source, TextureMode};
+use crate::config::{Canvas, Output, Source, TextureMode, CONFIG_VERSION};
 use crate::engine::project::AUTO_SAVE_INTERVAL;
 use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use std::time::{Duration, Instant};
 
 fn test_engine(canvas: Canvas) -> Engine {
     Engine {
-        cfg: Config { canvas },
+        cfg: Config { canvas, ..Config::default() },
         registry: SourceRegistry::new(),
         output_registry: OutputRegistry::new(),
         ndi: None,
@@ -49,12 +49,21 @@ fn load_project_with_unavailable_protocol_warns_and_skips_runtime() {
     let json = r#"{
         "canvas": {
             "width":1920, "height":1080,
+            "label":{"visibility":"Hide","position":"TopLeft","size":24.0,"text_color":[255,255,255,255],"background_color":[0,0,0,180]},
+            "border":{"visibility":"Show","color":[180,180,180,255],"width":1.0},
             "sources": [
                 {"uuid":"u1","name":"Spout In","protocol":"fake","source_ref":"Spout1",
                  "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit",
+                 "flip_h":false,"flip_v":false,
+                 "label_visibility":"Inherit","border_visibility":"Inherit",
                  "config":{"protocol":"fake","name":"Game"}},
                 {"uuid":"u2","name":"Bars","protocol":"Test","source_ref":"Test A",
-                 "x":0.0,"y":0.0,"width":640,"height":360,"z":1,"mode":"Fit"}
+                 "x":0.0,"y":0.0,"width":640,"height":360,"z":1,"mode":"Fit",
+                 "flip_h":false,"flip_v":false,
+                 "label_visibility":"Inherit","border_visibility":"Inherit",
+                 "config":{"protocol":"Test","width":1280,"height":720,
+                           "pattern":{"Smpte":"Smpte2022"},
+                           "cursor":{"enabled":false,"speed_x":8.0,"speed_y":2.0,"width":1}}}
             ],
             "outputs":[
                 {"uuid":"o1","name":"Spout Out","protocol":"fake","enabled":true,
@@ -703,4 +712,27 @@ fn sync_source_config_updates_quads_sharing_the_key() {
     };
     assert_eq!(cd.connection, DecklinkVideoConnection::Hdmi);
     assert!(engine.dirty);
+}
+
+#[test]
+fn newer_project_version_warns_and_clamps() {
+    let mut engine = test_engine(Canvas::default());
+    engine.cfg.version = CONFIG_VERSION + 1;
+
+    engine.warn_if_newer_version();
+
+    assert_eq!(engine.cfg.version, CONFIG_VERSION);
+    assert_eq!(engine.load_warnings.len(), 1);
+    assert!(engine.load_warnings[0].contains("newer version"));
+}
+
+#[test]
+fn current_project_version_does_not_warn() {
+    let mut engine = test_engine(Canvas::default());
+    engine.cfg.version = CONFIG_VERSION;
+
+    engine.warn_if_newer_version();
+
+    assert!(engine.load_warnings.is_empty());
+    assert_eq!(engine.cfg.version, CONFIG_VERSION);
 }

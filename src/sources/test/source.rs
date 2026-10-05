@@ -25,9 +25,6 @@ pub enum RadarDirection {
     Up,
 }
 
-fn black_color() -> [u8; 3] { [0, 0, 0] }
-fn white_color() -> [u8; 3] { [255, 255, 255] }
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum TestPattern {
     Smpte(SmpteType),
@@ -40,18 +37,14 @@ pub enum TestPattern {
     Grid {
         cols: u32,
         rows: u32,
-        #[serde(default = "white_color")]
         line_color: [u8; 3],
-        #[serde(default = "black_color")]
         bg_color: [u8; 3],
     },
     Radar {
         width: u32,
         speed: f32,
         direction: RadarDirection,
-        #[serde(default = "white_color")]
         line_color: [u8; 3],
-        #[serde(default = "black_color")]
         bg_color: [u8; 3],
     },
 }
@@ -107,7 +100,6 @@ pub struct TestSourceConfig {
     pub width: u32,
     pub height: u32,
     pub pattern: TestPattern,
-    #[serde(default)]
     pub cursor: CursorConfig,
 }
 

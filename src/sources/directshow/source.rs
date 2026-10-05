@@ -56,19 +56,15 @@ pub struct DirectShowSourceConfig {
     /// Device-interface path of the capture device; empty uses the first found.
     pub device_id: String,
     /// Requested frame width in pixels; 0 lets the device pick its default.
-    #[serde(default)]
     pub width: u32,
     /// Requested frame height in pixels; 0 lets the device pick its default.
-    #[serde(default)]
     pub height: u32,
     /// Requested frame-rate numerator; 0 lets the device pick its default.
-    #[serde(default)]
     pub fps_num: u32,
     /// Requested frame-rate denominator (stored exactly, e.g. 1001 for 29.97).
-    #[serde(default)]
     pub fps_den: u32,
     /// Requested output pixel format; `None` = Auto (RGB32).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pixel_format: Option<PixelFormat>,
 }
 

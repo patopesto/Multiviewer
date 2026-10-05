@@ -10,7 +10,6 @@ use super::super::output::{OutputId, VideoOutput};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct NdiOutputConfig {
-    #[serde(default)]
     pub sender_name: String,
 }
 

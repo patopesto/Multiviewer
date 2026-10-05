@@ -11,7 +11,6 @@ use crate::sources::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceS
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DecklinkSourceConfig {
     // Unspecified falls back to whatever the device reports first.
-    #[serde(default)]
     pub connection: VideoConnection,
 }
 

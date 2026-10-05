@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
 use super::Engine;
-use crate::config::{Config, ConfigError, Source, TextureMode};
+use crate::config::{Config, ConfigError, Source, TextureMode, CONFIG_VERSION};
 use crate::session::{Session, SessionError};
 use crate::sources::{OutputRegistry, Protocol, SourceConfig, SourceRegistry};
 use crate::sources::DecklinkDiscovery;
@@ -148,6 +148,19 @@ impl Engine {
         self.load_outputs();
     }
 
+    /// A project from a newer build is loaded best-effort; unknown fields are
+    /// dropped on parse, so clamp the version we write back to what we understand.
+    pub(super) fn warn_if_newer_version(&mut self) {
+        if self.cfg.version <= CONFIG_VERSION {
+            return;
+        }
+        self.load_warnings.push(format!(
+            "Project was saved by a newer version ({} > {}); some settings may not load",
+            self.cfg.version, CONFIG_VERSION
+        ));
+        self.cfg.version = CONFIG_VERSION;
+    }
+
     /// Report protocols this platform cannot run. Their entries stay in the
     /// config untouched (raw JSON preserved) and are written back on save.
     fn warn_unavailable_protocols(&mut self) {
@@ -246,6 +259,7 @@ impl Engine {
         self.cfg = cfg;
         self.dirty = false;
         self.rebuild_from_config();
+        self.warn_if_newer_version();
         self.project_path = Some(path.clone());
         self.last_saved_at = Instant::now();
         self.dirty = false;

@@ -79,11 +79,8 @@ impl CaptureSecondaryWindows {
 /// Session tunables applied when the capture starts; changing one restarts the source.
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct WindowsCaptureSettings {
-    #[serde(default)]
     pub cursor: CaptureCursor,
-    #[serde(default)]
     pub border: CaptureBorder,
-    #[serde(default)]
     pub secondary_windows: CaptureSecondaryWindows,
 }
 
@@ -100,14 +97,12 @@ pub enum WindowsCaptureSourceConfig {
     Display {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         device_name: String,
-        #[serde(default)]
         settings: WindowsCaptureSettings,
     },
     Window {
         hwnd: u64,
         process_name: String,
         title: String,
-        #[serde(default)]
         settings: WindowsCaptureSettings,
     },
 }

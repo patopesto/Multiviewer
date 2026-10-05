@@ -47,18 +47,11 @@ const SCALE_INDICES: [u16; 6] = [0, 1, 2, 2, 1, 3];
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DecklinkOutputConfig {
-    #[serde(default)]
     pub device_name: String,
-    #[serde(default)]
     pub display_mode: DisplayMode,
     pub width: u32,
     pub height: u32,
-    #[serde(default = "default_fps")]
     pub fps: f64,
-}
-
-fn default_fps() -> f64 {
-    60.0
 }
 
 impl Default for DecklinkOutputConfig {

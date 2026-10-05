@@ -38,21 +38,16 @@ fn output_config_round_trips() {
 }
 
 #[test]
-fn output_config_deserializes_missing_config() {
+fn output_config_is_required() {
     let json = r#"{"uuid":"abc","name":"Test","protocol":"Syphon","enabled":true}"#;
-    let parsed: Output = serde_json::from_str(json).unwrap();
-    #[cfg(target_os = "macos")]
-    assert_eq!(parsed.protocol, Protocol::Syphon);
-    #[cfg(not(target_os = "macos"))]
-    assert_eq!(parsed.protocol, Protocol::Unknown("Syphon".to_string()));
-    match &parsed.config {
-        // Expected: missing config defaults to Unknown(Null)
-        OutputConfig::Unknown(v) => assert!(v.is_null()),
-        _ => panic!("expected Unknown config"),
-    }
-    // Round-trips in the historical form, not as `null`.
-    let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["config"], serde_json::json!({"protocol": "Unknown"}));
+    assert!(serde_json::from_str::<Output>(json).is_err());
+}
+
+/// The "no config" default still round-trips in its historical wire form.
+#[test]
+fn default_output_config_wire_form() {
+    let v = serde_json::to_value(OutputConfig::default()).unwrap();
+    assert_eq!(v, serde_json::json!({"protocol": "Unknown"}));
 }
 
 /// A macOS-authored Syphon output must load on any platform and be written
@@ -139,6 +134,8 @@ fn avfoundation_source_round_trips_on_unavailable_platform() {
         "uuid":"u1","name":"Camera","protocol":"AvFoundation",
         "source_ref":"FaceTime HD Camera","x":10.0,"y":20.0,
         "width":1920,"height":1080,"z":3,"mode":"Fit",
+        "flip_h":false,"flip_v":false,
+        "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"AvFoundation","device_unique_id":"0x802000000a5f123"}
     }"#;
     let parsed: Source = serde_json::from_str(json).unwrap();
@@ -174,7 +171,9 @@ fn mediafoundation_source_round_trips_on_unavailable_platform() {
         "uuid":"u1","name":"Webcam","protocol":"MediaFoundation",
         "source_ref":"\\\\?\\usb#vid_046d&pid_085b","x":10.0,"y":20.0,
         "width":1920,"height":1080,"z":3,"mode":"Fit",
-        "config":{"protocol":"MediaFoundation","device_id":"\\\\?\\usb#vid_046d&pid_085b","pixel_format":"Bgra8"}
+        "flip_h":false,"flip_v":false,
+        "label_visibility":"Inherit","border_visibility":"Inherit",
+        "config":{"protocol":"MediaFoundation","device_id":"\\\\?\\usb#vid_046d&pid_085b","width":0,"height":0,"fps_num":0,"fps_den":0,"pixel_format":"Bgra8"}
     }"#;
     let parsed: Source = serde_json::from_str(json).unwrap();
     #[cfg(target_os = "windows")]
@@ -220,7 +219,9 @@ fn directshow_source_round_trips_on_unavailable_platform() {
         "uuid":"u1","name":"DeckLink","protocol":"DirectShow",
         "source_ref":"\\\\?\\usb#vid_1edb&pid_bd3f","x":10.0,"y":20.0,
         "width":1920,"height":1080,"z":3,"mode":"Fit",
-        "config":{"protocol":"DirectShow","device_id":"\\\\?\\usb#vid_1edb&pid_bd3f","pixel_format":"Yuy2"}
+        "flip_h":false,"flip_v":false,
+        "label_visibility":"Inherit","border_visibility":"Inherit",
+        "config":{"protocol":"DirectShow","device_id":"\\\\?\\usb#vid_1edb&pid_bd3f","width":0,"height":0,"fps_num":0,"fps_den":0,"pixel_format":"Yuy2"}
     }"#;
     let parsed: Source = serde_json::from_str(json).unwrap();
     #[cfg(target_os = "windows")]
@@ -262,6 +263,8 @@ fn screencapturekit_source_round_trips_on_unavailable_platform() {
         "uuid":"u1","name":"Screen","protocol":"ScreenCaptureKit",
         "source_ref":"display:724561234","x":10.0,"y":20.0,
         "width":1920,"height":1080,"z":3,"mode":"Fit",
+        "flip_h":false,"flip_v":false,
+        "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"ScreenCaptureKit","kind":"display",
                   "display_id":"724561234"}
     }"#;
@@ -306,6 +309,8 @@ fn screencapturekit_window_source_round_trip() {
         "uuid":"u1","name":"Doc","protocol":"ScreenCaptureKit",
         "source_ref":"window:4242","x":10.0,"y":20.0,
         "width":800,"height":600,"z":3,"mode":"Fit",
+        "flip_h":false,"flip_v":false,
+        "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"ScreenCaptureKit","kind":"window",
                   "window_id":4242,"bundle_id":"com.apple.TextEdit",
                   "title":"Untitled"}
@@ -353,8 +358,11 @@ fn windows_capture_source_round_trips_on_unavailable_platform() {
         "uuid":"u1","name":"Screen","protocol":"WindowsCapture",
         "source_ref":"display:\\\\.\\DISPLAY1","x":10.0,"y":20.0,
         "width":1920,"height":1080,"z":3,"mode":"Fit",
+        "flip_h":false,"flip_v":false,
+        "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"WindowsCapture","kind":"display",
-                  "device_name":"\\\\.\\DISPLAY1"}
+                  "device_name":"\\\\.\\DISPLAY1",
+                  "settings":{"cursor":"default","border":"default","secondary_windows":"default"}}
     }"#;
     let parsed: Source = serde_json::from_str(json).unwrap();
     #[cfg(target_os = "windows")]
@@ -397,6 +405,8 @@ fn windows_capture_window_source_round_trip() {
         "uuid":"u1","name":"Doc","protocol":"WindowsCapture",
         "source_ref":"window:4242","x":10.0,"y":20.0,
         "width":800,"height":600,"z":3,"mode":"Fit",
+        "flip_h":false,"flip_v":false,
+        "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"WindowsCapture","kind":"window",
                   "hwnd":4242,"process_name":"notepad.exe",
                   "title":"Untitled",
@@ -456,9 +466,13 @@ fn unknown_protocol_source_round_trips() {
     let json = r#"{
         "canvas": {
             "width":1920, "height":1080,
+            "label":{"visibility":"Hide","position":"TopLeft","size":24.0,"text_color":[255,255,255,255],"background_color":[0,0,0,180]},
+            "border":{"visibility":"Show","color":[180,180,180,255],"width":1.0},
             "sources": [{
                 "uuid":"u1","name":"Spout In","protocol":"fake","source_ref":"Spout1",
                 "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit",
+                "flip_h":false,"flip_v":false,
+                "label_visibility":"Inherit","border_visibility":"Inherit",
                 "config":{"protocol":"fake","name":"Game"}
             }],
             "outputs": [{
@@ -654,7 +668,12 @@ fn config_round_trips_through_path() {
 fn source_ref_round_trips() {
     let json = r#"{
         "uuid":"u1","name":"Cam","protocol":"Test","source_ref":"Test A",
-        "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit"
+        "x":0.0,"y":0.0,"width":640,"height":360,"z":0,"mode":"Fit",
+        "flip_h":false,"flip_v":false,
+        "label_visibility":"Inherit","border_visibility":"Inherit",
+        "config":{"protocol":"Test","width":1280,"height":720,
+                  "pattern":{"Smpte":"Smpte2022"},
+                  "cursor":{"enabled":false,"speed_x":8.0,"speed_y":2.0,"width":1}}
     }"#;
     let parsed: Source = serde_json::from_str(json).unwrap();
     assert_eq!(parsed.source_ref.as_deref(), Some("Test A"));
@@ -670,14 +689,21 @@ fn quads_sharing_source_ref_round_trips() {
     let json = r#"{
         "canvas": {
             "width":1920, "height":1080,
+            "label":{"visibility":"Hide","position":"TopLeft","size":24.0,"text_color":[255,255,255,255],"background_color":[0,0,0,180]},
+            "border":{"visibility":"Show","color":[180,180,180,255],"width":1.0},
             "sources": [
                 {"uuid":"u1","name":"Quad A","protocol":"Ndi","source_ref":"Cam (1)",
                  "x":0.0,"y":0.0,"width":960,"height":540,"z":0,"mode":"Fit",
+                 "flip_h":false,"flip_v":false,
+                 "label_visibility":"Inherit","border_visibility":"Inherit",
                  "config":{"protocol":"Ndi","bandwidth":"Highest","color_format":"UYVY_RGBA"}},
                 {"uuid":"u2","name":"Quad B","protocol":"Ndi","source_ref":"Cam (1)",
                  "x":960.0,"y":0.0,"width":960,"height":540,"z":1,"mode":"Fit",
+                 "flip_h":false,"flip_v":false,
+                 "label_visibility":"Inherit","border_visibility":"Inherit",
                  "config":{"protocol":"Ndi","bandwidth":"Highest","color_format":"UYVY_RGBA"}}
-            ]
+            ],
+            "outputs": []
         }
     }"#;
 
@@ -707,4 +733,32 @@ fn quads_sharing_source_ref_round_trips() {
     };
     assert_eq!(ca.bandwidth, NdiReceiverBandwidth::Highest);
     assert_eq!(cb.bandwidth, NdiReceiverBandwidth::Highest);
+}
+
+#[test]
+fn config_default_stamps_current_version() {
+    let v = serde_json::to_value(Config::default()).unwrap();
+    assert_eq!(v["version"], serde_json::json!(CONFIG_VERSION));
+}
+
+#[test]
+fn config_version_defaults_to_legacy_when_absent() {
+    let mut v = serde_json::to_value(Config::default()).unwrap();
+    v.as_object_mut().unwrap().remove("version");
+
+    let cfg: Config = serde_json::from_value(v).unwrap();
+
+    assert_eq!(cfg.version, LEGACY_VERSION);
+}
+
+#[test]
+fn config_version_round_trips() {
+    let mut cfg = Config::default();
+    cfg.canvas.width = 1234;
+
+    let json = serde_json::to_string(&cfg).unwrap();
+    let reloaded: Config = serde_json::from_str(&json).unwrap();
+
+    assert_eq!(reloaded.version, CONFIG_VERSION);
+    assert_eq!(reloaded.canvas.width, 1234);
 }

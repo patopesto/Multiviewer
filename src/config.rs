@@ -4,10 +4,32 @@ use serde::{Deserialize, Serialize};
 
 use crate::sources::{Protocol, SourceConfig, SourceRef, OutputConfig};
 
-#[derive(Serialize, Deserialize, Default)]
+/// Schema version of the project file. Bump on every breaking change.
+pub const CONFIG_VERSION: u32 = 1;
+
+/// Assumed when a project file has no `version` key. Pinned to the first
+/// released schema, not to `CONFIG_VERSION`, or a missing version would be
+/// read as the newest schema after a bump.
+const LEGACY_VERSION: u32 = 1;
+
+fn config_version() -> u32 {
+    return LEGACY_VERSION;
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct Config {
-    #[serde(default)]
+    #[serde(default = "config_version")]
+    pub version: u32,
     pub canvas: Canvas,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            version: CONFIG_VERSION,
+            canvas: Canvas::default(),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -56,12 +78,9 @@ impl Config {
 pub struct Canvas {
     pub width: u32,
     pub height: u32,
-    #[serde(default)]
     pub label: LabelConfig,
-    #[serde(default)]
     pub border: BorderConfig,
     pub sources: Vec<Source>,
-    #[serde(default)]
     pub outputs: Vec<Output>,
 }
 
@@ -85,7 +104,6 @@ pub type OutputId = String;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Source {
     pub uuid: SourceId,
-    #[serde(default)]
     pub name: String,
     pub protocol: Protocol,
     pub source_ref: Option<SourceRef>,
@@ -95,15 +113,10 @@ pub struct Source {
     pub height: u32,
     pub z: i32,
     pub mode: TextureMode,
-    #[serde(default)]
     pub flip_h: bool,
-    #[serde(default)]
     pub flip_v: bool,
-    #[serde(default)]
     pub label_visibility: SourceLabelVisibility,
-    #[serde(default)]
     pub border_visibility: SourceBorderVisibility,
-    #[serde(default)]
     pub config: SourceConfig,
 }
 
@@ -145,11 +158,9 @@ impl Source {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Output {
     pub uuid: OutputId,
-    #[serde(default)]
     pub name: String,
     pub protocol: Protocol,
     pub enabled: bool,
-    #[serde(default)]
     pub config: OutputConfig,
 }
 
