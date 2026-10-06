@@ -4,6 +4,9 @@ pub enum DecklinkOutputDiscovery {}
 pub enum DecklinkOutputHandle {}
 
 unsafe extern "C" {
+    // API information
+    pub fn decklink_api_version(buf: *mut std::ffi::c_char, buf_len: i32) -> i32;
+
     // Input
     pub fn decklink_source_discovery_new() -> *mut DecklinkSourceDiscovery;
     pub fn decklink_source_discovery_free(d: *mut DecklinkSourceDiscovery);

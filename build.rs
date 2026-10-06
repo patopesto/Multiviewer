@@ -1,7 +1,11 @@
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string()));
+
+    emit_build_info(&manifest_dir);
 
     #[cfg(target_os = "macos")]
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
@@ -18,6 +22,85 @@ fn main() {
         let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap_or_else(|_| ".".to_string()));
         setup_windows(&manifest_dir, &out_dir);
     }
+}
+
+fn emit_build_info(manifest_dir: &Path) {
+    println!("cargo:rustc-env=GIT_COMMIT={}", git_commit(manifest_dir));
+    println!("cargo:rustc-env=BUILD_DATE={}", build_date());
+    println!("cargo:rustc-env=APP_COPYRIGHT={}", packager_field(manifest_dir, "copyright"));
+}
+
+// Read a top-level `key = "value"` string from the shared packager config.
+fn packager_field(manifest_dir: &Path, key: &str) -> String {
+    let path = manifest_dir.join("task/Packager.common.toml");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return String::new();
+    };
+    for line in text.lines() {
+        let Some(rest) = line.trim().strip_prefix(key) else {
+            continue;
+        };
+        let Some(rest) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let value = rest.trim();
+        if let Some(inner) = value.strip_prefix('"').and_then(|v| v.strip_suffix('"')) {
+            return inner.to_string();
+        }
+    }
+    return String::new();
+}
+
+fn git_commit(manifest_dir: &Path) -> String {
+    let output = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(manifest_dir)
+        .output();
+    let commit = match output {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+        _ => "unknown".to_string(),
+    };
+    if commit == "unknown" {
+        return commit;
+    }
+    let dirty = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(manifest_dir)
+        .output()
+        .map(|o| !o.stdout.is_empty())
+        .unwrap_or(false);
+    if dirty {
+        return format!("{commit}-dirty");
+    }
+    return commit;
+}
+
+fn build_date() -> String {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let days = (secs / 86400) as i64;
+    let seconds_of_day = secs % 86400;
+    let (year, month, day) = civil_from_days(days);
+    let hour = seconds_of_day / 3600;
+    let minute = (seconds_of_day % 3600) / 60;
+    return format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02} UTC");
+}
+
+// Days since the Unix epoch to a civil (year, month, day); Howard Hinnant's algorithm.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = (if mp < 10 { mp + 3 } else { mp - 9 }) as u32;
+    let year = if month <= 2 { y + 1 } else { y };
+    return (year, month, day);
 }
 
 fn resolve_ndi_sdk_dir(manifest_dir: &Path) -> Option<PathBuf> {

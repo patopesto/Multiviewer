@@ -94,6 +94,13 @@ bool DecklinkIIDEqual(REFIID a, REFIID b);
 // Returns true if the given REFIID is IUnknown.
 bool DecklinkIsIUnknownIID(REFIID iid);
 
+extern "C" {
+// Write the supported DeckLink API version (bmdDeckLinkAPIVersion) as a
+// NUL-terminated UTF-8 string into `buf`. Returns bytes written excluding the
+// NUL, or 0 when the version is unavailable (driver not installed).
+int decklink_api_version(char* buf, int buf_len);
+}
+
 #ifdef _WIN32
 // RAII COM initializer for threads that call into the DeckLink API.
 class DecklinkComScope {

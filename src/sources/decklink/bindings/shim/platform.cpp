@@ -144,6 +144,46 @@ bool DecklinkIsIUnknownIID(REFIID iid) {
 #endif
 }
 
+int decklink_api_version(char* buf, int buf_len) {
+    if (!buf || buf_len <= 0) {
+        return 0;
+    }
+    buf[0] = '\0';
+
+    DecklinkComScope com_scope;
+
+    IDeckLinkAPIInformation* info = nullptr;
+#ifdef _WIN32
+    HRESULT hr = CoCreateInstance(CLSID_CDeckLinkAPIInformation, nullptr, CLSCTX_ALL, IID_IDeckLinkAPIInformation, (void**)&info);
+    if (FAILED(hr) || !info) {
+        return 0;
+    }
+#else
+    info = CreateDeckLinkAPIInformationInstance();
+    if (!info) {
+        return 0;
+    }
+#endif
+
+    DECKLINK_DLSTRING_T version = nullptr;
+    if (info->GetString(BMDDeckLinkAPIVersion, &version) != S_OK) {
+        info->Release();
+        return 0;
+    }
+
+    std::string text = DecklinkStringToStd(version);
+    DecklinkStringFree(version);
+    info->Release();
+
+    int len = static_cast<int>(text.size());
+    if (len > buf_len - 1) {
+        len = buf_len - 1;
+    }
+    std::memcpy(buf, text.data(), len);
+    buf[len] = '\0';
+    return len;
+}
+
 #ifdef _WIN32
 DecklinkComScope::DecklinkComScope() : initialized_(false) {
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);

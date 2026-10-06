@@ -5,16 +5,16 @@ use std::time::Instant;
 use crate::compositor::Compositor;
 use crate::config::{Config, SourceId};
 use crate::sources::{OutputRegistry, SourceRegistry};
-use crate::sources::DecklinkDiscovery;
-use crate::sources::NdiDiscovery;
+use crate::sources::{DecklinkDiscovery, decklink_version};
+use crate::sources::{NdiDiscovery, ndi_version};
 #[cfg(target_os = "macos")]
-use crate::sources::SyphonDiscovery;
+use crate::sources::{SyphonDiscovery, syphon_version};
 #[cfg(target_os = "macos")]
 use crate::sources::AvFoundationDiscovery;
 #[cfg(target_os = "macos")]
 use crate::sources::ScreenCaptureKitDiscovery;
 #[cfg(target_os = "windows")]
-use crate::sources::SpoutDiscovery;
+use crate::sources::{SpoutDiscovery, spout_version};
 #[cfg(target_os = "windows")]
 use crate::sources::MediaFoundationDiscovery;
 #[cfg(target_os = "windows")]
@@ -99,4 +99,19 @@ pub struct Engine {
     pub snap_guides: SnapGuides,
     pub view: ViewState,
     pub load_warnings: Vec<String>,
+}
+
+impl Engine {
+    /// Protocol/driver versions of the linked third-party libraries, for display.
+    pub fn vendor_versions() -> Vec<(&'static str, Option<String>)> {
+        let mut versions = vec![
+            ("NDI", ndi_version()),
+            ("DeckLink", decklink_version()),
+        ];
+        #[cfg(target_os = "macos")]
+        versions.push(("Syphon", syphon_version()));
+        #[cfg(target_os = "windows")]
+        versions.push(("Spout", spout_version()));
+        return versions;
+    }
 }

@@ -26,6 +26,9 @@ pub struct App {
     pending_confirm: Option<Confirm>,
     show_about: bool,
     show_shortcuts: bool,
+    vendor_versions: Vec<(&'static str, Option<String>)>,
+    gpu_backend: Option<String>,
+    gpu_name: Option<String>,
     ui_visible: bool,
     render_stats: RenderStats,
     trace_guard: Option<tracing_chrome::FlushGuard>,
@@ -85,6 +88,13 @@ impl App {
         startup_path: Option<PathBuf>,
         trace_guard: Option<tracing_chrome::FlushGuard>,
     ) -> Self {
+        let (gpu_backend, gpu_name) = match &cc.wgpu_render_state {
+            Some(render_state) => {
+                let info = render_state.adapter.get_info();
+                (Some(format!("{:?}", info.backend)), Some(info.name))
+            }
+            None => (None, None),
+        };
         let mut app = Self {
             engine: Engine::new_project(),
             recent_projects: Vec::new(),
@@ -93,6 +103,9 @@ impl App {
             pending_confirm: None,
             show_about: false,
             show_shortcuts: false,
+            vendor_versions: Engine::vendor_versions(),
+            gpu_backend,
+            gpu_name,
             ui_visible: true,
             render_stats: RenderStats::new(),
             trace_guard,
@@ -471,8 +484,69 @@ impl App {
             .open(&mut open)
             .show(ctx, |ui| {
                 ui.heading(APP_NAME);
-                ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
                 ui.label(env!("CARGO_PKG_DESCRIPTION"));
+                let copyright = env!("APP_COPYRIGHT");
+                let authors = env!("CARGO_PKG_AUTHORS").replace(':', ", ");
+                let credit = if !copyright.is_empty() && (authors.is_empty() || copyright.contains(authors.as_str())) {
+                    copyright.to_string()
+                } else if !copyright.is_empty() {
+                    format!("{copyright} · {authors}")
+                } else if !authors.is_empty() {
+                    format!("© {} {authors}", env!("BUILD_DATE").get(..4).unwrap_or(""))
+                } else {
+                    String::new()
+                };
+                if !credit.is_empty() {
+                    ui.label(credit);
+                }
+                ui.horizontal(|ui| {
+                    let license = format!("{} License", env!("CARGO_PKG_LICENSE"));
+                    let license_url = format!("{}/-/blob/master/LICENSE", env!("CARGO_PKG_REPOSITORY"));
+                    if !license.is_empty() {
+                        ui.hyperlink_to(license, license_url);
+                    }
+                    let homepage = env!("CARGO_PKG_HOMEPAGE");
+                    if !homepage.is_empty() {
+                        ui.hyperlink_to("Website", homepage);
+                    }
+                    let repository = env!("CARGO_PKG_REPOSITORY");
+                    if !repository.is_empty() {
+                        ui.hyperlink_to("Repository", repository);
+                    }
+                });
+                ui.separator();
+
+                egui::Grid::new("about_metadata").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
+                    ui.label("Version");
+                    ui.label(env!("CARGO_PKG_VERSION"));
+                    ui.end_row();
+                    ui.label("Commit");
+                    ui.label(env!("GIT_COMMIT"));
+                    ui.end_row();
+                    ui.label("Build Date");
+                    ui.label(env!("BUILD_DATE"));
+                    ui.end_row();
+
+                    ui.label("Renderer");
+                    ui.label(match (&self.gpu_backend, &self.gpu_name) {
+                        (Some(backend), Some(name)) => format!("{backend} · {name}"),
+                        _ => "unavailable".to_string(),
+                    });
+                    ui.end_row();
+                });
+
+                ui.separator();
+
+                egui::Grid::new("about_versions").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
+                    for (name, version) in &self.vendor_versions {
+                        ui.label(*name);
+                        ui.label(version.as_deref().unwrap_or("unavailable"));
+                        ui.end_row();
+                    }
+                });
+                ui.separator();
+
+                ui.label("NDI® is a registered trademark of Vizrt NDI AB.");
             });
         if !open {
             self.show_about = false;
