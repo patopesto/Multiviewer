@@ -1,8 +1,10 @@
 formats = ["nsis"]
 icons = ["assets/AppIcon.ico"]
 resources = [
-  { src = "vendor/ndi/windows/sdk/Bin/x64/Processing.NDI.Lib.x64.dll", target = "Processing.NDI.Lib.x64.dll" },
+  "vendor/LICENSE.md",
   "assets/AppIcon.ico"
+  { src = "vendor/ndi/windows/sdk/Bin/x64/Processing.NDI.Lib.x64.dll", target = "Processing.NDI.Lib.x64.dll" },
+  { src = "vendor/ndi/windows/sdk/Bin/x64/Processing.NDI.Lib.Licenses.txt", target = "Processing.NDI.Lib.Licenses.txt" },
 ]
 
 [nsis]

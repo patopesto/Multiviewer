@@ -2,6 +2,8 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
 use crate::compositor::Rect;
 use crate::engine::Engine;
@@ -13,6 +15,7 @@ use crate::ui::side_panel;
 use crate::ui::shortcuts::{self, Shortcut};
 
 const DEFAULT_PROJECT_NAME: &str = "Untitled";
+const LICENSES_TEXT: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/vendor/LICENSE.md"));
 
 const UNFOCUSED_FPS: f64 = 60.0;
 const RENDER_FPS_WINDOW: Duration = Duration::from_secs(2);
@@ -26,6 +29,8 @@ pub struct App {
     pending_confirm: Option<Confirm>,
     show_about: bool,
     show_shortcuts: bool,
+    show_licenses: bool,
+    licenses_cache: CommonMarkCache,
     vendor_versions: Vec<(&'static str, Option<String>)>,
     gpu_backend: Option<String>,
     gpu_name: Option<String>,
@@ -103,6 +108,8 @@ impl App {
             pending_confirm: None,
             show_about: false,
             show_shortcuts: false,
+            show_licenses: false,
+            licenses_cache: CommonMarkCache::default(),
             vendor_versions: Engine::vendor_versions(),
             gpu_backend,
             gpu_name,
@@ -182,6 +189,7 @@ impl eframe::App for App {
         self.draw_confirmation_modal(&ctx);
         self.draw_about_modal(&ctx);
         self.draw_shortcuts_modal(&ctx);
+        self.draw_licenses_modal(&ctx);
         if self.ui_visible {
             self.draw_status_bar(ui);
         }
@@ -277,6 +285,7 @@ impl App {
                 MenuAction::OpenRecent(path) => self.confirm_or(Confirm::OpenPath(path.clone())),
                 MenuAction::ShowAbout => self.show_about = true,
                 MenuAction::ShowShortcuts => self.show_shortcuts = true,
+                MenuAction::ShowLicenses => self.show_licenses = true,
             }
         }
     }
@@ -476,6 +485,7 @@ impl App {
             return;
         }
         let mut open = true;
+        let mut open_licenses = false;
         egui::Window::new(format!("About {}", APP_NAME))
             .collapsible(false)
             .resizable(false)
@@ -546,8 +556,18 @@ impl App {
                 });
                 ui.separator();
 
-                ui.label("NDI® is a registered trademark of Vizrt NDI AB.");
+                ui.horizontal(|ui| {
+                    ui.label("NDI® is a registered trademark of Vizrt NDI AB.");
+                    ui.hyperlink_to("ndi.video", "https://ndi.video/");
+                });
+                if ui.button("Third-Party Licenses…").clicked() {
+                    open_licenses = true;
+                }
             });
+        if open_licenses {
+            self.show_about = false;
+            self.show_licenses = true;
+        }
         if !open {
             self.show_about = false;
         }
@@ -572,6 +592,29 @@ impl App {
             });
         if !open {
             self.show_shortcuts = false;
+        }
+    }
+
+    fn draw_licenses_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_licenses {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new("Third-Party Licenses")
+            .collapsible(false)
+            .resizable(true)
+            .movable(false)
+            .default_size([560.0, 620.0])
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.style_mut().url_in_tooltip = true;
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    CommonMarkViewer::new().show(ui, &mut self.licenses_cache, LICENSES_TEXT);
+                });
+            });
+        if !open {
+            self.show_licenses = false;
         }
     }
 }
@@ -603,5 +646,13 @@ mod tests {
             ensure_extension(path, PROJECT_FILE_EXTENSION),
             PathBuf::from("/tmp/show.multiviewer")
         );
+    }
+
+    #[test]
+    fn licenses_markdown_renders() {
+        let mut cache = CommonMarkCache::default();
+        egui::__run_test_ui(|ui| {
+            CommonMarkViewer::new().show(ui, &mut cache, LICENSES_TEXT);
+        });
     }
 }

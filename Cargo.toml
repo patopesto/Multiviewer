@@ -36,6 +36,7 @@ panic = "abort"
 eframe = { version = "0.35", default-features = false, features = ["wgpu", "default_fonts"] }
 egui = "0.35"
 egui_extras = { version = "0.35", features = ["svg"] }
+egui_commonmark = { version = "0.24", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"

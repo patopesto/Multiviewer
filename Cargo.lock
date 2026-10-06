@@ -18,6 +18,7 @@ dependencies = [
  "dispatch2",
  "eframe",
  "egui",
+ "egui_commonmark",
  "egui_extras",
  "embed-resource",
  "epaint_default_fonts",
@@ -1082,6 +1083,29 @@ dependencies = [
  "web-time",
  "webbrowser",
  "winit",
+]
+
+[[package]]
+name = "egui_commonmark"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c833127228cc61cef806166adadc23572431fe2ea4cf753e60f654f82a2b3270"
+dependencies = [
+ "egui",
+ "egui_commonmark_backend",
+ "egui_extras",
+ "pulldown-cmark",
+]
+
+[[package]]
+name = "egui_commonmark_backend"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5758a1110eb8259743c9b220241c30ff014b2dec53c1a2b861d464e41fa3483e"
+dependencies = [
+ "egui",
+ "egui_extras",
+ "pulldown-cmark",
 ]
 
 [[package]]
@@ -3038,6 +3062,17 @@ name = "profiling"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eb8486b569e12e2c32ad3e204dbaba5e4b5b216e9367044f25f1dba42341773"
+
+[[package]]
+name = "pulldown-cmark"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
+dependencies = [
+ "bitflags 2.13.1",
+ "memchr",
+ "unicase",
+]
 
 [[package]]
 name = "pxfm"

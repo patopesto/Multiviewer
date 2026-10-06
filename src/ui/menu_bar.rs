@@ -10,6 +10,7 @@ pub enum MenuAction {
     OpenRecent(PathBuf),
     ShowShortcuts,
     ShowAbout,
+    ShowLicenses,
 }
 
 /// Draw the top menu bar (File / Edit / View / About).
@@ -55,8 +56,11 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
                 if ui.button(format!("About {}", APP_NAME)).clicked() {
                     actions.push(MenuAction::ShowAbout);
                 }
-                if ui.button("Keyboard Shortcuts…").clicked() {
+                if ui.button("Keyboard Shortcuts...").clicked() {
                     actions.push(MenuAction::ShowShortcuts);
+                }
+                if ui.button("Third-Party Licenses...").clicked() {
+                    actions.push(MenuAction::ShowLicenses);
                 }
             });
         });

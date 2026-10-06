@@ -3,7 +3,11 @@ icons = ["assets/AppIcon.png"]
 # cargo-packager installs resources to usr/lib/<binary-name>/ in both deb and
 # AppImage, where the $ORIGIN rpath built into the binary points. libndi.so is
 # the arch-normalised symlink ndi:setup:linux writes, so this stays arch-free.
-resources = ["vendor/ndi/linux/sdk/libndi.so"]
+resources = [
+  "vendor/LICENSE.md",
+  "vendor/ndi/linux/sdk/libndi.so",
+  "vendor/ndi/linux/sdk/licenses/libndi_licenses.txt",
+]
 
 [deb]
 depends = ["libgl1", "libvulkan1", "libx11-6", "libxkbcommon0", "libwayland-client0"]

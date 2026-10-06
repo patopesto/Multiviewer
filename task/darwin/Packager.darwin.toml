@@ -1,5 +1,9 @@
 formats = ["app"]
 icons = ["assets/AppIcon.icns"]
+resources = [
+  "vendor/LICENSE.md",
+  "vendor/ndi/macos/sdk/licenses/libndi_licenses.txt",
+]
 
 [macos]
 frameworks = [
