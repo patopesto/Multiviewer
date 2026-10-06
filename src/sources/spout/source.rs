@@ -49,62 +49,6 @@ impl SpoutSource {
         }
     }
 
-    /// Open the Spout receiver sharing wgpu's D3D12 device and command queue.
-    fn open_receiver(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        sender_name: &str,
-    ) -> Result<spout2::dx12::Receiver, String> {
-        // Safety: device/queue outlive the receiver; the app owns both for its lifetime.
-        unsafe {
-            let Some(hal_device) = device.as_hal::<Dx12Api>() else {
-                return Err("Spout requires wgpu's D3D12 backend".to_string());
-            };
-            let Some(hal_queue) = queue.as_hal::<Dx12Api>() else {
-                return Err("Spout requires wgpu's D3D12 backend".to_string());
-            };
-            let device_ptr = hal_device.raw_device().as_raw();
-            let mut queue_ptr = hal_queue.as_raw().as_raw();
-            spout2::dx12::Receiver::with_device(Some(sender_name), device_ptr, &mut queue_ptr)
-                .map_err(|e| e.to_string())
-        }
-    }
-
-    /// The raw `ID3D12Resource*` backing a wgpu texture, for Spout's receive.
-    fn texture_ptr(texture: &wgpu::Texture) -> Result<*mut c_void, &'static str> {
-        // Safety: the texture is alive for this call and shares the receiver's device.
-        unsafe {
-            let Some(hal_texture) = texture.as_hal::<Dx12Api>() else {
-                return Err("Spout requires wgpu's D3D12 backend");
-            };
-            Ok(hal_texture.raw_resource().as_raw())
-        }
-    }
-
-    /// Map the sender's `DXGI_FORMAT` to a wgpu texture format.
-    fn wgpu_format(dxgi: u32) -> Option<wgpu::TextureFormat> {
-        Some(match dxgi {
-            Dx12Format::B8G8R8A8_UNORM => wgpu::TextureFormat::Bgra8Unorm,
-            Dx12Format::R8G8B8A8_UNORM => wgpu::TextureFormat::Rgba8Unorm,
-            Dx12Format::R8G8B8A8_UNORM_SRGB => wgpu::TextureFormat::Rgba8UnormSrgb,
-            // DXGI_FORMAT_B8G8R8A8_UNORM_SRGB (no constant in spout2::dx12::format).
-            91 => wgpu::TextureFormat::Bgra8UnormSrgb,
-            Dx12Format::R10G10B10A2_UNORM => wgpu::TextureFormat::Rgb10a2Unorm,
-            Dx12Format::R16G16B16A16_FLOAT => wgpu::TextureFormat::Rgba16Float,
-            _ => return None,
-        })
-    }
-
-    fn format_label(dxgi: u32) -> &'static str {
-        match Self::wgpu_format(dxgi) {
-            Some(wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb) => {
-                PixelFormat::Bgra8.label()
-            }
-            Some(_) => PixelFormat::Rgba8.label(),
-            None => "unknown",
-        }
-    }
-
     /// The last produced frame, if any.
     fn cached(&self) -> Option<Frame> {
         let dims = self.dims.lock().unwrap();
@@ -121,12 +65,68 @@ impl SpoutSource {
     }
 }
 
+/// Open the Spout receiver sharing wgpu's D3D12 device and command queue.
+fn open_receiver(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    sender_name: &str,
+) -> Result<spout2::dx12::Receiver, String> {
+    // Safety: device/queue outlive the receiver; the app owns both for its lifetime.
+    unsafe {
+        let Some(hal_device) = device.as_hal::<Dx12Api>() else {
+            return Err("Spout requires wgpu's D3D12 backend".to_string());
+        };
+        let Some(hal_queue) = queue.as_hal::<Dx12Api>() else {
+            return Err("Spout requires wgpu's D3D12 backend".to_string());
+        };
+        let device_ptr = hal_device.raw_device().as_raw();
+        let mut queue_ptr = hal_queue.as_raw().as_raw();
+        spout2::dx12::Receiver::with_device(Some(sender_name), device_ptr, &mut queue_ptr)
+            .map_err(|e| e.to_string())
+    }
+}
+
+/// The raw `ID3D12Resource*` backing a wgpu texture, for Spout's receive.
+fn texture_ptr(texture: &wgpu::Texture) -> Result<*mut c_void, &'static str> {
+    // Safety: the texture is alive for this call and shares the receiver's device.
+    unsafe {
+        let Some(hal_texture) = texture.as_hal::<Dx12Api>() else {
+            return Err("Spout requires wgpu's D3D12 backend");
+        };
+        Ok(hal_texture.raw_resource().as_raw())
+    }
+}
+
+/// Map the sender's `DXGI_FORMAT` to a wgpu texture format.
+fn wgpu_format(dxgi: u32) -> Option<wgpu::TextureFormat> {
+    Some(match dxgi {
+        Dx12Format::B8G8R8A8_UNORM => wgpu::TextureFormat::Bgra8Unorm,
+        Dx12Format::R8G8B8A8_UNORM => wgpu::TextureFormat::Rgba8Unorm,
+        Dx12Format::R8G8B8A8_UNORM_SRGB => wgpu::TextureFormat::Rgba8UnormSrgb,
+        // DXGI_FORMAT_B8G8R8A8_UNORM_SRGB (no constant in spout2::dx12::format).
+        91 => wgpu::TextureFormat::Bgra8UnormSrgb,
+        Dx12Format::R10G10B10A2_UNORM => wgpu::TextureFormat::Rgb10a2Unorm,
+        Dx12Format::R16G16B16A16_FLOAT => wgpu::TextureFormat::Rgba16Float,
+        _ => return None,
+    })
+}
+
+fn format_label(dxgi: u32) -> &'static str {
+    match wgpu_format(dxgi) {
+        Some(wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb) => {
+            PixelFormat::Bgra8.label()
+        }
+        Some(_) => PixelFormat::Rgba8.label(),
+        None => "unknown",
+    }
+}
+
 impl VideoSource for SpoutSource {
     fn latest(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Frame> {
         let mut receiver_guard = self.receiver.lock().unwrap();
 
         if receiver_guard.is_none() {
-            match Self::open_receiver(device, queue, &self.source_ref) {
+            match open_receiver(device, queue, &self.source_ref) {
                 Ok(receiver) => {
                     tracing::info!(source=self.source_ref, "Spout receiver opened");
                     *receiver_guard = Some(SpoutReceiver(receiver));
@@ -154,7 +154,7 @@ impl VideoSource for SpoutSource {
         if self.texture.lock().unwrap().is_none() {
             let (w, h) = receiver.sender_size();
             if w > 0 && h > 0 {
-                let Some(format) = Self::wgpu_format(receiver.sender_format()) else {
+                let Some(format) = wgpu_format(receiver.sender_format()) else {
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
                         tracing::warn!(source=self.source_ref, "Spout sender uses unsupported DXGI format {}", receiver.sender_format());
                     }
@@ -185,7 +185,7 @@ impl VideoSource for SpoutSource {
         {
             let texture_guard = self.texture.lock().unwrap();
             if let Some(texture) = texture_guard.as_ref() {
-                match Self::texture_ptr(texture) {
+                match texture_ptr(texture) {
                     Ok(ptr) => raw_slot = ptr,
                     Err(e) => {
                         tracing::error!(source=self.source_ref, "Error on texture pointer: {}", e);
@@ -308,7 +308,7 @@ impl VideoSource for SpoutSource {
             let (w, h) = (dims.0, dims.1);
             {
                 let mut s = self.stats.lock().unwrap();
-                s.record_frame(w, h, Self::format_label(receiver.sender_format()), 0.0);
+                s.record_frame(w, h, format_label(receiver.sender_format()), 0.0);
                 s.record_copy_time(0.0);
             }
             return Some(Frame::Gpu(GpuFrame {
@@ -321,16 +321,16 @@ impl VideoSource for SpoutSource {
         }
 
         // Return the cached frame even if no new frame arrived.
-        Some(Frame::Gpu(GpuFrame {
+        return Some(Frame::Gpu(GpuFrame {
             bg: bg.as_ref().unwrap().clone(),
             w: dims.0,
             h: dims.1,
             seq: self.seq.load(Ordering::Relaxed),
             flip_v: false,
-        }))
+        }));
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
-        self.stats.clone()
+        return self.stats.clone();
     }
 }

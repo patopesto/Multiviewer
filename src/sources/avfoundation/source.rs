@@ -163,7 +163,7 @@ impl AvFoundationSource {
         let thread = std::thread::Builder::new()
             .name(format!("avf-in-{source_ref}"))
             .spawn(move || {
-                Self::run_capture(trace_ref, device_unique_id, slot2, stats2, running2);
+                run_capture(trace_ref, device_unique_id, slot2, stats2, running2);
             })
             .expect("spawn avfoundation capture thread");
 
@@ -175,60 +175,61 @@ impl AvFoundationSource {
             thread: Some(thread),
         }
     }
+}
 
-    fn run_capture(
-        source_ref: String,
-        device_unique_id: String,
-        slot: Arc<Mutex<Option<Frame>>>,
-        stats: Arc<Mutex<SourceStats>>,
-        running: Arc<AtomicBool>,
-    ) {
-        let unique_id = NSString::from_str(&device_unique_id);
-        let Some(device) = AVCaptureDevice::device_with_unique_id(&unique_id) else {
-            tracing::error!(source=source_ref, "AVFoundation device not found: {}", device_unique_id);
+/// Run the capture session on the source's thread until `running` clears.
+fn run_capture(
+    source_ref: String,
+    device_unique_id: String,
+    slot: Arc<Mutex<Option<Frame>>>,
+    stats: Arc<Mutex<SourceStats>>,
+    running: Arc<AtomicBool>,
+) {
+    let unique_id = NSString::from_str(&device_unique_id);
+    let Some(device) = AVCaptureDevice::device_with_unique_id(&unique_id) else {
+        tracing::error!(source=source_ref, "AVFoundation device not found: {}", device_unique_id);
+        return;
+    };
+
+    let session = AVCaptureSession::new();
+    let input = match AVCaptureDeviceInput::from_device(&device) {
+        Ok(i) => i,
+        Err(e) => {
+            tracing::error!(source=source_ref, "AVFoundation could not create device input for {}: {}", device_unique_id, e);
             return;
-        };
-
-        let session = AVCaptureSession::new();
-        let input = match AVCaptureDeviceInput::from_device(&device) {
-            Ok(i) => i,
-            Err(e) => {
-                tracing::error!(source=source_ref, "AVFoundation could not create device input for {}: {}", device_unique_id, e);
-                return;
-            }
-        };
-
-        let output = AVCaptureVideoDataOutput::new();
-        output.set_always_discards_late_video_frames(true);
-
-        let format = NSNumber::new_u32(kCVPixelFormatType_32BGRA);
-        let key: &NSString = unsafe { &*(kCVPixelBufferPixelFormatTypeKey as *const NSString) };
-        let settings = objc2_foundation::NSDictionary::from_slices(
-            &[key],
-            &[format.as_ref() as &objc2_foundation::NSObject],
-        );
-        output.set_video_settings(&settings);
-
-        let delegate = CaptureDelegate::new(slot, stats);
-        let delegate_obj: &ProtocolObject<dyn AVCaptureVideoDataOutputSampleBufferDelegate> =
-            ProtocolObject::from_ref(&*delegate);
-        let queue = DispatchQueue::new("net.bambinito.multiviewer.avfoundation", DispatchQueueAttr::SERIAL);
-        output.set_sample_buffer_delegate(delegate_obj, &queue);
-
-        session.begin_configuration();
-        session.add_input(&input);
-        session.add_output(&output);
-        session.commit_configuration();
-
-        let _delegate = delegate;
-        session.start_running();
-
-        while running.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(100));
         }
+    };
 
-        session.stop_running();
+    let output = AVCaptureVideoDataOutput::new();
+    output.set_always_discards_late_video_frames(true);
+
+    let format = NSNumber::new_u32(kCVPixelFormatType_32BGRA);
+    let key: &NSString = unsafe { &*(kCVPixelBufferPixelFormatTypeKey as *const NSString) };
+    let settings = objc2_foundation::NSDictionary::from_slices(
+        &[key],
+        &[format.as_ref() as &objc2_foundation::NSObject],
+    );
+    output.set_video_settings(&settings);
+
+    let delegate = CaptureDelegate::new(slot, stats);
+    let delegate_obj: &ProtocolObject<dyn AVCaptureVideoDataOutputSampleBufferDelegate> =
+        ProtocolObject::from_ref(&*delegate);
+    let queue = DispatchQueue::new("net.bambinito.multiviewer.avfoundation", DispatchQueueAttr::SERIAL);
+    output.set_sample_buffer_delegate(delegate_obj, &queue);
+
+    session.begin_configuration();
+    session.add_input(&input);
+    session.add_output(&output);
+    session.commit_configuration();
+
+    let _delegate = delegate;
+    session.start_running();
+
+    while running.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_millis(100));
     }
+
+    session.stop_running();
 }
 
 impl Drop for AvFoundationSource {
@@ -243,10 +244,10 @@ impl Drop for AvFoundationSource {
 
 impl VideoSource for AvFoundationSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
-        self.slot.lock().unwrap().clone()
+        return self.slot.lock().unwrap().clone();
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
-        self.stats.clone()
+        return self.stats.clone();
     }
 }

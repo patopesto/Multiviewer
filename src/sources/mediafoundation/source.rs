@@ -142,11 +142,11 @@ impl Drop for MediaFoundationSource {
 
 impl VideoSource for MediaFoundationSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
-        self.slot.lock().unwrap().clone()
+        return self.slot.lock().unwrap().clone();
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
-        self.stats.clone()
+        return self.stats.clone();
     }
 }
 

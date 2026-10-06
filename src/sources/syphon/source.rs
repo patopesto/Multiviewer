@@ -60,7 +60,7 @@ impl VideoSource for SyphonSource {
 
         let input = input_guard.as_mut().unwrap();
 
-        if input.receive_texture(device, queue) {
+        return if input.receive_texture(device, queue) {
             let tex = input.output_texture()?;
             let size = tex.size();
             let w = size.width;
@@ -183,10 +183,10 @@ impl VideoSource for SyphonSource {
                 seq: self.seq.load(Ordering::Relaxed),
                 flip_v: true,
             }))
-        }
+        };
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
-        self.stats.clone()
+        return self.stats.clone();
     }
 }

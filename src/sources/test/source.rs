@@ -126,72 +126,88 @@ pub struct TestSource {
 impl TestSource {
     pub fn spawn(source_ref: SourceRef, cfg: &TestSourceConfig) -> Self {
         let slot = Arc::new(Mutex::new(None));
-        let writer = slot.clone();
         let stats = Arc::new(Mutex::new(SourceStats::new()));
+        let running = Arc::new(AtomicBool::new(true));
+
+        let slot2 = slot.clone();
         let stats2 = stats.clone();
+        let running2 = running.clone();
         let width = cfg.width;
         let height = cfg.height;
         let pattern = cfg.pattern.clone();
         let cursor = cfg.cursor;
-        let running = Arc::new(AtomicBool::new(true));
-        let running2 = running.clone();
+
         let thread = std::thread::Builder::new()
             .name(format!("test-in-{source_ref}"))
             .spawn(move || {
-                let w = width;
-                let h = height;
-                let size = (w * h * 4) as usize;
-                let frame_interval = Duration::from_secs_f64(1.0 / NOMINAL_FPS);
-                let mut seq = 0u64;
-
-                // Render the static base once and reuse it every frame.
-                let mut base = vec![0u8; size];
-                generate_base(&mut base, w, h, &pattern);
-                let base = Arc::new(base);
-                let mut pool = FramePool::new();
-
-                while running2.load(Ordering::Relaxed) {
-                    let frame_start = Instant::now();
-                    {
-                        let frame_span = tracing::debug_span!("test_frame");
-                        let _frame_guard = frame_span.entered();
-                        // Reclaims last frame's buffer if the compositor has dropped it; re-alloc only on lost race.
-                        let mut back = pool.take(size);
-                        let t0 = Instant::now();
-                        match &pattern {
-                            TestPattern::Radar { width, speed, direction, line_color, bg_color } => {
-                                generate_radar(&mut back, w, h, *width, *speed, seq, direction, *line_color, *bg_color);
-                            }
-                            _ => {
-                                back.copy_from_slice(&base);
-                            }
-                        }
-                        if cursor.enabled {
-                            overlay_cursor(&mut back, w, h, seq, &cursor);
-                        }
-                        let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
-                        {
-                            let mut s = stats2.lock().unwrap();
-                            s.record_frame(w, h, PixelFormat::Rgba8.label(), NOMINAL_FPS);
-                            s.record_copy_time(copy_ms);
-                        }
-                        let frame = Frame::Cpu(CpuFrame {
-                            data: Arc::new(back),
-                            w,
-                            h,
-                            fmt: PixelFormat::Rgba8,
-                            pitch: 0,
-                            seq,
-                        });
-                        let previous = writer.lock().unwrap().replace(frame);
-                        pool.give(previous);
-                    }
-                    seq += 1;
-                    std::thread::sleep(frame_interval.saturating_sub(frame_start.elapsed()));
-                }
+                run_capture(width, height, pattern, cursor, slot2, stats2, running2);
             })
             .expect("spawn test source");
         Self { slot, stats, source_ref, running, thread: Some(thread) }
+    }
+}
+
+/// Generate and publish frames on the source's thread until `running` clears.
+#[allow(clippy::too_many_arguments)]
+fn run_capture(
+    width: u32,
+    height: u32,
+    pattern: TestPattern,
+    cursor: CursorConfig,
+    slot: Arc<Mutex<Option<Frame>>>,
+    stats: Arc<Mutex<SourceStats>>,
+    running: Arc<AtomicBool>,
+) {
+    let w = width;
+    let h = height;
+    let size = (w * h * 4) as usize;
+    let frame_interval = Duration::from_secs_f64(1.0 / NOMINAL_FPS);
+    let mut seq = 0u64;
+
+    // Render the static base once and reuse it every frame.
+    let mut base = vec![0u8; size];
+    generate_base(&mut base, w, h, &pattern);
+    let base = Arc::new(base);
+    let mut pool = FramePool::new();
+
+    while running.load(Ordering::Relaxed) {
+        let frame_start = Instant::now();
+        {
+            let frame_span = tracing::debug_span!("test_frame");
+            let _frame_guard = frame_span.entered();
+            // Reclaims last frame's buffer if the compositor has dropped it; re-alloc only on lost race.
+            let mut back = pool.take(size);
+            let t0 = Instant::now();
+            match &pattern {
+                TestPattern::Radar { width, speed, direction, line_color, bg_color } => {
+                    generate_radar(&mut back, w, h, *width, *speed, seq, direction, *line_color, *bg_color);
+                }
+                _ => {
+                    back.copy_from_slice(&base);
+                }
+            }
+            if cursor.enabled {
+                overlay_cursor(&mut back, w, h, seq, &cursor);
+            }
+            let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
+            {
+                let mut s = stats.lock().unwrap();
+                s.record_frame(w, h, PixelFormat::Rgba8.label(), NOMINAL_FPS);
+                s.record_copy_time(copy_ms);
+            }
+            let frame = Frame::Cpu(CpuFrame {
+                data: Arc::new(back),
+                w,
+                h,
+                fmt: PixelFormat::Rgba8,
+                pitch: 0,
+                seq,
+            });
+            let previous = slot.lock().unwrap().replace(frame);
+            pool.give(previous);
+        }
+        seq += 1;
+        std::thread::sleep(frame_interval.saturating_sub(frame_start.elapsed()));
     }
 }
 
@@ -208,11 +224,11 @@ impl Drop for TestSource {
 
 impl VideoSource for TestSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
-        self.slot.lock().unwrap().clone()
+        return self.slot.lock().unwrap().clone();
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
-        self.stats.clone()
+        return self.stats.clone();
     }
 }
 

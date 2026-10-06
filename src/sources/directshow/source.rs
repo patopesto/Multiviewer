@@ -147,11 +147,11 @@ impl Drop for DirectShowSource {
 
 impl VideoSource for DirectShowSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
-        self.slot.lock().unwrap().clone()
+        return self.slot.lock().unwrap().clone();
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
-        self.stats.clone()
+        return self.stats.clone();
     }
 }
 

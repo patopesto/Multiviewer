@@ -197,7 +197,7 @@ impl ScreenCaptureKitSource {
         let thread = std::thread::Builder::new()
             .name(format!("screencapturekit-in-{source_ref}"))
             .spawn(move || {
-                Self::run_capture(trace_ref, config, slot2, stats2, running2);
+                run_capture(trace_ref, config, slot2, stats2, running2);
             })
             .expect("spawn screencapturekit capture thread");
 
@@ -209,75 +209,77 @@ impl ScreenCaptureKitSource {
             thread: Some(thread),
         }
     }
+}
 
-    fn run_capture(
-        source_ref: String,
-        config: ScreenCaptureKitSourceConfig,
-        slot: Arc<Mutex<Option<Frame>>>,
-        stats: Arc<Mutex<SourceStats>>,
-        running: Arc<AtomicBool>,
-    ) {
-        let queue = DispatchQueue::new(
-            "net.bambinito.multiviewer.screencapturekit",
-            DispatchQueueAttr::SERIAL,
-        );
-        let mut active: Option<ActiveStream> = None;
-        // The poll repeats every second, so each distinct error logs once.
-        let mut last_error: Option<String> = None;
-        // Re-resolve each second: restart on size change, freeze when off-screen.
-        while running.load(Ordering::Relaxed) {
-            // Preflight never prompts; SCShareableContent does — stay out of SCK while denied.
-            let resolved = if !preflight_screen_capture_access() {
-                Err("screen recording permission not granted".to_string())
-            } else {
-                match fetch_content() {
-                    Ok(content) => resolve_target(&content, &config),
-                    Err(e) => Err(e),
-                }
-            };
-            match resolved {
-                Ok((key, filter, out_w, out_h)) => {
-                    last_error = None;
-                    stats.lock().unwrap().set_off_screen(false);
-                    if active.as_ref().is_none_or(|a| a.key != key) {
-                        if let Some(a) = active.take() {
-                            stop_stream(&a.stream, &source_ref);
-                        }
-                        match start_stream(
-                            &source_ref,
-                            key,
-                            filter,
-                            out_w,
-                            out_h,
-                            &slot,
-                            &stats,
-                            &queue,
-                        ) {
-                            Ok(stream) => active = Some(stream),
-                            Err(e) => {
-                                note_error(&mut last_error, e, &source_ref);
-                                stats.lock().unwrap().set_off_screen(true);
-                            }
-                        }
-                    }
-                }
-                // Target missing or off-screen: stop and keep the last frame.
-                Err(e) => {
-                    note_error(&mut last_error, e, &source_ref);
+/// Resolve the target, (re)start the stream and poll on the source's thread
+/// until `running` clears.
+fn run_capture(
+    source_ref: String,
+    config: ScreenCaptureKitSourceConfig,
+    slot: Arc<Mutex<Option<Frame>>>,
+    stats: Arc<Mutex<SourceStats>>,
+    running: Arc<AtomicBool>,
+) {
+    let queue = DispatchQueue::new(
+        "net.bambinito.multiviewer.screencapturekit",
+        DispatchQueueAttr::SERIAL,
+    );
+    let mut active: Option<ActiveStream> = None;
+    // The poll repeats every second, so each distinct error logs once.
+    let mut last_error: Option<String> = None;
+    // Re-resolve each second: restart on size change, freeze when off-screen.
+    while running.load(Ordering::Relaxed) {
+        // Preflight never prompts; SCShareableContent does — stay out of SCK while denied.
+        let resolved = if !preflight_screen_capture_access() {
+            Err("screen recording permission not granted".to_string())
+        } else {
+            match fetch_content() {
+                Ok(content) => resolve_target(&content, &config),
+                Err(e) => Err(e),
+            }
+        };
+        match resolved {
+            Ok((key, filter, out_w, out_h)) => {
+                last_error = None;
+                stats.lock().unwrap().set_off_screen(false);
+                if active.as_ref().is_none_or(|a| a.key != key) {
                     if let Some(a) = active.take() {
                         stop_stream(&a.stream, &source_ref);
                     }
-                    stats.lock().unwrap().set_off_screen(true);
+                    match start_stream(
+                        &source_ref,
+                        key,
+                        filter,
+                        out_w,
+                        out_h,
+                        &slot,
+                        &stats,
+                        &queue,
+                    ) {
+                        Ok(stream) => active = Some(stream),
+                        Err(e) => {
+                            note_error(&mut last_error, e, &source_ref);
+                            stats.lock().unwrap().set_off_screen(true);
+                        }
+                    }
                 }
             }
-            if !sleep_while_running(&running, Duration::from_secs(1)) {
-                break;
+            // Target missing or off-screen: stop and keep the last frame.
+            Err(e) => {
+                note_error(&mut last_error, e, &source_ref);
+                if let Some(a) = active.take() {
+                    stop_stream(&a.stream, &source_ref);
+                }
+                stats.lock().unwrap().set_off_screen(true);
             }
         }
-
-        if let Some(a) = active {
-            stop_stream(&a.stream, &source_ref);
+        if !sleep_while_running(&running, Duration::from_secs(1)) {
+            break;
         }
+    }
+
+    if let Some(a) = active {
+        stop_stream(&a.stream, &source_ref);
     }
 }
 
@@ -292,11 +294,11 @@ impl Drop for ScreenCaptureKitSource {
 
 impl VideoSource for ScreenCaptureKitSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
-        self.slot.lock().unwrap().clone()
+        return self.slot.lock().unwrap().clone();
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
-        self.stats.clone()
+        return self.stats.clone();
     }
 }
 
