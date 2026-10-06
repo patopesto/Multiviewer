@@ -286,9 +286,32 @@ fn avfoundation_settings_ui(_cfg: &mut AvFoundationSourceConfig, _ui: &mut egui:
 }
 
 #[cfg(target_os = "macos")]
-fn screencapturekit_settings_ui(_cfg: &mut ScreenCaptureKitSourceConfig, _ui: &mut egui::Ui) -> bool {
-    // No tunables yet
-    return false;
+fn screencapturekit_settings_ui(cfg: &mut ScreenCaptureKitSourceConfig, ui: &mut egui::Ui) -> bool {
+    let settings = cfg.settings_mut();
+    let old = settings.clone();
+
+    settings_grid(ui, "screencapturekit_settings_grid", |ui| {
+        ui.label("Cursor");
+        settings_value(ui, |ui| {
+            egui::ComboBox::from_id_salt("screencapturekit_cursor")
+                .width(ui.available_width())
+                .selected_text(if settings.show_cursor { "Show" } else { "Hide" })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut settings.show_cursor, true, "Show");
+                    ui.selectable_value(&mut settings.show_cursor, false, "Hide");
+                });
+        });
+        ui.end_row();
+
+        ui.label("Max FPS");
+        settings_value(ui, |ui| {
+            ui.add(egui::DragValue::new(&mut settings.max_fps).range(0..=240))
+                .on_hover_text("0 = uncapped");
+        });
+        ui.end_row();
+    });
+
+    return *settings != old;
 }
 
 #[cfg(target_os = "windows")]

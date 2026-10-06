@@ -15,6 +15,7 @@ use core_graphics2::window::{
     copy_window_info, preflight_screen_capture_access, CGWindowListOption, kCGWindowNumber,
 };
 use core_media::sample_buffer::{CMSampleBuffer, CMSampleBufferRef};
+use core_media::time::CMTime;
 use core_video::pixel_buffer::{
     kCVPixelBufferLock_ReadOnly, kCVPixelFormatType_32BGRA, CVPixelBuffer,
 };
@@ -135,6 +136,22 @@ impl StreamDelegate {
     }
 }
 
+/// Session tunables applied when the stream starts; changing one restarts the source.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ScreenCaptureKitSettings {
+    pub show_cursor: bool,
+    pub max_fps: u32, // 0 = uncapped
+}
+
+impl Default for ScreenCaptureKitSettings {
+    fn default() -> Self {
+        Self {
+            show_cursor: true,
+            max_fps: 0,
+        }
+    }
+}
+
 /// Capture target, tagged on the wire as `kind`; older flat configs do not parse.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -142,12 +159,32 @@ pub enum ScreenCaptureKitSourceConfig {
     Display {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         display_id: String,
+        #[serde(default)]
+        settings: ScreenCaptureKitSettings,
     },
     Window {
         window_id: u32,
         bundle_id: String,
         title: String,
+        #[serde(default)]
+        settings: ScreenCaptureKitSettings,
     },
+}
+
+impl ScreenCaptureKitSourceConfig {
+    pub fn settings(&self) -> &ScreenCaptureKitSettings {
+        return match self {
+            Self::Display { settings, .. } => settings,
+            Self::Window { settings, .. } => settings,
+        };
+    }
+
+    pub fn settings_mut(&mut self) -> &mut ScreenCaptureKitSettings {
+        return match self {
+            Self::Display { settings, .. } => settings,
+            Self::Window { settings, .. } => settings,
+        };
+    }
 }
 
 impl Default for ScreenCaptureKitSourceConfig {
@@ -155,6 +192,7 @@ impl Default for ScreenCaptureKitSourceConfig {
     fn default() -> Self {
         return Self::Display {
             display_id: String::new(),
+            settings: ScreenCaptureKitSettings::default(),
         };
     }
 }
@@ -255,6 +293,7 @@ fn run_capture(
                         &slot,
                         &stats,
                         &queue,
+                        config.settings(),
                     ) {
                         Ok(stream) => active = Some(stream),
                         Err(e) => {
@@ -312,6 +351,7 @@ fn resolve_target(
             window_id,
             bundle_id,
             title,
+            ..
         } => {
             let windows = content.windows();
             let window = windows
@@ -344,7 +384,7 @@ fn resolve_target(
             };
             (key, filter, w, h)
         }
-        ScreenCaptureKitSourceConfig::Display { display_id } => {
+        ScreenCaptureKitSourceConfig::Display { display_id, .. } => {
             let displays = content.displays();
             let Some(display) = displays
                 .iter()
@@ -426,6 +466,15 @@ fn window_on_screen(window_id: u32) -> bool {
     return false;
 }
 
+/// Set `SCStreamConfiguration.showsCursor`, working around screen-capture-kit
+/// 0.7.1 sending the non-existent `setShowCursor:`.
+fn set_shows_cursor(configuration: &SCStreamConfiguration, show: bool) {
+    // SAFETY: SCStreamConfiguration responds to `setShowsCursor:` on macOS 12.3+,
+    // the ScreenCaptureKit floor.
+    // ponytail: use the crate's setter once it sends the right selector.
+    let _: () = unsafe { msg_send![configuration, setShowsCursor: show] };
+}
+
 /// Build and start a stream; errors go back to the poll loop to dedup + retry.
 #[allow(clippy::too_many_arguments)]
 fn start_stream(
@@ -437,6 +486,7 @@ fn start_stream(
     slot: &Arc<Mutex<Option<Frame>>>,
     stats: &Arc<Mutex<SourceStats>>,
     queue: &DispatchQueue,
+    settings: &ScreenCaptureKitSettings,
 ) -> Result<ActiveStream, String> {
     let configuration = SCStreamConfiguration::new();
     configuration.set_width(out_w);
@@ -444,6 +494,10 @@ fn start_stream(
     configuration.set_pixel_format(kCVPixelFormatType_32BGRA);
     // Output size is already in pixels; scaling keeps a mismatch from cropping.
     configuration.set_scales_to_fit(true);
+    set_shows_cursor(&configuration, settings.show_cursor);
+    if settings.max_fps > 0 {
+        configuration.set_minimum_frame_interval(CMTime::make(1, settings.max_fps as i32));
+    }
 
     let delegate = StreamDelegate::new(slot.clone(), stats.clone());
     let output: &ProtocolObject<dyn SCStreamOutput> = ProtocolObject::from_ref(&*delegate);
@@ -550,5 +604,42 @@ mod tests {
         let t0 = Instant::now();
         assert!(!sleep_while_running(&running, Duration::from_secs(30)));
         assert!(t0.elapsed() < Duration::from_secs(1));
+    }
+
+    /// A config written before the tunables existed still parses, with the
+    /// fields defaulting to the previous behavior.
+    #[test]
+    fn legacy_config_without_settings_uses_defaults() {
+        let json = r#"{"kind":"display","display_id":"1"}"#;
+        let cfg: ScreenCaptureKitSourceConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.settings(), &ScreenCaptureKitSettings::default());
+    }
+
+    /// The cursor preference survives a config round-trip.
+    #[test]
+    fn settings_round_trip() {
+        let cfg = ScreenCaptureKitSourceConfig::Window {
+            window_id: 1,
+            bundle_id: "com.example.app".into(),
+            title: "Doc".into(),
+            settings: ScreenCaptureKitSettings {
+                show_cursor: false,
+                max_fps: 30,
+            },
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: ScreenCaptureKitSourceConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(cfg, back);
+    }
+
+    /// Guards the workaround for screen-capture-kit's wrong cursor selector
+    /// (`setShowCursor:` vs the real `showsCursor`): this panics at runtime if
+    /// the selector ever stops existing.
+    #[test]
+    fn shows_cursor_selector_round_trips() {
+        let configuration = SCStreamConfiguration::new();
+        set_shows_cursor(&configuration, true);
+        let value: bool = unsafe { msg_send![&*configuration, showsCursor] };
+        assert!(value);
     }
 }

@@ -275,7 +275,7 @@ fn screencapturekit_source_round_trips_on_unavailable_platform() {
         let SourceConfig::ScreenCaptureKit(c) = &parsed.config else {
             panic!("expected ScreenCaptureKit config")
         };
-        let ScreenCaptureKitSourceConfig::Display { display_id } = c else {
+        let ScreenCaptureKitSourceConfig::Display { display_id, .. } = c else {
             panic!("expected display target, got {c:?}")
         };
         assert_eq!(display_id, "724561234");
@@ -326,6 +326,7 @@ fn screencapturekit_window_source_round_trip() {
             window_id,
             bundle_id,
             title,
+            ..
         } = c
         else {
             panic!("expected window target, got {c:?}")

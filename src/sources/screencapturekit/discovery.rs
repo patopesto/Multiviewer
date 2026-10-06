@@ -7,7 +7,7 @@ use core_graphics2::window::{preflight_screen_capture_access, request_screen_cap
 use objc2::rc::Retained;
 use screen_capture_kit::shareable_content::SCShareableContent;
 
-use super::source::ScreenCaptureKitSourceConfig;
+use super::source::{ScreenCaptureKitSettings, ScreenCaptureKitSourceConfig};
 
 const INCLUDE_UNTITLED_WINDOWS: bool = false;
 
@@ -86,6 +86,7 @@ impl Target {
         return match &self.kind {
             TargetKind::Display { display_id } => ScreenCaptureKitSourceConfig::Display {
                 display_id: display_id.clone(),
+                settings: ScreenCaptureKitSettings::default(),
             },
             TargetKind::Window {
                 window_id,
@@ -95,6 +96,7 @@ impl Target {
                 window_id: *window_id,
                 bundle_id: bundle_id.clone(),
                 title: title.clone(),
+                settings: ScreenCaptureKitSettings::default(),
             },
         };
     }
