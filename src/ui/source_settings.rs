@@ -67,10 +67,7 @@ fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
 }
 
 fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
-    let old_w = cfg.width;
-    let old_h = cfg.height;
-    let old_pattern = cfg.pattern.clone();
-    let old_cursor = cfg.cursor;
+    let old = cfg.clone();
     settings_grid(ui, "test_settings_grid", |ui| {
         ui.label("Size");
         settings_value(ui, |ui| {
@@ -187,11 +184,11 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
             ui.end_row();
         }
     });
-    cfg.width != old_w || cfg.height != old_h || cfg.pattern != old_pattern || cfg.cursor != old_cursor
+    return *cfg != old;
 }
 
 fn ndi_format_label(cf: NdiReceiverColorFormat) -> String {
-    match cf {
+    return match cf {
         NdiReceiverColorFormat::BGRX_BGRA => "BGRX/BGRA".to_string(),
         NdiReceiverColorFormat::UYVY_BGRA => "UYVY/BGRA".to_string(),
         NdiReceiverColorFormat::RGBX_RGBA => "RGBX/RGBA".to_string(),
@@ -199,12 +196,11 @@ fn ndi_format_label(cf: NdiReceiverColorFormat) -> String {
         NdiReceiverColorFormat::Fastest => "Fastest".to_string(),
         NdiReceiverColorFormat::Best => "Best".to_string(),
         _ => format!("{:?}", cf),
-    }
+    };
 }
 
 fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
-    let old_bw = cfg.bandwidth;
-    let old_cf = cfg.color_format;
+    let old = cfg.clone();
     settings_grid(ui, "ndi_settings_grid", |ui| {
         ui.label("Bandwidth");
         settings_value(ui, |ui| {
@@ -238,7 +234,7 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
         });
         ui.end_row();
     });
-    cfg.bandwidth != old_bw || cfg.color_format != old_cf
+    return *cfg != old;
 }
 
 fn decklink_settings_ui(
@@ -246,7 +242,7 @@ fn decklink_settings_ui(
     runtime: &SourceRuntimeConfig,
     ui: &mut egui::Ui,
 ) -> bool {
-    let old_conn = cfg.connection;
+    let old = cfg.clone();
     // The connection mask lives in runtime data (discovered on connect), not
     // in the persisted config; absent a live source, offer every connection.
     let supported = match runtime {
@@ -274,31 +270,31 @@ fn decklink_settings_ui(
         });
         ui.end_row();
     });
-    cfg.connection != old_conn
+    return *cfg != old;
 }
 
 #[cfg(target_os = "macos")]
 fn syphon_settings_ui(_cfg: &mut SyphonSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
-    false
+    return false;
 }
 
 #[cfg(target_os = "macos")]
 fn avfoundation_settings_ui(_cfg: &mut AvFoundationSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
-    false
+    return false;
 }
 
 #[cfg(target_os = "macos")]
 fn screencapturekit_settings_ui(_cfg: &mut ScreenCaptureKitSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
-    false
+    return false;
 }
 
 #[cfg(target_os = "windows")]
 fn spout_settings_ui(_cfg: &mut SpoutSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
-    false
+    return false;
 }
 
 #[cfg(target_os = "windows")]
@@ -323,13 +319,7 @@ fn mediafoundation_settings_ui(cfg: &mut MediaFoundationSourceConfig, runtime: &
     } else {
         None
     };
-    let old = (
-        cfg.width,
-        cfg.height,
-        cfg.fps_num,
-        cfg.fps_den,
-        cfg.pixel_format,
-    );
+    let old = cfg.clone();
 
     // Formats the compositor can render, plus Auto (the device default).
     const PIXEL_FORMATS: [Option<PixelFormat>; 5] = [
@@ -389,13 +379,7 @@ fn mediafoundation_settings_ui(cfg: &mut MediaFoundationSourceConfig, runtime: &
         ui.end_row();
     });
 
-    (
-        cfg.width,
-        cfg.height,
-        cfg.fps_num,
-        cfg.fps_den,
-        cfg.pixel_format,
-    ) != old
+    return *cfg != old;
 }
 
 /// Display label for a requested Media Foundation output format; `None` is Auto.
@@ -446,13 +430,7 @@ fn directshow_settings_ui(cfg: &mut DirectShowSourceConfig, runtime: &SourceRunt
     } else {
         None
     };
-    let old = (
-        cfg.width,
-        cfg.height,
-        cfg.fps_num,
-        cfg.fps_den,
-        cfg.pixel_format,
-    );
+    let old = cfg.clone();
 
     // Formats the compositor can render, plus Auto (the device default).
     const PIXEL_FORMATS: [Option<PixelFormat>; 5] = [
@@ -512,13 +490,7 @@ fn directshow_settings_ui(cfg: &mut DirectShowSourceConfig, runtime: &SourceRunt
         ui.end_row();
     });
 
-    (
-        cfg.width,
-        cfg.height,
-        cfg.fps_num,
-        cfg.fps_den,
-        cfg.pixel_format,
-    ) != old
+    return *cfg != old;
 }
 
 #[cfg(target_os = "windows")]
