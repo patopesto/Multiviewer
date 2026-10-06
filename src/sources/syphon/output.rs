@@ -62,8 +62,6 @@ pub struct SyphonOutputConfig {
 }
 
 pub struct SyphonOutput {
-    #[allow(dead_code)]
-    id: OutputId,
     name: String,
     config: SyphonOutputConfig,
     output: Mutex<Option<syphon_wgpu::SyphonWgpuOutput>>,
@@ -83,9 +81,8 @@ pub struct SyphonOutput {
 }
 
 impl SyphonOutput {
-    pub fn new(id: OutputId, name: String, config: SyphonOutputConfig, enabled: bool) -> Self {
+    pub fn new(_id: OutputId, name: String, config: SyphonOutputConfig, enabled: bool) -> Self {
         Self {
-            id,
             name,
             config,
             output: Mutex::new(None),
@@ -101,95 +98,6 @@ impl SyphonOutput {
             flipped_texture: Mutex::new(None),
             flipped_view: Mutex::new(None),
             flipped_bind_group: Mutex::new(None),
-        }
-    }
-
-    pub fn present(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) {
-        if !self.enabled.load(Ordering::Relaxed) {
-            return;
-        }
-
-        self.ensure_flip_resources(device, queue);
-
-        let mut output_guard = self.output.lock().unwrap();
-        let current_width = self.width.load(Ordering::Relaxed);
-        let current_height = self.height.load(Ordering::Relaxed);
-
-        if output_guard.is_none() || current_width != width || current_height != height {
-            match syphon_wgpu::SyphonWgpuOutput::new(&self.config.server_name, device, queue, width, height) {
-                Ok(output) => {
-                    tracing::info!(output=self.name, "Syphon output created: ({}x{})", width, height);
-                    self.width.store(width, Ordering::Relaxed);
-                    self.height.store(height, Ordering::Relaxed);
-                    *output_guard = Some(output);
-                    drop(output_guard);
-                    let mut s = self.stats.lock().unwrap();
-                    s.width = width;
-                    s.height = height;
-                    output_guard = self.output.lock().unwrap();
-                }
-                Err(e) => {
-                    tracing::error!(output=self.name, "Syphon output creation failed: {}", e);
-                    return;
-                }
-            }
-        }
-
-        // A server with no client would flip and publish into the void every
-        // cycle; the server object stays alive so clients can still find it.
-        if output_guard.as_ref().map(|o| o.client_count()).unwrap_or(0) == 0 {
-            return;
-        }
-
-        // Recreate the flipped texture/bind group if dimensions changed.
-        {
-            let flip_span = tracing::debug_span!("flip");
-            let _flip_guard = flip_span.entered();
-            self.ensure_flipped_texture(device, width, height, texture);
-            self.render_flip(device, queue, width, height);
-        }
-
-        let publish_span = tracing::debug_span!("publish");
-        let _publish_guard = publish_span.entered();
-        if let Some(ref mut output) = *output_guard {
-            let _flipped_view = self.flipped_view.lock().unwrap();
-            let Some(ref _view) = *_flipped_view else {
-                return;
-            };
-
-            let clients = output.client_count();
-            let start = std::time::Instant::now();
-
-            // syphon_wgpu::publish expects a &wgpu::Texture, not a view.
-            // We access the texture stored in flipped_texture.
-            let flipped_texture = self.flipped_texture.lock().unwrap();
-            let Some(ref flipped) = *flipped_texture else {
-                return;
-            };
-
-            let status = output.publish(flipped, device, queue);
-            let elapsed = start.elapsed().as_secs_f32() * 1000.0;
-
-            tracing::trace!(output=self.name, "Syphon publish: {:?}, clients: {}, elapsed: {:.2}ms", status, clients, elapsed);
-
-            let mut s = self.stats.lock().unwrap();
-            s.send_time_ms = elapsed;
-            match status {
-                syphon_wgpu::PublishStatus::ZeroCopy | syphon_wgpu::PublishStatus::CpuFallback => {
-                    s.record_sent();
-                }
-                syphon_wgpu::PublishStatus::NoClients
-                | syphon_wgpu::PublishStatus::PoolExhausted => {
-                    s.frames_dropped += 1;
-                }
-            }
         }
     }
 
@@ -384,7 +292,6 @@ impl SyphonOutput {
     }
 }
 
-#[cfg(target_os = "macos")]
 impl VideoOutput for SyphonOutput {
     fn present(
         &self,
@@ -394,15 +301,93 @@ impl VideoOutput for SyphonOutput {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) {
-        self.present(texture, width, height, device, queue);
+        if !self.enabled.load(Ordering::Relaxed) {
+            return;
+        }
+
+        self.ensure_flip_resources(device, queue);
+
+        let mut output_guard = self.output.lock().unwrap();
+        let current_width = self.width.load(Ordering::Relaxed);
+        let current_height = self.height.load(Ordering::Relaxed);
+
+        if output_guard.is_none() || current_width != width || current_height != height {
+            match syphon_wgpu::SyphonWgpuOutput::new(&self.config.server_name, device, queue, width, height) {
+                Ok(output) => {
+                    tracing::info!(output=self.name, "Syphon output created: ({}x{})", width, height);
+                    self.width.store(width, Ordering::Relaxed);
+                    self.height.store(height, Ordering::Relaxed);
+                    *output_guard = Some(output);
+                    drop(output_guard);
+                    let mut s = self.stats.lock().unwrap();
+                    s.width = width;
+                    s.height = height;
+                    output_guard = self.output.lock().unwrap();
+                }
+                Err(e) => {
+                    tracing::error!(output=self.name, "Syphon output creation failed: {}", e);
+                    return;
+                }
+            }
+        }
+
+        // A server with no client would flip and publish into the void every
+        // cycle; the server object stays alive so clients can still find it.
+        if output_guard.as_ref().map(|o| o.client_count()).unwrap_or(0) == 0 {
+            return;
+        }
+
+        // Recreate the flipped texture/bind group if dimensions changed.
+        {
+            let flip_span = tracing::debug_span!("flip");
+            let _flip_guard = flip_span.entered();
+            self.ensure_flipped_texture(device, width, height, texture);
+            self.render_flip(device, queue, width, height);
+        }
+
+        let publish_span = tracing::debug_span!("publish");
+        let _publish_guard = publish_span.entered();
+        if let Some(ref mut output) = *output_guard {
+            let _flipped_view = self.flipped_view.lock().unwrap();
+            let Some(ref _view) = *_flipped_view else {
+                return;
+            };
+
+            let clients = output.client_count();
+            let start = std::time::Instant::now();
+
+            // syphon_wgpu::publish expects a &wgpu::Texture, not a view.
+            // We access the texture stored in flipped_texture.
+            let flipped_texture = self.flipped_texture.lock().unwrap();
+            let Some(ref flipped) = *flipped_texture else {
+                return;
+            };
+
+            let status = output.publish(flipped, device, queue);
+            let elapsed = start.elapsed().as_secs_f32() * 1000.0;
+
+            tracing::trace!(output=self.name, "Syphon publish: {:?}, clients: {}, elapsed: {:.2}ms", status, clients, elapsed);
+
+            let mut s = self.stats.lock().unwrap();
+            s.send_time_ms = elapsed;
+            match status {
+                syphon_wgpu::PublishStatus::ZeroCopy | syphon_wgpu::PublishStatus::CpuFallback => {
+                    s.record_sent();
+                }
+                syphon_wgpu::PublishStatus::NoClients
+                | syphon_wgpu::PublishStatus::PoolExhausted => {
+                    s.frames_dropped += 1;
+                }
+            }
+        }
     }
 
     fn name(&self) -> &str {
-        &self.name
+        return &self.name;
     }
 
     fn enabled(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed)
+        return self.enabled.load(Ordering::Relaxed);
     }
 
     fn set_enabled(&self, enabled: bool) {
@@ -410,10 +395,10 @@ impl VideoOutput for SyphonOutput {
     }
 
     fn stats(&self) -> Arc<Mutex<OutputStats>> {
-        self.stats.clone()
+        return self.stats.clone();
     }
 
     fn protocol(&self) -> Protocol {
-        Protocol::Syphon
+        return Protocol::Syphon;
     }
 }

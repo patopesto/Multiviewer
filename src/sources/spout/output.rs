@@ -4,6 +4,7 @@ use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use spout2::dx12::resource_state::COPY_DEST;
 use wgpu::hal::api::Dx12 as Dx12Api;
+use windows::core::Interface;
 
 use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, VideoOutput};
@@ -33,8 +34,6 @@ unsafe impl Send for SendState {}
 /// (isolating Spout from the resource-state changes other outputs make to the
 /// canvas), then shared through Spout's D3D11On12 bridge.
 pub struct SpoutOutput {
-    #[allow(dead_code)]
-    id: OutputId,
     name: String,
     config: SpoutOutputConfig,
     enabled: AtomicBool,
@@ -46,9 +45,8 @@ pub struct SpoutOutput {
 impl SpoutOutput {
     /// `name` is the output's display name; a non-empty `config.sender_name`
     /// overrides it as the Spout sender name.
-    pub fn new(id: OutputId, name: String, config: SpoutOutputConfig, enabled: bool) -> Self {
+    pub fn new(_id: OutputId, name: String, config: SpoutOutputConfig, enabled: bool) -> Self {
         Self {
-            id,
             name,
             config,
             enabled: AtomicBool::new(enabled),
@@ -57,84 +55,84 @@ impl SpoutOutput {
             diagnostics_logged: AtomicBool::new(false),
         }
     }
+}
 
-    /// Open the Spout sender sharing wgpu's D3D12 device and command queue.
-    fn open_sender(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        sender_name: &str,
-    ) -> Result<spout2::dx12::Sender, String> {
-        use windows::core::Interface;
-        // Safety: device/queue outlive the sender; the app owns both for its lifetime.
-        unsafe {
-            let Some(hal_device) = device.as_hal::<Dx12Api>() else {
-                return Err("Spout requires wgpu's D3D12 backend".to_string());
-            };
-            let Some(hal_queue) = queue.as_hal::<Dx12Api>() else {
-                return Err("Spout requires wgpu's D3D12 backend".to_string());
-            };
-            let device_ptr = hal_device.raw_device().as_raw();
-            let mut queue_ptr = hal_queue.as_raw().as_raw();
-            spout2::dx12::Sender::with_device(sender_name, device_ptr, &mut queue_ptr)
-                .map_err(|e| e.to_string())
-        }
+/// Open the Spout sender sharing wgpu's D3D12 device and command queue.
+fn open_sender(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    sender_name: &str,
+) -> Result<spout2::dx12::Sender, String> {
+    // Safety: device/queue outlive the sender; the app owns both for its lifetime.
+    unsafe {
+        let Some(hal_device) = device.as_hal::<Dx12Api>() else {
+            return Err("Spout requires wgpu's D3D12 backend".to_string());
+        };
+        let Some(hal_queue) = queue.as_hal::<Dx12Api>() else {
+            return Err("Spout requires wgpu's D3D12 backend".to_string());
+        };
+        let device_ptr = hal_device.raw_device().as_raw();
+        let mut queue_ptr = hal_queue.as_raw().as_raw();
+        spout2::dx12::Sender::with_device(sender_name, device_ptr, &mut queue_ptr)
+            .map_err(|e| e.to_string())
     }
+}
 
-    /// The raw `ID3D12Resource*` backing a wgpu texture, for Spout's wrap.
-    fn texture_ptr(texture: &wgpu::Texture) -> Result<*mut c_void, &'static str> {
-        use windows::core::Interface;
-        // Safety: the texture is alive for this call and shares the sender's device.
-        unsafe {
-            let Some(hal_texture) = texture.as_hal::<Dx12Api>() else {
-                return Err("Spout requires wgpu's D3D12 backend");
-            };
-            Ok(hal_texture.raw_resource().as_raw())
-        }
+/// The raw `ID3D12Resource*` backing a wgpu texture, for Spout's wrap.
+fn texture_ptr(texture: &wgpu::Texture) -> Result<*mut c_void, &'static str> {
+    // Safety: the texture is alive for this call and shares the sender's device.
+    unsafe {
+        let Some(hal_texture) = texture.as_hal::<Dx12Api>() else {
+            return Err("Spout requires wgpu's D3D12 backend");
+        };
+        Ok(hal_texture.raw_resource().as_raw())
     }
+}
 
-    /// Create the sender, the intermediate texture and its Spout wrapper.
-    fn create_state(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        sender_name: &str,
-        width: u32,
-        height: u32,
-    ) -> Result<SendState, String> {
-        let sender = Self::open_sender(device, queue, sender_name)?;
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(sender_name),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Bgra8Unorm,
-            usage: wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let ptr = Self::texture_ptr(&texture)?;
-        // Safety: the texture lives on the sender's device; the copy below leaves it in `COPY_DEST`, the state `send_wrapped_resource` requires.
-        let wrapped = unsafe {
-            sender.wrap_resource(ptr, COPY_DEST)
-        }
-        .map_err(|e| e.to_string())?;
-        Ok(SendState {
-            wrapped,
-            texture,
-            sender,
+/// Create the sender, the intermediate texture and its Spout wrapper.
+fn create_state(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    sender_name: &str,
+    width: u32,
+    height: u32,
+) -> Result<SendState, String> {
+    let sender = open_sender(device, queue, sender_name)?;
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(sender_name),
+        size: wgpu::Extent3d {
             width,
             height,
-        })
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Bgra8Unorm,
+        usage: wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let ptr = texture_ptr(&texture)?;
+    // Safety: the texture lives on the sender's device; the copy below leaves it in `COPY_DEST`, the state `send_wrapped_resource` requires.
+    let wrapped = unsafe {
+        sender.wrap_resource(ptr, COPY_DEST)
     }
+    .map_err(|e| e.to_string())?;
+    Ok(SendState {
+        wrapped,
+        texture,
+        sender,
+        width,
+        height,
+    })
+}
 
-    pub fn present(
+impl VideoOutput for SpoutOutput {
+    fn present(
         &self,
         texture: &wgpu::Texture,
-        _width: u32,
-        _height: u32,
+        width: u32,
+        height: u32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) {
@@ -142,8 +140,6 @@ impl SpoutOutput {
             return;
         }
 
-        let width = texture.width();
-        let height = texture.height();
         let mut state_guard = self.state.lock().unwrap();
         let recreate = state_guard
             .as_ref()
@@ -151,7 +147,7 @@ impl SpoutOutput {
             .unwrap_or(true);
 
         if recreate {
-            match Self::create_state(device, queue, &self.config.sender_name, width, height) {
+            match create_state(device, queue, &self.config.sender_name, width, height) {
                 Ok(state) => {
                     tracing::info!(output=self.name, "Spout output created: ({}x{})", width, height);
                     *state_guard = Some(state);
@@ -217,26 +213,13 @@ impl SpoutOutput {
             }
         }
     }
-}
-
-impl VideoOutput for SpoutOutput {
-    fn present(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) {
-        self.present(texture, width, height, device, queue);
-    }
 
     fn name(&self) -> &str {
-        &self.name
+        return &self.name;
     }
 
     fn enabled(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed)
+        return self.enabled.load(Ordering::Relaxed);
     }
 
     fn set_enabled(&self, enabled: bool) {
@@ -244,10 +227,10 @@ impl VideoOutput for SpoutOutput {
     }
 
     fn stats(&self) -> Arc<Mutex<OutputStats>> {
-        self.stats.clone()
+        return self.stats.clone();
     }
 
     fn protocol(&self) -> Protocol {
-        Protocol::Spout
+        return Protocol::Spout;
     }
 }

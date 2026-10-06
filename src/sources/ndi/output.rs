@@ -14,17 +14,14 @@ pub struct NdiOutputConfig {
 }
 
 pub struct NdiOutput {
-    #[allow(dead_code)]
-    id: OutputId,
     name: String,
     enabled: AtomicBool,
     width: AtomicU32,
     height: AtomicU32,
     stats: Arc<Mutex<OutputStats>>,
-    frame_tx: mpsc::SyncSender<Vec<u8>>,
+    frame_tx: Option<mpsc::SyncSender<Vec<u8>>>,
     pending: Arc<AtomicBool>,
     readback: Mutex<Option<wgpu::Buffer>>,
-    #[allow(dead_code)]
     thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -105,13 +102,12 @@ impl NdiOutput {
             .expect("spawn ndi output thread");
 
         Self {
-            id,
             name,
             enabled: AtomicBool::new(enabled),
             width: AtomicU32::new(0),
             height: AtomicU32::new(0),
             stats,
-            frame_tx,
+            frame_tx: Some(frame_tx),
             pending,
             readback: Mutex::new(None),
             thread: Some(thread),
@@ -120,7 +116,7 @@ impl NdiOutput {
 }
 
 impl VideoOutput for NdiOutput {
-    fn present(&self, texture: &wgpu::Texture, _width: u32, _height: u32,device: &wgpu::Device, queue: &wgpu::Queue) {
+    fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
         if !self.enabled.load(Ordering::Relaxed) {
             return;
         }
@@ -128,8 +124,6 @@ impl VideoOutput for NdiOutput {
             return;
         }
 
-        let width = texture.width();
-        let height = texture.height();
         self.width.store(width, Ordering::Relaxed);
         self.height.store(height, Ordering::Relaxed);
 
@@ -202,7 +196,11 @@ impl VideoOutput for NdiOutput {
         buffer[0..4].copy_from_slice(&width.to_le_bytes());
         buffer[4..8].copy_from_slice(&height.to_le_bytes());
 
-        if self.frame_tx.try_send(buffer).is_ok() {
+        let sent = match self.frame_tx.as_ref() {
+            Some(tx) => tx.try_send(buffer).is_ok(),
+            None => false,
+        };
+        if sent {
             self.pending.store(true, Ordering::Release);
         } else {
             let mut s = self.stats.lock().unwrap();
@@ -211,11 +209,11 @@ impl VideoOutput for NdiOutput {
     }
 
     fn name(&self) -> &str {
-        &self.name
+        return &self.name;
     }
 
     fn enabled(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed)
+        return self.enabled.load(Ordering::Relaxed);
     }
 
     fn busy(&self) -> bool {
@@ -227,10 +225,19 @@ impl VideoOutput for NdiOutput {
     }
 
     fn stats(&self) -> Arc<Mutex<OutputStats>> {
-        Arc::clone(&self.stats)
+        return self.stats.clone();
     }
 
     fn protocol(&self) -> Protocol {
-        Protocol::Ndi
+        return Protocol::Ndi;
+    }
+}
+
+impl Drop for NdiOutput {
+    fn drop(&mut self) {
+        drop(self.frame_tx.take());
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
     }
 }

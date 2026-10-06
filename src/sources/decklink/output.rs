@@ -67,7 +67,6 @@ impl Default for DecklinkOutputConfig {
 }
 
 pub struct DecklinkOutput {
-    id: OutputId,
     name: String,
     config: DecklinkOutputConfig,
     enabled: AtomicBool,
@@ -192,7 +191,6 @@ impl DecklinkOutput {
             .expect("spawn decklink output thread");
 
         Self {
-            id,
             name,
             config,
             enabled: AtomicBool::new(enabled),
@@ -211,131 +209,6 @@ impl DecklinkOutput {
             scaled_texture: Mutex::new(None),
             scaled_view: Mutex::new(None),
             scaled_bind_group: Mutex::new(None),
-        }
-    }
-
-    pub fn present(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) {
-        if !self.enabled.load(Ordering::Relaxed) {
-            return;
-        }
-        if self.pending.load(Ordering::Acquire) {
-            return;
-        }
-
-        let out_w = self.config.width;
-        let out_h = self.config.height;
-        if out_w == 0 || out_h == 0 {
-            return;
-        }
-
-        self.width.store(out_w, Ordering::Relaxed);
-        self.height.store(out_h, Ordering::Relaxed);
-
-        {
-            let scale_span = tracing::debug_span!("scale");
-            let _scale_guard = scale_span.entered();
-            self.ensure_scale_resources(device, queue);
-            self.ensure_scaled_texture(device, out_w, out_h, texture);
-            self.render_scale(device, queue, out_w, out_h, width, height);
-        }
-
-        let bytes_per_row = out_w * 4;
-        let aligned_bytes_per_row = (bytes_per_row + 255) & !255;
-        let buffer_size = (aligned_bytes_per_row * out_h) as u64;
-        let mut readback_slot = self.readback.lock().unwrap();
-        if readback_slot.as_ref().is_none_or(|b| b.size() != buffer_size + 16) {
-            *readback_slot = Some(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("decklink-output-readback"),
-                size: buffer_size + 16,
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            }));
-        }
-        let readback_buffer = readback_slot.as_ref().unwrap();
-
-        {
-            let readback_span = tracing::debug_span!("readback");
-            let _readback_guard = readback_span.entered();
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("decklink-output-readback"),
-            });
-            encoder.copy_texture_to_buffer(
-                wgpu::TexelCopyTextureInfo {
-                    texture: self.scaled_texture.lock().unwrap().as_ref().unwrap(),
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyBufferInfo {
-                    buffer: readback_buffer,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 16,
-                        bytes_per_row: Some(aligned_bytes_per_row),
-                        rows_per_image: Some(out_h),
-                    },
-                },
-                wgpu::Extent3d {
-                    width: out_w,
-                    height: out_h,
-                    depth_or_array_layers: 1,
-                },
-            );
-            queue.submit(Some(encoder.finish()));
-        }
-
-        let wait_span = tracing::debug_span!("readback_wait");
-        let _wait_guard = wait_span.entered();
-        let buffer_slice = readback_buffer.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
-        });
-        if device.poll(wgpu::PollType::wait_indefinitely()).is_err() {
-            tracing::error!(output=self.id, "DeckLink output poll failed");
-            return;
-        }
-        if rx.recv().unwrap().is_err() {
-            tracing::error!(output=self.id, "DeckLink output readback map failed");
-            return;
-        }
-
-        let view = buffer_slice.get_mapped_range();
-        let row = (out_w * 4) as usize;
-        let aligned = (row + 255) & !255;
-        let mut buffer = Vec::with_capacity(16 + row * out_h as usize);
-        buffer.extend_from_slice(&[0u8; 16]);
-        if aligned == row {
-            buffer.extend_from_slice(&view[16..16 + row * out_h as usize]);
-        } else {
-            for y in 0..out_h as usize {
-                let src_start = 16 + y * aligned;
-                buffer.extend_from_slice(&view[src_start..src_start + row]);
-            }
-        }
-        drop(view);
-        readback_buffer.unmap();
-
-        buffer[0..4].copy_from_slice(&out_w.to_le_bytes());
-        buffer[4..8].copy_from_slice(&out_h.to_le_bytes());
-        let mode_id: u32 = self.config.display_mode.into();
-        buffer[8..12].copy_from_slice(&mode_id.to_le_bytes());
-
-        let sent = match self.frame_tx.as_ref() {
-            Some(tx) => tx.try_send(buffer).is_ok(),
-            None => false,
-        };
-        if sent {
-            self.pending.store(true, Ordering::Release);
-        } else {
-            let mut s = self.stats.lock().unwrap();
-            s.frames_dropped += 1;
         }
     }
 
@@ -593,15 +466,129 @@ impl VideoOutput for DecklinkOutput {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
     ) {
-        self.present(texture, width, height, device, queue);
+        if !self.enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        if self.pending.load(Ordering::Acquire) {
+            return;
+        }
+
+        let out_w = self.config.width;
+        let out_h = self.config.height;
+        if out_w == 0 || out_h == 0 {
+            return;
+        }
+
+        self.width.store(out_w, Ordering::Relaxed);
+        self.height.store(out_h, Ordering::Relaxed);
+
+        {
+            let scale_span = tracing::debug_span!("scale");
+            let _scale_guard = scale_span.entered();
+            self.ensure_scale_resources(device, queue);
+            self.ensure_scaled_texture(device, out_w, out_h, texture);
+            self.render_scale(device, queue, out_w, out_h, width, height);
+        }
+
+        let bytes_per_row = out_w * 4;
+        let aligned_bytes_per_row = (bytes_per_row + 255) & !255;
+        let buffer_size = (aligned_bytes_per_row * out_h) as u64;
+        let mut readback_slot = self.readback.lock().unwrap();
+        if readback_slot.as_ref().is_none_or(|b| b.size() != buffer_size + 16) {
+            *readback_slot = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("decklink-output-readback"),
+                size: buffer_size + 16,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            }));
+        }
+        let readback_buffer = readback_slot.as_ref().unwrap();
+
+        {
+            let readback_span = tracing::debug_span!("readback");
+            let _readback_guard = readback_span.entered();
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("decklink-output-readback"),
+            });
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture: self.scaled_texture.lock().unwrap().as_ref().unwrap(),
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyBufferInfo {
+                    buffer: readback_buffer,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 16,
+                        bytes_per_row: Some(aligned_bytes_per_row),
+                        rows_per_image: Some(out_h),
+                    },
+                },
+                wgpu::Extent3d {
+                    width: out_w,
+                    height: out_h,
+                    depth_or_array_layers: 1,
+                },
+            );
+            queue.submit(Some(encoder.finish()));
+        }
+
+        let wait_span = tracing::debug_span!("readback_wait");
+        let _wait_guard = wait_span.entered();
+        let buffer_slice = readback_buffer.slice(..);
+        let (tx, rx) = std::sync::mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
+        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
+        if device.poll(wgpu::PollType::wait_indefinitely()).is_err() {
+            tracing::error!(output=self.name, "DeckLink output poll failed");
+            return;
+        }
+        if rx.recv().unwrap().is_err() {
+            tracing::error!(output=self.name, "DeckLink output readback map failed");
+            return;
+        }
+
+        let view = buffer_slice.get_mapped_range();
+        let row = (out_w * 4) as usize;
+        let aligned = (row + 255) & !255;
+        let mut buffer = Vec::with_capacity(16 + row * out_h as usize);
+        buffer.extend_from_slice(&[0u8; 16]);
+        if aligned == row {
+            buffer.extend_from_slice(&view[16..16 + row * out_h as usize]);
+        } else {
+            for y in 0..out_h as usize {
+                let src_start = 16 + y * aligned;
+                buffer.extend_from_slice(&view[src_start..src_start + row]);
+            }
+        }
+        drop(view);
+        readback_buffer.unmap();
+
+        buffer[0..4].copy_from_slice(&out_w.to_le_bytes());
+        buffer[4..8].copy_from_slice(&out_h.to_le_bytes());
+        let mode_id: u32 = self.config.display_mode.into();
+        buffer[8..12].copy_from_slice(&mode_id.to_le_bytes());
+
+        let sent = match self.frame_tx.as_ref() {
+            Some(tx) => tx.try_send(buffer).is_ok(),
+            None => false,
+        };
+        if sent {
+            self.pending.store(true, Ordering::Release);
+        } else {
+            let mut s = self.stats.lock().unwrap();
+            s.frames_dropped += 1;
+        }
     }
 
     fn name(&self) -> &str {
-        &self.name
+        return &self.name;
     }
 
     fn enabled(&self) -> bool {
-        self.enabled.load(Ordering::Relaxed)
+        return self.enabled.load(Ordering::Relaxed);
     }
 
     fn busy(&self) -> bool {
@@ -613,11 +600,11 @@ impl VideoOutput for DecklinkOutput {
     }
 
     fn stats(&self) -> Arc<Mutex<OutputStats>> {
-        Arc::clone(&self.stats)
+        return self.stats.clone();
     }
 
     fn protocol(&self) -> Protocol {
-        Protocol::Decklink
+        return Protocol::Decklink;
     }
 }
 
