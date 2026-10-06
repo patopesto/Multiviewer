@@ -378,6 +378,7 @@ impl Engine {
                 if let Some(device) = self.avfoundation.as_ref().and_then(|d| d.find_by_name(name)) {
                     let config = AvFoundationSourceConfig {
                         device_unique_id: device.unique_id.clone(),
+                        ..AvFoundationSourceConfig::default()
                     };
                     self.registry.add_avfoundation(key, config);
                 }

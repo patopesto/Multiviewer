@@ -215,7 +215,9 @@ pub enum SourceRuntimeConfig {
         info: SyphonServerInfo
     },
     #[cfg(target_os = "macos")]
-    AvFoundation,
+    AvFoundation {
+        modes: Arc<Mutex<Vec<avfoundation::AvFoundationMode>>>,
+    },
     #[cfg(target_os = "macos")]
     ScreenCaptureKit {
         label: String
@@ -264,8 +266,8 @@ impl SourceKind {
                 Box::new(syphon::SyphonSource::spawn(key.source_ref.clone(), info.clone()))
             }
             #[cfg(target_os = "macos")]
-            (SourceConfig::AvFoundation(c), SourceRuntimeConfig::AvFoundation) => {
-                Box::new(avfoundation::AvFoundationSource::spawn(key.source_ref.clone(), c))
+            (SourceConfig::AvFoundation(c), SourceRuntimeConfig::AvFoundation { modes }) => {
+                Box::new(avfoundation::AvFoundationSource::spawn(key.source_ref.clone(), c, modes.clone()))
             }
             #[cfg(target_os = "macos")]
             (SourceConfig::ScreenCaptureKit(c), SourceRuntimeConfig::ScreenCaptureKit { .. }) => {
@@ -500,7 +502,9 @@ impl SourceRegistry {
         let kind = SourceKind::new(
             &key,
             SourceConfig::AvFoundation(config),
-            SourceRuntimeConfig::AvFoundation,
+            SourceRuntimeConfig::AvFoundation {
+                modes: Arc::new(Mutex::new(Vec::new())),
+            },
         );
         self.sources.insert(key.clone(), kind);
         return key;

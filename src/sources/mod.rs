@@ -45,7 +45,7 @@ pub use syphon::{
     SyphonServerInfo, format_syphon_label,
 };
 #[cfg(target_os = "macos")]
-pub use avfoundation::{AvFoundationDiscovery, AvFoundationSourceConfig};
+pub use avfoundation::{AvFoundationDiscovery, AvFoundationSourceConfig, AvFoundationMode};
 #[cfg(target_os = "macos")]
 pub use screencapturekit::{ScreenCaptureKitDiscovery, ScreenCaptureKitSourceConfig, ensure_screen_capture_access_requested};
 

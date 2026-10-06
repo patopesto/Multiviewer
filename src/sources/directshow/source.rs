@@ -38,14 +38,18 @@ pub struct CaptureMode {
 }
 
 impl CaptureMode {
-    /// Human-readable `WxH @ fps` label (`fps` shown as a fraction when non-integral).
+    /// Human-readable `WxH @ fps` label; decimals only for non-integral rates.
     pub fn label(&self) -> String {
         let fps = if self.fps_num == 0 || self.fps_den == 0 {
             "?".to_string()
-        } else if self.fps_den == 1 {
-            format!("{}", self.fps_num)
         } else {
-            format!("{:.2}", self.fps_num as f64 / self.fps_den as f64)
+            let value = self.fps_num as f64 / self.fps_den as f64;
+            // A non-reduced ratio (e.g. 30000000/1000000 = 30) still prints whole.
+            if (value - value.round()).abs() < 1e-6 {
+                format!("{}", value.round() as u64)
+            } else {
+                format!("{value:.2}")
+            }
         };
         return format!("{}x{} @ {}", self.width, self.height, fps);
     }
@@ -741,5 +745,16 @@ mod tests {
         assert_eq!(pixel_format_for_subtype(&MEDIASUBTYPE_UYVY), Some((PixelFormat::Uyvy422, 16)));
         assert_eq!(pixel_format_for_subtype(&MEDIASUBTYPE_HDYC), Some((PixelFormat::Uyvy422, 16)));
         assert_eq!(pixel_format_for_subtype(&MEDIASUBTYPE_v210), None);
+    }
+
+    #[test]
+    fn mode_label_renders_integral_and_fractional_rates() {
+        let integral = CaptureMode { width: 1280, height: 720, fps_num: 30, fps_den: 1 };
+        assert_eq!(integral.label(), "1280x720 @ 30");
+        let ntsc = CaptureMode { width: 1920, height: 1080, fps_num: 30000, fps_den: 1001 };
+        assert_eq!(ntsc.label(), "1920x1080 @ 29.97");
+        // An unreduced 30 fps ratio must still print whole.
+        let unreduced = CaptureMode { width: 1280, height: 720, fps_num: 30_000_000, fps_den: 1_000_000 };
+        assert_eq!(unreduced.label(), "1280x720 @ 30");
     }
 }

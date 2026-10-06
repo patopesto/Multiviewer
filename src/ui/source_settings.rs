@@ -8,7 +8,7 @@ use crate::sources::PixelFormat;
 #[cfg(target_os = "macos")]
 use crate::sources::SyphonSourceConfig;
 #[cfg(target_os = "macos")]
-use crate::sources::AvFoundationSourceConfig;
+use crate::sources::{AvFoundationSourceConfig, AvFoundationMode};
 #[cfg(target_os = "macos")]
 use crate::sources::ScreenCaptureKitSourceConfig;
 #[cfg(target_os = "windows")]
@@ -31,7 +31,7 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         #[cfg(target_os = "macos")]
         SourceConfig::Syphon(cfg) => syphon_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
-        SourceConfig::AvFoundation(cfg) => avfoundation_settings_ui(cfg, ui),
+        SourceConfig::AvFoundation(cfg) => avfoundation_settings_ui(cfg, &source.runtime, ui),
         #[cfg(target_os = "macos")]
         SourceConfig::ScreenCaptureKit(cfg) => screencapturekit_settings_ui(cfg, ui),
         #[cfg(target_os = "windows")]
@@ -280,9 +280,74 @@ fn syphon_settings_ui(_cfg: &mut SyphonSourceConfig, _ui: &mut egui::Ui) -> bool
 }
 
 #[cfg(target_os = "macos")]
-fn avfoundation_settings_ui(_cfg: &mut AvFoundationSourceConfig, _ui: &mut egui::Ui) -> bool {
-    // No tunables yet
-    return false;
+fn avfoundation_settings_ui(
+    cfg: &mut AvFoundationSourceConfig,
+    runtime: &SourceRuntimeConfig,
+    ui: &mut egui::Ui,
+) -> bool {
+    // modes are enumerated by the capture thread on open; absent a live source
+    // (or before enumeration finishes) only "Auto" is offered.
+    let mut modes = match runtime {
+        SourceRuntimeConfig::AvFoundation { modes } => modes.lock().unwrap().clone(),
+        _ => Vec::new(),
+    };
+    modes.sort_unstable();
+    modes.dedup();
+
+    let current = if cfg.width > 0 && cfg.height > 0 && cfg.fps_num > 0 && cfg.fps_den > 0 {
+        Some(AvFoundationMode {
+            width: cfg.width,
+            height: cfg.height,
+            fps_num: cfg.fps_num,
+            fps_den: cfg.fps_den,
+        })
+    } else {
+        None
+    };
+    let old = cfg.clone();
+
+    settings_grid(ui, "avfoundation_settings_grid", |ui| {
+        ui.label("Mode");
+        settings_value(ui, |ui| {
+            let text = current
+                .map(|m| m.label())
+                .unwrap_or_else(|| "Auto (device default)".to_string());
+            egui::ComboBox::from_id_salt("avfoundation_mode")
+                .width(ui.available_width())
+                .height(1000.0)
+                .selected_text(text)
+                .truncate()
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(current.is_none(), "Auto (device default)").clicked() {
+                        cfg.width = 0;
+                        cfg.height = 0;
+                        cfg.fps_num = 0;
+                        cfg.fps_den = 0;
+                    }
+                    for m in &modes {
+                        if ui.selectable_label(current == Some(*m), m.label()).clicked() {
+                            cfg.width = m.width;
+                            cfg.height = m.height;
+                            cfg.fps_num = m.fps_num;
+                            cfg.fps_den = m.fps_den;
+                        }
+                    }
+                    if modes.is_empty() {
+                        ui.weak("(no modes reported)");
+                    }
+                });
+        });
+        ui.end_row();
+
+        ui.label("Drop late frames");
+        settings_value(ui, |ui| {
+            ui.checkbox(&mut cfg.drop_late_frames, "Enabled");
+        });
+        ui.end_row();
+    });
+
+
+    return *cfg != old;
 }
 
 #[cfg(target_os = "macos")]
