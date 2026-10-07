@@ -9,7 +9,7 @@ use crate::engine::{DragState, Engine, ResizeHandle, SnapGuides};
 // Macro to load from the assets directory
 macro_rules! asset_image {
     ($file:expr) => {
-        egui::include_image!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/", $file))
+        egui::include_image!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/", $file))
     };
 }
 

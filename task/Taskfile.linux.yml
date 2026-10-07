@@ -8,18 +8,29 @@ tasks:
       - cargo install cargo-packager --locked
 
   setup:system-deps:
-    desc: Install the Linux build dependencies (Debian/Ubuntu; needs root or passwordless sudo)
+    desc: Install the Linux build dependencies
     cmds:
-      - |
-        set -e
-        if ! command -v apt-get >/dev/null 2>&1; then
-          echo "No apt-get: install a C/C++ toolchain and libclang for your distribution." >&2
-          exit 1
-        fi
-        SUDO=""
-        [ "$(id -u)" -eq 0 ] || SUDO=sudo
-        $SUDO apt-get update -qq
-        $SUDO apt-get install -y build-essential clang libclang-dev curl
+      - apt-get update -qq
+      - apt-get install -y build-essential clang libclang-dev curl
+    preconditions:
+      - command -v apt-get
+
+  generate:icons:
+    desc: Generate Linux icon (.pngs)
+    platforms: [darwin] # Note: sips is macOS-only
+    sources:
+      - assets/appicon/AppIcon.png
+    generates:
+      - assets/appicon/linux/48x48.png
+      - assets/appicon/linux/128x128.png
+      - assets/appicon/linux/256x256.png
+      - assets/appicon/linux/512x512.png
+    cmds:
+      - mkdir -p assets/appicon/linux
+      - sips -z 48 48 assets/appicon/AppIcon.png --out assets/appicon/linux/48x48.png
+      - sips -z 128 128 assets/appicon/AppIcon.png --out assets/appicon/linux/128x128.png
+      - sips -z 256 256 assets/appicon/AppIcon.png --out assets/appicon/linux/256x256.png
+      - sips -z 512 512 assets/appicon/AppIcon.png --out assets/appicon/linux/512x512.png
 
   run:
     desc: Run the application on Linux

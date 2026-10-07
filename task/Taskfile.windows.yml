@@ -7,6 +7,18 @@ tasks:
       - task: :ndi:setup:windows
       - cargo install cargo-packager --locked
 
+  setup:system-deps:
+    desc: Install the Windows build dependencies
+    cmds:
+      # bindgen (via grafton-ndi) needs libclang.dll -> LLVM.
+      - winget install --exact --id LLVM.LLVM --silent --disable-interactivity --accept-package-agreements --accept-source-agreements
+      # cl.exe (DeckLink C++ shim), rc.exe (embed-resource), midl.exe + windows.h (Windows SDK).
+      - winget install --exact --id Microsoft.VisualStudio.2022.BuildTools --accept-package-agreements --accept-source-agreements --override "--quiet --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+      # bindgen does not consult PATH; point clang-sys at the LLVM bin dir. Takes effect in new shells.
+      - powershell -NoProfile -Command "[Environment]::SetEnvironmentVariable('LIBCLANG_PATH','C:\Program Files\LLVM\bin','User')"
+    preconditions:
+      - winget --version
+
   generate:decklink-headers:
     desc: Regenerate DeckLink C headers from IDL (requires cl.exe in PATH or VCVARS_PATH set)
     platforms: [windows]
@@ -28,21 +40,21 @@ tasks:
       - rm -f generated/DeckLinkAPI_p.c generated/dlldata.c
 
   generate:icons:
-    desc: Generate assets/AppIcon.ico from assets/AppIcon.png
+    desc: Generate the Windows icon (.ico)
     platforms: [darwin] # Note: sips is macOS-only
     sources:
-      - assets/AppIcon.png
+      - assets/appicon/AppIcon.png
     generates:
-      - assets/AppIcon.ico
+      - assets/appicon/windows/AppIcon.ico
     cmds:
-      - mkdir -p .tmp.ico
-      - sips --resampleHeightWidth 16 16 assets/AppIcon.png --out .tmp.ico/icon_16.png
-      - sips --resampleHeightWidth 24 24 assets/AppIcon.png --out .tmp.ico/icon_24.png
-      - sips --resampleHeightWidth 32 32 assets/AppIcon.png --out .tmp.ico/icon_32.png
-      - sips --resampleHeightWidth 48 48 assets/AppIcon.png --out .tmp.ico/icon_48.png
-      - sips --resampleHeightWidth 64 64 assets/AppIcon.png --out .tmp.ico/icon_64.png
-      - sips --resampleHeightWidth 128 128 assets/AppIcon.png --out .tmp.ico/icon_128.png
-      - png2ico assets/AppIcon.ico .tmp.ico/icon_16.png .tmp.ico/icon_24.png .tmp.ico/icon_32.png .tmp.ico/icon_48.png .tmp.ico/icon_64.png .tmp.ico/icon_128.png
+      - mkdir -p .tmp.ico assets/appicon/windows
+      - sips --resampleHeightWidth 16 16 assets/appicon/AppIcon.png --out .tmp.ico/icon_16.png
+      - sips --resampleHeightWidth 24 24 assets/appicon/AppIcon.png --out .tmp.ico/icon_24.png
+      - sips --resampleHeightWidth 32 32 assets/appicon/AppIcon.png --out .tmp.ico/icon_32.png
+      - sips --resampleHeightWidth 48 48 assets/appicon/AppIcon.png --out .tmp.ico/icon_48.png
+      - sips --resampleHeightWidth 64 64 assets/appicon/AppIcon.png --out .tmp.ico/icon_64.png
+      - sips --resampleHeightWidth 128 128 assets/appicon/AppIcon.png --out .tmp.ico/icon_128.png
+      - png2ico assets/appicon/windows/AppIcon.ico .tmp.ico/icon_16.png .tmp.ico/icon_24.png .tmp.ico/icon_32.png .tmp.ico/icon_48.png .tmp.ico/icon_64.png .tmp.ico/icon_128.png
       - rm -rf .tmp.ico
 
   run:

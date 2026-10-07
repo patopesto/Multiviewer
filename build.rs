@@ -25,6 +25,15 @@ fn main() {
 }
 
 fn emit_build_info(manifest_dir: &Path) {
+    println!("cargo:rerun-if-changed=task/Packager.common.toml");
+    println!("cargo:rerun-if-changed=Cargo.toml");
+
+    let config_version = packager_field(manifest_dir, "version");
+    let cargo_version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    if config_version != cargo_version {
+        panic!("version mismatch: Cargo.toml={cargo_version}, task/Packager.common.toml={config_version}");
+    }
+
     println!("cargo:rustc-env=GIT_COMMIT={}", git_commit(manifest_dir));
     println!("cargo:rustc-env=BUILD_DATE={}", build_date());
     println!("cargo:rustc-env=APP_COPYRIGHT={}", packager_field(manifest_dir, "copyright"));
@@ -208,12 +217,11 @@ fn setup_linux(manifest_dir: &Path) {
 
 #[cfg(target_os = "windows")]
 fn setup_windows(manifest_dir: &Path, out_dir: &Path) {
-    // Embed the application icon as a Windows PE resource so the .exe and
-    // shortcuts display it in Explorer.
-    let icon_path = manifest_dir.join("assets/AppIcon.ico");
-    let rc_path = manifest_dir.join("assets/windows/Multiviewer.rc");
+    // Embed the icon and version metadata as PE resources so Explorer and the
+    // installer show the app's name, version and publisher.
+    let icon_path = manifest_dir.join("assets/appicon/windows/AppIcon.ico");
     println!("cargo:rerun-if-changed={}", icon_path.display());
-    println!("cargo:rerun-if-changed={}", rc_path.display());
+    let rc_path = write_windows_rc(manifest_dir, out_dir, &icon_path);
     embed_resource::compile(&rc_path, embed_resource::NONE)
         .manifest_optional()
         .expect("failed to compile Windows resources");
@@ -266,4 +274,68 @@ fn derive_target_dir(out_dir: &Path) -> PathBuf {
         .and_then(|p| p.parent())
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| out_dir.to_path_buf())
+}
+
+// Write the PE resource script (icon + VERSIONINFO) from the shared packager
+// config and Cargo metadata, so the .exe metadata never drifts.
+#[cfg(target_os = "windows")]
+fn write_windows_rc(manifest_dir: &Path, out_dir: &Path, icon_path: &Path) -> PathBuf {
+    let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    let crate_name = std::env::var("CARGO_PKG_NAME").unwrap_or_default();
+    let product = packager_field(manifest_dir, "product-name");
+    let description = packager_field(manifest_dir, "description");
+    let copyright = packager_field(manifest_dir, "copyright");
+    let publisher = packager_field(manifest_dir, "publisher");
+    let icon = icon_path.display().to_string().replace('\\', "/");
+    let (major, minor, patch) = version_triple(&version);
+
+    let rc = format!(
+        r#"#pragma code_page(65001)
+#include <winver.h>
+
+1 ICON "{icon}"
+
+1 VERSIONINFO
+FILEVERSION     {major},{minor},{patch},0
+PRODUCTVERSION  {major},{minor},{patch},0
+FILEFLAGSMASK   0x3fL
+FILEFLAGS       0x0L
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName",      "{publisher}"
+            VALUE "FileDescription",  "{description}"
+            VALUE "FileVersion",      "{version}"
+            VALUE "InternalName",     "{crate_name}"
+            VALUE "LegalCopyright",   "{copyright}"
+            VALUE "OriginalFilename", "{crate_name}.exe"
+            VALUE "ProductName",      "{product}"
+            VALUE "ProductVersion",   "{version}"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+"#
+    );
+    let rc_path = out_dir.join("Multiviewer.rc");
+    std::fs::write(&rc_path, rc).expect("failed to write Windows resource file");
+    return rc_path;
+}
+
+#[cfg(target_os = "windows")]
+fn version_triple(version: &str) -> (u16, u16, u16) {
+    let mut parts = version.split('.').map(|p| p.parse::<u16>().unwrap_or(0));
+    return (
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    );
 }

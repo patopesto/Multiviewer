@@ -28,7 +28,7 @@ fn main() -> eframe::Result<()> {
     let session = session::Session::load();
     let startup_path = startup_path.or(session.last_project);
 
-    let icon = eframe::icon_data::from_png_bytes(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/AppIcon.png")))
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/appicon/AppIcon.png")))
         .expect("failed to decode app icon");
     let mut options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()

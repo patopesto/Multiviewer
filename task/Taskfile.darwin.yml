@@ -11,7 +11,15 @@ tasks:
     cmds:
       - task: :ndi:setup:darwin
       - cargo install cargo-packager --locked
-      - HOMEBREW_NO_AUTO_UPDATE=1 brew install create-dmg png2ico
+
+  setup:system-deps:
+    desc: Install the macOS build dependencies
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+    cmds:
+      - brew install create-dmg png2ico  # for icons generation
+    preconditions:
+      - brew --version
 
   run:
     desc: Run the application in debug mode
@@ -26,24 +34,25 @@ tasks:
       - cargo build --release
 
   generate:icons:
-    desc: Generate assets/AppIcon.icns from assets/AppIcon.png
+    desc: Generate the macOS icon (.icns)
+    platforms: [darwin] # Note: sips is macOS-only
     sources:
-      - assets/AppIcon.png
+      - assets/appicon/AppIcon.png
     generates:
-      - assets/AppIcon.icns
+      - assets/appicon/darwin/AppIcon.icns
     cmds:
-      - mkdir -p .tmp.iconset
-      - sips -z 16 16 assets/AppIcon.png --out .tmp.iconset/icon_16x16.png
-      - sips -z 32 32 assets/AppIcon.png --out .tmp.iconset/icon_16x16@2x.png
-      - sips -z 32 32 assets/AppIcon.png --out .tmp.iconset/icon_32x32.png
-      - sips -z 64 64 assets/AppIcon.png --out .tmp.iconset/icon_32x32@2x.png
-      - sips -z 128 128 assets/AppIcon.png --out .tmp.iconset/icon_128x128.png
-      - sips -z 256 256 assets/AppIcon.png --out .tmp.iconset/icon_128x128@2x.png
-      - sips -z 256 256 assets/AppIcon.png --out .tmp.iconset/icon_256x256.png
-      - sips -z 512 512 assets/AppIcon.png --out .tmp.iconset/icon_256x256@2x.png
-      - sips -z 512 512 assets/AppIcon.png --out .tmp.iconset/icon_512x512.png
-      - sips -z 1024 1024 assets/AppIcon.png --out .tmp.iconset/icon_512x512@2x.png
-      - iconutil -c icns -o assets/AppIcon.icns .tmp.iconset
+      - mkdir -p .tmp.iconset assets/appicon/darwin
+      - sips -z 16 16 assets/appicon/AppIcon.png --out .tmp.iconset/icon_16x16.png
+      - sips -z 32 32 assets/appicon/AppIcon.png --out .tmp.iconset/icon_16x16@2x.png
+      - sips -z 32 32 assets/appicon/AppIcon.png --out .tmp.iconset/icon_32x32.png
+      - sips -z 64 64 assets/appicon/AppIcon.png --out .tmp.iconset/icon_32x32@2x.png
+      - sips -z 128 128 assets/appicon/AppIcon.png --out .tmp.iconset/icon_128x128.png
+      - sips -z 256 256 assets/appicon/AppIcon.png --out .tmp.iconset/icon_128x128@2x.png
+      - sips -z 256 256 assets/appicon/AppIcon.png --out .tmp.iconset/icon_256x256.png
+      - sips -z 512 512 assets/appicon/AppIcon.png --out .tmp.iconset/icon_256x256@2x.png
+      - sips -z 512 512 assets/appicon/AppIcon.png --out .tmp.iconset/icon_512x512.png
+      - sips -z 1024 1024 assets/appicon/AppIcon.png --out .tmp.iconset/icon_512x512@2x.png
+      - iconutil -c icns -o assets/appicon/darwin/AppIcon.icns .tmp.iconset
       - rm -rf .tmp.iconset
 
   package:
@@ -60,7 +69,7 @@ tasks:
         rm -f "$dmg"
         create-dmg \
           --volname "{{.APP_NAME}}" \
-          --volicon "assets/AppIcon.icns" \
+          --volicon "assets/appicon/darwin/AppIcon.icns" \
           --app-drop-link 480 170 \
           --icon "{{.APP_NAME}}.app" 180 170 \
           --window-size 600 400 \

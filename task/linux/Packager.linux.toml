@@ -1,5 +1,10 @@
 formats = ["deb", "appimage"]
-icons = ["assets/AppIcon.png"]
+icons = [
+  "assets/appicon/linux/48x48.png",
+  "assets/appicon/linux/128x128.png",
+  "assets/appicon/linux/256x256.png",
+  "assets/appicon/linux/512x512.png",
+]
 # cargo-packager installs resources to usr/lib/<binary-name>/ in both deb and
 # AppImage, where the $ORIGIN rpath built into the binary points. libndi.so is
 # the arch-normalised symlink ndi:setup:linux writes, so this stays arch-free.

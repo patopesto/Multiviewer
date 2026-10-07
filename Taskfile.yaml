@@ -60,10 +60,11 @@ tasks:
         echo "✅ task/Packager.common.toml: {{.VERSION}}"
 
   generate:icons:
-    desc: Regenerate platform icon derivatives from assets/AppIcon.png
+    desc: Regenerate platform icon derivatives from assets/appicon/AppIcon.png
     cmds:
       - task: darwin:generate:icons
       - task: windows:generate:icons
+      - task: linux:generate:icons
 
   test:
     desc: Run clippy and tests
