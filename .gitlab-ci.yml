@@ -8,65 +8,56 @@ variables:
   CARGO_INCREMENTAL: "0"
 
 
-build-macos:
+.build:
   stage: build
+  rules:
+    - if: $CI_COMMIT_TAG
+  before_script:
+    - rustup default stable
+  script:
+    - task setup
+    - task package
+  cache:
+    key: ${CI_JOB_NAME}
+    paths:
+      - target/
+      - .cargo/
+      - vendor/ndi/.cache
+  artifacts:
+    paths:
+      - dist/*
+    expire_in: 1 day
+
+build-macos:
+  extends: .build
   tags:
     - macos
   variables:
     TARGET: "aarch64-apple-darwin"
     CARGO_BUILD_TARGET: "aarch64-apple-darwin"
-  rules:
-    - if: $CI_COMMIT_TAG
   before_script:
+    - !reference [.build, before_script]
     # Fix for macos clang paths to cpp stdlib for decklink builds
     - export CXXFLAGS="-I$(xcrun --sdk macosx --show-sdk-path)/usr/include/c++/v1"
-    - rustup default stable
     - rustup target add aarch64-apple-darwin
-  script:
-    - task setup
-    - task package
-  cache:
-    key: ${CI_JOB_NAME}
-    paths:
-      - target/
-      - .cargo/
-      - vendor/ndi/.cache
-  artifacts:
-    paths:
-      - dist/*
-    expire_in: 1 day
-
-.build-linux:
-  stage: build
-  rules:
-    - if: $CI_COMMIT_TAG
-  before_script:
-    - rustup default stable
-  script:
-    - task setup
-    - task package
-  cache:
-    key: ${CI_JOB_NAME}
-    paths:
-      - target/
-      - .cargo/
-      - vendor/ndi/.cache
-  artifacts:
-    paths:
-      - dist/*
-    expire_in: 1 day
 
 build-linux-amd64:
-  extends: .build-linux
+  extends: .build
   tags:
     - linux
     - amd64
 
 build-linux-arm64:
-  extends: .build-linux
+  extends: .build
   tags:
     - linux
     - arm64
+
+build-windows:
+  extends: .build
+  tags:
+    - windows
+    - amd64
 
 
 upload:
@@ -80,6 +71,8 @@ upload:
     - job: build-linux-amd64
       artifacts: true
     - job: build-linux-arm64
+      artifacts: true
+    - job: build-windows
       artifacts: true
   rules:
     - if: $CI_COMMIT_TAG
@@ -107,6 +100,8 @@ release:
     - job: build-linux-amd64
       artifacts: true
     - job: build-linux-arm64
+      artifacts: true
+    - job: build-windows
       artifacts: true
     - job: upload
       artifacts: false
