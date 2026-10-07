@@ -1,6 +1,6 @@
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 use windows_capture::capture::{
@@ -82,6 +82,7 @@ pub struct WindowsCaptureSettings {
     pub cursor: CaptureCursor,
     pub border: CaptureBorder,
     pub secondary_windows: CaptureSecondaryWindows,
+    pub max_fps: u32, // 0 = uncapped
 }
 
 impl WindowsCaptureSettings {
@@ -316,12 +317,18 @@ where
         }
     };
 
+    let min_interval = if settings.max_fps == 0 {
+        MinimumUpdateIntervalSettings::Default
+    } else {
+        MinimumUpdateIntervalSettings::Custom(Duration::from_secs_f64(1.0 / settings.max_fps as f64))
+    };
+
     let crate_settings = Settings::new(
         item,
         cursor,
         border,
         secondary,
-        MinimumUpdateIntervalSettings::Default,
+        min_interval,
         DirtyRegionSettings::Default,
         ColorFormat::Bgra8,
         (slot, stats),
@@ -337,6 +344,7 @@ fn is_unsupported_settings(e: &GraphicsCaptureApiError<BoxError>) -> bool {
             CaptureApiError::CursorConfigUnsupported
                 | CaptureApiError::BorderConfigUnsupported
                 | CaptureApiError::SecondaryWindowsUnsupported
+                | CaptureApiError::MinimumUpdateIntervalUnsupported
         )
     );
 }

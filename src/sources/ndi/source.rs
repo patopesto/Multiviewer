@@ -7,6 +7,7 @@ use grafton_ndi::{NDI, Receiver, ReceiverOptions, LineStrideOrSize};
 
 use super::{NdiReceiverBandwidth, NdiReceiverColorFormat, NdiSourceInfo};
 use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
+use crate::APP_NAME;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct NdiSourceConfig {
@@ -131,6 +132,7 @@ fn run_capture(
     let options = ReceiverOptions::builder(source)
         .color(color_format)
         .bandwidth(bandwidth)
+        .name(APP_NAME)
         .build();
     let receiver = match Receiver::new(&ndi, &options) {
         Ok(r) => r,

@@ -6,8 +6,6 @@ use serde::{Serialize, Deserialize};
 
 use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 
-const NOMINAL_FPS: f64 = 60.0;
-
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ColorSpace {
     Rec601,
@@ -99,6 +97,7 @@ impl Default for CursorConfig {
 pub struct TestSourceConfig {
     pub width: u32,
     pub height: u32,
+    pub fps: f64,
     pub pattern: TestPattern,
     pub cursor: CursorConfig,
 }
@@ -108,6 +107,7 @@ impl Default for TestSourceConfig {
         Self {
             width: 1280,
             height: 720,
+            fps: 60.0,
             pattern: TestPattern::Smpte(SmpteType::default()),
             cursor: CursorConfig::default(),
         }
@@ -134,13 +134,14 @@ impl TestSource {
         let running2 = running.clone();
         let width = cfg.width;
         let height = cfg.height;
+        let fps = cfg.fps;
         let pattern = cfg.pattern.clone();
         let cursor = cfg.cursor;
 
         let thread = std::thread::Builder::new()
             .name(format!("test-in-{source_ref}"))
             .spawn(move || {
-                run_capture(width, height, pattern, cursor, slot2, stats2, running2);
+                run_capture(width, height, fps, pattern, cursor, slot2, stats2, running2);
             })
             .expect("spawn test source");
         Self { slot, stats, source_ref, running, thread: Some(thread) }
@@ -152,6 +153,7 @@ impl TestSource {
 fn run_capture(
     width: u32,
     height: u32,
+    fps: f64,
     pattern: TestPattern,
     cursor: CursorConfig,
     slot: Arc<Mutex<Option<Frame>>>,
@@ -160,8 +162,9 @@ fn run_capture(
 ) {
     let w = width;
     let h = height;
+    let fps = fps.max(1.0);
     let size = (w * h * 4) as usize;
-    let frame_interval = Duration::from_secs_f64(1.0 / NOMINAL_FPS);
+    let frame_interval = Duration::from_secs_f64(1.0 / fps);
     let mut seq = 0u64;
 
     // Render the static base once and reuse it every frame.
@@ -192,7 +195,7 @@ fn run_capture(
             let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
             {
                 let mut s = stats.lock().unwrap();
-                s.record_frame(w, h, PixelFormat::Rgba8.label(), NOMINAL_FPS);
+                s.record_frame(w, h, PixelFormat::Rgba8.label(), fps);
                 s.record_copy_time(copy_ms);
             }
             let frame = Frame::Cpu(CpuFrame {

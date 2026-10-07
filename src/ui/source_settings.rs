@@ -66,6 +66,29 @@ fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
     ui.end_row();
 }
 
+#[allow(dead_code)]
+fn max_fps_drag(ui: &mut egui::Ui, max_fps: &mut u32) {
+    ui.add(
+        egui::DragValue::new(max_fps)
+            .range(0..=240)
+            .update_while_editing(false)
+            .custom_formatter(|n, _| {
+                if n as u32 == 0 {
+                    "Uncapped".to_string()
+                } else {
+                    format!("{}", n as u32)
+                }
+            })
+            .custom_parser(|s| {
+                if s.eq_ignore_ascii_case("uncapped") {
+                    Some(0.0)
+                } else {
+                    s.trim().parse::<f64>().ok()
+                }
+            }),
+    );
+}
+
 fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
     let old = cfg.clone();
     settings_grid(ui, "test_settings_grid", |ui| {
@@ -158,6 +181,12 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
             color_picker_row(ui, "Primary Color", line_color);
             color_picker_row(ui, "Background", bg_color);
         }
+
+        ui.label("FPS");
+        settings_value(ui, |ui| {
+            ui.add(egui::DragValue::new(&mut cfg.fps).range(1.0..=240.0).speed(1.0));
+        });
+        ui.end_row();
 
         ui.label("Cursor");
         settings_value(ui, |ui| {
@@ -369,10 +398,7 @@ fn screencapturekit_settings_ui(cfg: &mut ScreenCaptureKitSourceConfig, ui: &mut
         ui.end_row();
 
         ui.label("Max FPS");
-        settings_value(ui, |ui| {
-            ui.add(egui::DragValue::new(&mut settings.max_fps).range(0..=240))
-                .on_hover_text("0 = uncapped");
-        });
+        settings_value(ui, |ui| max_fps_drag(ui, &mut settings.max_fps));
         ui.end_row();
     });
 
@@ -645,6 +671,10 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
             });
             ui.end_row();
         }
+
+        ui.label("Max FPS");
+        settings_value(ui, |ui| max_fps_drag(ui, &mut settings.max_fps));
+        ui.end_row();
     });
 
     return *settings != old;
