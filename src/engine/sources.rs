@@ -319,12 +319,8 @@ impl Engine {
     }
 
     /// Persist `config` to every source placement bound to `(protocol, source_ref)`.
-    fn apply_config_to_placements(
-        &mut self,
-        protocol: &Protocol,
-        source_ref: &str,
-        config: SourceConfig,
-    ) {
+    #[allow(dead_code)]
+    fn apply_config_to_placements(&mut self, protocol: &Protocol, source_ref: &str, config: SourceConfig) {
         for placement in self.cfg.canvas.sources.iter_mut().filter(|s| {
             s.protocol == *protocol && s.source_ref.as_deref() == Some(source_ref)
         }) {

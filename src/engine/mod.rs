@@ -104,14 +104,13 @@ pub struct Engine {
 impl Engine {
     /// Protocol/driver versions of the linked third-party libraries, for display.
     pub fn vendor_versions() -> Vec<(&'static str, Option<String>)> {
-        let mut versions = vec![
+        return Vec::from([
             ("NDI", ndi_version()),
             ("DeckLink", decklink_version()),
-        ];
-        #[cfg(target_os = "macos")]
-        versions.push(("Syphon", syphon_version()));
-        #[cfg(target_os = "windows")]
-        versions.push(("Spout", spout_version()));
-        return versions;
+            #[cfg(target_os = "macos")]
+            ("Syphon", syphon_version()),
+            #[cfg(target_os = "windows")]
+            ("Spout", spout_version()),
+        ]);
     }
 }

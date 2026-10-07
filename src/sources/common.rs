@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use crate::compositor::ConvUniform;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]

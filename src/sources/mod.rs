@@ -21,7 +21,9 @@ mod directshow;
 #[cfg(target_os = "windows")]
 mod windowscapture;
 
-pub use common::{Protocol, PixelFormat, Frame, CpuFrame, GpuFrame, ConvUniform};
+pub use common::{Protocol, PixelFormat, Frame, CpuFrame};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub use common::{GpuFrame, ConvUniform};
 pub use source::{
     SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
     SourceRegistry, VideoSource, FramePool,
