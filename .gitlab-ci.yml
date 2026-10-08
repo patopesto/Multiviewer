@@ -35,9 +35,6 @@ build-macos:
   variables:
     TARGET: "aarch64-apple-darwin"
     CARGO_BUILD_TARGET: "aarch64-apple-darwin"
-    # Name of the notarytool profile stored in the runner's keychain. The
-    # Developer ID identity is supplied via the APPLE_SIGNING_IDENTITY variable
-    # (project CI/CD setting), e.g. "Developer ID Application: Name (TEAMID)".
     APPLE_KEYCHAIN_PROFILE: "multiviewer-notary"
   before_script:
     - !reference [.build, before_script]
@@ -45,13 +42,13 @@ build-macos:
     - export CXXFLAGS="-I$(xcrun --sdk macosx --show-sdk-path)/usr/include/c++/v1"
     - rustup target add aarch64-apple-darwin
     # Setup the signing keychain
-    - security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_NAME"
-    - security set-keychain-settings -u "$KEYCHAIN_NAME" # Prevents auto-locks
-    - security list-keychains -d user -s "$KEYCHAIN_NAME" $(security list-keychains -d user | xargs) # Add keychain to user search path
+    - security unlock-keychain -p "$APPLE_KEYCHAIN_PWD" "$APPLE_KEYCHAIN_NAME"
+    - security set-keychain-settings -u "$APPLE_KEYCHAIN_NAME" # Prevents auto-locks
+    - security list-keychains -d user -s "$APPLE_KEYCHAIN_NAME" $(security list-keychains -d user | xargs) # Add keychain to user search path
     - > # Authorise codesign and apple tools to use the content of the keychain
-      security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_NAME"
+      security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$APPLE_KEYCHAIN_PWD" "$APPLE_KEYCHAIN_NAME"
   after_script:
-    - security lock-keychain "$KEYCHAIN_NAME"
+    - security lock-keychain "$APPLE_KEYCHAIN_NAME"
 
 
 build-linux-amd64:

@@ -34,7 +34,6 @@ tasks:
     desc: Package the application for the current OS
     cmds:
       - task: check:version
-        platforms: [darwin, linux]
       - task: "{{OS}}:package"
 
   sign:
@@ -51,6 +50,7 @@ tasks:
 
   check:version:
     desc: Verify versions are consistent
+    platforms: [darwin, linux]
     cmds:
       - |
         set -e
