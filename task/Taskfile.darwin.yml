@@ -1,9 +1,9 @@
 version: '3'
 
 vars:
-  ARCH: macos_arm64
+  ARCH: arm64
   TARGET: aarch64-apple-darwin
-  DIST_DMG: "{{.DIST_DIR}}/{{.APP_NAME}}_{{.VERSION}}_{{.ARCH}}.dmg"
+  DIST_DMG: "{{.APP_NAME}}_v{{.VERSION}}_{{OS}}_{{ARCH}}.dmg" # Override the name because we force arm64 even on intel mac
 
 tasks:
   setup:
@@ -17,7 +17,7 @@ tasks:
     env:
       HOMEBREW_NO_AUTO_UPDATE: 1
     cmds:
-      - brew install create-dmg png2ico  # for icons generation
+      - brew install create-dmg png2ico  # DMG packaging and windows icons
     preconditions:
       - brew --version
 
@@ -56,7 +56,7 @@ tasks:
       - rm -rf .tmp.iconset
 
   package:
-    desc: Build .app and create custom DMG
+    desc: Build the macOS DMG
     deps:
       - build
       - generate:icons
@@ -65,17 +65,19 @@ tasks:
       - cargo packager --target {{.TARGET}} --config .Packager.{{OS}}.toml -o {{.DIST_DIR}}
       - |
         set -e
-        dmg="{{.DIST_DMG}}"
+        dmg="{{.DIST_DIR}}/{{.DIST_DMG}}"
+        # Reuse the identity cargo-packager signed the app with.
+        identity=$(awk -F'"' '/^signing-identity[[:space:]]*=/ { print $2; exit }' .Packager.{{OS}}.toml)
         rm -f "$dmg"
         create-dmg \
-          --volname "{{.APP_NAME}}" \
+          --volname "{{.APP_NAME}} v{{.VERSION}}" \
           --volicon "assets/appicon/darwin/AppIcon.icns" \
           --app-drop-link 480 170 \
           --icon "{{.APP_NAME}}.app" 180 170 \
           --window-size 600 400 \
           --hide-extension "{{.APP_NAME}}.app" \
           --skip-jenkins \
-          --codesign "-" \
+          --codesign "${identity:--}" \
           "$dmg" \
           "{{.DIST_DIR}}/{{.APP_NAME}}.app"
       - task: sign
@@ -85,23 +87,19 @@ tasks:
     cmds:
       - |
         set -e
-        if [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
-          echo "Skipping notarization: APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID must be set" >&2
-          exit 0
-        fi
-
-        dmg="{{.DIST_DMG}}"
+        dmg="{{.DIST_DIR}}/{{.DIST_DMG}}"
         if [ ! -f "$dmg" ]; then
           echo "DMG not found: $dmg" >&2
           exit 1
         fi
 
-        echo "Submitting $dmg for notarization..."
-        xcrun notarytool submit "$dmg" \
-          --apple-id "$APPLE_ID" \
-          --password "$APPLE_PASSWORD" \
-          --team-id "$APPLE_TEAM_ID" \
-          --wait
+        if [ -n "${APPLE_KEYCHAIN_PROFILE:-}" ]; then
+          echo "Submitting $dmg for notarization (keychain profile)..."
+          xcrun notarytool submit "$dmg" --keychain-profile "$APPLE_KEYCHAIN_PROFILE" --wait
+        else
+          echo "Skipping notarization: set APPLE_KEYCHAIN_PROFILE, or APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID" >&2
+          exit 0
+        fi
 
         echo "Stapling notarization ticket to $dmg..."
         xcrun stapler staple "$dmg"

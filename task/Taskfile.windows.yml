@@ -78,6 +78,12 @@ tasks:
       - task: :common:generate:packager-config
     cmds:
       - cargo packager --config .Packager.{{OS}}.toml -o {{.DIST_DIR}}
+      - |
+        set -e
+        for f in {{.DIST_DIR}}/*-setup.exe; do
+          [ -e "$f" ] || continue
+          mv "$f" "{{.DIST_DIR}}/{{.DIST_NAME}}-setup.exe"
+        done
 
   sign:
     desc: Sign the Windows application

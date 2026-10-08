@@ -11,7 +11,7 @@ tasks:
     desc: Install the Linux build dependencies
     cmds:
       - apt-get update -qq
-      - apt-get install -y build-essential clang libclang-dev curl
+      - apt-get install -y build-essential clang libclang-dev curl libavahi-client3
     preconditions:
       - command -v apt-get
 
@@ -53,6 +53,13 @@ tasks:
       - task: :common:generate:packager-config
     cmds:
       - cargo packager --config .Packager.{{OS}}.toml -o {{.DIST_DIR}}
+      - |
+        set -e
+        for f in {{.DIST_DIR}}/*.deb {{.DIST_DIR}}/*.AppImage; do
+          [ -e "$f" ] || continue
+          ext="${f##*.}"
+          mv "$f" "{{.DIST_DIR}}/{{.DIST_NAME}}.${ext}"
+        done
 
   sign:
     desc: Sign the Linux application

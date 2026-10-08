@@ -12,6 +12,7 @@ vars:
   DIST_DIR: dist
   VERSION: "0.1.0"
     # sh: grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/'
+  DIST_NAME: "{{.APP_NAME}}_v{{.VERSION}}_{{OS}}_{{ARCH}}"
 
 tasks:
   setup:
@@ -31,9 +32,9 @@ tasks:
 
   package:
     desc: Package the application for the current OS
-    deps:
-      # - check:version
     cmds:
+      - task: check:version
+        platforms: [darwin, linux]
       - task: "{{OS}}:package"
 
   sign:
@@ -45,6 +46,7 @@ tasks:
     desc: Check the application
     cmds:
       - task: check:version
+      - task: ndi:check
       - cargo check
 
   check:version:

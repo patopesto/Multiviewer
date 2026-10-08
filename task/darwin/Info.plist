@@ -8,5 +8,11 @@
   <string>Multiviewer uses the camera to display video sources.</string>
   <key>NSScreenCaptureUsageDescription</key>
   <string>Multiviewer captures your screens to display them as video sources.</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Multiviewer uses the local network to discover and use NDI video sources.</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_ndi._tcp.</string>
+  </array>
 </dict>
 </plist>

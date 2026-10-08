@@ -48,7 +48,7 @@ for platform in macos windows linux; do
     # Membership, not iteration: the sha file is a comment-prefixed allowlist and
     # the pins are stored in mixed case.
     if grep -qiF "$actual" "$sha_file"; then
-        echo "$platform: OK"
+        echo "✅ $platform: OK"
         echo "  actual: $actual"
         echo "  pinned: $sha_file"
         # Hand the download to task ndi:setup:*, which looks the installer up by
@@ -61,7 +61,7 @@ for platform in macos windows linux; do
         continue
     fi
 
-    echo "$platform: MISMATCH" >&2
+    echo "❌ $platform: MISMATCH" >&2
     echo "  actual: $actual" >&2
     echo "  pinned: $sha_file" >&2
     echo "  replace the primary hash in that file with:" >&2
