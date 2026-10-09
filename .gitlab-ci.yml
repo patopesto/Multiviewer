@@ -1,6 +1,7 @@
 stages:
   - build
   - release
+  - deploy
 
 
 variables:
@@ -153,3 +154,37 @@ release:
         --tag-name="${CI_COMMIT_TAG}" \
         --description="$(cat release-description.txt)" \
         "$@"
+
+
+pages:
+  stage: deploy
+  image: node:lts-alpine
+  tags:
+    - docker
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - website/**/*
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes:
+        - website/**/*
+    - if: $CI_PIPELINE_SOURCE == "web"
+  cache:
+    key:
+      files:
+        - website/pnpm-lock.yaml
+    paths:
+      - .pnpm-store
+  before_script:
+    - npm install --global pnpm@12.10.1
+    - pnpm config set store-dir "$CI_PROJECT_DIR/.pnpm-store"
+  script:
+    - cd website
+    - pnpm install --frozen-lockfile
+    - pnpm run build
+  artifacts:
+    paths:
+      - website/dist
+  pages:
+    publish: website/dist
