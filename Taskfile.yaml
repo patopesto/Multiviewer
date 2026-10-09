@@ -6,6 +6,9 @@ includes:
   windows: task/Taskfile.windows.yml
   linux: task/Taskfile.linux.yml
   common: task/Taskfile.common.yml
+  website:
+    taskfile: website/Taskfile.yml
+    dir: website
 
 vars:
   APP_NAME: Multiviewer

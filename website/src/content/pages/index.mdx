@@ -1,0 +1,103 @@
+---
+title: Multiviewer
+description: Compose NDI, DeckLink, Syphon, Spout, capture-device and screen sources on a real-time canvas, then broadcast the result. Native apps for macOS, Windows and Linux.
+---
+
+import Hero from '@patopest/astro-theme/components/Hero.astro';
+import FeatureGrid from '@patopest/astro-theme/components/FeatureGrid.astro';
+import Feature from '@patopest/astro-theme/components/Feature.astro';
+import Screenshot from '@patopest/astro-theme/components/Screenshot.astro';
+import ProjectGrid from '@patopest/astro-theme/components/ProjectGrid.astro';
+import CallToAction from '@patopest/astro-theme/components/CallToAction.astro';
+import { project } from '../../project';
+
+<Hero
+  eyebrow="v1.0.0 · macOS · Windows · Linux"
+  tagline="Ingest NDI, DeckLink, Syphon, Spout, capture devices and screen captures, arrange them on a live canvas, and broadcast the result. Built in Rust on wgpu."
+  primary={{ label: 'Download', href: '/download/' }}
+  secondary={{ label: 'Read the docs', href: '/docs/getting-started/' }}
+  meta={['NDI', 'DeckLink', 'Syphon', 'Spout', 'Screen capture']}
+  image="/app.png"
+  imageAlt="The Multiviewer canvas with several video sources arranged into a grid"
+  mediaLabel="PROGRAM"
+>
+  <span slot="title">Every signal,<br />one <em>canvas</em></span>
+</Hero>
+
+<FeatureGrid
+  id="features"
+  eyebrow="Capabilities"
+  title="Built for live, multi-source video"
+  lead="One application to bring every camera, feed and display together, laid out exactly how the show needs it."
+>
+  <Feature icon="01" title="Multi-protocol ingest">
+    NDI, Blackmagic DeckLink, Syphon, Spout, webcams and screen capture, all as first-class sources on the same canvas.
+  </Feature>
+  <Feature icon="02" title="GPU compositing">
+    A wgpu pipeline does YUV to RGB on the GPU with minimal CPU to GPU copies, so the frame rate holds as the grid grows.
+  </Feature>
+  <Feature icon="03" title="Interactive canvas">
+    Drag, resize, snap and zoom sources directly. Zones, borders and labels make each feed identifiable at a glance.
+  </Feature>
+  <Feature icon="04" title="Per-source control">
+    Position, scale, flips, borders and labels are set individually and saved with the project.
+  </Feature>
+  <Feature icon="05" title="Multi-protocol output">
+    Send the composed view out over NDI, DeckLink, Syphon or Spout, or keep it as a clean canvas.
+  </Feature>
+  <Feature icon="06" title="Native everywhere">
+    Real desktop apps for macOS, Windows and Linux, with no browser or plugin in the pipeline.
+  </Feature>
+</FeatureGrid>
+
+<Screenshot
+  eyebrow="Compositing"
+  title="Arrange the show, not just the windows"
+  label="PGM"
+  image="/app.png"
+  imageAlt="Sources arranged on the Multiviewer canvas"
+>
+  <p>
+    The canvas is the composition. Place sources anywhere, overlap them, and keep fine control of how each one is
+    rendered.
+  </p>
+  <ul class="shot__list">
+    <li>Snap to edges and to other sources</li>
+    <li>Per-source borders and labels</li>
+    <li>Zoom from an overview to a single feed</li>
+  </ul>
+</Screenshot>
+
+<Screenshot
+  eyebrow="Sources and outputs"
+  title="Mix protocols in a single project"
+  label="INPUTS"
+  reverse
+  image="/app.png"
+  imageAlt="Multiviewer sources and outputs panel"
+>
+  <p>
+    A project can combine a DeckLink SDI input, an NDI camera and a browser on another machine, then output the
+    result back onto the network.
+  </p>
+  <ul class="shot__list">
+    <li>NDI, DeckLink, Syphon and Spout</li>
+    <li>Webcams via AVFoundation, DirectShow and MediaFoundation</li>
+    <li>Display and window capture on macOS and Windows</li>
+  </ul>
+</Screenshot>
+
+<ProjectGrid
+  id="projects"
+  projects={project.projects}
+  eyebrow="The studio"
+  title="Other projects"
+  lead="Multiviewer is one of a family of tools built for live-production. Check out the other projects."
+/>
+
+<CallToAction
+  title="Download Multiviewer"
+  text="Free to download for macOS, Windows and Linux. Source available on GitLab."
+  primary={{ label: 'Get Multiviewer', href: '/download/' }}
+  secondary={{ label: 'Release notes', href: '/release-notes/' }}
+/>

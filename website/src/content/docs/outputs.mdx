@@ -1,0 +1,29 @@
+---
+title: Outputs
+description: Send the composed canvas out over NDI, DeckLink, Syphon or Spout.
+lead: Outputs publish the canvas to the rest of the system, one destination each.
+order: 4
+---
+
+## Adding an output
+
+Open **Outputs** in the side panel, pick a protocol, and configure it. Enabled outputs receive the composed canvas
+every frame.
+
+| Protocol | Platforms | Notes |
+| --- | --- | --- |
+| NDI | macOS, Windows, Linux | Advertise the canvas on the network |
+| DeckLink | macOS, Windows, Linux | Play out to SDI or HDMI |
+| Syphon | macOS | Share the canvas as a GPU texture |
+| Spout | Windows | Share the canvas as a GPU texture |
+
+## Frame rate and backpressure
+
+Outputs run at the application's frame rate, while each consumer reads at its own rate. When a destination is busy,
+Multiviewer skips a frame for that output rather than stalling the canvas, so a slow consumer does not affect the others
+or the compositor.
+
+## Syphon and Spout
+
+These outputs share the canvas as a GPU texture with no readback, which keeps latency low for other applications on the
+same machine. They are only active while a consumer is connected.

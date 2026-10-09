@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <rect data-part data-on x="220" y="220" width="270" height="270" rx="40" fill="#ff3b30" />
+  <rect data-part x="534" y="220" width="270" height="270" rx="40" fill="#6c7488" />
+  <rect data-part x="220" y="534" width="270" height="270" rx="40" fill="#6c7488" />
+  <rect data-part x="534" y="534" width="270" height="270" rx="40" fill="#6c7488" />
+</svg>
