@@ -1,0 +1,35 @@
+---
+title: Download
+description: Download the latest version of Multiviewer for macOS, Windows and Linux.
+---
+
+import DownloadGrid from '@patopest/astro-theme/components/DownloadGrid.astro';
+import { project } from '../../project';
+
+<div class="container prose section">
+
+# Download Multiviewer
+
+Multiviewer is free to download, and the source is on GitLab. Pick the build for your platform.
+
+</div>
+
+<DownloadGrid project={project} />
+
+<div class="container prose section">
+
+## Platform requirements
+
+- **macOS**: Apple Silicon (arm64), macOS 12.3 or later.
+- **Windows**: Windows 10 or later, 64-bit.
+- **Linux**: the `.deb` covers Debian and Ubuntu; the AppImage runs on any modern glibc distribution.
+
+## First run
+
+1. Open the app and follow your system's prompt
+2. Add a source from the side panel and start arranging it on the canvas.
+3. Add an output when you are ready to send the composed view somewhere.
+
+NDI support uses the runtime bundled with the download.
+
+</div>

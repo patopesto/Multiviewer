@@ -1,0 +1,33 @@
+---
+title: Sources
+description: The video protocols Multiviewer can ingest.
+lead: Every protocol is a first-class source, and several can run in the same project.
+order: 3
+---
+
+| Protocol | Platforms | Notes |
+| --- | --- | --- |
+| NDI | macOS, Windows, Linux | Network video, bundled runtime |
+| DeckLink | macOS, Windows, Linux | SDI and HDMI capture and playback |
+| Syphon | macOS | Zero-copy GPU texture sharing |
+| Spout | Windows | Zero-copy GPU texture sharing |
+| AVFoundation | macOS | Webcams and capture devices |
+| DirectShow | Windows | Webcams and WDM capture devices |
+| MediaFoundation | Windows | Webcams and capture devices |
+| Screen capture | macOS, Windows | Displays and windows |
+| Test patterns | macOS, Windows, Linux | SMPTE bars and generative patterns |
+
+## Adding a source
+
+Choose a protocol in the side panel, then pick a discovered source. NDI and Syphon sources are discovered continuously;
+capture devices refresh on demand.
+
+## Reconnecting
+
+If a source disappears, Multiviewer keeps the placement on the canvas and reconnects when the source returns. The
+placement, including its position and label, is preserved.
+
+## GPU sources
+
+Syphon and Spout deliver a texture straight to the compositor, with no CPU copy. The other protocols deliver frames that
+the compositor uploads to the GPU once per frame.

@@ -5,7 +5,7 @@
 	<img alt="License" src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge">
 	<img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=for-the-badge">
 	
-  <img src="assets/app.png" alt="Multiviewer App" width="600">
+  <img src="website/public/app.png" alt="Multiviewer App" width="600">
 </div>
 
 > A hardware-accelerated, multi-protocol video multiviewer built in Rust. Drag, resize, and snap video sources on an interactive canvas with real-time compositing.

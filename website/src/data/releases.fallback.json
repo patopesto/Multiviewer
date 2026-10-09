@@ -1,0 +1,41 @@
+[
+  {
+    "tag": "v1.0.0",
+    "name": "v1.0.0",
+    "date": "2026-10-09T00:32:19.000Z",
+    "description": "Initial release of the app!  \nWith support for the following video protocols:\n- NDI®\n- Blackmagic Decklink (SDI/HDMI capture cards)\n- Syphon (macOS), Spout (Windows)\n- Webcams with AVFoundation (macOS) and DirectShow/MediaFoundation (Windows)\n- Screen and window capture on macOS and Windows\n- Test patterns including SMPTE ECR 1-1978 and SMPTE RP 219:2002 color bars",
+    "url": "https://gitlab.com/patopest/multiviewer/-/releases/v1.0.0",
+    "assets": [
+      {
+        "name": "Multiviewer_v1.0.0_linux_arm64.AppImage",
+        "url": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_linux_arm64.AppImage",
+        "directUrl": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_linux_arm64.AppImage"
+      },
+      {
+        "name": "Multiviewer_v1.0.0_linux_amd64.AppImage",
+        "url": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_linux_amd64.AppImage",
+        "directUrl": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_linux_amd64.AppImage"
+      },
+      {
+        "name": "Multiviewer_v1.0.0_windows_amd64-setup.exe",
+        "url": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_windows_amd64-setup.exe",
+        "directUrl": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_windows_amd64-setup.exe"
+      },
+      {
+        "name": "Multiviewer_v1.0.0_linux_arm64.deb",
+        "url": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_linux_arm64.deb",
+        "directUrl": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_linux_arm64.deb"
+      },
+      {
+        "name": "Multiviewer_v1.0.0_darwin_arm64.dmg",
+        "url": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_darwin_arm64.dmg",
+        "directUrl": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_darwin_arm64.dmg"
+      },
+      {
+        "name": "Multiviewer_v1.0.0_linux_amd64.deb",
+        "url": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_linux_amd64.deb",
+        "directUrl": "https://gitlab.com/api/v4/projects/85264290/packages/generic/multiviewer/v1.0.0/Multiviewer_v1.0.0_linux_amd64.deb"
+      }
+    ]
+  }
+]

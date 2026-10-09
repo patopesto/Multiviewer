@@ -1,0 +1,40 @@
+---
+title: Getting started
+description: Install Multiviewer and compose your first canvas.
+lead: From a fresh install to a working multiviewer in a few minutes.
+order: 1
+---
+
+## Install
+
+Download the build for your platform from the [download page](/download/) and open it. On first launch Multiviewer
+opens a new project with an empty canvas.
+
+## Add a source
+
+Open the side panel and pick a protocol, then choose a discovered source:
+
+- **NDI** lists every source on the network.
+- **DeckLink** lists the capture devices and their inputs.
+- **Syphon** (macOS) and **Spout** (Windows) list shared textures from other applications.
+- **AVFoundation**, **DirectShow** and **MediaFoundation** list webcams and capture devices.
+- **Screen capture** lists displays and windows.
+- **Test patterns** always works, and is useful for checking the output path.
+
+The source appears on the canvas, ready to be moved and resized.
+
+## Arrange the canvas
+
+Drag a source to move it, drag its handles to resize it, and use the mouse wheel to zoom. Sources snap to the canvas
+edges and to each other. The [canvas](/docs/canvas/) page covers the details.
+
+## Send the output
+
+Open **Outputs** and add one or more destinations. The composed canvas is sent to every enabled output. See
+[outputs](/docs/outputs/) for the per-protocol settings.
+
+## Save the project
+
+Multiviewer stores the canvas, sources and outputs in a `.multiviewer` project file. Save it from the **File** menu, or
+rely on autosave. A project saved on one platform opens on another; protocols that a platform lacks are kept in the
+file and shown as unavailable.
