@@ -10,7 +10,7 @@ includes:
 vars:
   APP_NAME: Multiviewer
   DIST_DIR: dist
-  VERSION: "0.1.0"
+  VERSION: 1.0.0
     # sh: grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/'
   DIST_NAME: "{{.APP_NAME}}_v{{.VERSION}}_{{OS}}_{{ARCH}}"
 

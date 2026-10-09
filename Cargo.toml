@@ -12,7 +12,7 @@ repository = "https://gitlab.com/patopest/multiviewer"
 members = [".", "src/sources/decklink/bindings"]
 
 [workspace.package]
-version = "0.1.0"
+version = "1.0.0"
 
 [workspace.lints.clippy]
 needless_return = "allow"
