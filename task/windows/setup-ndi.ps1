@@ -1,17 +1,9 @@
 #Requires -Version 5.1
 $ErrorActionPreference = 'Stop'
 
-# Allow overriding with an existing system install.
-$sdk_dir = $env:NDI_SDK_DIR
-if ($sdk_dir) {
-    $sdk_dir = (Resolve-Path $sdk_dir).Path
-    Write-Host "Using NDI_SDK_DIR: $sdk_dir"
-} elseif (Test-Path "vendor/ndi/windows/sdk/include/Processing.NDI.Lib.h") {
-    $sdk_dir = "$((Get-Location).Path)/vendor/ndi/windows/sdk"
-    Write-Host "Using existing NDI SDK at $sdk_dir"
-}
+$sdk_dir = "$((Get-Location).Path)/vendor/ndi/windows/sdk"
 
-if (-not $sdk_dir) {
+if (-not (Test-Path "$sdk_dir/Include/Processing.NDI.Lib.h")) {
     $accepted_hashes = @()
     foreach ($line in Get-Content $env:NDI_SHA_FILE) {
         $line = $line.Trim()
@@ -52,7 +44,6 @@ if (-not $sdk_dir) {
     }
     Write-Host "NDI SDK SHA256 verified."
 
-    $sdk_dir = "$((Get-Location).Path)/vendor/ndi/windows/sdk"
     Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $sdk_dir
     New-Item -ItemType Directory -Force -Path $sdk_dir | Out-Null
 
@@ -80,9 +71,10 @@ if (-not $sdk_dir) {
     Write-Host "NDI SDK installed successfully."
 }
 
-# Persist NDI_SDK_DIR for cargo so `cargo run` finds the local SDK.
+# Pin NDI_SDK_DIR to the project-local SDK for grafton-ndi's build script.
+# `force` overrides any inherited NDI_SDK_DIR; `relative` keeps it machine-independent.
 New-Item -ItemType Directory -Force -Path "$((Get-Location).Path)/.cargo" | Out-Null
-$toml = "[env]`nNDI_SDK_DIR = '$((Resolve-Path $sdk_dir).Path)'`n"
+$toml = "[env]`nNDI_SDK_DIR = { value = `"vendor/ndi/windows/sdk`", relative = true, force = true }`n"
 $toml | Out-File -FilePath "$((Get-Location).Path)/.cargo/config.toml" -Encoding utf8
 
 Write-Host "NDI SDK v$env:NDI_VERSION ready at $sdk_dir"

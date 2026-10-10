@@ -112,37 +112,22 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     return (year, month, day);
 }
 
-fn resolve_ndi_sdk_dir(manifest_dir: &Path) -> Option<PathBuf> {
-    if let Ok(dir) = std::env::var("NDI_SDK_DIR") {
-        let path = PathBuf::from(dir);
-        if path.exists() {
-            return Some(path);
-        }
-    }
-
+fn ndi_sdk_dir(manifest_dir: &Path) -> PathBuf {
     #[cfg(target_os = "macos")]
-    let local = manifest_dir.join("vendor/ndi/macos/sdk");
+    let sdk = manifest_dir.join("vendor/ndi/macos/sdk");
     #[cfg(target_os = "linux")]
-    let local = manifest_dir.join("vendor/ndi/linux/sdk");
+    let sdk = manifest_dir.join("vendor/ndi/linux/sdk");
     #[cfg(target_os = "windows")]
-    let local = manifest_dir.join("vendor/ndi/windows/sdk");
+    let sdk = manifest_dir.join("vendor/ndi/windows/sdk");
 
-    if local.exists() {
-        return Some(local);
+    if !sdk.join("include/Processing.NDI.Lib.h").is_file() {
+        panic!(
+            "NDI SDK not found at {}; run `task setup` to download it",
+            sdk.display()
+        );
     }
 
-    #[cfg(target_os = "macos")]
-    let system = Path::new("/Library/NDI SDK for Apple");
-    #[cfg(target_os = "linux")]
-    let system = Path::new("/usr/share/NDI SDK for Linux");
-    #[cfg(target_os = "windows")]
-    let system = Path::new(r"C:\Program Files\NDI\NDI 6 SDK");
-
-    if system.exists() {
-        return Some(system.to_path_buf());
-    }
-
-    None
+    return sdk;
 }
 
 #[cfg(target_os = "macos")]
@@ -151,18 +136,9 @@ fn setup_macos(manifest_dir: &Path) {
     // (Syphon and NDI dylib) inside the .app bundle.
     println!("cargo:rustc-link-arg=-Wl,-rpath,@executable_path/../Frameworks");
 
-    if let Some(sdk) = resolve_ndi_sdk_dir(manifest_dir) {
-        let lib_dir = sdk.join("lib/macOS");
-        if lib_dir.exists() {
-            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
-        }
-        else {
-            println!("cargo:warning=NDI library directory not found at {}; app may fail at runtime", lib_dir.display());
-        }
-    }
-    else {
-        println!("cargo:warning=NDI SDK not found; app may fail at runtime");
-    }
+    let sdk = ndi_sdk_dir(manifest_dir);
+    let lib_dir = sdk.join("lib/macOS");
+    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", lib_dir.display());
 
     // Vendored Syphon framework
     let syphon_dir = manifest_dir.join("vendor/syphon");
@@ -179,31 +155,17 @@ fn setup_macos(manifest_dir: &Path) {
 
 #[cfg(target_os = "linux")]
 fn setup_linux(manifest_dir: &Path) {
-    let sdk = match resolve_ndi_sdk_dir(manifest_dir) {
-        Some(sdk) => sdk,
-        None => {
-            println!("cargo:warning=NDI SDK not found; app may fail at runtime");
-            return;
-        }
-    };
+    let sdk = ndi_sdk_dir(manifest_dir);
 
     // The SDK ships one directory per target triple under lib/; grafton-ndi picks
     // the one matching our target to link against. Emitting a rpath for every
     // directory that exists keeps this arch-agnostic and costs nothing at runtime.
     let lib_root = sdk.join("lib");
-    match std::fs::read_dir(&lib_root) {
-        Ok(entries) => {
-            for entry in entries.flatten() {
-                if entry.path().is_dir() {
-                    println!("cargo:rustc-link-arg=-Wl,-rpath,{}", entry.path().display());
-                }
-            }
-        }
-        Err(_) => {
-            println!(
-                "cargo:warning=NDI library directory not found at {}; app may fail at runtime",
-                lib_root.display()
-            );
+    let entries = std::fs::read_dir(&lib_root)
+        .unwrap_or_else(|e| panic!("NDI library directory not found at {}: {e}", lib_root.display()));
+    for entry in entries.flatten() {
+        if entry.path().is_dir() {
+            println!("cargo:rustc-link-arg=-Wl,-rpath,{}", entry.path().display());
         }
     }
 
@@ -226,41 +188,26 @@ fn setup_windows(manifest_dir: &Path, out_dir: &Path) {
         .manifest_optional()
         .expect("failed to compile Windows resources");
 
-    let sdk = match resolve_ndi_sdk_dir(manifest_dir) {
-        Some(sdk) => sdk,
-        None => {
-            println!("cargo:warning=NDI SDK not found; app may fail at runtime");
-            return;
-        }
-    };
+    let sdk = ndi_sdk_dir(manifest_dir);
 
     // Link-time: help the linker find the NDI import library.
     let lib_dir = sdk.join("Lib/x64");
-    if lib_dir.exists() {
-        println!("cargo:rustc-link-search=native={}", lib_dir.display());
+    if !lib_dir.exists() {
+        panic!("NDI import library directory not found at {}; run `task setup`", lib_dir.display());
     }
-    else {
-        println!("cargo:warning=NDI import library directory not found at {}", lib_dir.display());
-    }
+    println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
     // Runtime: copy the NDI DLL next to the executable so Windows can find it.
     let dll_name = "Processing.NDI.Lib.x64.dll";
     let dll_source = sdk.join("Bin/x64").join(dll_name);
-    if dll_source.exists() {
-        let target_dir = derive_target_dir(out_dir);
-        let dll_dest = target_dir.join(dll_name);
-        match std::fs::copy(&dll_source, &dll_dest) {
-            Ok(_) => {
-                println!("cargo:rerun-if-changed={}", dll_source.display());
-            }
-            Err(e) => {
-                println!("cargo:warning=Failed to copy NDI DLL from {} to {}: {}", dll_source.display(), dll_dest.display(), e);
-            }
-        }
+    if !dll_source.exists() {
+        panic!("NDI runtime DLL not found at {}; run `task setup`", dll_source.display());
     }
-    else {
-        println!("cargo:warning=NDI runtime DLL not found at {}; app may fail at runtime", dll_source.display());
-    }
+    let target_dir = derive_target_dir(out_dir);
+    let dll_dest = target_dir.join(dll_name);
+    std::fs::copy(&dll_source, &dll_dest)
+        .unwrap_or_else(|e| panic!("failed to copy NDI DLL from {} to {}: {e}", dll_source.display(), dll_dest.display()));
+    println!("cargo:rerun-if-changed={}", dll_source.display());
 }
 
 #[cfg(target_os = "windows")]

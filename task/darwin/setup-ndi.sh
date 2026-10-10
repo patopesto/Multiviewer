@@ -7,26 +7,11 @@
 #   NDI_SHA_FILE      allowlist of accepted SHA256 hashes
 #   NDI_CACHE_DIR     download cache root
 #
-# Overridable with NDI_SDK_DIR to point at an existing install.
 set -euo pipefail
 
-sdk_dir="${NDI_SDK_DIR:-$PWD/vendor/ndi/macos/sdk}"
-case "$sdk_dir" in
-    /*) ;;
-    *) sdk_dir="$PWD/$sdk_dir" ;;
-esac
+sdk_dir="$PWD/vendor/ndi/macos/sdk"
 
 if [ ! -f "$sdk_dir/include/Processing.NDI.Lib.h" ]; then
-    # Replacing an existing install only makes sense inside the repo; an
-    # NDI_SDK_DIR pointing elsewhere would otherwise be deleted.
-    case "$sdk_dir" in
-        "$PWD"/*) ;;
-        *)
-            echo "$sdk_dir exists without a usable header; refusing to replace it" >&2
-            exit 1
-            ;;
-    esac
-
     accepted_hashes=()
     while IFS= read -r line || [ -n "$line" ]; do
         line=$(echo "$line" | tr -d '[:space:]')
@@ -86,8 +71,12 @@ if [ ! -f "$sdk_dir/include/Processing.NDI.Lib.h" ]; then
     rm -rf "$sdk_dir/_pkg"
 fi
 
-# Persist NDI_SDK_DIR for cargo so `cargo run` finds the local SDK.
+# Pin NDI_SDK_DIR to the project-local SDK for grafton-ndi's build script.
+# `force` overrides any inherited NDI_SDK_DIR; `relative` keeps it machine-independent.
 mkdir -p "$PWD/.cargo"
-printf '[env]\nNDI_SDK_DIR = "%s"\n' "$(cd "$sdk_dir" && pwd)" > "$PWD/.cargo/config.toml"
+cat > "$PWD/.cargo/config.toml" <<'EOF'
+[env]
+NDI_SDK_DIR = { value = "vendor/ndi/macos/sdk", relative = true, force = true }
+EOF
 
 echo "NDI SDK v$NDI_VERSION ready at $sdk_dir"

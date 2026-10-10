@@ -64,7 +64,7 @@ cd multiviewer
 cargo build --release
 ```
 
-> **Note:** The NDI SDK must be installed on your system for NDI support. See [Setup environment](#setup-environment) below.
+> **Note:** The NDI SDK is required for NDI support. Run [Setup environment](#setup-environment) first; the build uses the project-local SDK and fails if it is missing.
 
 ---
 
@@ -78,7 +78,7 @@ Using [go-task](https://taskfile.dev/)
 task setup
 ```
 
-**Note:** This will download the NDI SDK to a local project directory which will be used during builds. You can also download and install the SDK system-wide from [NDI's website](https://ndi.video/download-ndi-sdk/)
+**Note:** This downloads the NDI SDK to a local project directory (`vendor/ndi/<os>/sdk`), which is the only SDK the build uses; the build fails if it is missing. Get the SDK itself from [NDI's website](https://ndi.video/download-ndi-sdk/)
 
 ### Run the App
 
