@@ -54,12 +54,18 @@ Multiviewer is built with:
 
 ### Precompiled Binaries (Recommended)
 
-Download ready-to-use binaries for macOS, Windows, and Linux from the [Releases page](https://gitlab.com/multiviewer/multiviewer/-/releases).
+Download ready-to-use binaries for macOS, Windows, and Linux from the [Releases page](https://gitlab.com/patopest/multiviewer/-/releases).
+
+### Homebrew (macOS)
+
+```bash
+brew install patopesto/tap/multiviewer
+```
 
 ### Build from Source
 
 ```bash
-git clone https://gitlab.com/multiviewer/multiviewer.git
+git clone https://gitlab.com/patopest/multiviewer.git
 cd multiviewer
 cargo build --release
 ```
