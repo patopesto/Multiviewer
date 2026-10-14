@@ -1,3 +1,5 @@
+use std::time::{Duration, Instant};
+
 use super::Engine;
 use crate::config::{Source, TextureMode};
 use crate::sources::{Protocol, SourceConfig, SourceKey};
@@ -8,24 +10,32 @@ use crate::sources::{AvFoundationSourceConfig, ensure_screen_capture_access_requ
 #[cfg(target_os = "windows")]
 use crate::sources::{DirectShowSourceConfig, MediaFoundationSourceConfig, SpoutSourceConfig, WindowsCaptureSourceConfig};
 
+const DISCOVERY_INTERVAL: Duration = Duration::from_millis(250);
+
 impl Engine {
     pub fn update(&mut self) {
-        self.reconnect_ndi();
-        self.reconnect_decklink();
-        #[cfg(target_os = "macos")]
-        self.reconnect_syphon();
-        #[cfg(target_os = "macos")]
-        self.reconnect_avfoundation();
-        #[cfg(target_os = "macos")]
-        self.reconnect_screencapturekit();
-        #[cfg(target_os = "windows")]
-        self.reconnect_spout();
-        #[cfg(target_os = "windows")]
-        self.reconnect_mediafoundation();
-        #[cfg(target_os = "windows")]
-        self.reconnect_directshow();
-        #[cfg(target_os = "windows")]
-        self.reconnect_windowscapture();
+        // Rate-limit discovery changes
+        let now = Instant::now();
+        if now.duration_since(self.last_discovery) >= DISCOVERY_INTERVAL {
+            self.last_discovery = now;
+
+            self.reconnect_ndi();
+            self.reconnect_decklink();
+            #[cfg(target_os = "macos")]
+            self.reconnect_syphon();
+            #[cfg(target_os = "macos")]
+            self.reconnect_avfoundation();
+            #[cfg(target_os = "macos")]
+            self.reconnect_screencapturekit();
+            #[cfg(target_os = "windows")]
+            self.reconnect_spout();
+            #[cfg(target_os = "windows")]
+            self.reconnect_mediafoundation();
+            #[cfg(target_os = "windows")]
+            self.reconnect_directshow();
+            #[cfg(target_os = "windows")]
+            self.reconnect_windowscapture();
+        }
 
         self.registry.apply_pending_restarts();
     }

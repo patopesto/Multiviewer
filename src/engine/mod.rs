@@ -93,6 +93,7 @@ pub struct Engine {
     pub project_path: Option<PathBuf>,
     pub dirty: bool,
     last_saved_at: Instant,
+    last_discovery: Instant,
     pub selected_source_id: Option<SourceId>,
     pub expanded_source_id: Option<SourceId>,
     pub drag_state: DragState,

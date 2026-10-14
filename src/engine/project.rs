@@ -124,6 +124,7 @@ impl Engine {
             project_path: None,
             dirty: false,
             last_saved_at: Instant::now(),
+            last_discovery: Instant::now(),
             selected_source_id: None,
             expanded_source_id: None,
             drag_state: DragState::None,
