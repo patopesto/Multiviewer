@@ -5,7 +5,7 @@ description = "An app to view multiple realtime video feeds"
 publisher = "Alban Moreon"
 authors = ["Alban Moreon"]
 copyright = "© 2026 Alban Moreon"
-version = "1.0.0"
+version = "1.1.0-dev"
 category = "Video"
 
 binaries = [{ path = "Multiviewer", main = true }]

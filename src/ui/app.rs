@@ -17,7 +17,9 @@ use crate::ui::shortcuts::{self, Shortcut};
 const DEFAULT_PROJECT_NAME: &str = "Untitled";
 const LICENSES_TEXT: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/vendor/LICENSE.md"));
 
-const UNFOCUSED_FPS: f64 = 60.0;
+const ACTIVE_FPS: f64 = 60.0;
+const IDLE_FPS: f64 = 10.0;
+const FRAME_TOLERANCE: Duration = Duration::from_millis(2);
 const RENDER_FPS_WINDOW: Duration = Duration::from_secs(2);
 const MAX_RENDER_TIMESTAMPS: usize = 256;
 
@@ -35,6 +37,8 @@ pub struct App {
     gpu_backend: Option<String>,
     gpu_name: Option<String>,
     ui_visible: bool,
+    next_frame: Instant,
+    next_output_frame: Instant,
     render_stats: RenderStats,
     trace_guard: Option<tracing_chrome::FlushGuard>,
 }
@@ -114,6 +118,8 @@ impl App {
             gpu_backend,
             gpu_name,
             ui_visible: true,
+            next_frame: Instant::now(),
+            next_output_frame: Instant::now(),
             render_stats: RenderStats::new(),
             trace_guard,
         };
@@ -152,28 +158,39 @@ impl App {
         ctx.set_fonts(fonts);
     }
 }
+
 impl eframe::App for App {
     // Called once per frame before ui(), should not perform any drawing here
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        self.render_stats.record_frame();
-
         self.handle_dropped_files(ctx);
         self.handle_platform_open_files();
-        self.engine.update();
-        self.engine.auto_save();
         self.update_title(ctx);
 
-        if let Some(rs) = frame.wgpu_render_state() {
-            self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
-            self.engine.begin_frame();
-            self.engine.render_outputs();
+        // App focused: run at display refresh rate.
+        let focused = ctx.input(|i| i.viewport().focused).unwrap_or(false);
+        if focused {
+            self.run_frame(frame);
+            ctx.request_repaint();
+            return;
         }
 
-        if ctx.input(|i| i.viewport().focused).unwrap_or(true) {
-            ctx.request_repaint();
+        // App not focused: cap whether any output is enabled
+        let target_fps = if self.engine.output_registry.any_enabled() {
+            ACTIVE_FPS
         } else {
-            ctx.request_repaint_after(Duration::from_secs_f64(1.0 / UNFOCUSED_FPS));
+            IDLE_FPS
+        };
+        let interval = Duration::from_secs_f64(1.0 / target_fps);
+
+        let now = Instant::now();
+        if now + FRAME_TOLERANCE < self.next_frame {
+            ctx.request_repaint_after(self.next_frame - now);
+            return;
         }
+        self.next_frame = advance_deadline(self.next_frame, now, interval);
+
+        self.run_frame(frame);
+        ctx.request_repaint();
     }
 
     // Draw function
@@ -204,9 +221,29 @@ impl eframe::App for App {
     }
 }
 
-
 // Update stuff
 impl App {
+    /// One frame of engine work: discovery, auto-save, compositing and outputs.
+    fn run_frame(&mut self, frame: &mut eframe::Frame) {
+        self.render_stats.record_frame();
+        self.engine.update();
+        self.engine.auto_save();
+
+        let Some(rs) = frame.wgpu_render_state() else {
+            return;
+        };
+        self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
+        self.engine.begin_frame();
+
+        // Outputs run at their own fixed rate
+        let now = Instant::now();
+        if now + FRAME_TOLERANCE >= self.next_output_frame {
+            let interval = Duration::from_secs_f64(1.0 / ACTIVE_FPS);
+            self.next_output_frame = advance_deadline(self.next_output_frame, now, interval);
+            self.engine.render_outputs();
+        }
+    }
+
     /// Promote warnings collected while loading the current project to the status bar.
     fn refresh_warning(&mut self) {
         self.last_warning = if self.engine.load_warnings.is_empty() {
@@ -626,6 +663,14 @@ fn ensure_extension(mut path: std::path::PathBuf, ext: &str) -> std::path::PathB
     return path;
 }
 
+fn advance_deadline(prev: Instant, now: Instant, interval: Duration) -> Instant {
+    return if now >= prev + interval {
+        now + interval
+    } else {
+        prev + interval
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -654,5 +699,23 @@ mod tests {
         egui::__run_test_ui(|ui| {
             CommonMarkViewer::new().show(ui, &mut cache, LICENSES_TEXT);
         });
+    }
+
+    #[test]
+    fn deadline_advances_on_a_fixed_grid_when_running_early() {
+        let interval = Duration::from_millis(16);
+        let deadline = Instant::now() + interval;
+        // Ran 2ms before the deadline: the next deadline must still be a full
+        // interval after the current one, not 2ms sooner.
+        let now = deadline - Duration::from_millis(2);
+        assert_eq!(advance_deadline(deadline, now, interval), deadline + interval);
+    }
+
+    #[test]
+    fn deadline_resyncs_when_fallen_behind() {
+        let interval = Duration::from_millis(16);
+        let deadline = Instant::now();
+        let now = deadline + Duration::from_millis(100);
+        assert_eq!(advance_deadline(deadline, now, interval), now + interval);
     }
 }

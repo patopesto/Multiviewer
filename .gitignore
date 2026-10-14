@@ -8,8 +8,9 @@ dist/
 .task
 *.md
 
-# Trace / profiling data
+# Trace / profiling / debug data
 trace*.json
+*.txt
 
 # Generated cargo-packager configs
 .Packager.*.toml
