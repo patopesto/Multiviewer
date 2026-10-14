@@ -300,9 +300,9 @@ impl VideoOutput for SyphonOutput {
         height: u32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) {
+    ) -> bool {
         if !self.enabled.load(Ordering::Relaxed) {
-            return;
+            return false;
         }
 
         self.ensure_flip_resources(device, queue);
@@ -326,7 +326,7 @@ impl VideoOutput for SyphonOutput {
                 }
                 Err(e) => {
                     tracing::error!(output=self.name, "Syphon output creation failed: {}", e);
-                    return;
+                    return false;
                 }
             }
         }
@@ -334,7 +334,7 @@ impl VideoOutput for SyphonOutput {
         // A server with no client would flip and publish into the void every
         // cycle; the server object stays alive so clients can still find it.
         if output_guard.as_ref().map(|o| o.client_count()).unwrap_or(0) == 0 {
-            return;
+            return false;
         }
 
         // Recreate the flipped texture/bind group if dimensions changed.
@@ -350,7 +350,7 @@ impl VideoOutput for SyphonOutput {
         if let Some(ref mut output) = *output_guard {
             let _flipped_view = self.flipped_view.lock().unwrap();
             let Some(ref _view) = *_flipped_view else {
-                return;
+                return false;
             };
 
             let clients = output.client_count();
@@ -360,7 +360,7 @@ impl VideoOutput for SyphonOutput {
             // We access the texture stored in flipped_texture.
             let flipped_texture = self.flipped_texture.lock().unwrap();
             let Some(ref flipped) = *flipped_texture else {
-                return;
+                return false;
             };
 
             let status = output.publish(flipped, device, queue);
@@ -380,6 +380,9 @@ impl VideoOutput for SyphonOutput {
                 }
             }
         }
+
+        // No CPU readback: the frame is published zero-copy inside present.
+        return false;
     }
 
     fn name(&self) -> &str {

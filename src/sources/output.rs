@@ -1,5 +1,7 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 use tracing::instrument;
 
@@ -24,7 +26,8 @@ pub trait VideoOutput: Send {
         height: u32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    );
+    ) -> bool;
+    fn finish(&self) {}
     fn name(&self) -> &str;
     fn enabled(&self) -> bool;
     fn set_enabled(&self, enabled: bool);
@@ -189,8 +192,12 @@ impl OutputKind {
     }
 
     #[instrument(level = "debug", skip_all, fields(protocol = ?self.output.protocol(), output = %self.output.name()))]
-    pub fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
-        self.output.present(texture, width, height, device, queue);
+    pub fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
+        return self.output.present(texture, width, height, device, queue);
+    }
+
+    pub fn finish(&self) {
+        self.output.finish();
     }
 
     pub fn enabled(&self) -> bool {
@@ -265,16 +272,89 @@ impl OutputRegistry {
         return self.outputs.iter().any(|(_, ok)| ok.enabled() && !ok.busy());
     }
 
+    pub fn any_enabled(&self) -> bool {
+        return self.outputs.values().any(|ok| ok.enabled());
+    }
+
     #[instrument(level = "debug", skip_all)]
     pub fn present_all(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let mut awaiting = false;
         for output in self.outputs.values() {
-            if output.enabled() {
-                output.present(texture, width, height, device, queue);
+            if output.enabled() && output.present(texture, width, height, device, queue) {
+                awaiting = true;
             }
+        }
+        if awaiting {
+            let wait_span = tracing::debug_span!("readback_wait");
+            let _wait_guard = wait_span.entered();
+            if device.poll(wgpu::PollType::wait_indefinitely()).is_err() {
+                tracing::error!("output device poll failed");
+            }
+        }
+        for output in self.outputs.values() {
+            output.finish();
         }
     }
 
     pub fn clear(&mut self) {
         self.outputs.clear();
+    }
+}
+
+
+/// How long a frame may sit unconsumed before the worker is treated as stuck
+const STALL_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Per-output worker liveness and stall detection.
+#[derive(Default)]
+pub struct OutputLiveness {
+    exited: Arc<AtomicBool>,
+    stall_since: Mutex<Option<Instant>>,
+    stall_logged: AtomicBool,
+}
+
+impl OutputLiveness {
+    /// Move into the worker thread: marks the worker exited when it drops.
+    pub fn exit_flag(&self) -> WorkerExit {
+        return WorkerExit(Arc::clone(&self.exited));
+    }
+
+    pub fn is_alive(&self) -> bool {
+        return !self.exited.load(Ordering::Acquire);
+    }
+
+    /// Record that a frame was handed to the worker.
+    pub fn mark_sent(&self) {
+        self.stall_since.lock().unwrap().replace(Instant::now());
+        self.stall_logged.store(false, Ordering::Release);
+    }
+
+    /// The handoff failed, so nothing is in flight.
+    pub fn clear_sent(&self) {
+        self.stall_since.lock().unwrap().take();
+    }
+
+    /// Log once if a frame has been in flight past `STALL_TIMEOUT`.
+    pub fn check_stall(&self, name: &str) {
+        if self.stall_logged.load(Ordering::Acquire) {
+            return;
+        }
+        let Some(since) = *self.stall_since.lock().unwrap() else {
+            return;
+        };
+        if since.elapsed() < STALL_TIMEOUT {
+            return;
+        }
+        self.stall_logged.store(true, Ordering::Release);
+        tracing::warn!(output = %name, "output stalled: worker has not consumed a frame for {:.1}s", since.elapsed().as_secs_f32());
+    }
+}
+
+/// Marks the owning output's worker as exited when it drops.
+pub struct WorkerExit(Arc<AtomicBool>);
+
+impl Drop for WorkerExit {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
     }
 }

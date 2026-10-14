@@ -11,7 +11,7 @@ use multiviewer_decklink::{
 };
 
 use super::super::{OutputStats, Protocol};
-use super::super::output::{OutputId, VideoOutput};
+use super::super::output::{OutputId, OutputLiveness, VideoOutput};
 
 const SCALE_SHADER: &str = r#"
 struct VertexOutput {
@@ -75,7 +75,9 @@ pub struct DecklinkOutput {
     stats: Arc<Mutex<OutputStats>>,
     frame_tx: Option<mpsc::SyncSender<Vec<u8>>>,
     pending: Arc<AtomicBool>,
+    liveness: OutputLiveness,
     readback: Mutex<Option<wgpu::Buffer>>,
+    pending_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
     thread: Option<thread::JoinHandle<()>>,
     scale_bind_layout: OnceLock<wgpu::BindGroupLayout>,
     scale_sampler: OnceLock<wgpu::Sampler>,
@@ -94,6 +96,8 @@ impl DecklinkOutput {
         let stats_clone = Arc::clone(&stats);
         let pending = Arc::new(AtomicBool::new(false));
         let pending_t = Arc::clone(&pending);
+        let liveness = OutputLiveness::default();
+        let worker_flag = liveness.exit_flag();
 
         let thread_name = name.clone();
         let thread_config = config.clone();
@@ -101,6 +105,7 @@ impl DecklinkOutput {
         let thread = thread::Builder::new()
             .name(format!("decklink-out-{id}"))
             .spawn(move || {
+                let _alive_guard = worker_flag;
                 let device_name = thread_config.device_name.clone();
                 let mode_id: u32 = thread_config.display_mode.into();
                 let Ok(device_name_c) = CString::new(device_name) else {
@@ -119,7 +124,7 @@ impl DecklinkOutput {
                 } else {
                     Duration::from_secs_f64(1.0 / 60.0)
                 };
-                let mut last_frame_time = Instant::now();
+                let mut next_frame = Instant::now();
 
                 let mut started = false;
                 while let Ok(buffer) = frame_rx.recv() {
@@ -150,11 +155,18 @@ impl DecklinkOutput {
                         let pacing_span = tracing::debug_span!("decklink_pacing");
                         let _pacing_guard = pacing_span.entered();
                         let now = Instant::now();
-                        let elapsed = now.duration_since(last_frame_time);
-                        if elapsed < frame_interval {
-                            std::thread::sleep(frame_interval - elapsed);
+                        if now < next_frame {
+                            std::thread::sleep(next_frame - now);
                         }
-                        last_frame_time = Instant::now();
+                        // Fixed grid: advance from the deadline, not the actual
+                        // wake, so `thread::sleep` overshoot does not pile up
+                        // into every frame period (60 -> ~52).
+                        let now = Instant::now();
+                        next_frame = if now >= next_frame + frame_interval {
+                            now + frame_interval
+                        } else {
+                            next_frame + frame_interval
+                        };
                     }
 
                     let send_span = tracing::debug_span!("decklink_send");
@@ -199,7 +211,9 @@ impl DecklinkOutput {
             stats,
             frame_tx: Some(frame_tx),
             pending,
+            liveness,
             readback: Mutex::new(None),
+            pending_readback: Mutex::new(None),
             thread: Some(thread),
             scale_bind_layout: OnceLock::new(),
             scale_sampler: OnceLock::new(),
@@ -465,18 +479,19 @@ impl VideoOutput for DecklinkOutput {
         height: u32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) {
+    ) -> bool {
         if !self.enabled.load(Ordering::Relaxed) {
-            return;
+            return false;
         }
-        if self.pending.load(Ordering::Acquire) {
-            return;
+        if self.busy() {
+            self.liveness.check_stall(&self.name);
+            return false;
         }
 
         let out_w = self.config.width;
         let out_h = self.config.height;
         if out_w == 0 || out_h == 0 {
-            return;
+            return false;
         }
 
         self.width.store(out_w, Ordering::Relaxed);
@@ -534,23 +549,41 @@ impl VideoOutput for DecklinkOutput {
             queue.submit(Some(encoder.finish()));
         }
 
-        let wait_span = tracing::debug_span!("readback_wait");
-        let _wait_guard = wait_span.entered();
-        let buffer_slice = readback_buffer.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+        let (tx, rx) = mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
+        readback_buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
-        if device.poll(wgpu::PollType::wait_indefinitely()).is_err() {
-            tracing::error!(output=self.name, "DeckLink output poll failed");
+        *self.pending_readback.lock().unwrap() = Some(rx);
+        return true;
+    }
+
+    fn finish(&self) {
+        let Some(rx) = self.pending_readback.lock().unwrap().take() else {
             return;
-        }
-        if rx.recv().unwrap().is_err() {
+        };
+        let mapped = match rx.try_recv() {
+            Ok(result) => result,
+            Err(_) => {
+                // The map never completed (poll error / device lost). Drop the
+                // buffer so the next frame recreates it instead of re-mapping a
+                // buffer that is still pending.
+                *self.readback.lock().unwrap() = None;
+                tracing::error!(output=self.name, "DeckLink output readback did not complete");
+                return;
+            }
+        };
+        if mapped.is_err() {
             tracing::error!(output=self.name, "DeckLink output readback map failed");
             return;
         }
 
-        let view = buffer_slice.get_mapped_range();
+        let out_w = self.config.width;
+        let out_h = self.config.height;
+        let readback_slot = self.readback.lock().unwrap();
+        let Some(readback_buffer) = readback_slot.as_ref() else {
+            return;
+        };
+        let view = readback_buffer.slice(..).get_mapped_range();
         let row = (out_w * 4) as usize;
         let aligned = (row + 255) & !255;
         let mut buffer = Vec::with_capacity(16 + row * out_h as usize);
@@ -571,15 +604,18 @@ impl VideoOutput for DecklinkOutput {
         let mode_id: u32 = self.config.display_mode.into();
         buffer[8..12].copy_from_slice(&mode_id.to_le_bytes());
 
-        let sent = match self.frame_tx.as_ref() {
-            Some(tx) => tx.try_send(buffer).is_ok(),
-            None => false,
+        let Some(tx) = self.frame_tx.as_ref() else {
+            return;
         };
-        if sent {
-            self.pending.store(true, Ordering::Release);
-        } else {
-            let mut s = self.stats.lock().unwrap();
-            s.frames_dropped += 1;
+        // Publish in-flight before the handoff: the worker clears `pending` right
+        // after recv(), so storing it after try_send can be overwritten and wedge
+        // busy() true forever.
+        self.pending.store(true, Ordering::Release);
+        self.liveness.mark_sent();
+        if tx.try_send(buffer).is_err() {
+            self.pending.store(false, Ordering::Release);
+            self.liveness.clear_sent();
+            self.stats.lock().unwrap().frames_dropped += 1;
         }
     }
 
@@ -592,7 +628,7 @@ impl VideoOutput for DecklinkOutput {
     }
 
     fn busy(&self) -> bool {
-        return self.pending.load(Ordering::Acquire);
+        return self.pending.load(Ordering::Acquire) && self.liveness.is_alive();
     }
 
     fn set_enabled(&self, enabled: bool) {

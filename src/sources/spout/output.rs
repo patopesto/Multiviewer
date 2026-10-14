@@ -135,9 +135,9 @@ impl VideoOutput for SpoutOutput {
         height: u32,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) {
+    ) -> bool {
         if !self.enabled.load(Ordering::Relaxed) {
-            return;
+            return false;
         }
 
         let mut state_guard = self.state.lock().unwrap();
@@ -161,7 +161,7 @@ impl VideoOutput for SpoutOutput {
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
                         tracing::error!(output=self.name, "Spout output open failed: {}", e);
                     }
-                    return;
+                    return false;
                 }
             }
         }
@@ -212,6 +212,9 @@ impl VideoOutput for SpoutOutput {
                 tracing::error!(output=self.name, "Spout send failed: {}", e);
             }
         }
+
+        // No CPU readback: the frame is sent zero-copy inside present.
+        return false;
     }
 
     fn name(&self) -> &str {

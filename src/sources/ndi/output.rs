@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use grafton_ndi::{NDI, Sender, SenderOptions, BorrowedVideoFrame};
 
 use super::super::{OutputStats, Protocol};
-use super::super::output::{OutputId, VideoOutput};
+use super::super::output::{OutputId, OutputLiveness, VideoOutput};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct NdiOutputConfig {
@@ -21,7 +21,9 @@ pub struct NdiOutput {
     stats: Arc<Mutex<OutputStats>>,
     frame_tx: Option<mpsc::SyncSender<Vec<u8>>>,
     pending: Arc<AtomicBool>,
+    liveness: OutputLiveness,
     readback: Mutex<Option<wgpu::Buffer>>,
+    pending_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -32,11 +34,14 @@ impl NdiOutput {
         let stats_clone = Arc::clone(&stats);
         let pending = Arc::new(AtomicBool::new(false));
         let pending_t = Arc::clone(&pending);
+        let liveness = OutputLiveness::default();
+        let worker_flag = liveness.exit_flag();
 
         let thread_name = name.clone();
         let thread = thread::Builder::new()
             .name(format!("ndi-out-{id}"))
             .spawn(move || {
+                let _alive_guard = worker_flag;
                 let ndi = match NDI::new() {
                     Ok(n) => n,
                     Err(e) => {
@@ -109,19 +114,22 @@ impl NdiOutput {
             stats,
             frame_tx: Some(frame_tx),
             pending,
+            liveness,
             readback: Mutex::new(None),
+            pending_readback: Mutex::new(None),
             thread: Some(thread),
         }
     }
 }
 
 impl VideoOutput for NdiOutput {
-    fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
+    fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
         if !self.enabled.load(Ordering::Relaxed) {
-            return;
+            return false;
         }
-        if self.pending.load(Ordering::Acquire) {
-            return;
+        if self.busy() {
+            self.liveness.check_stall(&self.name);
+            return false;
         }
 
         self.width.store(width, Ordering::Relaxed);
@@ -170,41 +178,62 @@ impl VideoOutput for NdiOutput {
             queue.submit(Some(encoder.finish()));
         }
 
-        let wait_span = tracing::debug_span!("readback_wait");
-        let _wait_guard = wait_span.entered();
-        let buffer_slice = readback_buffer.slice(..);
-        let (tx, rx) = std::sync::mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
-        buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
+        let (tx, rx) = mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
+        readback_buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
             let _ = tx.send(result);
         });
-        if device.poll(wgpu::PollType::wait_indefinitely()).is_err() {
-            tracing::error!(output=self.name, "NDI output poll failed");
+        *self.pending_readback.lock().unwrap() = Some(rx);
+        return true;
+    }
+
+    fn finish(&self) {
+        let Some(rx) = self.pending_readback.lock().unwrap().take() else {
             return;
-        }
-        if rx.recv().unwrap().is_err() {
+        };
+        let mapped = match rx.try_recv() {
+            Ok(result) => result,
+            Err(_) => {
+                // The map never completed (poll error / device lost). Drop the
+                // buffer so the next frame recreates it instead of re-mapping a
+                // buffer that is still pending.
+                *self.readback.lock().unwrap() = None;
+                tracing::error!(output=self.name, "NDI output readback did not complete");
+                return;
+            }
+        };
+        if mapped.is_err() {
             tracing::error!(output=self.name, "NDI output readback map failed");
             return;
         }
 
-        let view = buffer_slice.get_mapped_range();
+        let readback_slot = self.readback.lock().unwrap();
+        let Some(readback_buffer) = readback_slot.as_ref() else {
+            return;
+        };
+        let view = readback_buffer.slice(..).get_mapped_range();
         let mut buffer = Vec::with_capacity(view.len());
         buffer.extend_from_slice(&view);
         drop(view);
         readback_buffer.unmap();
 
         // Embed width/height in the first 8 bytes so the thread does not need to wait on atomics.
+        let width = self.width.load(Ordering::Relaxed);
+        let height = self.height.load(Ordering::Relaxed);
         buffer[0..4].copy_from_slice(&width.to_le_bytes());
         buffer[4..8].copy_from_slice(&height.to_le_bytes());
 
-        let sent = match self.frame_tx.as_ref() {
-            Some(tx) => tx.try_send(buffer).is_ok(),
-            None => false,
+        let Some(tx) = self.frame_tx.as_ref() else {
+            return;
         };
-        if sent {
-            self.pending.store(true, Ordering::Release);
-        } else {
-            let mut s = self.stats.lock().unwrap();
-            s.frames_dropped += 1;
+        // Publish in-flight before the handoff: the worker clears `pending` right
+        // after recv(), so storing it after try_send can be overwritten and wedge
+        // busy() true forever.
+        self.pending.store(true, Ordering::Release);
+        self.liveness.mark_sent();
+        if tx.try_send(buffer).is_err() {
+            self.pending.store(false, Ordering::Release);
+            self.liveness.clear_sent();
+            self.stats.lock().unwrap().frames_dropped += 1;
         }
     }
 
@@ -217,7 +246,7 @@ impl VideoOutput for NdiOutput {
     }
 
     fn busy(&self) -> bool {
-        return self.pending.load(Ordering::Acquire);
+        return self.pending.load(Ordering::Acquire) && self.liveness.is_alive();
     }
 
     fn set_enabled(&self, enabled: bool) {
