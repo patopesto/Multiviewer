@@ -47,11 +47,11 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
         settings_value(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label("W");
-                if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.width).range(100..=7680)).changed() {
+                if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.width).range(100..=7680).update_while_editing(false)).changed() {
                     engine.dirty = true;
                 }
                 ui.label("H");
-                if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.height).range(100..=7680)).changed() {
+                if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.height).range(100..=7680).update_while_editing(false)).changed() {
                     engine.dirty = true;
                 }
             });

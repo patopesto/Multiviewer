@@ -135,8 +135,8 @@ impl VideoOutput for NdiOutput {
         self.width.store(width, Ordering::Relaxed);
         self.height.store(height, Ordering::Relaxed);
 
-        let bytes_per_row = width * 4;
-        let buffer_size = (bytes_per_row * height) as u64;
+        let aligned_bytes_per_row = (width * 4 + 255) & !255;
+        let buffer_size = (aligned_bytes_per_row * height) as u64;
         let mut readback_slot = self.readback.lock().unwrap();
         if readback_slot.as_ref().is_none_or(|b| b.size() != buffer_size + 8) {
             *readback_slot = Some(device.create_buffer(&wgpu::BufferDescriptor {
@@ -165,7 +165,7 @@ impl VideoOutput for NdiOutput {
                     buffer: readback_buffer,
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: 8,
-                        bytes_per_row: Some(bytes_per_row),
+                        bytes_per_row: Some(aligned_bytes_per_row),
                         rows_per_image: Some(height),
                     },
                 },
@@ -210,15 +210,26 @@ impl VideoOutput for NdiOutput {
         let Some(readback_buffer) = readback_slot.as_ref() else {
             return;
         };
+        // The readback stride is padded to `COPY_BYTES_PER_ROW_ALIGNMENT`, so strip the padding.
+        let width = self.width.load(Ordering::Relaxed);
+        let height = self.height.load(Ordering::Relaxed);
+        let row = (width * 4) as usize;
+        let aligned = (row + 255) & !255;
         let view = readback_buffer.slice(..).get_mapped_range();
-        let mut buffer = Vec::with_capacity(view.len());
-        buffer.extend_from_slice(&view);
+        // The first 8 bytes carry width/height so the thread does not need to wait on atomics.
+        let mut buffer = Vec::with_capacity(8 + row * height as usize);
+        buffer.extend_from_slice(&[0u8; 8]);
+        if aligned == row {
+            buffer.extend_from_slice(&view[8..8 + row * height as usize]);
+        } else {
+            for y in 0..height as usize {
+                let src_start = 8 + y * aligned;
+                buffer.extend_from_slice(&view[src_start..src_start + row]);
+            }
+        }
         drop(view);
         readback_buffer.unmap();
 
-        // Embed width/height in the first 8 bytes so the thread does not need to wait on atomics.
-        let width = self.width.load(Ordering::Relaxed);
-        let height = self.height.load(Ordering::Relaxed);
         buffer[0..4].copy_from_slice(&width.to_le_bytes());
         buffer[4..8].copy_from_slice(&height.to_le_bytes());
 
