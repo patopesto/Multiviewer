@@ -1,0 +1,100 @@
+---
+// Feature demo: selecting a source by clicking it on the canvas, then changing its protocol.
+---
+<figure class="mock mock--panel-left" data-demo="add-source" aria-hidden="true">
+  <div class="mock__panel">
+    <div class="mock__panel-head">▼ Sources</div>
+    <div class="mock__prop">
+      <span>Protocol</span>
+      <div class="mock__field" data-field>
+        <span data-field-value>Select</span>
+        <span class="mock__caret">▾</span>
+        <div class="mock__popup" data-popup>
+          <div class="mock__option" data-option>NDI</div>
+          <div class="mock__option">DeckLink</div>
+          <div class="mock__option">Syphon</div>
+          <div class="mock__option">Spout</div>
+          <div class="mock__option">Screen capture</div>
+        </div>
+      </div>
+    </div>
+    <div class="mock__row">
+      <span class="mock__drag">≡</span>
+      <b>DeckLink</b>
+      <span class="mock__value">SDI 1</span>
+    </div>
+    <div class="mock__row" data-target-row>
+      <span class="mock__drag">≡</span>
+      <b data-row-label>Screen capture</b>
+      <span class="mock__value" data-row-value>Display 1</span>
+    </div>
+  </div>
+  <div class="mock__canvas">
+    <div class="tile" style="left:8%;top:12%;width:44%;height:32%">
+      <div class="tile__bars"></div>
+      <span class="tile__label">DeckLink</span>
+    </div>
+    <div class="tile" data-target-tile style="left:8%;top:58%;width:44%;height:32%">
+      <div class="tile__bars"></div>
+      <span class="tile__label" data-target-label>Screen</span>
+    </div>
+  </div>
+  <div class="mock__cursor" data-cursor style="left:72%;top:78%">
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M5 2l14 8-6 1.6L9.6 19z" /></svg>
+  </div>
+</figure>
+
+<script>
+  import { makeAim, runDemo } from '../../lib/demo';
+
+  document.querySelectorAll<HTMLElement>('[data-demo="add-source"]').forEach((root) => {
+    runDemo(root, async (ctx) => {
+      const cursor = root.querySelector<HTMLElement>('[data-cursor]')!;
+      const targetTile = root.querySelector<HTMLElement>('[data-target-tile]')!;
+      const targetRow = root.querySelector<HTMLElement>('[data-target-row]')!;
+      const rowLabel = root.querySelector<HTMLElement>('[data-row-label]')!;
+      const rowValue = root.querySelector<HTMLElement>('[data-row-value]')!;
+      const targetLabel = root.querySelector<HTMLElement>('[data-target-label]')!;
+      const field = root.querySelector<HTMLElement>('[data-field]')!;
+      const fieldValue = root.querySelector<HTMLElement>('[data-field-value]')!;
+      const popup = root.querySelector<HTMLElement>('[data-popup]')!;
+      const option = root.querySelector<HTMLElement>('[data-option]')!;
+      const { aim } = makeAim(cursor, root);
+
+      ctx.animate(cursor, { opacity: 1 }, { duration: 0.2 });
+
+      while (true) {
+        // Select the source by clicking it on the canvas.
+        await ctx.tween(cursor, aim(targetTile), { duration: 0.5, ease: 'easeInOut' });
+        targetTile.classList.add('tile--active');
+        targetRow.classList.add('mock__row--sel');
+        await ctx.wait(0.4);
+
+        // Change its protocol from the dropdown.
+        await ctx.tween(cursor, aim(field), { duration: 0.4, ease: 'easeInOut' });
+        await ctx.tween(popup, { opacity: 1 }, { duration: 0.16 });
+        await ctx.tween(cursor, aim(option), { duration: 0.35, ease: 'easeInOut' });
+        option.classList.add('mock__option--hl');
+        await ctx.wait(0.35);
+        option.classList.remove('mock__option--hl');
+        await ctx.tween(popup, { opacity: 0 }, { duration: 0.14 });
+
+        fieldValue.textContent = 'NDI';
+        rowLabel.textContent = 'NDI';
+        rowValue.textContent = 'camera-1';
+        targetLabel.textContent = 'NDI';
+        await ctx.wait(1.3);
+
+        // Reset.
+        targetTile.classList.remove('tile--active');
+        targetRow.classList.remove('mock__row--sel');
+        rowLabel.textContent = 'Screen capture';
+        rowValue.textContent = 'Display 1';
+        targetLabel.textContent = 'Screen';
+        fieldValue.textContent = 'Select';
+        await ctx.tween(cursor, { x: 0, y: 0 }, { duration: 0.5, ease: 'easeInOut' });
+        await ctx.wait(0.5);
+      }
+    });
+  });
+</script>

@@ -9,11 +9,12 @@ export const project: ProjectConfig = {
   tagline: 'Hardware-accelerated multi-protocol video multiviewer.',
   description:
     'Compose NDI, DeckLink, Syphon, Spout, capture-device and screen sources on a real-time canvas, then broadcast the result. Native apps for macOS, Windows and Linux.',
-  domain: 'https://multiviewer.example.com',
+  domain: 'https://multiviewer.bambinito.net',
   accent: '#ff3b30',
   icon: { svg: icon, size: '30px' },
   gitlabProject: 'patopest/multiviewer',
   repoUrl: repository,
+  timeZone: 'America/Toronto',
   nav: [
     { label: 'Features', href: '/#features' },
     { label: 'Docs', href: '/docs/getting-started/' },

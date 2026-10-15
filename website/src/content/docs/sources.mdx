@@ -5,17 +5,10 @@ lead: Every protocol is a first-class source, and several can run in the same pr
 order: 3
 ---
 
-| Protocol | Platforms | Notes |
-| --- | --- | --- |
-| NDI | macOS, Windows, Linux | Network video, bundled runtime |
-| DeckLink | macOS, Windows, Linux | SDI and HDMI capture and playback |
-| Syphon | macOS | Zero-copy GPU texture sharing |
-| Spout | Windows | Zero-copy GPU texture sharing |
-| AVFoundation | macOS | Webcams and capture devices |
-| DirectShow | Windows | Webcams and WDM capture devices |
-| MediaFoundation | Windows | Webcams and capture devices |
-| Screen capture | macOS, Windows | Displays and windows |
-| Test patterns | macOS, Windows, Linux | SMPTE bars and generative patterns |
+import ProtocolMatrix from '../../components/ProtocolMatrix.astro';
+import { protocols } from '../../data/protocols';
+
+<ProtocolMatrix protocols={protocols} direction="input" columns={['platforms', 'notes']} />
 
 ## Adding a source
 
@@ -24,8 +17,8 @@ capture devices refresh on demand.
 
 ## Reconnecting
 
-If a source disappears, Multiviewer keeps the placement on the canvas and reconnects when the source returns. The
-placement, including its position and label, is preserved.
+If a source disappears, Multiviewer keeps it on the canvas and reconnects when it returns. Its position and label are
+preserved.
 
 ## GPU sources
 

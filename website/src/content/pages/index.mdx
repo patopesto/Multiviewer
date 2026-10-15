@@ -9,20 +9,31 @@ import Feature from '@patopest/astro-theme/components/Feature.astro';
 import Screenshot from '@patopest/astro-theme/components/Screenshot.astro';
 import ProjectGrid from '@patopest/astro-theme/components/ProjectGrid.astro';
 import CallToAction from '@patopest/astro-theme/components/CallToAction.astro';
+import ProtocolMatrix from '../../components/ProtocolMatrix.astro';
+import CanvasSnap from '../../components/demos/CanvasSnap.astro';
+import AddSource from '../../components/demos/AddSource.astro';
+import SourceSettings from '../../components/demos/SourceSettings.astro';
+import Outputs from '../../components/demos/Outputs.astro';
+import '../../components/demos/mock.css';
 import { project } from '../../project';
+import { protocols } from '../../data/protocols';
+
+import canvas from '../../assets/screenshots/app.png';
 
 <Hero
   eyebrow="v1.0.0 · macOS · Windows · Linux"
   tagline="Ingest NDI, DeckLink, Syphon, Spout, capture devices and screen captures, arrange them on a live canvas, and broadcast the result. Built in Rust on wgpu."
   primary={{ label: 'Download', href: '/download/' }}
   secondary={{ label: 'Read the docs', href: '/docs/getting-started/' }}
-  meta={['NDI', 'DeckLink', 'Syphon', 'Spout', 'Screen capture']}
-  image="/app.png"
+  meta={['NDI', 'DeckLink', 'Syphon', 'Spout', 'Webcams', 'Screen capture']}
+  image={canvas}
   imageAlt="The Multiviewer canvas with several video sources arranged into a grid"
   mediaLabel="PROGRAM"
 >
-  <span slot="title">Every signal,<br />one <em>canvas</em></span>
+  <span slot="title">Every feed,<br />one <em>canvas</em></span>
 </Hero>
+
+{/* Add video={{ webm: '/hero.webm', mp4: '/hero.mp4' }} to the Hero once a looping capture exists. */}
 
 <FeatureGrid
   id="features"
@@ -30,17 +41,17 @@ import { project } from '../../project';
   title="Built for live, multi-source video"
   lead="One application to bring every camera, feed and display together, laid out exactly how the show needs it."
 >
-  <Feature icon="01" title="Multi-protocol ingest">
+  <Feature icon="01" title="Multi-protocol input">
     NDI, Blackmagic DeckLink, Syphon, Spout, webcams and screen capture, all as first-class sources on the same canvas.
   </Feature>
-  <Feature icon="02" title="GPU compositing">
-    A wgpu pipeline does YUV to RGB on the GPU with minimal CPU to GPU copies, so the frame rate holds as the grid grows.
+  <Feature icon="02" title="Per-source control">
+    Position, scale, flips, borders and labels are set individually and saved with the project.
   </Feature>
   <Feature icon="03" title="Interactive canvas">
     Drag, resize, snap and zoom sources directly. Zones, borders and labels make each feed identifiable at a glance.
   </Feature>
-  <Feature icon="04" title="Per-source control">
-    Position, scale, flips, borders and labels are set individually and saved with the project.
+  <Feature icon="04" title="GPU compositing">
+    A wgpu pipeline with minimal CPU to GPU copies, so the frame rate holds as the grid grows.
   </Feature>
   <Feature icon="05" title="Multi-protocol output">
     Send the composed view out over NDI, DeckLink, Syphon or Spout, or keep it as a clean canvas.
@@ -50,12 +61,25 @@ import { project } from '../../project';
   </Feature>
 </FeatureGrid>
 
+<section class="section" id="protocols">
+  <div class="container">
+    <div class="section__head" data-reveal>
+      <span class="eyebrow">Protocols</span>
+      <h2 class="section__title">Every protocol, one canvas</h2>
+      <p class="section__lead">
+        Nine input protocols and four output protocols, mixable in a single project. Availability follows the
+        platform.
+      </p>
+    </div>
+    <ProtocolMatrix protocols={protocols} columns={['direction', 'platforms']} />
+  </div>
+</section>
+
 <Screenshot
   eyebrow="Compositing"
   title="Arrange the show, not just the windows"
-  label="PGM"
-  image="/app.png"
-  imageAlt="Sources arranged on the Multiviewer canvas"
+  label="Canvas"
+  caption="Sources snap to the canvas edges and to each other, with borders and labels you control."
 >
   <p>
     The canvas is the composition. Place sources anywhere, overlap them, and keep fine control of how each one is
@@ -66,15 +90,15 @@ import { project } from '../../project';
     <li>Per-source borders and labels</li>
     <li>Zoom from an overview to a single feed</li>
   </ul>
+  <CanvasSnap slot="media" />
 </Screenshot>
 
 <Screenshot
-  eyebrow="Sources and outputs"
+  eyebrow="Sources"
   title="Mix protocols in a single project"
   label="INPUTS"
   reverse
-  image="/app.png"
-  imageAlt="Multiviewer sources and outputs panel"
+  caption="Network, capture-card, webcam and screen sources, all discovered and added the same way."
 >
   <p>
     A project can combine a DeckLink SDI input, an NDI camera and a browser on another machine, then output the
@@ -85,6 +109,44 @@ import { project } from '../../project';
     <li>Webcams via AVFoundation, DirectShow and MediaFoundation</li>
     <li>Display and window capture on macOS and Windows</li>
   </ul>
+  <AddSource slot="media" />
+</Screenshot>
+
+<Screenshot
+  eyebrow="Control"
+  title="Tune every source on its own"
+  label="SOURCE"
+  caption="Each source on the canvas has its own position, scale, flips, border and label, saved with the project."
+>
+  <p>
+    Adjust one source without disturbing the rest. Every source on the canvas is configured on its own, so the same
+    feed can appear twice with different settings.
+  </p>
+  <ul class="shot__list">
+    <li>Position, scale and aspect handling</li>
+    <li>Horizontal and vertical flips per source</li>
+    <li>Borders and labels for readable layouts</li>
+  </ul>
+  <SourceSettings slot="media" />
+</Screenshot>
+
+<Screenshot
+  eyebrow="Outputs"
+  title="Send it anywhere"
+  label="OUTPUTS"
+  reverse
+  caption="Publish the composed canvas over NDI, DeckLink, Syphon or Spout, with per-output status."
+>
+  <p>
+    Enable as many destinations as you need. The composed canvas is sent to each one, and a busy consumer is
+    skipped rather than allowed to stall the frame.
+  </p>
+  <ul class="shot__list">
+    <li>NDI output onto the network</li>
+    <li>DeckLink playback to SDI and HDMI</li>
+    <li>Syphon and Spout texture sharing, zero copy</li>
+  </ul>
+  <Outputs slot="media" />
 </Screenshot>
 
 <ProjectGrid

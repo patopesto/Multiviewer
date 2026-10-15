@@ -170,11 +170,17 @@ importers:
         specifier: ^8.0.3
         version: 8.0.3(@astrojs/markdown-satteri@0.4.3)(astro@7.3.8(yaml@2.9.1))
       '@patopest/astro-theme':
-        specifier: git+https://gitlab.com/patopest/astro-theme.git#8c61aca1cc958e22e1eae4482dd702bc603673e8
-        version: https://gitlab.com/patopest/astro-theme/-/archive/8c61aca1cc958e22e1eae4482dd702bc603673e8/astro-theme-8c61aca1cc958e22e1eae4482dd702bc603673e8.tar.gz(astro@7.3.8(yaml@2.9.1))
+        specifier: git+https://gitlab.com/patopest/astro-theme.git#2188a38952a7422837804d51ab15b4aaa82b88f8
+        version: https://gitlab.com/patopest/astro-theme/-/archive/2188a38952a7422837804d51ab15b4aaa82b88f8/astro-theme-2188a38952a7422837804d51ab15b4aaa82b88f8.tar.gz(astro@7.3.8(yaml@2.9.1))
       astro:
         specifier: ^7.3.8
         version: 7.3.8(yaml@2.9.1)
+      motion:
+        specifier: ^14.2.0
+        version: 14.2.0
+      sharp:
+        specifier: ^0.35.5
+        version: 0.35.5
     devDependencies:
       '@astrojs/check':
         specifier: ^0.9.10
@@ -608,8 +614,8 @@ packages:
   '@oxc-project/types@0.153.0':
     resolution: {integrity: sha512-jSNrRIyvPVLL5E1z/tS5zLAprosGz/FuI1PWwEOz59j3E4TTTzSpqKb/RDGqJhhW0QHYISGXxq582wGx6T11Tw==}
 
-  '@patopest/astro-theme@https://gitlab.com/patopest/astro-theme/-/archive/8c61aca1cc958e22e1eae4482dd702bc603673e8/astro-theme-8c61aca1cc958e22e1eae4482dd702bc603673e8.tar.gz':
-    resolution: {gitHosted: true, integrity: sha512-sZoeLU/iEbsHVfWx2dxDK/4eAJ3L960mD/SVpLk5c2Ln6P7v71rZh9VCBOiPSLwgENrWtvEXvPlVXQ/nAc31zQ==, tarball: https://gitlab.com/patopest/astro-theme/-/archive/8c61aca1cc958e22e1eae4482dd702bc603673e8/astro-theme-8c61aca1cc958e22e1eae4482dd702bc603673e8.tar.gz}
+  '@patopest/astro-theme@https://gitlab.com/patopest/astro-theme/-/archive/2188a38952a7422837804d51ab15b4aaa82b88f8/astro-theme-2188a38952a7422837804d51ab15b4aaa82b88f8.tar.gz':
+    resolution: {gitHosted: true, integrity: sha512-9vJ+H6mJvlQLd7M3CjWgGM/k73FPSP4bRrvuLz4+KO3LE91gnKv6QMBKTosVsKPpAbJmSBzUt06JGZL7bxcJug==, tarball: https://gitlab.com/patopest/astro-theme/-/archive/2188a38952a7422837804d51ab15b4aaa82b88f8/astro-theme-2188a38952a7422837804d51ab15b4aaa82b88f8.tar.gz}
     version: 0.1.0
     peerDependencies:
       astro: ^7.0.0
@@ -1037,6 +1043,17 @@ packages:
     resolution: {integrity: sha512-Wp1zXWPVUPBmfoa3Cqc9ctaKuzKAV6uLstRqlR56kSjplf5uAce+qeyYym7F+PHbGTk+tCEdkCW6RD7DX/gBZw==}
     engines: {node: '>=20'}
 
+  framer-motion@14.2.0:
+    resolution: {integrity: sha512-cD2gfFujHt4r/+dZpcn5yziu7VRwQAQDakwIm/bICYXbafnpHCYokV+PnEXqErnSdv6Eh28a+SRF+f3ndGcMsQ==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
+
   fsevents@2.3.3:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
@@ -1212,6 +1229,23 @@ packages:
 
   micromark-util-types@2.0.3:
     resolution: {integrity: sha512-oxB2Ik03hI0gv+VNn9tnh1t1YEe9MDPptViAEgfdf3YQHsn0pzGTgCdlSCJXcwhqm8phaEuM7zeEu3QQzVBrPg==}
+
+  motion-dom@14.2.0:
+    resolution: {integrity: sha512-TDdxnjAavh2Qm4lQCQI3uoTx9IR/Id2PI8JNEXW3AcwwV2yvhoimAX3/TnE+x82gDHfPq2yx/cJ58TTw5mMr0A==}
+
+  motion-utils@14.1.1:
+    resolution: {integrity: sha512-3VvN5Uvf8B6qG+OfOui6Nht5EWp+vLuU3IqcAj7ItZGKqtmTjCebl5sGZF7/08gEHRnEl1AP/fIwbcEyVrcQGQ==}
+
+  motion@14.2.0:
+    resolution: {integrity: sha512-45cDwjZh0yOMZtnX3hIFPIPmzCWz/RC2bD/niWVIssGBjJlMmosbDILG9a+ZyoP635Z5xrbKvuo10spv9dBdnw==}
+    peerDependencies:
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      react:
+        optional: true
+      react-dom:
+        optional: true
 
   mrmime@2.0.1:
     resolution: {integrity: sha512-Y3wQdFg2Va6etvQ5I82yUhGdsKrcYox6p7FfL1LbK2J4V01F9TGlepTIhnK24t7koZibmg82KGglhA1XK5IsLQ==}
@@ -2005,8 +2039,7 @@ snapshots:
     dependencies:
       tslib: 2.8.1
 
-  '@img/colour@1.1.0':
-    optional: true
+  '@img/colour@1.1.0': {}
 
   '@img/sharp-darwin-arm64@0.35.5':
     optionalDependencies:
@@ -2138,7 +2171,7 @@ snapshots:
 
   '@oxc-project/types@0.153.0': {}
 
-  '@patopest/astro-theme@https://gitlab.com/patopest/astro-theme/-/archive/8c61aca1cc958e22e1eae4482dd702bc603673e8/astro-theme-8c61aca1cc958e22e1eae4482dd702bc603673e8.tar.gz(astro@7.3.8(yaml@2.9.1))':
+  '@patopest/astro-theme@https://gitlab.com/patopest/astro-theme/-/archive/2188a38952a7422837804d51ab15b4aaa82b88f8/astro-theme-2188a38952a7422837804d51ab15b4aaa82b88f8.tar.gz(astro@7.3.8(yaml@2.9.1))':
     dependencies:
       astro: 7.3.8(yaml@2.9.1)
       marked: 15.0.12
@@ -2582,6 +2615,12 @@ snapshots:
     dependencies:
       tiny-inflate: 1.0.3
 
+  framer-motion@14.2.0:
+    dependencies:
+      motion-dom: 14.2.0
+      motion-utils: 14.1.1
+      tslib: 2.8.1
+
   fsevents@2.3.3:
     optional: true
 
@@ -2740,6 +2779,17 @@ snapshots:
   micromark-util-symbol@2.0.1: {}
 
   micromark-util-types@2.0.3: {}
+
+  motion-dom@14.2.0:
+    dependencies:
+      motion-utils: 14.1.1
+
+  motion-utils@14.1.1: {}
+
+  motion@14.2.0:
+    dependencies:
+      framer-motion: 14.2.0
+      tslib: 2.8.1
 
   mrmime@2.0.1: {}
 
@@ -2921,7 +2971,6 @@ snapshots:
       '@img/sharp-win32-arm64': 0.35.5
       '@img/sharp-win32-ia32': 0.35.5
       '@img/sharp-win32-x64': 0.35.5
-    optional: true
 
   shiki@4.5.0:
     dependencies:

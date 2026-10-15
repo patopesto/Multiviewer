@@ -1,0 +1,127 @@
+---
+import type { Protocol } from '../data/protocols';
+
+type Column = 'direction' | 'platforms' | 'notes';
+type Os = 'macos' | 'windows' | 'linux';
+
+interface Props {
+  protocols: Protocol[];
+  /** When set, lists only protocols usable in that direction and uses its note. */
+  direction?: 'input' | 'output';
+  columns?: Column[];
+}
+const { protocols, direction, columns = ['platforms', 'notes'] } = Astro.props;
+const list = direction ? protocols.filter((entry) => entry[direction]) : protocols;
+const showDirection = !direction && columns.includes('direction');
+const showPlatforms = columns.includes('platforms');
+const showNotes = columns.includes('notes');
+
+const OS_LABELS: { os: Os; label: string }[] = [
+  { os: 'macos', label: 'macOS' },
+  { os: 'windows', label: 'Windows' },
+  { os: 'linux', label: 'Linux' },
+];
+
+const noteFor = (entry: Protocol) =>
+  (direction === 'output'
+    ? entry.outputNote
+    : direction === 'input'
+      ? entry.inputNote
+      : undefined) ??
+  entry.note ??
+  '';
+---
+<table class="matrix">
+  <thead>
+    <tr>
+      <th scope="col">Protocol</th>
+      {showDirection && <th scope="col">Direction</th>}
+      {showPlatforms && <th scope="col">Platforms</th>}
+      {showNotes && <th scope="col">Notes</th>}
+    </tr>
+  </thead>
+  <tbody>
+    {list.map((entry) => (
+      <tr>
+        <th scope="row">{entry.name}</th>
+        {showDirection && (
+          <td>
+            <div class="matrix__chips">
+              {entry.input && <span class="chip chip--in">In</span>}
+              {entry.output && <span class="chip chip--out">Out</span>}
+            </div>
+          </td>
+        )}
+        {showPlatforms && (
+          <td>
+            <div class="matrix__chips">
+              {OS_LABELS.filter((os) => entry.platforms.includes(os.os)).map((os) => (
+                <span class="chip">{os.label}</span>
+              ))}
+            </div>
+          </td>
+        )}
+        {showNotes && <td class="matrix__note">{noteFor(entry)}</td>}
+      </tr>
+    ))}
+  </tbody>
+</table>
+
+<style>
+  .matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.94rem;
+  }
+  .matrix th,
+  .matrix td {
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--line-soft);
+    text-align: left;
+    vertical-align: middle;
+  }
+  .matrix thead th {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .matrix tbody th {
+    font-family: var(--font-body);
+    font-size: 0.94rem;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .matrix__note {
+    color: var(--text-dim);
+  }
+  .matrix__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.12rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+  }
+  .chip--in {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+    color: var(--accent);
+  }
+  .chip--out {
+    border-color: color-mix(in srgb, var(--ok) 45%, var(--line));
+    color: var(--ok);
+  }
+</style>

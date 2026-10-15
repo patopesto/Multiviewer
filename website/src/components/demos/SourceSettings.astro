@@ -1,0 +1,112 @@
+---
+// Feature demo: adjusting a single source's properties and seeing the canvas react.
+---
+<figure class="mock mock--panel-left" data-demo="source-settings" aria-hidden="true">
+  <div class="mock__panel">
+    <div class="mock__panel-head">▼ Properties</div>
+    <div class="mock__prop"><span>Name</span><span class="mock__field">NDI</span></div>
+    <div class="mock__prop"><span>Protocol</span><span class="mock__field">NDI<span class="mock__caret">▾</span></span></div>
+    <div class="mock__prop"><span>Source</span><span class="mock__field">camera-1<span class="mock__caret">▾</span></span></div>
+    <!-- <div class="mock__prop"><span>Position</span><span class="mock__field">X 960&#160;&#160;Y 0</span></div> -->
+    <!-- <div class="mock__prop"><span>Size</span><span class="mock__field">W 960&#160;&#160;H 540</span></div> -->
+    <!-- <div class="mock__prop"><span>Order</span><span class="mock__field">Z 3</span></div> -->
+    <div class="mock__prop"><span>Mode</span><span class="mock__field">Fit<span class="mock__caret">▾</span></span></div>
+    <div class="mock__prop">
+      <span>Flip</span>
+      <span class="mock__checks">
+        <span class="mock__check" data-flip-h><span class="mock__box"></span>Flip H</span>
+        <span class="mock__check" data-flip-v><span class="mock__box"></span>Flip V</span>
+      </span>
+    </div>
+    <div class="mock__prop">
+      <span>Label</span>
+      <span class="mock__field" data-label-field><span data-label-value>Show</span><span class="mock__caret">▾</span></span>
+    </div>
+    <div class="mock__prop">
+      <span>Borders</span>
+      <span class="mock__field" data-borders-field><span data-borders-value>Show</span><span class="mock__caret">▾</span></span>
+    </div>
+  </div>
+  <div class="mock__canvas">
+    <div class="tile" data-tile style="left:16%;top:22%;width:68%;height:56%">
+      <div class="tile__bars" data-bars></div>
+      <span class="tile__label" data-label>NDI</span>
+    </div>
+  </div>
+  <div class="mock__cursor" data-cursor style="left:82%;top:82%">
+    <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M5 2l14 8-6 1.6L9.6 19z" /></svg>
+  </div>
+</figure>
+
+<script>
+  import { makeAim, runDemo } from '../../lib/demo';
+
+  document.querySelectorAll<HTMLElement>('[data-demo="source-settings"]').forEach((root) => {
+    runDemo(root, async (ctx) => {
+      const tile = root.querySelector<HTMLElement>('[data-tile]')!;
+      const bars = root.querySelector<HTMLElement>('[data-bars]')!;
+      const label = root.querySelector<HTMLElement>('[data-label]')!;
+      const flipHorizontal = root.querySelector<HTMLElement>('[data-flip-h]')!;
+      const flipVertical = root.querySelector<HTMLElement>('[data-flip-v]')!;
+      const labelField = root.querySelector<HTMLElement>('[data-label-field]')!;
+      const labelValue = root.querySelector<HTMLElement>('[data-label-value]')!;
+      const bordersField = root.querySelector<HTMLElement>('[data-borders-field]')!;
+      const bordersValue = root.querySelector<HTMLElement>('[data-borders-value]')!;
+      const cursor = root.querySelector<HTMLElement>('[data-cursor]')!;
+      const flipBoxH = flipHorizontal.querySelector<HTMLElement>('.mock__box')!;
+      const flipBoxV = flipVertical.querySelector<HTMLElement>('.mock__box')!;
+      const borderColor = getComputedStyle(tile).borderColor;
+      const { aim } = makeAim(cursor, root);
+
+      const setChecked = (check: HTMLElement, on: boolean) => check.classList.toggle('mock__check--on', on);
+
+      ctx.animate(cursor, { opacity: 1 }, { duration: 0.2 });
+
+      while (true) {
+        // Flip H
+        await ctx.tween(cursor, aim(flipBoxH), { duration: 0.5, ease: 'easeInOut' });
+        await ctx.tween(flipHorizontal, { scale: [1, 0.92, 1] }, { duration: 0.18, ease: 'easeOut' });
+        setChecked(flipHorizontal, true);
+        await ctx.tween(bars, { scaleX: -1 }, { duration: 0.45, ease: 'easeInOut' });
+        await ctx.wait(0.7);
+        setChecked(flipHorizontal, false);
+        await ctx.tween(bars, { scaleX: 1 }, { duration: 0.45, ease: 'easeInOut' });
+        await ctx.wait(0.25);
+
+        // Flip V
+        await ctx.tween(cursor, aim(flipBoxV), { duration: 0.5, ease: 'easeInOut' });
+        await ctx.tween(flipVertical, { scale: [1, 0.92, 1] }, { duration: 0.18, ease: 'easeOut' });
+        setChecked(flipVertical, true);
+        await ctx.tween(bars, { scaleY: -1 }, { duration: 0.45, ease: 'easeInOut' });
+        await ctx.wait(0.7);
+        setChecked(flipVertical, false);
+        await ctx.tween(bars, { scaleY: 1 }, { duration: 0.45, ease: 'easeInOut' });
+        await ctx.wait(0.25);
+
+        // Label (fade held twice as long)
+        await ctx.tween(cursor, aim(labelField), { duration: 0.5, ease: 'easeInOut' });
+        await ctx.tween(labelField, { scale: [1, 0.97, 1] }, { duration: 0.18, ease: 'easeOut' });
+        labelValue.textContent = 'Hide';
+        await ctx.tween(label, { opacity: 0 }, { duration: 0.6, ease: 'easeInOut' });
+        await ctx.wait(1.4);
+        labelValue.textContent = 'Show';
+        await ctx.tween(label, { opacity: 1 }, { duration: 0.6, ease: 'easeInOut' });
+        await ctx.wait(0.5);
+
+        // Borders (fade held twice as long)
+        await ctx.tween(cursor, aim(bordersField), { duration: 0.5, ease: 'easeInOut' });
+        await ctx.tween(bordersField, { scale: [1, 0.97, 1] }, { duration: 0.18, ease: 'easeOut' });
+        bordersValue.textContent = 'Hide';
+        await ctx.tween(tile, { borderColor: 'rgba(0, 0, 0, 0)' }, { duration: 0.6, ease: 'easeInOut' });
+        await ctx.wait(1.4);
+        bordersValue.textContent = 'Show';
+        await ctx.tween(tile, { borderColor }, { duration: 0.6, ease: 'easeInOut' });
+        await ctx.wait(0.5);
+
+        // Back to rest.
+        await ctx.tween(cursor, { x: 0, y: 0 }, { duration: 0.5, ease: 'easeInOut' });
+        await ctx.wait(0.4);
+      }
+    });
+  });
+</script>

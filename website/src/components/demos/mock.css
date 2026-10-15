@@ -1,0 +1,310 @@
+/* Mock UI for the animated feature demos: a replica of the Multiviewer app. */
+
+.mock {
+  --app-bg: #2b2b2b;
+  --app-canvas: #1e1e1e;
+  --app-line: #3d3d3d;
+  --app-field: #1b1b1b;
+  --app-text: #d2d2d2;
+  --app-muted: #8f8f8f;
+  --app-sel: #2f6fd0;
+  --app-canvas-sel: #b8d200;
+  --app-ok: #6fbf73;
+  --app-warn: #c8a25a;
+
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34%;
+  background: var(--app-bg);
+}
+.mock--full {
+  grid-template-columns: minmax(0, 1fr);
+}
+.mock--panel-left {
+  grid-template-columns: 40% minmax(0, 1fr);
+}
+
+.mock__canvas {
+  position: relative;
+  overflow: hidden;
+  background: var(--app-canvas);
+}
+.mock__canvas::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--app-line) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--app-line) 55%, transparent) 1px, transparent 1px);
+  background-size: 12% 12%;
+  opacity: 0.5;
+}
+
+.mock__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.75rem;
+  overflow: hidden;
+  border-left: 1px solid var(--app-line);
+  background: var(--app-bg);
+}
+.mock--panel-left .mock__panel {
+  order: -1;
+  border-left: 0;
+  border-right: 1px solid var(--app-line);
+}
+.mock__panel-head {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--app-muted);
+}
+
+.mock__row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.38rem 0.5rem;
+  border: 1px solid var(--app-line);
+  border-radius: 4px;
+  background: var(--app-field);
+  font-size: 0.72rem;
+  color: var(--app-muted);
+}
+.mock__row b {
+  font-weight: 500;
+  color: var(--app-text);
+}
+.mock__row--sel {
+  border-color: var(--app-sel);
+  background: color-mix(in srgb, var(--app-sel) 32%, var(--app-field));
+}
+.mock__row--sel b {
+  color: #ffffff;
+}
+.mock__drag {
+  color: var(--app-muted);
+  font-size: 0.7rem;
+  letter-spacing: -0.12em;
+}
+.mock__list {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 100%;
+  padding: 0 6%;
+}
+.mock__value {
+  margin-inline-start: auto;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  color: var(--app-muted);
+}
+
+/* egui property rows */
+.mock__prop {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+}
+.mock__prop > span:first-child {
+  flex: none;
+  min-width: 3.8rem;
+  color: var(--app-muted);
+}
+.mock__prop .mock__field {
+  flex: 1;
+}
+
+/* egui field and dropdown */
+.mock__field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 22px;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--app-line);
+  border-radius: 3px;
+  background: var(--app-field);
+  color: var(--app-text);
+  font-size: 0.68rem;
+}
+.mock__caret {
+  margin-inline-start: auto;
+  color: var(--app-muted);
+  font-size: 0.6rem;
+}
+.mock__popup {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 3;
+  padding: 2px;
+  border: 1px solid var(--app-line);
+  border-radius: 3px;
+  background: #333333;
+  box-shadow: 0 12px 26px -12px rgba(0, 0, 0, 0.75);
+  opacity: 0;
+}
+.mock__option {
+  padding: 0.22rem 0.45rem;
+  border-radius: 2px;
+  font-size: 0.68rem;
+  color: var(--app-text);
+}
+.mock__option--hl {
+  background: var(--app-sel);
+  color: #ffffff;
+}
+
+/* egui checkboxes */
+.mock__checks {
+  display: flex;
+  flex: 1;
+  gap: 0.8rem;
+}
+.mock__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  color: var(--app-text);
+}
+.mock__box {
+  position: relative;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--app-line);
+  border-radius: 2px;
+  background: var(--app-field);
+}
+.mock__check--on .mock__box {
+  background: var(--app-sel);
+  border-color: var(--app-sel);
+}
+.mock__check--on .mock__box::after {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 0.5px;
+  width: 4px;
+  height: 7px;
+  border: solid #ffffff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.tile {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: hidden;
+  isolation: isolate;
+  border: 1px solid var(--app-line);
+  border-radius: 3px;
+  background: #000;
+}
+.tile__bars {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-color: #000;
+  background-image:
+    linear-gradient(
+      90deg,
+      #000 0 12.5%,
+      #00214a 12.5% 25%,
+      #fff 25% 37.5%,
+      #2a0042 37.5% 50%,
+      #000 50% 62.5%,
+      #b0b0b0 62.5% 75%,
+      #000 75% 87.5%,
+      #000 87.5% 100%
+    ),
+    linear-gradient(
+      90deg,
+      #c0c0c0 0 14.286%,
+      #c0c000 14.286% 28.572%,
+      #00c0c0 28.572% 42.858%,
+      #00c000 42.858% 57.144%,
+      #c000c0 57.144% 71.43%,
+      #c00000 71.43% 85.716%,
+      #0000c0 85.716% 100%
+    );
+  background-size: 100% 32%, 100% 68%;
+  background-position: bottom, top;
+  background-repeat: no-repeat;
+}
+.tile--active {
+  border-color: var(--app-canvas-sel);
+  box-shadow: 0 0 0 1px var(--app-canvas-sel);
+}
+.tile__label {
+  position: relative;
+  z-index: 2;
+  margin: 0.3rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 3px;
+  background: color-mix(in srgb, #000 62%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  letter-spacing: 0.06em;
+  color: var(--app-text);
+}
+
+.mock__guide {
+  position: absolute;
+  top: 6%;
+  bottom: 6%;
+  width: 1px;
+  background: var(--app-canvas-sel);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--app-canvas-sel) 70%, transparent);
+  opacity: 0;
+}
+.mock__guide--h {
+  top: 53%;
+  bottom: auto;
+  left: 0;
+  right: 0;
+  width: auto;
+  height: 1px;
+}
+.mock__cursor {
+  position: absolute;
+  z-index: 10;
+  width: 17px;
+  height: 17px;
+  color: var(--app-text);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.7));
+  opacity: 0;
+}
+.mock__handle {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid var(--app-canvas-sel);
+  border-radius: 2px;
+  background: var(--app-bg);
+  opacity: 0;
+}
+.mock__badge {
+  margin-inline-start: 0;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid color-mix(in srgb, var(--app-warn) 60%, var(--app-line));
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+  color: var(--app-warn);
+  opacity: 0;
+}

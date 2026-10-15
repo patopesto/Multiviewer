@@ -1,0 +1,67 @@
+---
+// Feature demo: enabling outputs and watching their frame rate.
+---
+<figure class="mock mock--full" data-demo="outputs" aria-hidden="true">
+  <div class="mock__list">
+    <div class="mock__row" data-row data-base="60">
+      <span class="mock__check" data-check><span class="mock__box"></span></span>
+      <b>NDI</b>
+      <span class="mock__value" data-fps>—</span>
+    </div>
+    <div class="mock__row" data-row data-base="60">
+      <span class="mock__check" data-check><span class="mock__box"></span></span>
+      <b>DeckLink</b>
+      <span class="mock__value" data-fps>—</span>
+    </div>
+    <div class="mock__row" data-row data-base="59">
+      <span class="mock__check" data-check><span class="mock__box"></span></span>
+      <b>Syphon</b>
+      <span class="mock__value" data-fps>—</span>
+    </div>
+    <div class="mock__row" data-row data-base="61">
+      <span class="mock__check" data-check><span class="mock__box"></span></span>
+      <b>Spout</b>
+      <span class="mock__badge" data-badge>frame skipped</span>
+      <span class="mock__value" data-fps>—</span>
+    </div>
+  </div>
+</figure>
+
+<script>
+  import { runDemo } from '../../lib/demo';
+
+  document.querySelectorAll<HTMLElement>('[data-demo="outputs"]').forEach((root) => {
+    runDemo(root, async (ctx) => {
+      const rows = [...root.querySelectorAll<HTMLElement>('[data-row]')];
+      const badge = root.querySelector<HTMLElement>('[data-badge]');
+      const pick = (row: HTMLElement, key: string) => row.querySelector<HTMLElement>(`[data-${key}]`)!;
+
+      while (true) {
+        for (const row of rows) {
+          pick(row, 'check').classList.add('mock__check--on');
+          await ctx.wait(0.12);
+        }
+
+        for (let tick = 0; tick < 14; tick += 1) {
+          for (const row of rows) {
+            const base = Number(row.dataset.base ?? 60);
+            const jitter = Math.round(Math.random() * 2 - 1);
+            pick(row, 'fps').textContent = `${base + jitter} fps`;
+          }
+          await ctx.wait(0.15);
+        }
+
+        if (badge) {
+          ctx.animate(badge, { opacity: [0, 1, 1, 0] }, { duration: 1.2 });
+        }
+        await ctx.wait(0.7);
+
+        for (const row of rows) {
+          pick(row, 'check').classList.remove('mock__check--on');
+          pick(row, 'fps').textContent = '—';
+        }
+        await ctx.wait(0.6);
+      }
+    });
+  });
+</script>

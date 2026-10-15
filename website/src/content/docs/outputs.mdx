@@ -5,17 +5,15 @@ lead: Outputs publish the canvas to the rest of the system, one destination each
 order: 4
 ---
 
+import ProtocolMatrix from '../../components/ProtocolMatrix.astro';
+import { protocols } from '../../data/protocols';
+
 ## Adding an output
 
 Open **Outputs** in the side panel, pick a protocol, and configure it. Enabled outputs receive the composed canvas
 every frame.
 
-| Protocol | Platforms | Notes |
-| --- | --- | --- |
-| NDI | macOS, Windows, Linux | Advertise the canvas on the network |
-| DeckLink | macOS, Windows, Linux | Play out to SDI or HDMI |
-| Syphon | macOS | Share the canvas as a GPU texture |
-| Spout | Windows | Share the canvas as a GPU texture |
+<ProtocolMatrix protocols={protocols} direction="output" columns={['platforms', 'notes']} />
 
 ## Frame rate and backpressure
 

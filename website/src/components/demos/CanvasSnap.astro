@@ -1,0 +1,106 @@
+---
+// Feature demo: dragging a source to a snap slot, then resizing a source by its corner.
+---
+<figure class="mock mock--full" data-demo="canvas-snap" aria-hidden="true">
+  <div class="mock__canvas" data-canvas>
+    <div
+      class="tile"
+      data-zoom
+      style="left:5%;top:9%;width:40%;height:36%;transform-origin:0 0;z-index:1"
+    >
+      <div class="tile__bars"></div>
+      <span class="tile__label">NDI</span>
+    </div>
+    <div class="tile" data-moving style="left:53%;top:9%;width:42%;height:36%">
+      <div class="tile__bars"></div>
+      <span class="tile__label">DeckLink</span>
+    </div>
+    <div class="tile" style="left:5%;top:53%;width:40%;height:38%">
+      <div class="tile__bars"></div>
+      <span class="tile__label">Screen</span>
+    </div>
+    <div class="mock__guide" data-guide style="left:53%"></div>
+    <div class="mock__guide mock__guide--h" data-guide-h style="top:53%"></div>
+    <div class="mock__handle" data-handle style="left:45%;top:45%"></div>
+    <div class="mock__cursor" data-cursor style="left:86%;top:78%">
+      <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M5 2l14 8-6 1.6L9.6 19z" /></svg>
+    </div>
+  </div>
+</figure>
+
+<script>
+  import { makeAim, runDemo } from '../../lib/demo';
+
+  document.querySelectorAll<HTMLElement>('[data-demo="canvas-snap"]').forEach((root) => {
+    runDemo(root, async (ctx) => {
+      const canvas = root.querySelector<HTMLElement>('[data-canvas]')!;
+      const moving = root.querySelector<HTMLElement>('[data-moving]')!;
+      const guide = root.querySelector<HTMLElement>('[data-guide]')!;
+      const guideH = root.querySelector<HTMLElement>('[data-guide-h]')!;
+      const cursor = root.querySelector<HTMLElement>('[data-cursor]')!;
+      const zoom = root.querySelector<HTMLElement>('[data-zoom]')!;
+      const handle = root.querySelector<HTMLElement>('[data-handle]')!;
+
+      const { aim, base, frame } = makeAim(cursor, root);
+
+      ctx.animate(cursor, { opacity: 1 }, { duration: 0.2 });
+
+      while (true) {
+        const drop = canvas.getBoundingClientRect().height * 0.44;
+        const grab = aim(moving);
+
+        // Rest -> grab the moving source.
+        await ctx.tween(cursor, grab, { duration: 0.6, ease: 'easeInOut' });
+        await ctx.tween(moving, { scale: 1.04 }, { duration: 0.2, ease: 'easeOut' });
+
+        // Drag it to the snap slot, the cursor riding along. The horizontal
+        // guide appears as it reaches the row, the vertical one runs throughout.
+        ctx.animate(guide, { opacity: 1 }, { duration: 0.2 });
+        ctx.animate(guideH, { opacity: 1 }, { duration: 0.25, delay: 0.28 });
+        ctx.animate(cursor, { x: grab.x, y: grab.y + drop }, { duration: 0.55, ease: 'easeInOut' });
+        await ctx.tween(moving, { y: drop }, { duration: 0.55, ease: 'easeInOut' });
+        ctx.animate(guide, { opacity: 0 }, { duration: 0.4 });
+        ctx.animate(guideH, { opacity: 0 }, { duration: 0.4 });
+        await ctx.tween(moving, { scale: 1 }, { duration: 0.2, ease: 'easeOut' });
+
+        // Resize from the bottom-right corner; the top-left stays put.
+        const frameRect = frame.getBoundingClientRect();
+        const zoomRect = zoom.getBoundingClientRect();
+        const origin = {
+          x: zoomRect.left - frameRect.left,
+          y: zoomRect.top - frameRect.top,
+          w: zoomRect.width,
+          h: zoomRect.height,
+        };
+        const cornerAt = (scale: number) => {
+          const point = base();
+          return { x: origin.x + origin.w * scale - point.x, y: origin.y + origin.h * scale - point.y };
+        };
+
+        await ctx.tween(cursor, cornerAt(1), { duration: 0.5, ease: 'easeInOut' });
+        ctx.animate(handle, { opacity: 1 }, { duration: 0.15 });
+        zoom.classList.add('tile--active');
+
+        const grow = 1.32;
+        ctx.animate(cursor, cornerAt(grow), { duration: 0.5, ease: 'easeInOut' });
+        ctx.animate(handle, { x: origin.w * (grow - 1), y: origin.h * (grow - 1) }, { duration: 0.5, ease: 'easeInOut' });
+        await ctx.tween(zoom, { scale: grow }, { duration: 0.5, ease: 'easeInOut' });
+        await ctx.wait(0.4);
+
+        ctx.animate(cursor, cornerAt(1), { duration: 0.5, ease: 'easeInOut' });
+        ctx.animate(handle, { x: 0, y: 0 }, { duration: 0.5, ease: 'easeInOut' });
+        await ctx.tween(zoom, { scale: 1 }, { duration: 0.5, ease: 'easeInOut' });
+
+        zoom.classList.remove('tile--active');
+        ctx.animate(handle, { opacity: 0 }, { duration: 0.15 });
+
+        // Reset: the dragged source returns to its slot.
+        await ctx.tween(moving, { y: 0 }, { duration: 0.45, ease: 'easeInOut' });
+
+        // Back to rest.
+        await ctx.tween(cursor, { x: 0, y: 0 }, { duration: 0.5, ease: 'easeInOut' });
+        await ctx.wait(0.4);
+      }
+    });
+  });
+</script>
