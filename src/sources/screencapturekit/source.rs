@@ -136,11 +136,15 @@ impl StreamDelegate {
     }
 }
 
-/// Session tunables applied when the stream starts; changing one restarts the source.
+// @docs protocol="Screen capture" section="macOS" direction=input
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScreenCaptureKitSettings {
+    // @docs label="Cursor" options="Show,Hide" default="Show"
+    /// Whether the mouse pointer is drawn into the capture.
     pub show_cursor: bool,
-    pub max_fps: u32, // 0 = uncapped
+    // @docs label="Max FPS"
+    /// Frame-rate cap for the capture; 0 leaves it uncapped.
+    pub max_fps: u32,
 }
 
 impl Default for ScreenCaptureKitSettings {

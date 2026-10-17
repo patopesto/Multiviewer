@@ -8,8 +8,11 @@ use grafton_ndi::{NDI, Sender, SenderOptions, BorrowedVideoFrame};
 use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, OutputLiveness, VideoOutput};
 
+// @docs protocol="NDI" direction=output
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct NdiOutputConfig {
+    // @docs hidden
+    /// Name advertised on the network. Empty uses the output's name.
     pub sender_name: String,
 }
 

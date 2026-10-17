@@ -45,12 +45,23 @@ struct ScaleVert {
 
 const SCALE_INDICES: [u16; 6] = [0, 1, 2, 2, 1, 3];
 
+// @docs protocol="DeckLink" direction=output
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DecklinkOutputConfig {
+    // @docs label="Decklink Device"
+    /// Playback device. Empty uses the first connected device.
     pub device_name: String,
+    // @docs label="Decklink Mode"
+    /// Output video mode: resolution, frame rate and scan. Only modes the device supports are offered.
     pub display_mode: DisplayMode,
+    // @docs hidden
+    /// Width of the frame sent to the device, in pixels.
     pub width: u32,
+    // @docs hidden
+    /// Height of the frame sent to the device, in pixels.
     pub height: u32,
+    // @docs hidden
+    /// Frame rate sent to the device.
     pub fps: f64,
 }
 

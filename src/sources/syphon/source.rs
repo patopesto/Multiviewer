@@ -6,6 +6,7 @@ use super::SyphonServerInfo;
 use super::super::{ConvUniform, Frame, GpuFrame, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+// @docs protocol="Syphon" direction=input
 pub struct SyphonSourceConfig {}
 
 /// GPU-only Syphon receiver.

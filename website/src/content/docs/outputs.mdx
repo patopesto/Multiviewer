@@ -6,6 +6,7 @@ order: 4
 ---
 
 import ProtocolMatrix from '../../components/ProtocolMatrix.astro';
+import ProtocolSettings from '../../components/ProtocolSettings.astro';
 import { protocols } from '../../data/protocols';
 
 ## Adding an output
@@ -25,3 +26,32 @@ or the compositor.
 
 These outputs share the canvas as a GPU texture with no readback, which keeps latency low for other applications on the
 same machine. They are only active while a consumer is connected.
+
+## Protocol settings
+
+Only DeckLink has per-output settings; the others are enabled and disabled from the **Outputs** panel.
+
+### NDI
+
+Enable it to advertise the canvas on the network. There are no per-output settings.
+
+<ProtocolSettings protocol="NDI" direction="output" />
+
+### DeckLink
+
+Choose the playback device and the video mode sent to it. The frame rate follows the selected mode.
+
+<ProtocolSettings protocol="DeckLink" direction="output" />
+
+### Syphon
+
+Enable it to share the canvas as a Syphon server. There are no per-output settings.
+
+<ProtocolSettings protocol="Syphon" direction="output" />
+
+### Spout
+
+Enable it to share the canvas as a Spout sender. There are no per-output settings.
+
+<ProtocolSettings protocol="Spout" direction="output" />
+

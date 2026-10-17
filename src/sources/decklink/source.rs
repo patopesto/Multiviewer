@@ -8,9 +8,10 @@ use multiviewer_decklink::{decklink_source_new, decklink_source_free, decklink_s
 
 use crate::sources::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 
+// @docs protocol="DeckLink" direction=input
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct DecklinkSourceConfig {
-    // Unspecified falls back to whatever the device reports first.
+    /// Physical input to capture from. `Unspecified` falls back to whichever connection the device reports first.
     pub connection: VideoConnection,
 }
 

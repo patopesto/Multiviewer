@@ -76,13 +76,20 @@ impl CaptureSecondaryWindows {
     }
 }
 
-/// Session tunables applied when the capture starts; changing one restarts the source.
+// @docs protocol="Screen capture" section="Windows" direction=input
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
 pub struct WindowsCaptureSettings {
+    /// Whether the mouse pointer is captured.
     pub cursor: CaptureCursor,
+    // @docs label="Borders"
+    /// Whether the yellow capture border is drawn around the target.
     pub border: CaptureBorder,
+    // @docs label="Secondary Windows"
+    /// How windows of other processes owned by the captured app are treated.
     pub secondary_windows: CaptureSecondaryWindows,
-    pub max_fps: u32, // 0 = uncapped
+    // @docs label="Max FPS"
+    /// Frame-rate cap for the capture; 0 leaves it uncapped.
+    pub max_fps: u32,
 }
 
 impl WindowsCaptureSettings {

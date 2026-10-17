@@ -30,6 +30,11 @@ tasks:
     cmds:
       - pnpm run check
 
+  test:
+    desc: Check that protocol settings extract cleanly from the Rust sources
+    cmds:
+      - node --test src/data/*.test.js
+
   clean:
     desc: Remove build output and the Astro cache
     cmds:

@@ -53,10 +53,13 @@ impl CaptureMode {
     }
 }
 
+// @docs protocol="MediaFoundation" direction=input
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct MediaFoundationSourceConfig {
+    // @docs hidden
     /// Symbolic link of the capture device; empty uses the first discovered one.
     pub device_id: String,
+    // @docs label="Mode" group="height,fps_num,fps_den" desc="Requested capture resolution and frame rate. Auto uses the device default; the list is populated from the modes the device reports."
     /// Requested frame width in pixels; 0 lets the device pick its default.
     pub width: u32,
     /// Requested frame height in pixels; 0 lets the device pick its default.
@@ -65,6 +68,7 @@ pub struct MediaFoundationSourceConfig {
     pub fps_num: u32,
     /// Requested frame-rate denominator (stored exactly, e.g. 1001 for 29.97).
     pub fps_den: u32,
+    // @docs label="Pixel Format" options="Auto,RGB32,UYVY 4:2:2,YUY2 4:2:2,NV12 4:2:0"
     /// Requested output pixel format; `None` = Auto (try the fallback chain).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pixel_format: Option<PixelFormat>,

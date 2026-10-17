@@ -6,6 +6,7 @@ order: 3
 ---
 
 import ProtocolMatrix from '../../components/ProtocolMatrix.astro';
+import ProtocolSettings from '../../components/ProtocolSettings.astro';
 import { protocols } from '../../data/protocols';
 
 <ProtocolMatrix protocols={protocols} direction="input" columns={['platforms', 'notes']} />
@@ -24,3 +25,56 @@ preserved.
 
 Syphon and Spout deliver a texture straight to the compositor, with no CPU copy. The other protocols deliver frames that
 the compositor uploads to the GPU once per frame.
+
+## Protocol settings
+
+Each source has a few protocol-specific settings in the side panel. They are listed per protocol below.
+
+### NDI
+
+Choose the receive bandwidth and the pixel format requested from the sender. The lower bandwidth option saves network
+capacity at some cost to quality.
+
+<ProtocolSettings protocol="NDI" direction="input" />
+
+### DeckLink
+
+Pick which physical input to capture, or leave it unspecified to use whichever connection the device reports first.
+
+<ProtocolSettings protocol="DeckLink" direction="input" />
+
+### Syphon
+
+<ProtocolSettings protocol="Syphon" direction="input" />
+
+### Spout
+
+<ProtocolSettings protocol="Spout" direction="input" />
+
+### AVFoundation
+
+Request a specific resolution and frame rate from a capture device; leave them at zero to use the device default.
+
+<ProtocolSettings protocol="AVFoundation" direction="input" />
+
+### DirectShow
+
+<ProtocolSettings protocol="DirectShow" direction="input" />
+
+### MediaFoundation
+
+<ProtocolSettings protocol="MediaFoundation" direction="input" />
+
+### Screen capture
+
+Screen capture covers macOS and Windows, with a slightly different set of settings on each.
+
+<ProtocolSettings protocol="Screen capture" direction="input" />
+
+### Test patterns
+
+Generate a test pattern with a configurable size, frame rate, and a moving marker to make dropped or frozen frames
+visible.
+
+<ProtocolSettings protocol="Test patterns" direction="input" />
+

@@ -8,6 +8,7 @@ use spout2::dx12::format as Dx12Format;
 
 use super::super::{ConvUniform, Frame, GpuFrame, PixelFormat, SourceRef, SourceStats, VideoSource};
 
+// @docs protocol="Spout" direction=input
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct SpoutSourceConfig {}
 

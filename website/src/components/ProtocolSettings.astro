@@ -1,0 +1,118 @@
+---
+import { getProtocolSettings } from '../data/protocol-settings.js';
+
+interface Props {
+  protocol: string;
+  direction: 'input' | 'output';
+}
+const { protocol, direction } = Astro.props;
+const entry = getProtocolSettings().find((e) => e.name === protocol && e.direction === direction);
+const groups = entry?.groups ?? [];
+const total = groups.reduce((n, group) => n + group.settings.length, 0);
+
+// Docs are plain prose with `backticked` inline code; render it safely.
+const inline = (text: string) =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+
+const showDefault = (value: string) => (value === '""' ? 'empty' : value);
+---
+
+{
+  total === 0 ? (
+    <p class="settings__none">No configurable settings.</p>
+  ) : (
+    groups.map((group) => (
+      <>
+        {group.label && <p class="settings__group">{group.label}</p>}
+        <table class="settings">
+          <thead>
+            <tr>
+              <th scope="col">Setting</th>
+              <th scope="col">Options</th>
+              <th scope="col">Default</th>
+              <th scope="col">Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            {group.settings.map((setting) => (
+              <tr>
+                <th scope="row">{setting.label}</th>
+                <td>
+                  {setting.options.length > 0
+                    ? setting.options.map((option) => <span class="chip">{option}</span>)
+                    : <span class="settings__type">{setting.type}</span>}
+                </td>
+                <td class="settings__default">{setting.default ? <code>{showDefault(setting.default)}</code> : '-'}</td>
+                <td><span set:html={inline(setting.doc)} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </>
+    ))
+  )
+}
+
+<style>
+  .settings {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    margin: 0 0 1.4rem;
+  }
+  .settings th,
+  .settings td {
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--line-soft);
+    text-align: left;
+    vertical-align: top;
+  }
+  .settings thead th {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .settings tbody th {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .settings__group {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin: 1.2rem 0 0.4rem;
+  }
+  .settings__type {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-dim);
+  }
+  .settings__default {
+    white-space: nowrap;
+    color: var(--text-dim);
+  }
+  .settings__none {
+    color: var(--text-dim);
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    margin: 0 0.35rem 0.35rem 0;
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.03em;
+    color: var(--text-dim);
+  }
+</style>

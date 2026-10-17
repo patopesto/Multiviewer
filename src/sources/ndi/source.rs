@@ -9,9 +9,14 @@ use super::{NdiReceiverBandwidth, NdiReceiverColorFormat, NdiSourceInfo};
 use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 use crate::APP_NAME;
 
+// @docs protocol="NDI" direction=input
 #[derive(Clone, Debug, PartialEq)]
 pub struct NdiSourceConfig {
+    // @docs label="Bandwidth" options="Highest,Lowest"
+    /// Stream quality requested from the sender: `Highest` keeps full resolution and frame rate, `Lowest` lets the sender scale down to save bandwidth.
     pub bandwidth: NdiReceiverBandwidth,
+    // @docs label="Pixel Format" options="BGRX/BGRA,UYVY/BGRA,RGBX/RGBA,UYVY/RGBA"
+    /// Pixel layout requested from the sender. `UYVY_RGBA` uses 4:2:2 for lower bandwidth and falls back to RGBA for sources with alpha.
     pub color_format: NdiReceiverColorFormat,
 }
 

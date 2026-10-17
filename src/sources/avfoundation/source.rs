@@ -163,9 +163,13 @@ impl CaptureMode {
     }
 }
 
+// @docs protocol="AVFoundation" direction=input
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AvFoundationSourceConfig {
+    // @docs hidden
+    /// Persistent unique id of the capture device.
     pub device_unique_id: String,
+    // @docs label="Mode" group="height,fps_num,fps_den" desc="Requested capture resolution and frame rate. Auto uses the device default; the list is populated from the modes the device reports."
     /// Requested frame width in pixels; 0 lets the device pick its default.
     #[serde(default)]
     pub width: u32,

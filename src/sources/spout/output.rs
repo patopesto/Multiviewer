@@ -9,8 +9,11 @@ use windows::core::Interface;
 use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, VideoOutput};
 
+// @docs protocol="Spout" direction=output
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct SpoutOutputConfig {
+    // @docs hidden
+    /// Name of the announced Spout sender. Empty uses the output's name.
     pub sender_name: String,
 }
 

@@ -76,9 +76,17 @@ pub enum SmpteType {
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CursorConfig {
+    // @docs label="Cursor"
+    /// Whether the moving marker is drawn.
     pub enabled: bool,
+    // @docs label="Cursor speed X"
+    /// Horizontal travel speed of the marker.
     pub speed_x: f32,
+    // @docs label="Cursor speed Y"
+    /// Vertical travel speed of the marker.
     pub speed_y: f32,
+    // @docs label="Cursor width"
+    /// Marker thickness in pixels.
     pub width: u32,
 }
 
@@ -94,11 +102,18 @@ impl Default for CursorConfig {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+// @docs protocol="Test patterns" direction=input
 pub struct TestSourceConfig {
+    /// Generated frame width in pixels.
     pub width: u32,
+    /// Generated frame height in pixels.
     pub height: u32,
+    /// Generated frame rate.
+    // @docs label="FPS"
     pub fps: f64,
+    /// Pattern to generate.
     pub pattern: TestPattern,
+    /// Moving marker drawn over the pattern, to make dropped or frozen frames visible.
     pub cursor: CursorConfig,
 }
 
