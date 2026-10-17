@@ -2,6 +2,7 @@ use super::*;
 use crate::sources::TestSourceConfig;
 use crate::sources::{NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{DecklinkSourceConfig, DecklinkOutputConfig, DecklinkVideoConnection, DecklinkMode};
+use crate::sources::{OmtSourceConfig, OmtQuality};
 #[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 #[cfg(target_os = "macos")]
@@ -637,6 +638,31 @@ fn decklink_source_config_round_trips() {
             assert_eq!(c.connection, DecklinkVideoConnection::Hdmi);
         }
         _ => panic!("expected Decklink source config"),
+    }
+}
+
+#[test]
+fn omt_source_config_round_trips() {
+    let mut source = Source::new(
+        "OMT".to_string(),
+        Protocol::Omt,
+        Some("HOST (Cam)".to_string()),
+        0.0, 0.0, 1920, 1080, 0,
+        TextureMode::Fit,
+        false, false,
+    );
+    source.config = SourceConfig::Omt(OmtSourceConfig {
+        quality: OmtQuality::High,
+        preview: true,
+    });
+    let json = serde_json::to_string(&source).unwrap();
+    let parsed: Source = serde_json::from_str(&json).unwrap();
+    match parsed.config {
+        SourceConfig::Omt(c) => {
+            assert_eq!(c.quality, OmtQuality::High);
+            assert!(c.preview);
+        }
+        _ => panic!("expected Omt source config"),
     }
 }
 

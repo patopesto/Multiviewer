@@ -1,13 +1,13 @@
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use crate::compositor::ConvUniform;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Protocol {
     Test,
     Ndi,
+    Omt,
     Decklink,
     #[cfg(target_os = "macos")]
     Syphon,
@@ -36,6 +36,7 @@ impl Protocol {
         match self {
             Protocol::Test => "Test",
             Protocol::Ndi => "Ndi",
+            Protocol::Omt => "Omt",
             Protocol::Decklink => "Decklink",
             #[cfg(target_os = "macos")]
             Protocol::Syphon => "Syphon",
@@ -59,6 +60,7 @@ impl Protocol {
         match self {
             Protocol::Test => "Test".to_string(),
             Protocol::Ndi => "NDI".to_string(),
+            Protocol::Omt => "OMT".to_string(),
             Protocol::Decklink => "DeckLink".to_string(),
             #[cfg(target_os = "macos")]
             Protocol::Syphon => "Syphon".to_string(),
@@ -91,6 +93,7 @@ impl<'de> Deserialize<'de> for Protocol {
         Ok(match s.as_str() {
             "Test" => Protocol::Test,
             "Ndi" => Protocol::Ndi,
+            "Omt" => Protocol::Omt,
             "Decklink" => Protocol::Decklink,
             #[cfg(target_os = "macos")]
             "Syphon" => Protocol::Syphon,

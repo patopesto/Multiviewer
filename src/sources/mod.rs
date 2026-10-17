@@ -6,6 +6,7 @@ mod stats;
 mod test;
 mod decklink;
 mod ndi;
+mod omt;
 #[cfg(target_os = "macos")]
 mod syphon;
 #[cfg(target_os = "macos")]
@@ -22,7 +23,6 @@ mod directshow;
 mod windowscapture;
 
 pub use common::{Protocol, PixelFormat, Frame, CpuFrame};
-#[cfg(any(target_os = "macos", target_os = "windows"))]
 pub use common::{GpuFrame, ConvUniform};
 pub use source::{
     SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
@@ -40,6 +40,7 @@ pub use decklink::{
     DecklinkDiscovery, DecklinkSourceConfig, DecklinkOutputConfig, decklink_version,
     DecklinkVideoConnection, DecklinkVideoConnections, DecklinkMode,
 };
+pub use omt::{OmtDiscovery, OmtQuality, OmtSourceConfig, OmtSourceInfo};
 
 #[cfg(target_os = "macos")]
 pub use syphon::{

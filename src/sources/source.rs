@@ -3,9 +3,10 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
 
-use super::{Protocol, Frame, NdiSourceInfo, SourceStats};
+use super::{Protocol, Frame, NdiSourceInfo, OmtSourceInfo, SourceStats};
 use super::decklink;
 use super::ndi;
+use super::omt;
 use super::test;
 #[cfg(target_os = "macos")]
 use super::syphon;
@@ -55,6 +56,7 @@ pub trait VideoSource: Send + Sync {
 pub enum SourceConfig {
     Test(test::TestSourceConfig),
     Ndi(ndi::NdiSourceConfig),
+    Omt(omt::OmtSourceConfig),
     Decklink(decklink::DecklinkSourceConfig),
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonSourceConfig),
@@ -86,6 +88,7 @@ impl Default for SourceConfig {
 enum SourceConfigInner {
     Test(test::TestSourceConfig),
     Ndi(ndi::NdiSourceConfig),
+    Omt(omt::OmtSourceConfig),
     Decklink(decklink::DecklinkSourceConfig),
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonSourceConfig),
@@ -108,6 +111,7 @@ impl From<SourceConfigInner> for SourceConfig {
         match inner {
             SourceConfigInner::Test(c) => SourceConfig::Test(c),
             SourceConfigInner::Ndi(c) => SourceConfig::Ndi(c),
+            SourceConfigInner::Omt(c) => SourceConfig::Omt(c),
             SourceConfigInner::Decklink(c) => SourceConfig::Decklink(c),
             #[cfg(target_os = "macos")]
             SourceConfigInner::Syphon(c) => SourceConfig::Syphon(c),
@@ -137,6 +141,7 @@ impl Serialize for SourceConfig {
             SourceConfig::Unknown(v) => v.serialize(serializer),
             SourceConfig::Test(c) => SourceConfigInner::Test(c.clone()).serialize(serializer),
             SourceConfig::Ndi(c) => SourceConfigInner::Ndi(c.clone()).serialize(serializer),
+            SourceConfig::Omt(c) => SourceConfigInner::Omt(c.clone()).serialize(serializer),
             SourceConfig::Decklink(c) => SourceConfigInner::Decklink(c.clone()).serialize(serializer),
             #[cfg(target_os = "macos")]
             SourceConfig::Syphon(c) => SourceConfigInner::Syphon(c.clone()).serialize(serializer),
@@ -178,6 +183,7 @@ impl SourceConfig {
         match protocol {
             Protocol::Test => SourceConfig::Test(test::TestSourceConfig::default()),
             Protocol::Ndi => SourceConfig::Ndi(ndi::NdiSourceConfig::default()),
+            Protocol::Omt => SourceConfig::Omt(omt::OmtSourceConfig::default()),
             Protocol::Decklink => SourceConfig::Decklink(decklink::DecklinkSourceConfig::default()),
             #[cfg(target_os = "macos")]
             Protocol::Syphon => SourceConfig::Syphon(syphon::SyphonSourceConfig::default()),
@@ -206,6 +212,9 @@ pub enum SourceRuntimeConfig {
     Test,
     Ndi {
         discovered: NdiSourceInfo
+    },
+    Omt {
+        discovered: OmtSourceInfo
     },
     Decklink {
         supported_connections: decklink::DecklinkVideoConnections
@@ -257,6 +266,9 @@ impl SourceKind {
             }
             (SourceConfig::Ndi(c), SourceRuntimeConfig::Ndi { discovered }) => {
                 Box::new(ndi::NdiSource::spawn(key.source_ref.clone(), discovered.clone(), c))
+            }
+            (SourceConfig::Omt(c), SourceRuntimeConfig::Omt { discovered }) => {
+                Box::new(omt::OmtSource::spawn(key.source_ref.clone(), discovered.clone(), c))
             }
             (SourceConfig::Decklink(c), SourceRuntimeConfig::Decklink { .. }) => {
                 Box::new(decklink::DecklinkSource::spawn(key.source_ref.clone(), c))
@@ -462,6 +474,19 @@ impl SourceRegistry {
             &key,
             SourceConfig::Ndi(config),
             SourceRuntimeConfig::Ndi { discovered },
+        );
+        self.sources.insert(key.clone(), kind);
+        return key;
+    }
+
+    pub fn add_omt(&mut self, key: SourceKey, config: omt::OmtSourceConfig, discovered: OmtSourceInfo) -> SourceKey {
+        if self.contains(&key) {
+            return key;
+        }
+        let kind = SourceKind::new(
+            &key,
+            SourceConfig::Omt(config),
+            SourceRuntimeConfig::Omt { discovered },
         );
         self.sources.insert(key.clone(), kind);
         return key;

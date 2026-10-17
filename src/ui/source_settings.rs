@@ -2,6 +2,7 @@ use crate::ui::side_panel::{settings_grid, settings_value};
 use crate::sources::{SourceKind, SourceRuntimeConfig, SourceConfig};
 use crate::sources::{TestSourceConfig, TestPattern, RadarDirection};
 use crate::sources::{NdiSourceConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
+use crate::sources::{OmtSourceConfig, OmtQuality};
 use crate::sources::{DecklinkSourceConfig, DecklinkVideoConnection, DecklinkVideoConnections};
 #[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
@@ -27,6 +28,7 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
     return match &mut source.config {
         SourceConfig::Test(cfg) => test_settings_ui(cfg, ui),
         SourceConfig::Ndi(cfg) => ndi_settings_ui(cfg, ui),
+        SourceConfig::Omt(cfg) => omt_settings_ui(cfg, ui),
         SourceConfig::Decklink(cfg) => decklink_settings_ui(cfg, &source.runtime, ui),
         #[cfg(target_os = "macos")]
         SourceConfig::Syphon(cfg) => syphon_settings_ui(cfg, ui),
@@ -260,6 +262,32 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
                         ui.selectable_value(&mut cfg.color_format, variant, ndi_format_label(variant));
                     }
                 });
+        });
+        ui.end_row();
+    });
+    return *cfg != old;
+}
+
+fn omt_settings_ui(cfg: &mut OmtSourceConfig, ui: &mut egui::Ui) -> bool {
+    let old = cfg.clone();
+    settings_grid(ui, "omt_settings_grid", |ui| {
+        ui.label("Quality");
+        settings_value(ui, |ui| {
+            egui::ComboBox::from_id_salt("omt_quality")
+                .width(ui.available_width())
+                .selected_text(format!("{:?}", cfg.quality))
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(&mut cfg.quality, OmtQuality::Default, "Default");
+                    ui.selectable_value(&mut cfg.quality, OmtQuality::Low, "Low");
+                    ui.selectable_value(&mut cfg.quality, OmtQuality::Medium, "Medium");
+                    ui.selectable_value(&mut cfg.quality, OmtQuality::High, "High");
+                });
+        });
+        ui.end_row();
+
+        ui.label("Preview");
+        settings_value(ui, |ui| {
+            ui.checkbox(&mut cfg.preview, "");
         });
         ui.end_row();
     });

@@ -7,6 +7,7 @@ use crate::session::{Session, SessionError};
 use crate::sources::{OutputRegistry, Protocol, SourceConfig, SourceRegistry};
 use crate::sources::DecklinkDiscovery;
 use crate::sources::NdiDiscovery;
+use crate::sources::OmtDiscovery;
 #[cfg(target_os = "macos")]
 use crate::sources::AvFoundationDiscovery;
 #[cfg(target_os = "macos")]
@@ -70,6 +71,9 @@ impl Engine {
         // Start DeckLink discovery
         let decklink = DecklinkDiscovery::start();
 
+        // Start OMT discovery
+        let omt = OmtDiscovery::start();
+
         // Start Syphon discovery on macOS
         #[cfg(target_os = "macos")]
         let syphon = Some(SyphonDiscovery::start());
@@ -104,6 +108,7 @@ impl Engine {
             output_registry,
             ndi: Some(ndi),
             decklink: Some(decklink),
+            omt: Some(omt),
             #[cfg(target_os = "macos")]
             syphon,
             #[cfg(target_os = "macos")]

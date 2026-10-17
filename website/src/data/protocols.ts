@@ -19,8 +19,15 @@ export const protocols: Protocol[] = [
     output: true,
     platforms: ['macos', 'windows', 'linux'],
     note: 'Network video',
-    inputNote: 'Network video, bundled runtime',
-    outputNote: 'Advertise the canvas on the network',
+    inputNote: 'Proprietary network video protocol',
+    outputNote: 'Proprietary network video protocol',
+  },
+  {
+    name: 'OMT',
+    input: true,
+    platforms: ['macos', 'windows', 'linux'],
+    note: 'Open Media Transport',
+    inputNote: 'Open Media Transport, open-source network video protocol',
   },
   {
     name: 'DeckLink',
@@ -28,8 +35,8 @@ export const protocols: Protocol[] = [
     output: true,
     platforms: ['macos', 'windows', 'linux'],
     note: 'SDI and HDMI',
-    inputNote: 'SDI and HDMI capture and playback',
-    outputNote: 'Play out to SDI or HDMI',
+    inputNote: 'Blackmagic Design capture devices (SDI, HDMI, ...)',
+    outputNote: 'Blackmagic Design playback devices (SDI, HDMI, ...)',
   },
   {
     name: 'Syphon',

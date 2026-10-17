@@ -5,6 +5,7 @@ use crate::config::{Source, TextureMode};
 use crate::sources::{Protocol, SourceConfig, SourceKey};
 use crate::sources::DecklinkSourceConfig;
 use crate::sources::NdiSourceConfig;
+use crate::sources::OmtSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::{AvFoundationSourceConfig, ensure_screen_capture_access_requested, ScreenCaptureKitSourceConfig, SyphonSourceConfig};
 #[cfg(target_os = "windows")]
@@ -21,6 +22,7 @@ impl Engine {
 
             self.reconnect_ndi();
             self.reconnect_decklink();
+            self.reconnect_omt();
             #[cfg(target_os = "macos")]
             self.reconnect_syphon();
             #[cfg(target_os = "macos")]
@@ -84,6 +86,31 @@ impl Engine {
                         _ => DecklinkSourceConfig::default(),
                     };
                     self.registry.add_decklink(key, config, port.connections);
+                    self.dirty = true;
+                }
+            }
+        }
+    }
+
+    /// Auto-connect pending OMT sources when they appear in discovery
+    fn reconnect_omt(&mut self) {
+        let Some(ref discovery) = self.omt else {
+            return;
+        };
+        let discovered = discovery.list();
+        for source in &self.cfg.canvas.sources {
+            if source.protocol == Protocol::Omt
+                && let Some(ref source_ref) = source.source_ref
+            {
+                let key = SourceKey::new(Protocol::Omt, source_ref.clone());
+                if !self.registry.contains(&key)
+                    && let Some(src) = discovered.iter().find(|s| &s.instance_name() == source_ref)
+                {
+                    let config = match &source.config {
+                        SourceConfig::Omt(c) => c.clone(),
+                        _ => OmtSourceConfig::default(),
+                    };
+                    self.registry.add_omt(key, config, src.clone());
                     self.dirty = true;
                 }
             }
@@ -366,6 +393,17 @@ impl Engine {
                     .map(|p| p.connections)
                     .unwrap_or_default();
                 self.registry.add_decklink(key, config, supported_connections);
+            }
+            Protocol::Omt => {
+                if let Some(ref discovery) = self.omt
+                    && let Some(src) = discovery.find_by_name(name)
+                {
+                    let config = match self.source_placement_config(&Protocol::Omt, name) {
+                        Some(SourceConfig::Omt(c)) => c.clone(),
+                        _ => OmtSourceConfig::default(),
+                    };
+                    self.registry.add_omt(key, config, src);
+                }
             }
             #[cfg(target_os = "macos")]
             Protocol::Syphon => {

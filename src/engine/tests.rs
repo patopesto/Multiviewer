@@ -12,6 +12,7 @@ fn test_engine(canvas: Canvas) -> Engine {
         output_registry: OutputRegistry::new(),
         ndi: None,
         decklink: None,
+        omt: None,
         #[cfg(target_os = "macos")]
         syphon: None,
         #[cfg(target_os = "macos")]

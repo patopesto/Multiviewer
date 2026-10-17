@@ -599,6 +599,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             if ui.selectable_value(&mut source.protocol, Protocol::Ndi, Protocol::Ndi.label()).clicked(){
                                 protocol_changed = true;
                             }
+                            if ui.selectable_value(&mut source.protocol, Protocol::Omt, Protocol::Omt.label()).clicked() {
+                                protocol_changed = true;
+                            }
                             if ui.selectable_value(&mut source.protocol, Protocol::Decklink, Protocol::Decklink.label()).clicked() {
                                 protocol_changed = true;
                             }
@@ -698,6 +701,45 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         }
                                     }
                                     if ndi_ids.is_empty() && discovered.is_empty() {
+                                        ui.weak("(scanning...)");
+                                    }
+                                });
+                        }
+                        Protocol::Omt => {
+                            let omt_ids: Vec<String> = engine
+                                .registry
+                                .list_sources(Protocol::Omt)
+                                .into_iter()
+                                .map(|(key, _)| key.source_ref.clone())
+                                .collect();
+                            let current = source.source_ref.as_deref().unwrap_or("");
+                            let discovered =
+                                engine.omt.as_ref().map(|d| d.list()).unwrap_or_default();
+                            egui::ComboBox::from_id_salt("omt_source")
+                                .width(ui.available_width())
+                                .height(1000.0)
+                                .selected_text(current.to_string())
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    // Already connected OMT sources
+                                    for id in &omt_ids {
+                                        if ui.selectable_label(current == id, id).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    // Discovered sources not yet connected (auto-connect on select)
+                                    for addr in &discovered {
+                                        let name = addr.instance_name();
+                                        if !omt_ids.iter().any(|id| id == &name)
+                                            && ui
+                                                .selectable_label(current == name, name.clone())
+                                                .clicked()
+                                        {
+                                            new_connect = Some((Protocol::Omt, name.clone()));
+                                            selected_source = Some(name);
+                                        }
+                                    }
+                                    if omt_ids.is_empty() && discovered.is_empty() {
                                         ui.weak("(scanning...)");
                                     }
                                 });
