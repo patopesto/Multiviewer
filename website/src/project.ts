@@ -1,5 +1,4 @@
 import type { ProjectConfig } from '@patopest/astro-theme/config';
-import releasesFallback from './data/releases.fallback.json';
 import icon from './assets/icon.svg?raw';
 
 const repository = 'https://gitlab.com/patopest/multiviewer';
@@ -52,7 +51,6 @@ export const project: ProjectConfig = {
       ],
     },
   ],
-  releasesFallback: releasesFallback as ProjectConfig['releasesFallback'],
   projects: [
     {
       name: 'sACN Monitor',
