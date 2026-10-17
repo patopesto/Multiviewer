@@ -23,6 +23,8 @@ tasks:
 
   run:
     desc: Run the application in debug mode
+    env:
+      RUST_BACKTRACE: 1
     cmds:
       - cargo run -- {{.CLI_ARGS}}
 

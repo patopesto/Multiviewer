@@ -61,6 +61,8 @@ tasks:
     desc: Run the application on Windows
     deps:
       - :ndi:setup:windows
+    env:
+      RUST_BACKTRACE: 1
     cmds:
       - cargo run -- --console {{.CLI_ARGS}}
 

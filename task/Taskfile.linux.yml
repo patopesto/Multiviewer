@@ -36,6 +36,8 @@ tasks:
     desc: Run the application on Linux
     deps:
       - :ndi:setup:linux
+    env:
+      RUST_BACKTRACE: 1
     cmds:
       - cargo run -- {{.CLI_ARGS}}
 

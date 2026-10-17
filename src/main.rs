@@ -47,6 +47,7 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             platform::on_window_created(&cc.egui_ctx);
             log_wgpu_backend(cc);
+            install_wgpu_error_handler(cc);
             return Ok(Box::new(ui::App::new(cc, startup_path, trace_guard)));
         }),
     );
@@ -130,5 +131,19 @@ fn log_wgpu_backend(cc: &eframe::CreationContext<'_>) {
         }
         None => tracing::info!("wgpu renderer not in use"),
     }
+}
+
+/// wgpu panics on every uncaptured validation error by default, which aborts the
+/// process when it happens inside winit's macOS event handlers. The OMT source and
+/// output submit GPU work on their own threads, racing eframe's surface reconfigure
+/// during a resize and tripping "Failed to wait for GPU to come idle"; log the error
+/// and let eframe reconfigure on the next frame instead of dying.
+fn install_wgpu_error_handler(cc: &eframe::CreationContext<'_>) {
+    let Some(render_state) = &cc.wgpu_render_state else {
+        return;
+    };
+    render_state.device.on_uncaptured_error(Arc::new(|error| {
+        tracing::error!("wgpu error: {error}");
+    }));
 }
 
