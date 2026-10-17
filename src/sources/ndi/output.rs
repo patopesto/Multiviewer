@@ -218,7 +218,13 @@ impl VideoOutput for NdiOutput {
         let height = self.height.load(Ordering::Relaxed);
         let row = (width * 4) as usize;
         let aligned = (row + 255) & !255;
-        let view = readback_buffer.slice(..).get_mapped_range();
+        let view = match readback_buffer.slice(..).get_mapped_range() {
+            Ok(view) => view,
+            Err(e) => {
+                tracing::error!(output = self.name, "NDI output mapped range unavailable: {e:?}");
+                return;
+            }
+        };
         // The first 8 bytes carry width/height so the thread does not need to wait on atomics.
         let mut buffer = Vec::with_capacity(8 + row * height as usize);
         buffer.extend_from_slice(&[0u8; 8]);

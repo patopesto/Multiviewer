@@ -289,11 +289,11 @@ impl DecklinkOutput {
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some("vs_main"),
-                    buffers: &[wgpu::VertexBufferLayout {
+                    buffers: &[Some(wgpu::VertexBufferLayout {
                         array_stride: std::mem::size_of::<ScaleVert>() as u64,
                         step_mode: wgpu::VertexStepMode::Vertex,
                         attributes: &wgpu::vertex_attr_array![0 => Float32x2, 1 => Float32x2],
-                    }],
+                    })],
                     compilation_options: Default::default(),
                 },
                 fragment: Some(wgpu::FragmentState {
@@ -594,7 +594,13 @@ impl VideoOutput for DecklinkOutput {
         let Some(readback_buffer) = readback_slot.as_ref() else {
             return;
         };
-        let view = readback_buffer.slice(..).get_mapped_range();
+        let view = match readback_buffer.slice(..).get_mapped_range() {
+            Ok(view) => view,
+            Err(e) => {
+                tracing::error!(output = self.name, "DeckLink output mapped range unavailable: {e:?}");
+                return;
+            }
+        };
         let row = (out_w * 4) as usize;
         let aligned = (row + 255) & !255;
         let mut buffer = Vec::with_capacity(16 + row * out_h as usize);

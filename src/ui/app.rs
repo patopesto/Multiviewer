@@ -426,9 +426,8 @@ impl App {
     fn handle_dropped_files(&mut self, ctx: &egui::Context) {
         let dropped = ctx.input_mut(|i| std::mem::take(&mut i.raw.dropped_files));
         for file in dropped {
-            if let Some(path) = file.path
-                && path.extension().and_then(|e| e.to_str()) == Some(PROJECT_FILE_EXTENSION)
-            {
+            let path = file.path();
+            if path.extension().and_then(|e| e.to_str()) == Some(PROJECT_FILE_EXTENSION) {
                 self.confirm_or(Confirm::Open);
                 break;
             }
