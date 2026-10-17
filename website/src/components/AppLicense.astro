@@ -1,0 +1,22 @@
+---
+// The app's own license lives at the repo root as `LICENSE` (no `.md`
+// extension, so Astro cannot compile it as a component); render it verbatim.
+import text from '../../../LICENSE?raw';
+---
+
+<pre class="app-license">{text}</pre>
+
+<style>
+  .app-license {
+    white-space: pre-wrap;
+    margin: 0;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-dim);
+    overflow-x: auto;
+  }
+</style>
