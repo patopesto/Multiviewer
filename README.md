@@ -1,18 +1,20 @@
 # Multiviewer
 
+> A hardware-accelerated, multi-protocol video multiviewer built in Rust. Drag, resize, and snap video sources on an interactive canvas with real-time compositing.
+
 <div align="center">
 	<img alt="Version" src="https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fgitlab.com%2Fpatopest%2Fmultiviewer%2F-%2Fraw%2Fmaster%2FCargo.toml&query=workspace.package.version&prefix=v&style=for-the-badge&label=Latest&link=https%3A%2F%2Fgitlab.com%2Fpatopest%2Fmultiviewer%2F-%2Freleases">
 	<img alt="License" src="https://img.shields.io/badge/license-MIT-blue?style=for-the-badge">
-	<img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=for-the-badge">
-	
+	<img alt="Platforms" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-blue?style=for-the-badge">	
+
   <img src="website/public/app.png" alt="Multiviewer App" width="600">
 </div>
 
-> A hardware-accelerated, multi-protocol video multiviewer built in Rust. Drag, resize, and snap video sources on an interactive canvas with real-time compositing.
+📖 [Full Documentation](https://multiviewer.bambinito.net)
 
 ---
 
-## Features
+## 🌟 Features
 
 - **Multi-Protocol Video Sources** — ingest from many video protocols or test patterns.
 - **Hardware-Accelerated Compositor** — wgpu-based pipeline with YUV→RGB conversion on the GPU, minimal CPU↔GPU copies.
@@ -23,7 +25,7 @@
 
 ---
 
-## Supported Protocols
+## 🎥 Supported Protocols
 
 | Protocol | Source | Output | Platforms | Notes |
 |----------|--------|--------|-----------|-------|
@@ -40,7 +42,7 @@
 
 ---
 
-## Built Upon
+## 🛠️ Built Upon
 
 Multiviewer is built with:
 
@@ -50,7 +52,7 @@ Multiviewer is built with:
 
 ---
 
-## Installation
+## 📦 Installation
 
 ### Precompiled Binaries (Recommended)
 
@@ -74,7 +76,7 @@ cargo build --release
 
 ---
 
-## Development
+## 🚀 Development
 
 Using [go-task](https://taskfile.dev/)
 
@@ -106,7 +108,7 @@ cargo test
 
 ---
 
-## How It Works
+## 📘 How It Works
 
 Multiviewer ingests video from multiple protocols, composites them on a shared GPU canvas, and can broadcast the result back out over NDI, DeckLink, or Syphon.
 
@@ -117,7 +119,7 @@ Multiviewer ingests video from multiple protocols, composites them on a shared G
 
 ---
 
-## References & Specifications
+## 📚 References & Specifications
 
 - [NDI SDK](https://ndi.video/download-ndi-sdk/) — NDI, proprietary with attribution requirements
 - [Blackmagic DeckLink SDK](https://www.blackmagicdesign.com/support) — BSD-style license (see header files)
@@ -126,7 +128,7 @@ Multiviewer ingests video from multiple protocols, composites them on a shared G
 
 ---
 
-## Contributing
+## 🐛 Contributing
 
 Contributions are welcome! Whether it's bug reports, feature requests, or code contributions:
 
@@ -138,7 +140,7 @@ Contributions are welcome! Whether it's bug reports, feature requests, or code c
 
 ---
 
-## License
+## 📄 License
 
 This project is licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
 
