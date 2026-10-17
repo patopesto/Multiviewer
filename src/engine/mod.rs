@@ -7,7 +7,7 @@ use crate::config::{Config, SourceId};
 use crate::sources::{OutputRegistry, SourceRegistry};
 use crate::sources::{DecklinkDiscovery, decklink_version};
 use crate::sources::{NdiDiscovery, ndi_version};
-use crate::sources::OmtDiscovery;
+use crate::sources::{OmtDiscovery, omt_version};
 #[cfg(target_os = "macos")]
 use crate::sources::{SyphonDiscovery, syphon_version};
 #[cfg(target_os = "macos")]
@@ -109,6 +109,7 @@ impl Engine {
     pub fn vendor_versions() -> Vec<(&'static str, Option<String>)> {
         return Vec::from([
             ("NDI", ndi_version()),
+            ("OMT", omt_version()),
             ("DeckLink", decklink_version()),
             #[cfg(target_os = "macos")]
             ("Syphon", syphon_version()),
