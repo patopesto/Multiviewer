@@ -6,7 +6,7 @@ order: 4
 ---
 
 import ProtocolMatrix from '../../components/ProtocolMatrix.astro';
-import ProtocolSettings from '../../components/ProtocolSettings.astro';
+import SettingsTable from '../../components/SettingsTable.astro';
 import { protocols } from '../../data/protocols';
 
 ## Adding an output
@@ -33,25 +33,27 @@ Only DeckLink has per-output settings; the others are enabled and disabled from 
 
 ### NDI
 
-Enable it to advertise the canvas on the network. There are no per-output settings.
+Enable it to advertise the canvas on the network.
 
-<ProtocolSettings protocol="NDI" direction="output" />
+<SettingsTable name="NDI" direction="output" />
 
 ### DeckLink
 
+The Blackmagic Desktop Video driver need to be installed on your machine. Download it from [Blackmagic's website](https://www.blackmagicdesign.com/support/family/capture-and-playback)
+
 Choose the playback device and the video mode sent to it. The frame rate follows the selected mode.
 
-<ProtocolSettings protocol="DeckLink" direction="output" />
+<SettingsTable name="DeckLink" direction="output" />
 
 ### Syphon
 
-Enable it to share the canvas as a Syphon server. There are no per-output settings.
+Enable it to share the canvas as a Syphon server.
 
-<ProtocolSettings protocol="Syphon" direction="output" />
+<SettingsTable name="Syphon" direction="output" />
 
 ### Spout
 
-Enable it to share the canvas as a Spout sender. There are no per-output settings.
+Enable it to share the canvas as a Spout sender.
 
-<ProtocolSettings protocol="Spout" direction="output" />
+<SettingsTable name="Spout" direction="output" />
 

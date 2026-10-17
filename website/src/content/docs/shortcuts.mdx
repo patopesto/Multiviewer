@@ -5,14 +5,7 @@ lead: Every shortcut has a matching menu item.
 order: 5
 ---
 
-| Action | Shortcut |
-| --- | --- |
-| New project | `Cmd/Ctrl + N` |
-| Open project | `Cmd/Ctrl + O` |
-| Save project | `Cmd/Ctrl + S` |
-| Save as | `Cmd/Ctrl + Shift + S` |
-| Fit canvas to window | `Cmd/Ctrl + 0` |
-| Delete selected source | `Delete` / `Backspace` |
-| Duplicate selected source | `Cmd/Ctrl + D` |
+import ShortcutsTable from '../../components/ShortcutsTable.astro';
+import { getShortcuts } from '../../data/shortcuts.js';
 
-Menus are drawn in the window rather than by the operating system, so the menu bar looks the same on every platform.
+<ShortcutsTable groups={getShortcuts()} />

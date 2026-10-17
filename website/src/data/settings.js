@@ -1,36 +1,29 @@
-// Per-protocol settings, discovered from `// @docs` directives in the Rust
-// config structs. Runs at Astro build time (SSG) so the docs never drift from
-// the code.
+// Settings tables (protocols and the canvas), discovered from `// @docs`
+// directives in the Rust config structs. Runs at Astro build time (SSG) so the
+// docs never drift from the code.
 //
 // Directive grammar, on the item it applies to:
 //   struct: // @docs protocol="NDI" direction=input [section="macOS"]
 //   field:  // @docs [label="…"] [options="a,b"] [group="f,g"] [desc="…"]
 //           [hidden] [default="…"]
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+
+import { repoPath, repoRoot, walkRustFiles } from './rust-source.js';
 
 const STRUCT_KEYS = new Set(['protocol', 'direction', 'section']);
 const FIELD_KEYS = new Set(['label', 'options', 'group', 'desc', 'hidden', 'default']);
 const SECTION_RANK = { macos: 0, windows: 1, linux: 2 };
 
 function sourcesDir() {
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    path.resolve(here, '../../../src/sources'),
-    path.resolve(process.cwd(), '../src/sources'),
-    path.resolve(process.cwd(), 'src/sources'),
-  ];
-  return candidates.find((dir) => existsSync(dir)) ?? null;
+  return repoPath('src/sources');
 }
 
-function rustFiles(dir) {
-  const files = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) files.push(...rustFiles(full));
-    else if (entry.name.endsWith('.rs')) files.push(full);
-  }
+function rustSourceFiles() {
+  const dir = sourcesDir();
+  const files = dir ? walkRustFiles(dir) : [];
+  const cfg = repoPath('src/config.rs');
+  if (cfg) files.push(cfg);
   return files;
 }
 
@@ -166,11 +159,11 @@ function lineOf(starts, offset) {
   return lo;
 }
 
-function parseRustIndex(dir) {
+function parseRustIndex() {
   const structs = new Map();
   const enums = new Map();
   const misplaced = [];
-  for (const file of rustFiles(dir)) {
+  for (const file of rustSourceFiles()) {
     const text = readFileSync(file, 'utf8');
     const starts = lineStarts(text);
     const consumed = new Set();
@@ -191,7 +184,7 @@ function parseRustIndex(dir) {
         enums.set(name, { variants: parseVariants(body), ...parseLabels(text, name) });
       }
     }
-    const rel = path.relative(path.resolve(dir, '../..'), file);
+    const rel = path.relative(repoRoot(), file);
     text.split('\n').forEach((line, index) => {
       if (line.trim().startsWith('// @docs') && !consumed.has(index)) {
         misplaced.push(`${rel}:${index + 1}`);
@@ -218,6 +211,7 @@ function prettyType(base) {
   if (FLOAT_RE.test(base)) return 'number';
   if (base === 'bool') return 'toggle';
   if (base === 'String') return 'text';
+  if (/^\[/.test(base)) return 'color';
   return 'choice';
 }
 
@@ -243,7 +237,9 @@ function renderDefault(expr, enumType) {
   if (value === 'None') return 'Auto';
   if (value === 'true' || value === 'false') return value;
   if (/^-?\d+(\.\d+)?$/.test(value)) return value;
+  if (/^\[.*\]$/.test(value)) return value;
   if (/^(\w+::)?new\(\)$/.test(value)) return '""';
+  if (/^(\w+::)?default\(\)$/.test(value)) return enumDefaultLabel(enumType);
   const quoted = /"([^"]*)"/.exec(value);
   if (quoted) return `"${quoted[1]}"`;
   const variant = /^(\w+)::(\w+)\s*(?:\(|\{|$)/.exec(value);
@@ -362,20 +358,20 @@ function sectionRank(label) {
  * @property {string} [label]
  * @property {Setting[]} settings
  *
- * @typedef {object} ProtocolSettings
+ * @typedef {object} SettingsEntry
  * @property {string} name
  * @property {string} direction
  * @property {SettingsGroup[]} groups
  */
 
 /**
- * Settings groups per protocol and direction, discovered from `// @docs`.
- * @returns {ProtocolSettings[]}
+ * Settings groups by name and direction (protocols and the canvas), discovered
+ * from `// @docs`.
+ * @returns {SettingsEntry[]}
  */
-export function getProtocolSettings() {
-  const dir = sourcesDir();
-  if (!dir) return [];
-  const index = parseRustIndex(dir);
+export function getSettings() {
+  if (!sourcesDir()) return [];
+  const index = parseRustIndex();
   const entries = new Map();
   for (const [structName, struct] of index.structs) {
     const { protocol, direction = 'input', section } = struct.directives ?? {};
@@ -401,9 +397,8 @@ export function getProtocolSettings() {
  * @returns {string[]}
  */
 export function undocumentedConfigStructs() {
-  const dir = sourcesDir();
-  if (!dir) return [];
-  return [...parseRustIndex(dir).structs]
+  if (!sourcesDir()) return [];
+  return [...parseRustIndex().structs]
     .filter(([name, struct]) => /(Source|Output)Config$|Settings$/.test(name) && !struct.directives.protocol)
     .map(([name]) => name)
     .sort();
@@ -413,9 +408,8 @@ export function undocumentedConfigStructs() {
  * @returns {string[]}
  */
 export function undocumentedConfigFields() {
-  const dir = sourcesDir();
-  if (!dir) return [];
-  const index = parseRustIndex(dir);
+  if (!sourcesDir()) return [];
+  const index = parseRustIndex();
   const missing = [];
   for (const [structName, struct] of index.structs) {
     if (!struct.directives.protocol) continue;
@@ -431,9 +425,8 @@ export function undocumentedConfigFields() {
  * @returns {string[]}
  */
 export function unknownDirectives() {
-  const dir = sourcesDir();
-  if (!dir) return [];
-  const index = parseRustIndex(dir);
+  if (!sourcesDir()) return [];
+  const index = parseRustIndex();
   const bad = [];
   for (const [name, struct] of index.structs) {
     for (const key of Object.keys(struct.directives ?? {})) {
@@ -452,7 +445,6 @@ export function unknownDirectives() {
  * @returns {string[]}
  */
 export function misplacedDirectives() {
-  const dir = sourcesDir();
-  if (!dir) return [];
-  return parseRustIndex(dir).misplaced;
+  if (!sourcesDir()) return [];
+  return parseRustIndex().misplaced;
 }

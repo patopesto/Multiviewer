@@ -1,0 +1,81 @@
+---
+interface Shortcut {
+  label: string;
+  key: string;
+  detail: string;
+}
+interface ShortcutGroup {
+  category: string;
+  shortcuts: Shortcut[];
+}
+interface Props {
+  groups: ShortcutGroup[];
+}
+const { groups } = Astro.props;
+---
+
+{
+  groups.map((group) => (
+    <>
+      <p class="shortcuts__group">{group.category}</p>
+      <table class="shortcuts">
+        <thead>
+          <tr>
+            <th scope="col">Action</th>
+            <th scope="col">Shortcut</th>
+          </tr>
+        </thead>
+        <tbody>
+          {group.shortcuts.map((shortcut) => (
+            <tr>
+              <th scope="row">{shortcut.label}</th>
+              <td>
+                <code>{shortcut.key}</code>
+                {shortcut.detail && <span class="shortcuts__detail"> {shortcut.detail}</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  ))
+}
+
+<style>
+  .shortcuts {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    margin: 0 0 1.4rem;
+  }
+  .shortcuts th,
+  .shortcuts td {
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--line-soft);
+    text-align: left;
+    vertical-align: top;
+  }
+  .shortcuts thead th {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .shortcuts tbody th {
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .shortcuts__group {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin: 1.2rem 0 0.4rem;
+  }
+  .shortcuts__detail {
+    color: var(--text-dim);
+  }
+</style>

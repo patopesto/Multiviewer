@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  getProtocolSettings,
+  getSettings,
   undocumentedConfigStructs,
   undocumentedConfigFields,
   unknownDirectives,
   misplacedDirectives,
-} from './protocol-settings.js';
+} from './settings.js';
 
 function find(entries, name, direction) {
   return entries.find((entry) => entry.name === name && entry.direction === direction);
@@ -35,7 +35,7 @@ test('every @docs directive is attached to an item', () => {
 });
 
 test('NDI input shows the two UI rows with their option labels', () => {
-  const ndi = find(getProtocolSettings(), 'NDI', 'input');
+  const ndi = find(getSettings(), 'NDI', 'input');
   const rows = rowsOf(ndi);
   assert.deepEqual(
     rows.map((row) => row.label),
@@ -46,7 +46,7 @@ test('NDI input shows the two UI rows with their option labels', () => {
 });
 
 test('DeckLink input Connection lists the physical connections', () => {
-  const decklink = find(getProtocolSettings(), 'DeckLink', 'input');
+  const decklink = find(getSettings(), 'DeckLink', 'input');
   const connection = rowsOf(decklink).find((row) => row.label === 'Connection');
   assert.ok(connection.options.includes('SDI'));
   assert.ok(connection.options.includes('HDMI'));
@@ -54,28 +54,28 @@ test('DeckLink input Connection lists the physical connections', () => {
 });
 
 test('grouped Mode rows use the inline desc directive', () => {
-  const avf = find(getProtocolSettings(), 'AVFoundation', 'input');
+  const avf = find(getSettings(), 'AVFoundation', 'input');
   const mode = rowsOf(avf).find((row) => row.label === 'Mode');
   assert.equal(mode.type, 'select');
   assert.match(mode.doc, /resolution and frame rate/i);
 });
 
 test('internal fields are not shown', () => {
-  const avf = find(getProtocolSettings(), 'AVFoundation', 'input');
+  const avf = find(getSettings(), 'AVFoundation', 'input');
   assert.ok(!rowsOf(avf).some((row) => /device_unique_id/.test(row.label)));
-  const ndiOut = find(getProtocolSettings(), 'NDI', 'output');
+  const ndiOut = find(getSettings(), 'NDI', 'output');
   assert.equal(rowsOf(ndiOut).length, 0);
 });
 
 test('Test patterns lists the per-field rows', () => {
-  const labels = rowsOf(find(getProtocolSettings(), 'Test patterns', 'input')).map((row) => row.label);
+  const labels = rowsOf(find(getSettings(), 'Test patterns', 'input')).map((row) => row.label);
   assert.ok(labels.includes('Width'));
   assert.ok(labels.includes('Cursor speed X'));
   assert.ok(labels.includes('Pattern'));
 });
 
 test('every protocol/direction yields a group', () => {
-  const entries = getProtocolSettings();
+  const entries = getSettings();
   assert.ok(entries.length >= 10);
   for (const entry of entries) {
     assert.equal(entry.groups.length > 0, true, `${entry.name} ${entry.direction} has groups`);

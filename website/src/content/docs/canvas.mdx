@@ -1,9 +1,11 @@
 ---
-title: The canvas
+title: Canvas
 description: Move, resize, snap and zoom sources on the composition canvas.
 lead: The canvas is the composition. Everything you place on it is what the outputs send.
 order: 2
 ---
+
+import SettingsTable from '../../components/SettingsTable.astro';
 
 ## Moving and resizing
 
@@ -21,11 +23,24 @@ a snap is available. Snapping keeps layouts tidy without pixel-hunting.
 - Drag the background to pan when zoomed in.
 - Use the **View** menu to fit the canvas to the window or reset the zoom.
 
+## Expanding a source
+
+Expand a source to look at it on its own, filling the whole canvas: select it and press `F`, use **Edit > Expand Source**,
+or right-click it and choose **Expand to full canvas**. The outputs change with it, so a receiver sees only that source
+while it stays expanded.
+
+Press `Esc`, click the close button at the top of the canvas, or use **Edit > Exit Expanded View** to return to the full
+layout. While a source is expanded the canvas only pans; sources cannot be moved or resized.
+
 ## Borders and labels
 
 Each source can show a border and a label. Borders make adjacent feeds readable, and labels name the source on screen.
 Both are toggled per source in its settings.
 
-## Flips
+## Global settings
 
-Horizontal and vertical flips are available per source, for mirroring a camera or correcting an inverted feed.
+The canvas size and the default label and border for every source are set once in **Global Settings** in the side panel.
+
+<SettingsTable name="Canvas" direction="input" />
+
+Each source can override the global label and border with **Inherit**, **Always show**, or **Always hide**.

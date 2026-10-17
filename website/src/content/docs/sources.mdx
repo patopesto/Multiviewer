@@ -6,7 +6,7 @@ order: 3
 ---
 
 import ProtocolMatrix from '../../components/ProtocolMatrix.astro';
-import ProtocolSettings from '../../components/ProtocolSettings.astro';
+import SettingsTable from '../../components/SettingsTable.astro';
 import { protocols } from '../../data/protocols';
 
 <ProtocolMatrix protocols={protocols} direction="input" columns={['platforms', 'notes']} />
@@ -26,55 +26,69 @@ preserved.
 Syphon and Spout deliver a texture straight to the compositor, with no CPU copy. The other protocols deliver frames that
 the compositor uploads to the GPU once per frame.
 
+## Common settings
+
+Every source has the same settings in its **Properties** panel, whatever the protocol.
+
+<SettingsTable name="Source" direction="input" />
+
 ## Protocol settings
 
-Each source has a few protocol-specific settings in the side panel. They are listed per protocol below.
+Beyond the common settings above, some protocols add settings of their own. They are listed per protocol below.
 
 ### NDI
+
+The NDI runtime is bundled with the application and doesn't need to be installed independantly.
 
 Choose the receive bandwidth and the pixel format requested from the sender. The lower bandwidth option saves network
 capacity at some cost to quality.
 
-<ProtocolSettings protocol="NDI" direction="input" />
+<SettingsTable name="NDI" direction="input" />
 
 ### DeckLink
 
+The Blackmagic Desktop Video driver need to be installed on your machine. Download it from [Blackmagic's website](https://www.blackmagicdesign.com/support/family/capture-and-playback)
+
 Pick which physical input to capture, or leave it unspecified to use whichever connection the device reports first.
 
-<ProtocolSettings protocol="DeckLink" direction="input" />
+<SettingsTable name="DeckLink" direction="input" />
 
 ### Syphon
 
-<ProtocolSettings protocol="Syphon" direction="input" />
+<SettingsTable name="Syphon" direction="input" />
 
 ### Spout
 
-<ProtocolSettings protocol="Spout" direction="input" />
+<SettingsTable name="Spout" direction="input" />
 
 ### AVFoundation
 
+macOS will prompt a "Privacy and Security" popup for camera access the first time a device is opened.
+
 Request a specific resolution and frame rate from a capture device; leave them at zero to use the device default.
 
-<ProtocolSettings protocol="AVFoundation" direction="input" />
+<SettingsTable name="AVFoundation" direction="input" />
 
 ### DirectShow
 
-<ProtocolSettings protocol="DirectShow" direction="input" />
+<SettingsTable name="DirectShow" direction="input" />
 
 ### MediaFoundation
 
-<ProtocolSettings protocol="MediaFoundation" direction="input" />
+<SettingsTable name="MediaFoundation" direction="input" />
 
 ### Screen capture
 
 Screen capture covers macOS and Windows, with a slightly different set of settings on each.
 
-<ProtocolSettings protocol="Screen capture" direction="input" />
+On macOS, granting Screen Recording permission is required; the list of displays and windows stays empty until it is granted. A "Privacy and Security" popup will appear when you select the protocol the first time. Agreeing to the popup will require an app restart.
+
+<SettingsTable name="Screen capture" direction="input" />
 
 ### Test patterns
 
 Generate a test pattern with a configurable size, frame rate, and a moving marker to make dropped or frozen frames
 visible.
 
-<ProtocolSettings protocol="Test patterns" direction="input" />
+<SettingsTable name="Test patterns" direction="input" />
 

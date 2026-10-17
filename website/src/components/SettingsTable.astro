@@ -1,12 +1,12 @@
 ---
-import { getProtocolSettings } from '../data/protocol-settings.js';
+import { getSettings } from '../data/settings.js';
 
 interface Props {
-  protocol: string;
+  name: string;
   direction: 'input' | 'output';
 }
-const { protocol, direction } = Astro.props;
-const entry = getProtocolSettings().find((e) => e.name === protocol && e.direction === direction);
+const { name, direction } = Astro.props;
+const entry = getSettings().find((e) => e.name === name && e.direction === direction);
 const groups = entry?.groups ?? [];
 const total = groups.reduce((n, group) => n + group.settings.length, 0);
 

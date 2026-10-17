@@ -74,13 +74,20 @@ impl Config {
     }
 }
 
+// @docs protocol="Canvas" direction=input
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Canvas {
+    // @docs label="Width"
+    /// Canvas width in pixels.
     pub width: u32,
+    // @docs label="Height"
+    /// Canvas height in pixels.
     pub height: u32,
     pub label: LabelConfig,
     pub border: BorderConfig,
+    // @docs hidden
     pub sources: Vec<Source>,
+    // @docs hidden
     pub outputs: Vec<Output>,
 }
 
@@ -101,22 +108,49 @@ pub type SourceId = String;
 
 pub type OutputId = String;
 
+// @docs protocol="Source" direction=input
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Source {
+    // @docs hidden
     pub uuid: SourceId,
+    // @docs label="Name" default=""
+    /// Name of the source; shown on its label and in the source list.
     pub name: String,
+    // @docs hidden
     pub protocol: Protocol,
+    // @docs hidden
     pub source_ref: Option<SourceRef>,
+    // @docs label="X" default=""
+    /// Horizontal position on the canvas, in pixels.
     pub x: f32,
+    // @docs label="Y" default=""
+    /// Vertical position on the canvas, in pixels.
     pub y: f32,
+    // @docs label="Width" default=""
+    /// Placement width on the canvas, in pixels.
     pub width: u32,
+    // @docs label="Height" default=""
+    /// Placement height on the canvas, in pixels.
     pub height: u32,
+    // @docs label="Order" default=""
+    /// Stacking order; higher values draw on top.
     pub z: i32,
+    // @docs label="Mode" default="Fit"
+    /// How the frame fills the rectangle.
     pub mode: TextureMode,
+    // @docs label="Flip H"
+    /// Mirror the source horizontally.
     pub flip_h: bool,
+    // @docs label="Flip V"
+    /// Mirror the source vertically.
     pub flip_v: bool,
+    // @docs label="Label"
+    /// Whether this source's label is drawn, overriding the global setting.
     pub label_visibility: SourceLabelVisibility,
+    // @docs label="Borders"
+    /// Whether this source's border is drawn, overriding the global setting.
     pub border_visibility: SourceBorderVisibility,
+    // @docs hidden
     pub config: SourceConfig,
 }
 
@@ -200,10 +234,20 @@ impl TextureMode {
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct LabelConfig {
+    // @docs label="Label visibility"
+    /// Whether source labels are drawn.
     pub visibility: LabelVisibility,
+    // @docs label="Label position"
+    /// Where the label sits inside its source rectangle.
     pub position: LabelPosition,
+    // @docs label="Label size"
+    /// Label text height in pixels.
     pub size: f32,
+    // @docs label="Label text color"
+    /// Label text colour, as RGBA.
     pub text_color: [u8; 4],
+    // @docs label="Label background"
+    /// Label background colour, as RGBA.
     pub background_color: [u8; 4],
 }
 
@@ -299,8 +343,14 @@ impl SourceLabelVisibility {
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct BorderConfig {
+    // @docs label="Border visibility"
+    /// Whether source borders are drawn.
     pub visibility: BorderVisibility,
+    // @docs label="Border color"
+    /// Border colour, as RGBA.
     pub color: [u8; 4],
+    // @docs label="Border width"
+    /// Border thickness in pixels.
     pub width: f32,
 }
 
