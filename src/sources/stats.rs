@@ -49,12 +49,16 @@ pub struct SourceStats {
     pub copy_time_ms: f32,
     pub upload_time_ms: f32,
     pub upload_mbps: f32, /// CPU->GPU bandwidth over the FPS window; 0 for GPU-direct sources.
+    pub network_mbps: f32, /// Wire bandwidth over the FPS window; only GPU-direct sources report it.
+    pub decode_ms: f32,    /// Session-average decode time reported by the source SDK.
+    pub gpu_direct: bool,  /// Delivers GPU textures directly: no CPU copy or upload to report.
     pub off_screen: bool, // For screencapturekit
     recent_frames: VecDeque<Instant>,
     receive_times: VecDeque<f32>,
     copy_times: VecDeque<f32>,
     upload_times: VecDeque<f32>,
     upload_samples: VecDeque<(Instant, u64)>,
+    network_samples: VecDeque<(Instant, u64)>,
     last_consumed_seq: Option<u64>,
 }
 
@@ -73,12 +77,16 @@ impl Default for SourceStats {
             copy_time_ms: 0.0,
             upload_time_ms: 0.0,
             upload_mbps: 0.0,
+            network_mbps: 0.0,
+            decode_ms: 0.0,
+            gpu_direct: false,
             off_screen: false,
             recent_frames: VecDeque::new(),
             receive_times: VecDeque::new(),
             copy_times: VecDeque::new(),
             upload_times: VecDeque::new(),
             upload_samples: VecDeque::new(),
+            network_samples: VecDeque::new(),
             last_consumed_seq: None,
         }
     }
@@ -114,6 +122,42 @@ impl SourceStats {
             self.receive_times.pop_front();
         }
         self.receive_time_ms = self.average(&self.receive_times);
+    }
+
+    /// Wire bytes received since the previous call, as a windowed MB/s rate.
+    pub fn record_network(&mut self, bytes: u64) {
+        let now = Instant::now();
+        self.network_samples.push_back((now, bytes));
+        while let Some(&(t, _)) = self.network_samples.front() {
+            if now.duration_since(t) > FPS_WINDOW {
+                self.network_samples.pop_front();
+            } else {
+                break;
+            }
+        }
+        if self.network_samples.len() < 2 {
+            return;
+        }
+        let span = now
+            .duration_since(self.network_samples.front().unwrap().0)
+            .as_secs_f32();
+        let total: u64 = self.network_samples.iter().map(|(_, b)| *b).sum();
+        self.network_mbps = if span > 0.0 {
+            total as f32 / 1_000_000.0 / span
+        } else {
+            0.0
+        };
+    }
+
+    /// Session-average decode time reported by the source SDK.
+    pub fn set_decode_ms(&mut self, ms: f32) {
+        self.decode_ms = ms;
+    }
+
+    /// Mark a source that delivers GPU textures directly, so the panel hides the
+    /// CPU copy/upload rows it has nothing to fill.
+    pub fn set_gpu_direct(&mut self) {
+        self.gpu_direct = true;
     }
 
     /// Count a frame the compositor observed with a new seq number.
@@ -232,6 +276,24 @@ mod tests {
         s.record_consumed(1);
         s.record_consumed(2);
         assert_eq!(s.frames_consumed, 3);
+    }
+
+    /// Network rate and decode time are reported only by GPU-direct sources;
+    /// the rate needs two samples to be measured.
+    #[test]
+    fn stats_records_network_rate_and_decode() {
+        let mut s = SourceStats::new();
+        assert!(!s.gpu_direct);
+        s.set_gpu_direct();
+        assert!(s.gpu_direct);
+
+        s.record_network(1_000_000);
+        assert_eq!(s.network_mbps, 0.0);
+        s.record_network(1_000_000);
+        assert!(s.network_mbps > 0.0);
+
+        s.set_decode_ms(1.5);
+        assert!((s.decode_ms - 1.5).abs() < 0.001);
     }
 
     /// A seq jump is frames produced but never displayed; same or lower seq

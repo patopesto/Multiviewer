@@ -24,6 +24,8 @@ pub struct SyphonSource {
 
 impl SyphonSource {
     pub fn spawn(source_ref: SourceRef, info: SyphonServerInfo) -> Self {
+        let stats = Arc::new(Mutex::new(SourceStats::new()));
+        stats.lock().unwrap().set_gpu_direct();
         Self {
             source_ref,
             info,
@@ -33,7 +35,7 @@ impl SyphonSource {
             bg: Mutex::new(None),
             dims: Mutex::new((0, 0)),
             seq: AtomicU64::new(0),
-            stats: Arc::new(Mutex::new(SourceStats::new())),
+            stats,
         }
     }
 }

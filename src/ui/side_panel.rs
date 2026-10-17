@@ -1423,23 +1423,42 @@ fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
         });
         ui.end_row();
 
-        ui.label("CPU->GPU copy");
-        settings_value(ui, |ui| {
-            ui.label(format!("{:.2} ms", stats.copy_time_ms));
-        });
-        ui.end_row();
+        if stats.gpu_direct {
+            // A GPU-direct source has no CPU copy or upload; report the wire
+            // rate and the decoder's own timing instead.
+            if stats.network_mbps > 0.0 {
+                ui.label("Network");
+                settings_value(ui, |ui| {
+                    ui.label(format!("{:.1} MB/s", stats.network_mbps));
+                });
+                ui.end_row();
+            }
+            if stats.decode_ms > 0.0 {
+                ui.label("Decode");
+                settings_value(ui, |ui| {
+                    ui.label(format!("{:.2} ms", stats.decode_ms));
+                });
+                ui.end_row();
+            }
+        } else {
+            ui.label("CPU->GPU copy");
+            settings_value(ui, |ui| {
+                ui.label(format!("{:.2} ms", stats.copy_time_ms));
+            });
+            ui.end_row();
 
-        ui.label("GPU upload");
-        settings_value(ui, |ui| {
-            ui.label(format!("{:.2} ms", stats.upload_time_ms));
-        });
-        ui.end_row();
+            ui.label("GPU upload");
+            settings_value(ui, |ui| {
+                ui.label(format!("{:.2} ms", stats.upload_time_ms));
+            });
+            ui.end_row();
 
-        ui.label("GPU bandwidth");
-        settings_value(ui, |ui| {
-            ui.label(format!("{:.1} MB/s", stats.upload_mbps));
-        });
-        ui.end_row();
+            ui.label("GPU bandwidth");
+            settings_value(ui, |ui| {
+                ui.label(format!("{:.1} MB/s", stats.upload_mbps));
+            });
+            ui.end_row();
+        }
     });
 }
 

@@ -36,6 +36,8 @@ pub struct SpoutSource {
 
 impl SpoutSource {
     pub fn spawn(source_ref: SourceRef) -> Self {
+        let stats = Arc::new(Mutex::new(SourceStats::new()));
+        stats.lock().unwrap().set_gpu_direct();
         Self {
             source_ref,
             receiver: Mutex::new(None),
@@ -45,7 +47,7 @@ impl SpoutSource {
             bg: Mutex::new(None),
             dims: Mutex::new((0, 0)),
             seq: AtomicU64::new(0),
-            stats: Arc::new(Mutex::new(SourceStats::new())),
+            stats,
             diagnostics_logged: AtomicBool::new(false),
         }
     }

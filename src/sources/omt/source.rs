@@ -64,12 +64,14 @@ pub struct OmtSource {
 
 impl OmtSource {
     pub fn spawn(source_ref: SourceRef, discovered: OmtSourceInfo, config: &OmtSourceConfig) -> Self {
+        let stats = Arc::new(Mutex::new(SourceStats::new()));
+        stats.lock().unwrap().set_gpu_direct();
         return Self {
             source_ref,
             discovered,
             config: config.clone(),
             slot: Arc::new(Mutex::new(None)),
-            stats: Arc::new(Mutex::new(SourceStats::new())),
+            stats,
             running: Arc::new(AtomicBool::new(true)),
             thread: Mutex::new(None),
         };
@@ -176,6 +178,7 @@ fn run_capture(
 
         let mut format: Option<FeedFormat> = None;
         let mut last_frame_at = Instant::now();
+        let mut last_bytes = 0u64;
         while running.load(Ordering::Relaxed) {
             let frame_span = tracing::debug_span!("omt_frame");
             let _frame_guard = frame_span.entered();
@@ -203,10 +206,25 @@ fn run_capture(
 
             let w = frame.width;
             let h = frame.height;
+            let session_stats = session.statistics();
+            let delta_bytes = session_stats.bytes_received.saturating_sub(last_bytes);
+            last_bytes = session_stats.bytes_received;
+            let decode_ms = if session_stats.frames_decoded > 0 {
+                session_stats.codec_time_ns as f32 / 1_000_000.0
+                    / session_stats.frames_decoded as f32
+            } else {
+                0.0
+            };
+            let nominal_fps = if frame.frame_rate_d > 0 {
+                frame.frame_rate_n as f64 / frame.frame_rate_d as f64
+            } else {
+                0.0
+            };
             {
                 let mut s = stats.lock().unwrap();
-                s.record_frame(w, h, PixelFormat::Bgra8.label(), 0.0);
-                s.record_copy_time(0.0);
+                s.record_frame(w, h, PixelFormat::Bgra8.label(), nominal_fps);
+                s.record_network(delta_bytes);
+                s.set_decode_ms(decode_ms);
             }
             let bg = Arc::new(framebuffer_bind_group(
                 &ctx.device,
