@@ -8,6 +8,7 @@ use tracing::instrument;
 use super::{OutputStats, Protocol};
 use super::decklink;
 use super::ndi;
+use super::omt;
 #[cfg(target_os = "macos")]
 use super::syphon;
 #[cfg(target_os = "windows")]
@@ -49,6 +50,7 @@ pub trait VideoOutput: Send {
 pub enum OutputConfig {
     Ndi(ndi::NdiOutputConfig),
     Decklink(decklink::DecklinkOutputConfig),
+    Omt(omt::OmtOutputConfig),
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonOutputConfig),
     #[cfg(target_os = "windows")]
@@ -68,6 +70,7 @@ impl OutputConfig {
         return match (self, protocol) {
             (OutputConfig::Ndi(_), Protocol::Ndi) => true,
             (OutputConfig::Decklink(_), Protocol::Decklink) => true,
+            (OutputConfig::Omt(_), Protocol::Omt) => true,
             #[cfg(target_os = "macos")]
             (OutputConfig::Syphon(_), Protocol::Syphon) => true,
             #[cfg(target_os = "windows")]
@@ -82,6 +85,7 @@ impl OutputConfig {
         return match protocol {
             Protocol::Ndi => OutputConfig::Ndi(ndi::NdiOutputConfig::default()),
             Protocol::Decklink => OutputConfig::Decklink(decklink::DecklinkOutputConfig::default()),
+            Protocol::Omt => OutputConfig::Omt(omt::OmtOutputConfig::default()),
             #[cfg(target_os = "macos")]
             Protocol::Syphon => OutputConfig::Syphon(syphon::SyphonOutputConfig::default()),
             #[cfg(target_os = "windows")]
@@ -98,6 +102,7 @@ impl OutputConfig {
 enum OutputConfigInner {
     Ndi(ndi::NdiOutputConfig),
     Decklink(decklink::DecklinkOutputConfig),
+    Omt(omt::OmtOutputConfig),
     #[cfg(target_os = "macos")]
     Syphon(syphon::SyphonOutputConfig),
     #[cfg(target_os = "windows")]
@@ -109,6 +114,7 @@ impl From<OutputConfigInner> for OutputConfig {
         match inner {
             OutputConfigInner::Ndi(c) => OutputConfig::Ndi(c),
             OutputConfigInner::Decklink(c) => OutputConfig::Decklink(c),
+            OutputConfigInner::Omt(c) => OutputConfig::Omt(c),
             #[cfg(target_os = "macos")]
             OutputConfigInner::Syphon(c) => OutputConfig::Syphon(c),
             #[cfg(target_os = "windows")]
@@ -127,6 +133,7 @@ impl Serialize for OutputConfig {
             OutputConfig::Unknown(v) => v.serialize(serializer),
             OutputConfig::Ndi(c) => OutputConfigInner::Ndi(c.clone()).serialize(serializer),
             OutputConfig::Decklink(c) => OutputConfigInner::Decklink(c.clone()).serialize(serializer),
+            OutputConfig::Omt(c) => OutputConfigInner::Omt(c.clone()).serialize(serializer),
             #[cfg(target_os = "macos")]
             OutputConfig::Syphon(c) => OutputConfigInner::Syphon(c.clone()).serialize(serializer),
             #[cfg(target_os = "windows")]
@@ -174,6 +181,10 @@ impl OutputKind {
             OutputConfig::Decklink(c) => {
                 let name = if c.device_name.is_empty() { name } else { c.device_name.clone() };
                 Box::new(decklink::DecklinkOutput::new(id, name, c.clone(), enabled))
+            }
+            OutputConfig::Omt(c) => {
+                let name = if c.sender_name.is_empty() { name } else { c.sender_name.clone() };
+                Box::new(omt::OmtOutput::new(id, name, c.clone(), enabled))
             }
             #[cfg(target_os = "macos")]
             OutputConfig::Syphon(c) => {

@@ -40,7 +40,7 @@ pub use decklink::{
     DecklinkDiscovery, DecklinkSourceConfig, DecklinkOutputConfig, decklink_version,
     DecklinkVideoConnection, DecklinkVideoConnections, DecklinkMode,
 };
-pub use omt::{OmtDiscovery, OmtQuality, OmtSourceConfig, OmtSourceInfo};
+pub use omt::{OmtDiscovery, OmtOutputConfig, OmtQuality, OmtSourceConfig, OmtSourceInfo};
 
 #[cfg(target_os = "macos")]
 pub use syphon::{

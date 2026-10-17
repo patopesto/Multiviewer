@@ -2,7 +2,7 @@ use super::*;
 use crate::sources::TestSourceConfig;
 use crate::sources::{NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{DecklinkSourceConfig, DecklinkOutputConfig, DecklinkVideoConnection, DecklinkMode};
-use crate::sources::{OmtSourceConfig, OmtQuality};
+use crate::sources::{OmtOutputConfig, OmtSourceConfig, OmtQuality};
 #[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 #[cfg(target_os = "macos")]
@@ -563,6 +563,24 @@ fn ndi_output_config_round_trips() {
     match parsed.config {
         OutputConfig::Ndi(c) => assert_eq!(c.sender_name, "Studio"),
         _ => panic!("expected Ndi config"),
+    }
+}
+
+#[test]
+fn omt_output_config_round_trips() {
+    let output = Output::new(
+        "My OMT".into(),
+        Protocol::Omt,
+        true,
+        OutputConfig::Omt(OmtOutputConfig {
+            sender_name: "Studio".into(),
+        }),
+    );
+    let json = serde_json::to_string(&output).unwrap();
+    let parsed: Output = serde_json::from_str(&json).unwrap();
+    match parsed.config {
+        OutputConfig::Omt(c) => assert_eq!(c.sender_name, "Studio"),
+        _ => panic!("expected Omt output config"),
     }
 }
 

@@ -5,7 +5,7 @@ use crate::ui::source_settings;
 use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::engine::Engine;
 use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceStats, OutputConfig};
-use crate::sources::{DecklinkOutputConfig, NdiOutputConfig, DecklinkMode};
+use crate::sources::{DecklinkOutputConfig, NdiOutputConfig, OmtOutputConfig, DecklinkMode};
 #[cfg(target_os = "macos")]
 use crate::sources::format_syphon_label;
 #[cfg(target_os = "macos")]
@@ -189,6 +189,41 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                                 sender_name: APP_NAME.to_string(),
                             };
                             engine.add_output(Protocol::Ndi, name, OutputConfig::Ndi(ndi_config));
+                        }
+                    } else if let Some(id) = registry_id {
+                        engine.remove_output(&id);
+                    }
+                }
+            });
+            ui.end_row();
+
+            ui.label("OMT Output");
+            settings_value(ui, |ui| {
+                let omt_index = engine
+                    .cfg
+                    .canvas
+                    .outputs
+                    .iter()
+                    .position(|o| o.protocol == Protocol::Omt);
+                let registry_id = omt_index
+                    .as_ref()
+                    .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
+                let mut enabled = registry_id
+                    .as_ref()
+                    .and_then(|id| engine.output_registry.get(id))
+                    .map(|ok| ok.enabled())
+                    .unwrap_or(false);
+
+                if ui.checkbox(&mut enabled, "Enable").changed() {
+                    if enabled {
+                        if let Some(id) = registry_id {
+                            engine.set_output_enabled(&id, true);
+                        } else {
+                            let name = "OMT Output".to_string();
+                            let omt_config = OmtOutputConfig {
+                                sender_name: APP_NAME.to_string(),
+                            };
+                            engine.add_output(Protocol::Omt, name, OutputConfig::Omt(omt_config));
                         }
                     } else if let Some(id) = registry_id {
                         engine.remove_output(&id);

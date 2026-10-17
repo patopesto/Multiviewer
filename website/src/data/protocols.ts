@@ -25,9 +25,11 @@ export const protocols: Protocol[] = [
   {
     name: 'OMT',
     input: true,
+    output: true,
     platforms: ['macos', 'windows', 'linux'],
     note: 'Open Media Transport',
     inputNote: 'Open Media Transport, open-source network video protocol',
+    outputNote: 'Open Media Transport, open-source network video protocol',
   },
   {
     name: 'DeckLink',
@@ -45,7 +47,7 @@ export const protocols: Protocol[] = [
     platforms: ['macos'],
     note: 'Zero-copy GPU texture sharing',
     inputNote: 'Zero-copy GPU texture sharing',
-    outputNote: 'Share the canvas as a GPU texture',
+    outputNote: 'Zero-copy GPU texture sharing',
   },
   {
     name: 'Spout',
@@ -54,7 +56,7 @@ export const protocols: Protocol[] = [
     platforms: ['windows'],
     note: 'Zero-copy GPU texture sharing',
     inputNote: 'Zero-copy GPU texture sharing',
-    outputNote: 'Share the canvas as a GPU texture',
+    outputNote: 'Zero-copy GPU texture sharing',
   },
   {
     name: 'AVFoundation',

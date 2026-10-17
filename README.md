@@ -31,6 +31,7 @@
 |----------|--------|--------|-----------|-------|
 | **Test Patterns** | ✅ | — | macOS, Windows, Linux | SMPTE color bars and generative patterns |
 | **NDI** | ✅ | ✅ | macOS, Windows, Linux |   |
+| **OMT** | ✅ | ✅ | macOS, Windows, Linux | [Open Media Transport](https://github.com/openmediatransport)  |
 | **Blackmagic DeckLink** | ✅ | ✅ | macOS, Windows, Linux | Requires [DeckLink Desktop Video](https://www.blackmagicdesign.com/support/family/capture-and-playback) installed |
 | **Syphon** | ✅ | ✅ | macOS only | GPU-only, zero-copy texture sharing |
 | **Spout** | ✅ | ✅ | Windows only | GPU-only, zero-copy texture sharing |
