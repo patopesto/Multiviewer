@@ -79,7 +79,7 @@ impl OutputConfig {
         };
     }
 
-    /// Default config for a protocol. Protocols without an output (Test,
+    /// Default config for a protocol. Protocols without an output (Test, VNC,
     /// AVFoundation, unavailable ones) fall back to the unknown default.
     fn for_protocol(protocol: &Protocol) -> Self {
         return match protocol {

@@ -9,6 +9,7 @@ pub enum Protocol {
     Ndi,
     Omt,
     Decklink,
+    Vnc,
     #[cfg(target_os = "macos")]
     Syphon,
     #[cfg(target_os = "macos")]
@@ -52,6 +53,7 @@ impl Protocol {
             Protocol::DirectShow => "DirectShow",
             #[cfg(target_os = "windows")]
             Protocol::WindowsCapture => "WindowsCapture",
+            Protocol::Vnc => "Vnc",
             Protocol::Unknown(name) => name,
         }
     }
@@ -76,6 +78,7 @@ impl Protocol {
             Protocol::DirectShow => "DirectShow (WDM)".to_string(),
             #[cfg(target_os = "windows")]
             Protocol::WindowsCapture => "Windows Screen Capture".to_string(),
+            Protocol::Vnc => "VNC".to_string(),
             Protocol::Unknown(name) => format!("{name} (Unavailable)"),
         }
     }
@@ -109,6 +112,7 @@ impl<'de> Deserialize<'de> for Protocol {
             "DirectShow" => Protocol::DirectShow,
             #[cfg(target_os = "windows")]
             "WindowsCapture" => Protocol::WindowsCapture,
+            "Vnc" => Protocol::Vnc,
             other => Protocol::Unknown(other.to_string()),
         })
     }

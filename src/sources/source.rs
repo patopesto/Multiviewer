@@ -8,6 +8,7 @@ use super::decklink;
 use super::ndi;
 use super::omt;
 use super::test;
+use super::vnc;
 #[cfg(target_os = "macos")]
 use super::syphon;
 #[cfg(target_os = "macos")]
@@ -72,6 +73,7 @@ pub enum SourceConfig {
     DirectShow(directshow::DirectShowSourceConfig),
     #[cfg(target_os = "windows")]
     WindowsCapture(windowscapture::WindowsCaptureSourceConfig),
+    Vnc(vnc::VncSourceConfig),
     Unknown(serde_json::Value),
 }
 
@@ -104,6 +106,7 @@ enum SourceConfigInner {
     DirectShow(directshow::DirectShowSourceConfig),
     #[cfg(target_os = "windows")]
     WindowsCapture(windowscapture::WindowsCaptureSourceConfig),
+    Vnc(vnc::VncSourceConfig),
 }
 
 impl From<SourceConfigInner> for SourceConfig {
@@ -127,6 +130,7 @@ impl From<SourceConfigInner> for SourceConfig {
             SourceConfigInner::DirectShow(c) => SourceConfig::DirectShow(c),
             #[cfg(target_os = "windows")]
             SourceConfigInner::WindowsCapture(c) => SourceConfig::WindowsCapture(c),
+            SourceConfigInner::Vnc(c) => SourceConfig::Vnc(c),
         }
     }
 }
@@ -157,6 +161,7 @@ impl Serialize for SourceConfig {
             SourceConfig::DirectShow(c) => SourceConfigInner::DirectShow(c.clone()).serialize(serializer),
             #[cfg(target_os = "windows")]
             SourceConfig::WindowsCapture(c) => SourceConfigInner::WindowsCapture(c.clone()).serialize(serializer),
+            SourceConfig::Vnc(c) => SourceConfigInner::Vnc(c.clone()).serialize(serializer),
         }
     }
 }
@@ -199,6 +204,7 @@ impl SourceConfig {
             Protocol::DirectShow => SourceConfig::DirectShow(directshow::DirectShowSourceConfig::default()),
             #[cfg(target_os = "windows")]
             Protocol::WindowsCapture => SourceConfig::WindowsCapture(windowscapture::WindowsCaptureSourceConfig::default()),
+            Protocol::Vnc => SourceConfig::Vnc(vnc::VncSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
         }
     }
@@ -247,6 +253,7 @@ pub enum SourceRuntimeConfig {
     WindowsCapture {
         label: String,
     },
+    Vnc,
 }
 
 /// A live source: its boxed runtime, the config persisted in the project, and
@@ -300,6 +307,9 @@ impl SourceKind {
             #[cfg(target_os = "windows")]
             (SourceConfig::WindowsCapture(c), SourceRuntimeConfig::WindowsCapture { .. }) => {
                 Box::new(windowscapture::WindowsCaptureSource::spawn(key.source_ref.clone(), c))
+            }
+            (SourceConfig::Vnc(c), SourceRuntimeConfig::Vnc) => {
+                Box::new(vnc::VncSource::spawn(key.source_ref.clone(), c))
             }
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
@@ -415,6 +425,7 @@ impl FramePool {
 pub struct SourceRegistry {
     sources: HashMap<SourceKey, SourceKind>,
     next_test: u32,
+    next_vnc: u32,
     pending_restarts: HashSet<SourceKey>,
     restart_tx: Sender<RestartResult>,
     restart_rx: Receiver<RestartResult>,
@@ -426,6 +437,7 @@ impl SourceRegistry {
         Self {
             sources: HashMap::new(),
             next_test: 0,
+            next_vnc: 0,
             pending_restarts: HashSet::new(),
             restart_tx: tx,
             restart_rx: rx,
@@ -464,6 +476,30 @@ impl SourceRegistry {
             SourceRuntimeConfig::Test,
         );
         return self.add(key, kind);
+    }
+
+    /// Create a dedicated VNC source under a fresh key. The connection details
+    /// live in the config, so the key only has to be unique.
+    pub fn add_vnc(&mut self, config: vnc::VncSourceConfig) -> SourceKey {
+        let key = loop {
+            self.next_vnc += 1;
+            let key = SourceKey::new(Protocol::Vnc, format!("VNC {}", self.next_vnc));
+            if !self.contains(&key) {
+                break key;
+            }
+        };
+        return self.add_vnc_at(key, config);
+    }
+
+    /// Create a VNC source under a known key, preserving the binding a project
+    /// was saved with.
+    pub fn add_vnc_at(&mut self, key: SourceKey, config: vnc::VncSourceConfig) -> SourceKey {
+        if self.contains(&key) {
+            return key;
+        }
+        let kind = SourceKind::new(&key, SourceConfig::Vnc(config), SourceRuntimeConfig::Vnc);
+        self.sources.insert(key.clone(), kind);
+        return key;
     }
 
     pub fn add_ndi(&mut self, key: SourceKey, config: ndi::NdiSourceConfig, discovered: NdiSourceInfo) -> SourceKey {
@@ -699,6 +735,7 @@ impl SourceRegistry {
     pub fn clear(&mut self) {
         self.sources.clear();
         self.next_test = 0;
+        self.next_vnc = 0;
         self.pending_restarts.clear();
         while self.restart_rx.try_recv().is_ok() {}
     }
@@ -794,6 +831,28 @@ mod tests {
             assert!(keys.insert(key.clone()), "duplicate key {:?}", key);
         }
         assert_eq!(registry.iter().count(), 30);
+    }
+
+    /// VNC sources are keyed by a synthesized name; several must not collide.
+    #[test]
+    fn add_vnc_keys_stay_unique() {
+        let mut registry = SourceRegistry::new();
+        let mut keys = HashSet::new();
+        for _ in 0..5 {
+            let key = registry.add_vnc(vnc::VncSourceConfig::default());
+            assert!(keys.insert(key.clone()), "duplicate key {:?}", key);
+        }
+        assert_eq!(registry.iter().count(), 5);
+    }
+
+    /// A synthesized key never overwrites a source restored from a project.
+    #[test]
+    fn add_vnc_skips_a_restored_key() {
+        let mut registry = SourceRegistry::new();
+        let restored = SourceKey::new(Protocol::Vnc, "VNC 1".to_string());
+        registry.add_vnc_at(restored, vnc::VncSourceConfig::default());
+        let key = registry.add_vnc(vnc::VncSourceConfig::default());
+        assert_eq!(key.source_ref, "VNC 2");
     }
 
     /// A restart rebuilds the source under the same key.

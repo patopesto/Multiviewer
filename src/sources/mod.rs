@@ -2,11 +2,13 @@ mod common;
 mod source;
 mod output;
 mod stats;
+mod framebuffer;
 
 mod test;
 mod decklink;
 mod ndi;
 mod omt;
+mod vnc;
 #[cfg(target_os = "macos")]
 mod syphon;
 #[cfg(target_os = "macos")]
@@ -30,6 +32,7 @@ pub use source::{
 };
 pub use output::{OutputConfig, OutputRegistry};
 pub use stats::{OutputStats, SourceStats};
+pub use framebuffer::Framebuffer;
 
 pub use test::{TestSourceConfig, TestPattern, RadarDirection};
 pub use ndi::{
@@ -44,6 +47,7 @@ pub use decklink::{
     DecklinkDiscovery, DecklinkSourceConfig, DecklinkOutputConfig, decklink_version,
     DecklinkVideoConnection, DecklinkVideoConnections, DecklinkMode,
 };
+pub use vnc::VncSourceConfig;
 
 #[cfg(target_os = "macos")]
 pub use syphon::{

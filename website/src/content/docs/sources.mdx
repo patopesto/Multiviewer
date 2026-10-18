@@ -91,6 +91,39 @@ On macOS, granting Screen Recording permission is required; the list of displays
 
 <SettingsTable name="Screen capture" direction="input" />
 
+### VNC
+
+VNC servers are not discovered, so a connection is made by hand: pick **+ New VNC Source** in the source list, then fill
+in the address under **Protocol Settings**.
+
+The password is the server's own VNC password, not an account password. It is encrypted with a key built into the app, so
+it is not readable at a glance in a project file, but anyone who has the app and the file can recover it. The session is
+always shared, so connecting never disconnects another viewer.
+
+Multiviewer only displays the remote screen: it never sends keystrokes or clicks, so it cannot be used to control the
+host. The one exception is **Keep awake**, described below.
+
+<SettingsTable name="VNC" direction="input" />
+
+#### Idle screens go black
+
+Many servers blank the screen after a few minutes with no input, which a passive viewer sees as a black tile: an update
+request does not count as input, only a pointer or key event does. **Keep awake** sends a pointer event every couple of
+seconds: it parks the remote cursor near the top-left corner and moves it one pixel back and forth, which resets that
+machine's idle timer. Two things follow: the cursor is pulled to that corner, and the machine will not blank or lock while
+it is idle. So it is off by default and worth deciding per machine.
+
+#### macOS Screen Sharing
+
+macOS shows the **login window** rather than the desktop of whoever is logged in, because the
+VNC password identifies no user. On a Mac you administer, have the built-in server attach to the console session:
+
+```sh
+sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
+```
+
+Then restart Screen Sharing or reboot. This lets anyone holding the VNC password reach the logged-in desktop directly, so weigh it against your security policy.
+
 ### Test patterns
 
 Generate a test pattern with a configurable size, frame rate, and a moving marker to make dropped or frozen frames

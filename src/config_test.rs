@@ -3,6 +3,7 @@ use crate::sources::TestSourceConfig;
 use crate::sources::{NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{DecklinkSourceConfig, DecklinkOutputConfig, DecklinkVideoConnection, DecklinkMode};
 use crate::sources::{OmtOutputConfig, OmtSourceConfig, OmtQuality};
+use crate::sources::VncSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 #[cfg(target_os = "macos")]
@@ -608,6 +609,37 @@ fn test_source_config_round_trips() {
             assert_eq!(c.height, 1080);
         }
         _ => panic!("expected Test source config"),
+    }
+}
+
+#[test]
+fn vnc_source_config_round_trips_without_leaking_the_password() {
+    let mut source = Source::new(
+        "Desktop".to_string(),
+        Protocol::Vnc,
+        Some("VNC 1".to_string()),
+        0.0, 0.0, 1280, 720, 0,
+        TextureMode::Fit,
+        false, false,
+    );
+    source.config = SourceConfig::Vnc(VncSourceConfig {
+        host: "studio.example".to_string(),
+        port: 5901,
+        password: "hunter2".to_string(),
+        keep_awake: true,
+    });
+    let json = serde_json::to_string(&source).unwrap();
+    assert!(!json.contains("hunter2"), "password stored in plain text: {json}");
+    let parsed: Source = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.protocol, Protocol::Vnc);
+    match parsed.config {
+        SourceConfig::Vnc(c) => {
+            assert_eq!(c.host, "studio.example");
+            assert_eq!(c.port, 5901);
+            assert_eq!(c.password, "hunter2");
+            assert!(c.keep_awake);
+        }
+        _ => panic!("expected VNC source config"),
     }
 }
 

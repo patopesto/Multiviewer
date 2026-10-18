@@ -49,6 +49,9 @@ fontdue = "0.9"
 epaint_default_fonts = "0.36"
 grafton-ndi = "1.0.0"
 openmediatransport = { version = "0.1", features = ["wgpu"] }
+vnc = { package = "vnc-rs", version = "0.6" }
+tokio = { version = "1", features = ["rt", "net", "time"] }
+aes-gcm = "0.10"
 uuid = { version = "1", features = ["v4"] }
 multiviewer-decklink = { path = "src/sources/decklink/bindings" }
 rfd = "0.15"

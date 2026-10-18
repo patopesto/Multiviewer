@@ -4,6 +4,7 @@ use crate::sources::{TestSourceConfig, TestPattern, RadarDirection};
 use crate::sources::{NdiSourceConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{OmtSourceConfig, OmtQuality};
 use crate::sources::{DecklinkSourceConfig, DecklinkVideoConnection, DecklinkVideoConnections};
+use crate::sources::VncSourceConfig;
 #[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 #[cfg(target_os = "macos")]
@@ -30,6 +31,7 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         SourceConfig::Ndi(cfg) => ndi_settings_ui(cfg, ui),
         SourceConfig::Omt(cfg) => omt_settings_ui(cfg, ui),
         SourceConfig::Decklink(cfg) => decklink_settings_ui(cfg, &source.runtime, ui),
+        SourceConfig::Vnc(cfg) => vnc_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
         SourceConfig::Syphon(cfg) => syphon_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
@@ -706,4 +708,120 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
     });
 
     return *settings != old;
+}
+
+/// Avoid having changed flag mid-edits
+fn edit_committed(dirty: bool, lost_focus: bool, drag_stopped: bool) -> bool {
+    return dirty && (lost_focus || drag_stopped);
+}
+
+/// Applies an edit to a field only when it is committed: Enter, clicking away,
+/// or the end of a drag. The widget may write the value as the user moves it,
+/// but the panel is told once, so a field that reconnects the source does not
+/// restart it once per keystroke.
+fn commit_field_edit(
+    ui: &mut egui::Ui,
+    id: &str,
+    changed: bool,
+    lost_focus: bool,
+    drag_stopped: bool,
+) -> bool {
+    let state_id = ui.make_persistent_id(id);
+    let mut dirty = ui.data_mut(|data| *data.get_temp_mut_or_default::<bool>(state_id));
+    if changed {
+        dirty = true;
+    }
+    // A singleline `TextEdit` surrenders focus on Enter as well as on blur; a
+    // `DragValue` never takes focus, so its drag release is the commit instead.
+    let committed = edit_committed(dirty, lost_focus, drag_stopped);
+    if committed {
+        dirty = false;
+    }
+    ui.data_mut(|data| data.insert_temp(state_id, dirty));
+    return committed;
+}
+
+fn vnc_settings_ui(cfg: &mut VncSourceConfig, ui: &mut egui::Ui) -> bool {
+    let mut committed = false;
+    settings_grid(ui, "vnc_settings_grid", |ui| {
+        ui.label("Host");
+        settings_value(ui, |ui| {
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut cfg.host)
+                    .hint_text("hostname or IP")
+                    .desired_width(ui.available_width()),
+            );
+            committed |= commit_field_edit(ui, "vnc_host", response.changed(), response.lost_focus(), false);
+        });
+        ui.end_row();
+
+        ui.label("Port");
+        settings_value(ui, |ui| {
+            // The value only lands in the config when the edit finishes, so a
+            // half-typed port is never dialled.
+            let response = ui.add(
+                egui::DragValue::new(&mut cfg.port)
+                    .range(1..=65535)
+                    .update_while_editing(false),
+            );
+            committed |= commit_field_edit(
+                ui,
+                "vnc_port",
+                response.changed(),
+                response.lost_focus(),
+                response.drag_stopped(),
+            );
+        });
+        ui.end_row();
+
+        ui.label("Password");
+        settings_value(ui, |ui| {
+            let revealed_id = ui.make_persistent_id("vnc_password_revealed");
+            let revealed = ui.data_mut(|data| *data.get_temp_mut_or_default::<bool>(revealed_id));
+            let width = (ui.available_width() - 30.0).max(60.0);
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut cfg.password)
+                    .password(!revealed)
+                    .desired_width(width),
+            );
+            committed |= commit_field_edit(ui, "vnc_password", response.changed(), response.lost_focus(), false);
+            let icon = if revealed { "\u{1f648}" } else { "\u{1f441}" };
+            let hint = if revealed { "Hide password" } else { "Show password" };
+            if ui.button(icon).on_hover_text(hint).clicked() {
+                ui.data_mut(|data| data.insert_temp(revealed_id, !revealed));
+            }
+        });
+        ui.end_row();
+
+        ui.label("Keep awake");
+        settings_value(ui, |ui| {
+            committed |= ui.checkbox(&mut cfg.keep_awake, "").changed();
+        });
+        ui.end_row();
+    });
+    return committed;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An edit applies once the user is done with it, and never on the keystroke
+    /// that caused it: a connecting field would otherwise restart the source
+    /// once per character.
+    #[test]
+    fn edit_applies_only_once_it_is_finished() {
+        // Nothing edited yet.
+        assert!(!edit_committed(false, true, false));
+        assert!(!edit_committed(false, false, true));
+
+        // Typing: changed, but still focused.
+        assert!(!edit_committed(true, false, false));
+
+        // Enter or clicking away.
+        assert!(edit_committed(true, true, false));
+
+        // Releasing a drag: a `DragValue` never takes focus.
+        assert!(edit_committed(true, false, true));
+    }
 }

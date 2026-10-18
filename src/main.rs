@@ -10,6 +10,7 @@ mod compositor;
 mod config;
 mod engine;
 mod platform;
+mod secret;
 mod session;
 mod sources;
 mod ui;

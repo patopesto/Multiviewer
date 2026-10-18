@@ -6,6 +6,7 @@ use crate::sources::{Protocol, SourceConfig, SourceKey};
 use crate::sources::DecklinkSourceConfig;
 use crate::sources::NdiSourceConfig;
 use crate::sources::OmtSourceConfig;
+use crate::sources::VncSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::{AvFoundationSourceConfig, ensure_screen_capture_access_requested, ScreenCaptureKitSourceConfig, SyphonSourceConfig};
 #[cfg(target_os = "windows")]
@@ -21,8 +22,8 @@ impl Engine {
             self.last_discovery = now;
 
             self.reconnect_ndi();
-            self.reconnect_decklink();
             self.reconnect_omt();
+            self.reconnect_decklink();
             #[cfg(target_os = "macos")]
             self.reconnect_syphon();
             #[cfg(target_os = "macos")]
@@ -37,6 +38,7 @@ impl Engine {
             self.reconnect_directshow();
             #[cfg(target_os = "windows")]
             self.reconnect_windowscapture();
+            self.reconnect_manual(Protocol::Vnc);
         }
 
         self.registry.apply_pending_restarts();
@@ -67,31 +69,6 @@ impl Engine {
         }
     }
 
-    /// Auto-connect pending DeckLink sources when they appear in discovery
-    fn reconnect_decklink(&mut self) {
-        let Some(ref discovery) = self.decklink else {
-            return;
-        };
-        let discovered = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol == Protocol::Decklink
-                && let Some(ref source_ref) = source.source_ref
-            {
-                let key = SourceKey::new(Protocol::Decklink, source_ref.clone());
-                if !self.registry.contains(&key)
-                    && let Some(port) = discovered.iter().find(|p| &p.name == source_ref)
-                {
-                    let config = match &source.config {
-                        SourceConfig::Decklink(c) => c.clone(),
-                        _ => DecklinkSourceConfig::default(),
-                    };
-                    self.registry.add_decklink(key, config, port.connections);
-                    self.dirty = true;
-                }
-            }
-        }
-    }
-
     /// Auto-connect pending OMT sources when they appear in discovery
     fn reconnect_omt(&mut self) {
         let Some(ref discovery) = self.omt else {
@@ -111,6 +88,31 @@ impl Engine {
                         _ => OmtSourceConfig::default(),
                     };
                     self.registry.add_omt(key, config, src.clone());
+                    self.dirty = true;
+                }
+            }
+        }
+    }
+
+    /// Auto-connect pending DeckLink sources when they appear in discovery
+    fn reconnect_decklink(&mut self) {
+        let Some(ref discovery) = self.decklink else {
+            return;
+        };
+        let discovered = discovery.list();
+        for source in &self.cfg.canvas.sources {
+            if source.protocol == Protocol::Decklink
+                && let Some(ref source_ref) = source.source_ref
+            {
+                let key = SourceKey::new(Protocol::Decklink, source_ref.clone());
+                if !self.registry.contains(&key)
+                    && let Some(port) = discovered.iter().find(|p| &p.name == source_ref)
+                {
+                    let config = match &source.config {
+                        SourceConfig::Decklink(c) => c.clone(),
+                        _ => DecklinkSourceConfig::default(),
+                    };
+                    self.registry.add_decklink(key, config, port.connections);
                     self.dirty = true;
                 }
             }
@@ -329,6 +331,34 @@ impl Engine {
         }
     }
 
+    /// Auto-connect sources for protocols with no discovery service
+    fn reconnect_manual(&mut self, protocol: Protocol) {
+        for source in &self.cfg.canvas.sources {
+            if source.protocol != protocol {
+                continue;
+            }
+            let Some(source_ref) = source.source_ref.clone() else {
+                continue;
+            };
+            if source_ref.is_empty() {
+                continue;
+            }
+            let key = SourceKey::new(protocol.clone(), source_ref);
+            if self.registry.contains(&key) {
+                continue;
+            }
+            let config = match &source.config {
+                SourceConfig::Vnc(config) => config.clone(),
+                _ => VncSourceConfig::default(),
+            };
+            if !config.is_configured() {
+                continue;
+            }
+            self.registry.add_vnc_at(key, config);
+            self.dirty = true;
+        }
+    }
+
     pub fn cleanup_orphaned_sources(&mut self) {
         let active_keys: Vec<SourceKey> = self
             .cfg
@@ -368,8 +398,8 @@ impl Engine {
     pub fn connect(&mut self, protocol: Protocol, name: &str) {
         let key = SourceKey::new(protocol.clone(), name.to_string());
         match protocol {
-            // Test sources are created locally, never connected to.
-            Protocol::Test => {}
+            // Test and VNC sources are created locally, never connected to a discovered source.
+            Protocol::Test | Protocol::Vnc => {}
             Protocol::Ndi => {
                 if let Some(ref discovery) = self.ndi
                     && let Some(src) = discovery.find_by_name(name)

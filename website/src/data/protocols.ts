@@ -83,6 +83,13 @@ export const protocols: Protocol[] = [
     inputNote: 'Displays and windows',
   },
   {
+    name: 'VNC',
+    input: true,
+    platforms: ['macos', 'windows', 'linux'],
+    note: 'Remote desktop',
+    inputNote: 'Remote desktop frames over RFB',
+  },
+  {
     name: 'Test patterns',
     input: true,
     platforms: ['macos', 'windows', 'linux'],
