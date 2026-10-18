@@ -4,6 +4,7 @@ use crate::sources::{NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, Ndi
 use crate::sources::{DecklinkSourceConfig, DecklinkOutputConfig, DecklinkVideoConnection, DecklinkMode};
 use crate::sources::{OmtOutputConfig, OmtSourceConfig, OmtQuality};
 use crate::sources::VncSourceConfig;
+use crate::sources::{RdpColorDepth, RdpSourceConfig};
 #[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 #[cfg(target_os = "macos")]
@@ -640,6 +641,45 @@ fn vnc_source_config_round_trips_without_leaking_the_password() {
             assert!(c.keep_awake);
         }
         _ => panic!("expected VNC source config"),
+    }
+}
+
+#[test]
+fn rdp_source_config_round_trips_without_leaking_the_password() {
+    let mut source = Source::new(
+        "Server".to_string(),
+        Protocol::Rdp,
+        Some("RDP 1".to_string()),
+        0.0, 0.0, 1280, 720, 0,
+        TextureMode::Fit,
+        false, false,
+    );
+    source.config = SourceConfig::Rdp(RdpSourceConfig {
+        host: "winbox.example".to_string(),
+        port: 3389,
+        username: "operator".to_string(),
+        domain: "STUDIO".to_string(),
+        password: "hunter2".to_string(),
+        desktop_width: 1920,
+        desktop_height: 1080,
+        color_depth: RdpColorDepth::Bpp16,
+    });
+    let json = serde_json::to_string(&source).unwrap();
+    assert!(!json.contains("hunter2"), "password stored in plain text: {json}");
+    let parsed: Source = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.protocol, Protocol::Rdp);
+    match parsed.config {
+        SourceConfig::Rdp(c) => {
+            assert_eq!(c.host, "winbox.example");
+            assert_eq!(c.port, 3389);
+            assert_eq!(c.username, "operator");
+            assert_eq!(c.domain, "STUDIO");
+            assert_eq!(c.password, "hunter2");
+            assert_eq!(c.desktop_width, 1920);
+            assert_eq!(c.desktop_height, 1080);
+            assert_eq!(c.color_depth, RdpColorDepth::Bpp16);
+        }
+        _ => panic!("expected RDP source config"),
     }
 }
 

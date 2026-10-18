@@ -9,6 +9,7 @@ use super::ndi;
 use super::omt;
 use super::test;
 use super::vnc;
+use super::rdp;
 #[cfg(target_os = "macos")]
 use super::syphon;
 #[cfg(target_os = "macos")]
@@ -74,6 +75,7 @@ pub enum SourceConfig {
     #[cfg(target_os = "windows")]
     WindowsCapture(windowscapture::WindowsCaptureSourceConfig),
     Vnc(vnc::VncSourceConfig),
+    Rdp(rdp::RdpSourceConfig),
     Unknown(serde_json::Value),
 }
 
@@ -107,6 +109,7 @@ enum SourceConfigInner {
     #[cfg(target_os = "windows")]
     WindowsCapture(windowscapture::WindowsCaptureSourceConfig),
     Vnc(vnc::VncSourceConfig),
+    Rdp(rdp::RdpSourceConfig),
 }
 
 impl From<SourceConfigInner> for SourceConfig {
@@ -131,6 +134,7 @@ impl From<SourceConfigInner> for SourceConfig {
             #[cfg(target_os = "windows")]
             SourceConfigInner::WindowsCapture(c) => SourceConfig::WindowsCapture(c),
             SourceConfigInner::Vnc(c) => SourceConfig::Vnc(c),
+            SourceConfigInner::Rdp(c) => SourceConfig::Rdp(c),
         }
     }
 }
@@ -162,6 +166,7 @@ impl Serialize for SourceConfig {
             #[cfg(target_os = "windows")]
             SourceConfig::WindowsCapture(c) => SourceConfigInner::WindowsCapture(c.clone()).serialize(serializer),
             SourceConfig::Vnc(c) => SourceConfigInner::Vnc(c.clone()).serialize(serializer),
+            SourceConfig::Rdp(c) => SourceConfigInner::Rdp(c.clone()).serialize(serializer),
         }
     }
 }
@@ -205,6 +210,7 @@ impl SourceConfig {
             #[cfg(target_os = "windows")]
             Protocol::WindowsCapture => SourceConfig::WindowsCapture(windowscapture::WindowsCaptureSourceConfig::default()),
             Protocol::Vnc => SourceConfig::Vnc(vnc::VncSourceConfig::default()),
+            Protocol::Rdp => SourceConfig::Rdp(rdp::RdpSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
         }
     }
@@ -254,6 +260,7 @@ pub enum SourceRuntimeConfig {
         label: String,
     },
     Vnc,
+    Rdp,
 }
 
 /// A live source: its boxed runtime, the config persisted in the project, and
@@ -310,6 +317,9 @@ impl SourceKind {
             }
             (SourceConfig::Vnc(c), SourceRuntimeConfig::Vnc) => {
                 Box::new(vnc::VncSource::spawn(key.source_ref.clone(), c))
+            }
+            (SourceConfig::Rdp(c), SourceRuntimeConfig::Rdp) => {
+                Box::new(rdp::RdpSource::spawn(key.source_ref.clone(), c))
             }
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
@@ -426,6 +436,7 @@ pub struct SourceRegistry {
     sources: HashMap<SourceKey, SourceKind>,
     next_test: u32,
     next_vnc: u32,
+    next_rdp: u32,
     pending_restarts: HashSet<SourceKey>,
     restart_tx: Sender<RestartResult>,
     restart_rx: Receiver<RestartResult>,
@@ -438,6 +449,7 @@ impl SourceRegistry {
             sources: HashMap::new(),
             next_test: 0,
             next_vnc: 0,
+            next_rdp: 0,
             pending_restarts: HashSet::new(),
             restart_tx: tx,
             restart_rx: rx,
@@ -498,6 +510,30 @@ impl SourceRegistry {
             return key;
         }
         let kind = SourceKind::new(&key, SourceConfig::Vnc(config), SourceRuntimeConfig::Vnc);
+        self.sources.insert(key.clone(), kind);
+        return key;
+    }
+
+    /// Create a dedicated RDP source under a fresh key. The connection details
+    /// live in the config, so the key only has to be unique.
+    pub fn add_rdp(&mut self, config: rdp::RdpSourceConfig) -> SourceKey {
+        let key = loop {
+            self.next_rdp += 1;
+            let key = SourceKey::new(Protocol::Rdp, format!("RDP {}", self.next_rdp));
+            if !self.contains(&key) {
+                break key;
+            }
+        };
+        return self.add_rdp_at(key, config);
+    }
+
+    /// Create an RDP source under a known key, preserving the binding a project
+    /// was saved with.
+    pub fn add_rdp_at(&mut self, key: SourceKey, config: rdp::RdpSourceConfig) -> SourceKey {
+        if self.contains(&key) {
+            return key;
+        }
+        let kind = SourceKind::new(&key, SourceConfig::Rdp(config), SourceRuntimeConfig::Rdp);
         self.sources.insert(key.clone(), kind);
         return key;
     }

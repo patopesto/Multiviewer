@@ -7,6 +7,7 @@ use crate::engine::Engine;
 use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceStats, OutputConfig};
 use crate::sources::{DecklinkOutputConfig, NdiOutputConfig, OmtOutputConfig, DecklinkMode};
 use crate::sources::VncSourceConfig;
+use crate::sources::RdpSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::format_syphon_label;
 #[cfg(target_os = "macos")]
@@ -598,6 +599,7 @@ fn draw_sources_section(ui: &mut egui::Ui, engine: &mut Engine) {
 fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, selected_uuid: &str) {
     let mut new_test_source = false;
     let mut new_vnc_source = false;
+    let mut new_rdp_source = false;
     let mut new_connect: Option<(Protocol, String)> = None;
     let mut selected_source: Option<SourceRef> = None;
     let mut protocol_changed = false;
@@ -672,6 +674,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 protocol_changed = true;
                             }
                             if ui.selectable_value(&mut source.protocol, Protocol::Vnc, Protocol::Vnc.label()).clicked() {
+                                protocol_changed = true;
+                            }
+                            if ui.selectable_value(&mut source.protocol, Protocol::Rdp, Protocol::Rdp.label()).clicked() {
                                 protocol_changed = true;
                             }
                         });
@@ -1225,6 +1230,42 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                     }
                                 });
                         }
+                        Protocol::Rdp => {
+                            let rdp_sources: Vec<(String, String)> = engine
+                                .registry
+                                .list_sources(Protocol::Rdp)
+                                .into_iter()
+                                .map(|(key, kind)| {
+                                    let label = match &kind.config {
+                                        SourceConfig::Rdp(config) => config.label(&key.source_ref),
+                                        _ => key.source_ref.clone(),
+                                    };
+                                    (key.source_ref.clone(), label)
+                                })
+                                .collect();
+                            let current = source.source_ref.as_deref().unwrap_or("");
+                            let current_label = rdp_sources
+                                .iter()
+                                .find(|(id, _)| id == current)
+                                .map(|(_, label)| label.clone())
+                                .unwrap_or_else(|| current.to_string());
+                            egui::ComboBox::from_id_salt("rdp_source")
+                                .width(ui.available_width())
+                                .height(1000.0)
+                                .selected_text(current_label)
+                                .truncate()
+                                .show_ui(ui, |ui| {
+                                    // No discovery service: the list is the connections this project has created.
+                                    for (id, label) in &rdp_sources {
+                                        if ui.selectable_label(current == id, label).clicked() {
+                                            selected_source = Some(id.clone());
+                                        }
+                                    }
+                                    if ui.selectable_label(false, "+ New RDP Source").clicked() {
+                                        new_rdp_source = true;
+                                    }
+                                });
+                        }
                         Protocol::Unknown(_) => {
                             // No runtime source exists for unavailable protocols.
                             ui.weak("(unavailable)");
@@ -1390,6 +1431,13 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
             let key = engine.registry.add_vnc(config.clone());
             source.source_ref = Some(key.source_ref);
             source.config = SourceConfig::Vnc(config);
+            engine.dirty = true;
+        }
+        if new_rdp_source {
+            let config = RdpSourceConfig::default();
+            let key = engine.registry.add_rdp(config.clone());
+            source.source_ref = Some(key.source_ref);
+            source.config = SourceConfig::Rdp(config);
             engine.dirty = true;
         }
     }

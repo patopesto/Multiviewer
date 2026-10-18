@@ -50,6 +50,8 @@ epaint_default_fonts = "0.36"
 grafton-ndi = "1.0.0"
 openmediatransport = { version = "0.1", features = ["wgpu"] }
 vnc = { package = "vnc-rs", version = "0.6" }
+ironrdp-client = { version = "0.1", default-features = false, features = ["rustls"] }
+ironrdp-pdu = "0.9"
 tokio = { version = "1", features = ["rt", "net", "time"] }
 aes-gcm = "0.10"
 uuid = { version = "1", features = ["v4"] }

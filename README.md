@@ -41,6 +41,7 @@
 | **macOS Screen Capture** | ✅ | — | macOS only | Display and window screen capture |
 | **Windows Screen Capture** | ✅ | — | Windows only | Display and window screen capture |
 | **VNC** | ✅ | — | macOS, Windows, Linux | Remote Desktop over VNC/RFB |
+| **RDP** | ✅ | — | macOS, Windows, Linux | Microsoft Remote Desktop |
 
 ---
 

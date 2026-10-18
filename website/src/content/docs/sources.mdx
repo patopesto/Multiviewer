@@ -124,6 +124,29 @@ sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysSta
 
 Then restart Screen Sharing or reboot. This lets anyone holding the VNC password reach the logged-in desktop directly, so weigh it against your security policy.
 
+### RDP
+
+RDP servers are not discovered either: pick **+ New RDP Source** in the source list, then enter the address and the account credentials under **Protocol Settings**.
+
+Unlike VNC, RDP authenticates a real user account, and there is no separate view-only mode: the credentials decide which session is shown. The password is encrypted with a key built into the app, so it is not readable at a glance in a project file, but anyone who has the app and the file can recover it.
+
+Multiviewer only displays the remote screen: it never sends keystrokes or clicks, so it cannot be used to control the
+host. Two consequences are worth knowing before pointing it at a machine someone is using:
+
+- A host allows one session per account. If that account is already logged in elsewhere, connecting takes the session
+  over. Use a dedicated account, or expect to disconnect the other session.
+- Closing the app disconnects the session rather than signing it out, so whether the machine is left locked or logged
+  off follows the host's own policy.
+
+The server certificate is always accepted, which is what makes a host using its own self-signed certificate connectable.
+RDP over TLS still encrypts the session, but it does not prove the host is the one it claims to be: rely on a trusted
+network.
+
+**Size** is the desktop resolution requested from the host. A host may also keep the resolution of
+a session that is already running.
+
+<SettingsTable name="RDP" direction="input" />
+
 ### Test patterns
 
 Generate a test pattern with a configurable size, frame rate, and a moving marker to make dropped or frozen frames

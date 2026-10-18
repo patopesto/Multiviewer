@@ -9,6 +9,7 @@ mod decklink;
 mod ndi;
 mod omt;
 mod vnc;
+mod rdp;
 #[cfg(target_os = "macos")]
 mod syphon;
 #[cfg(target_os = "macos")]
@@ -48,6 +49,7 @@ pub use decklink::{
     DecklinkVideoConnection, DecklinkVideoConnections, DecklinkMode,
 };
 pub use vnc::VncSourceConfig;
+pub use rdp::{RdpColorDepth, RdpSourceConfig};
 
 #[cfg(target_os = "macos")]
 pub use syphon::{

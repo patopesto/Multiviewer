@@ -87,7 +87,14 @@ export const protocols: Protocol[] = [
     input: true,
     platforms: ['macos', 'windows', 'linux'],
     note: 'Remote desktop',
-    inputNote: 'Remote desktop frames over RFB',
+    inputNote: 'Remote desktop over VNC/RFB',
+  },
+  {
+    name: 'RDP',
+    input: true,
+    platforms: ['macos', 'windows', 'linux'],
+    note: 'Remote desktop',
+    inputNote: 'Remote desktop over Microsoft RDP',
   },
   {
     name: 'Test patterns',

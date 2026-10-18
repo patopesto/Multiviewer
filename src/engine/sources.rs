@@ -6,7 +6,6 @@ use crate::sources::{Protocol, SourceConfig, SourceKey};
 use crate::sources::DecklinkSourceConfig;
 use crate::sources::NdiSourceConfig;
 use crate::sources::OmtSourceConfig;
-use crate::sources::VncSourceConfig;
 #[cfg(target_os = "macos")]
 use crate::sources::{AvFoundationSourceConfig, ensure_screen_capture_access_requested, ScreenCaptureKitSourceConfig, SyphonSourceConfig};
 #[cfg(target_os = "windows")]
@@ -39,6 +38,7 @@ impl Engine {
             #[cfg(target_os = "windows")]
             self.reconnect_windowscapture();
             self.reconnect_manual(Protocol::Vnc);
+            self.reconnect_manual(Protocol::Rdp);
         }
 
         self.registry.apply_pending_restarts();
@@ -347,15 +347,26 @@ impl Engine {
             if self.registry.contains(&key) {
                 continue;
             }
-            let config = match &source.config {
-                SourceConfig::Vnc(config) => config.clone(),
-                _ => VncSourceConfig::default(),
-            };
-            if !config.is_configured() {
-                continue;
+            match &source.config {
+                SourceConfig::Vnc(config) => {
+                    if !config.is_configured() {
+                        continue;
+                    }
+                    self.registry.add_vnc_at(key, config.clone());
+                    self.dirty = true;
+                }
+                SourceConfig::Rdp(config) => {
+                    if !config.is_configured() {
+                        continue;
+                    }
+                    self.registry.add_rdp_at(key, config.clone());
+                    self.dirty = true;
+                }
+                // Protocols with a discovery service never reach here, and a
+                // placement whose config does not match its protocol has
+                // nothing to open with either.
+                _ => {}
             }
-            self.registry.add_vnc_at(key, config);
-            self.dirty = true;
         }
     }
 
@@ -398,8 +409,8 @@ impl Engine {
     pub fn connect(&mut self, protocol: Protocol, name: &str) {
         let key = SourceKey::new(protocol.clone(), name.to_string());
         match protocol {
-            // Test and VNC sources are created locally, never connected to a discovered source.
-            Protocol::Test | Protocol::Vnc => {}
+            // Test, VNC and RDP sources are created locally, never connected to a discovered source.
+            Protocol::Test | Protocol::Vnc | Protocol::Rdp => {}
             Protocol::Ndi => {
                 if let Some(ref discovery) = self.ndi
                     && let Some(src) = discovery.find_by_name(name)

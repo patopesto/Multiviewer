@@ -5,6 +5,7 @@ use crate::sources::{NdiSourceConfig, NdiReceiverBandwidth, NdiReceiverColorForm
 use crate::sources::{OmtSourceConfig, OmtQuality};
 use crate::sources::{DecklinkSourceConfig, DecklinkVideoConnection, DecklinkVideoConnections};
 use crate::sources::VncSourceConfig;
+use crate::sources::{RdpColorDepth, RdpSourceConfig};
 #[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 #[cfg(target_os = "macos")]
@@ -32,6 +33,7 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         SourceConfig::Omt(cfg) => omt_settings_ui(cfg, ui),
         SourceConfig::Decklink(cfg) => decklink_settings_ui(cfg, &source.runtime, ui),
         SourceConfig::Vnc(cfg) => vnc_settings_ui(cfg, ui),
+        SourceConfig::Rdp(cfg) => rdp_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
         SourceConfig::Syphon(cfg) => syphon_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
@@ -49,48 +51,6 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
         // Config from a platform that has this protocol; no runtime source.
         SourceConfig::Unknown(_) => false,
     };
-}
-
-fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
-    ui.label(label);
-    settings_value(ui, |ui| {
-        let mut color_f32 = [
-            color[0] as f32 / 255.0,
-            color[1] as f32 / 255.0,
-            color[2] as f32 / 255.0,
-        ];
-        if ui.color_edit_button_rgb(&mut color_f32).changed() {
-            *color = [
-                (color_f32[0] * 255.0) as u8,
-                (color_f32[1] * 255.0) as u8,
-                (color_f32[2] * 255.0) as u8,
-            ];
-        }
-    });
-    ui.end_row();
-}
-
-#[allow(dead_code)]
-fn max_fps_drag(ui: &mut egui::Ui, max_fps: &mut u32) {
-    ui.add(
-        egui::DragValue::new(max_fps)
-            .range(0..=240)
-            .update_while_editing(false)
-            .custom_formatter(|n, _| {
-                if n as u32 == 0 {
-                    "Uncapped".to_string()
-                } else {
-                    format!("{}", n as u32)
-                }
-            })
-            .custom_parser(|s| {
-                if s.eq_ignore_ascii_case("uncapped") {
-                    Some(0.0)
-                } else {
-                    s.trim().parse::<f64>().ok()
-                }
-            }),
-    );
 }
 
 fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
@@ -710,37 +670,6 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
     return *settings != old;
 }
 
-/// Avoid having changed flag mid-edits
-fn edit_committed(dirty: bool, lost_focus: bool, drag_stopped: bool) -> bool {
-    return dirty && (lost_focus || drag_stopped);
-}
-
-/// Applies an edit to a field only when it is committed: Enter, clicking away,
-/// or the end of a drag. The widget may write the value as the user moves it,
-/// but the panel is told once, so a field that reconnects the source does not
-/// restart it once per keystroke.
-fn commit_field_edit(
-    ui: &mut egui::Ui,
-    id: &str,
-    changed: bool,
-    lost_focus: bool,
-    drag_stopped: bool,
-) -> bool {
-    let state_id = ui.make_persistent_id(id);
-    let mut dirty = ui.data_mut(|data| *data.get_temp_mut_or_default::<bool>(state_id));
-    if changed {
-        dirty = true;
-    }
-    // A singleline `TextEdit` surrenders focus on Enter as well as on blur; a
-    // `DragValue` never takes focus, so its drag release is the commit instead.
-    let committed = edit_committed(dirty, lost_focus, drag_stopped);
-    if committed {
-        dirty = false;
-    }
-    ui.data_mut(|data| data.insert_temp(state_id, dirty));
-    return committed;
-}
-
 fn vnc_settings_ui(cfg: &mut VncSourceConfig, ui: &mut egui::Ui) -> bool {
     let mut committed = false;
     settings_grid(ui, "vnc_settings_grid", |ui| {
@@ -776,20 +705,7 @@ fn vnc_settings_ui(cfg: &mut VncSourceConfig, ui: &mut egui::Ui) -> bool {
 
         ui.label("Password");
         settings_value(ui, |ui| {
-            let revealed_id = ui.make_persistent_id("vnc_password_revealed");
-            let revealed = ui.data_mut(|data| *data.get_temp_mut_or_default::<bool>(revealed_id));
-            let width = (ui.available_width() - 30.0).max(60.0);
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut cfg.password)
-                    .password(!revealed)
-                    .desired_width(width),
-            );
-            committed |= commit_field_edit(ui, "vnc_password", response.changed(), response.lost_focus(), false);
-            let icon = if revealed { "\u{1f648}" } else { "\u{1f441}" };
-            let hint = if revealed { "Hide password" } else { "Show password" };
-            if ui.button(icon).on_hover_text(hint).clicked() {
-                ui.data_mut(|data| data.insert_temp(revealed_id, !revealed));
-            }
+            committed |= password_row(ui, "vnc_password", &mut cfg.password);
         });
         ui.end_row();
 
@@ -801,6 +717,195 @@ fn vnc_settings_ui(cfg: &mut VncSourceConfig, ui: &mut egui::Ui) -> bool {
     });
     return committed;
 }
+
+fn rdp_settings_ui(cfg: &mut RdpSourceConfig, ui: &mut egui::Ui) -> bool {
+    let mut committed = false;
+    settings_grid(ui, "rdp_settings_grid", |ui| {
+        ui.label("Host");
+        settings_value(ui, |ui| {
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut cfg.host)
+                    .hint_text("hostname or IP")
+                    .desired_width(ui.available_width()),
+            );
+            committed |= commit_field_edit(ui, "rdp_host", response.changed(), response.lost_focus(), false);
+        });
+        ui.end_row();
+
+        ui.label("Port");
+        settings_value(ui, |ui| {
+            // The value only lands in the config when the edit finishes, so a
+            // half-typed port is never dialled.
+            let response = ui.add(
+                egui::DragValue::new(&mut cfg.port)
+                    .range(1..=65535)
+                    .update_while_editing(false),
+            );
+            committed |= commit_field_edit(
+                ui,
+                "rdp_port",
+                response.changed(),
+                response.lost_focus(),
+                response.drag_stopped(),
+            );
+        });
+        ui.end_row();
+
+        ui.label("Username");
+        settings_value(ui, |ui| {
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut cfg.username)
+                    .hint_text("user or user@domain")
+                    .desired_width(ui.available_width()),
+            );
+            committed |= commit_field_edit(ui, "rdp_username", response.changed(), response.lost_focus(), false);
+        });
+        ui.end_row();
+
+        ui.label("Domain");
+        settings_value(ui, |ui| {
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut cfg.domain)
+                    .hint_text("optional")
+                    .desired_width(ui.available_width()),
+            );
+            committed |= commit_field_edit(ui, "rdp_domain", response.changed(), response.lost_focus(), false);
+        });
+        ui.end_row();
+
+        ui.label("Password");
+        settings_value(ui, |ui| {
+            committed |= password_row(ui, "rdp_password", &mut cfg.password);
+        });
+        ui.end_row();
+
+        ui.label("Size");
+        settings_value(ui, |ui| {
+            // A `DragValue` never takes focus, so the release is the commit.
+            ui.horizontal(|ui| {
+                ui.label("W");
+                let width = ui.add(egui::DragValue::new(&mut cfg.desktop_width).range(16..=8192));
+                ui.label("H");
+                let height = ui.add(egui::DragValue::new(&mut cfg.desktop_height).range(16..=8192));
+                committed |= commit_field_edit(
+                    ui,
+                    "rdp_size",
+                    width.changed() || height.changed(),
+                    width.lost_focus() || height.lost_focus(),
+                    width.drag_stopped() || height.drag_stopped(),
+                );
+            });
+        });
+        ui.end_row();
+
+        ui.label("Color depth");
+        settings_value(ui, |ui| {
+            egui::ComboBox::from_id_salt("rdp_color_depth")
+                .width(ui.available_width())
+                .selected_text(cfg.color_depth.label())
+                .show_ui(ui, |ui| {
+                    for depth in [RdpColorDepth::Bpp16, RdpColorDepth::Bpp32] {
+                        committed |= ui
+                            .selectable_value(&mut cfg.color_depth, depth, depth.label())
+                            .changed();
+                    }
+                });
+        });
+        ui.end_row();
+    });
+    return committed;
+}
+
+// Helpers
+fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
+    ui.label(label);
+    settings_value(ui, |ui| {
+        let mut color_f32 = [
+            color[0] as f32 / 255.0,
+            color[1] as f32 / 255.0,
+            color[2] as f32 / 255.0,
+        ];
+        if ui.color_edit_button_rgb(&mut color_f32).changed() {
+            *color = [
+                (color_f32[0] * 255.0) as u8,
+                (color_f32[1] * 255.0) as u8,
+                (color_f32[2] * 255.0) as u8,
+            ];
+        }
+    });
+    ui.end_row();
+}
+
+#[allow(dead_code)]
+fn max_fps_drag(ui: &mut egui::Ui, max_fps: &mut u32) {
+    ui.add(
+        egui::DragValue::new(max_fps)
+            .range(0..=240)
+            .update_while_editing(false)
+            .custom_formatter(|n, _| {
+                if n as u32 == 0 {
+                    "Uncapped".to_string()
+                } else {
+                    format!("{}", n as u32)
+                }
+            })
+            .custom_parser(|s| {
+                if s.eq_ignore_ascii_case("uncapped") {
+                    Some(0.0)
+                } else {
+                    s.trim().parse::<f64>().ok()
+                }
+            }),
+    );
+}
+
+/// Avoid having changed flag mid-edits
+fn edit_committed(dirty: bool, lost_focus: bool, drag_stopped: bool) -> bool {
+    return dirty && (lost_focus || drag_stopped);
+}
+
+/// Applies an edit to a field only when it is committed: Enter, clicking away or the end of a drag
+fn commit_field_edit(
+    ui: &mut egui::Ui,
+    id: &str,
+    changed: bool,
+    lost_focus: bool,
+    drag_stopped: bool,
+) -> bool {
+    let state_id = ui.make_persistent_id(id);
+    let mut dirty = ui.data_mut(|data| *data.get_temp_mut_or_default::<bool>(state_id));
+    if changed {
+        dirty = true;
+    }
+    // A singleline `TextEdit` surrenders focus on Enter as well as on blur; a
+    // `DragValue` never takes focus, so its drag release is the commit instead.
+    let committed = edit_committed(dirty, lost_focus, drag_stopped);
+    if committed {
+        dirty = false;
+    }
+    ui.data_mut(|data| data.insert_temp(state_id, dirty));
+    return committed;
+}
+
+/// Masked password field with a reveal toggle. The value is applied on Enter or when focus leaves
+fn password_row(ui: &mut egui::Ui, id: &str, password: &mut String) -> bool {
+    let revealed_id = ui.make_persistent_id((id, "revealed"));
+    let revealed = ui.data_mut(|data| *data.get_temp_mut_or_default::<bool>(revealed_id));
+    let width = (ui.available_width() - 30.0).max(60.0);
+    let response = ui.add(
+        egui::TextEdit::singleline(password)
+            .password(!revealed)
+            .desired_width(width),
+    );
+    let committed = commit_field_edit(ui, id, response.changed(), response.lost_focus(), false);
+    let icon = if revealed { "\u{1f648}" } else { "\u{1f441}" };
+    let hint = if revealed { "Hide password" } else { "Show password" };
+    if ui.button(icon).on_hover_text(hint).clicked() {
+        ui.data_mut(|data| data.insert_temp(revealed_id, !revealed));
+    }
+    return committed;
+}
+
 
 #[cfg(test)]
 mod tests {

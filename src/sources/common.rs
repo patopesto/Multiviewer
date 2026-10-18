@@ -10,6 +10,7 @@ pub enum Protocol {
     Omt,
     Decklink,
     Vnc,
+    Rdp,
     #[cfg(target_os = "macos")]
     Syphon,
     #[cfg(target_os = "macos")]
@@ -54,6 +55,7 @@ impl Protocol {
             #[cfg(target_os = "windows")]
             Protocol::WindowsCapture => "WindowsCapture",
             Protocol::Vnc => "Vnc",
+            Protocol::Rdp => "Rdp",
             Protocol::Unknown(name) => name,
         }
     }
@@ -79,6 +81,7 @@ impl Protocol {
             #[cfg(target_os = "windows")]
             Protocol::WindowsCapture => "Windows Screen Capture".to_string(),
             Protocol::Vnc => "VNC".to_string(),
+            Protocol::Rdp => "RDP".to_string(),
             Protocol::Unknown(name) => format!("{name} (Unavailable)"),
         }
     }
@@ -113,6 +116,7 @@ impl<'de> Deserialize<'de> for Protocol {
             #[cfg(target_os = "windows")]
             "WindowsCapture" => Protocol::WindowsCapture,
             "Vnc" => Protocol::Vnc,
+            "Rdp" => Protocol::Rdp,
             other => Protocol::Unknown(other.to_string()),
         })
     }
