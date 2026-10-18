@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -19,6 +20,10 @@ const BGRA_BYTES: usize = 4;
 /// Default RFB port.
 const DEFAULT_PORT: u16 = 5900;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+/// Bound on the banner, security and init exchange. A server can take seconds to
+/// answer while its session spins up, but a peer that accepts the connection and
+/// then goes silent must not park the source thread: `Drop` joins it.
+const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const RETRY_DELAY: Duration = Duration::from_secs(1);
 /// Granularity of the retry sleep, so a stop request is seen promptly.
 const RETRY_SLICE: Duration = Duration::from_millis(50);
@@ -233,7 +238,9 @@ fn run_capture(
     source_ref: SourceRef,
 ) {
     if !config.is_configured() {
-        tracing::warn!(source = source_ref, "VNC source has no host configured");
+        // Expected while a source is still being set up: its settings are in the
+        // panel, and the source has to stay registered for them to be reachable.
+        tracing::debug!(source = source_ref, "VNC source has no host configured");
         return;
     }
     let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
@@ -432,6 +439,12 @@ async fn sleep_while_running(running: &AtomicBool, duration: Duration) {
     }
 }
 
+/// Run one network step under a bound, so a peer that stops answering cannot
+/// park the source thread. `None` means the step ran out of time.
+async fn bounded<T>(timeout: Duration, step: impl Future<Output = T>) -> Option<T> {
+    return tokio::time::timeout(timeout, step).await.ok();
+}
+
 /// Open and authenticate one session. Returns `None` on any failure so the
 /// caller retries after a delay.
 async fn connect(
@@ -475,10 +488,14 @@ async fn connect(
             return None;
         }
     };
-    let state = match state.try_start().await {
-        Ok(state) => state,
-        Err(e) => {
+    let state = match bounded(HANDSHAKE_TIMEOUT, state.try_start()).await {
+        Some(Ok(state)) => state,
+        Some(Err(e)) => {
             tracing::warn!(source = source_ref, "VNC handshake failed: {e}");
+            return None;
+        }
+        None => {
+            tracing::warn!(source = source_ref, "VNC handshake with {label} timed out");
             return None;
         }
     };
@@ -602,6 +619,18 @@ impl VideoSource for VncSource {
 mod tests {
     use super::*;
     use std::io::{Read, Write};
+
+    /// `bounded` is what keeps a silent peer from parking the source thread:
+    /// the step it wraps always gives up.
+    #[test]
+    fn a_bounded_step_gives_up_on_time() {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        runtime.block_on(async {
+            assert_eq!(bounded(Duration::from_millis(50), async { 7 }).await, Some(7));
+            let never = core::future::pending::<u8>();
+            assert_eq!(bounded(Duration::from_millis(50), never).await, None);
+        });
+    }
 
     #[test]
     fn is_configured_requires_a_host() {

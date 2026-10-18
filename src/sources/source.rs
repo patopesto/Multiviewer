@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 
 use super::{Protocol, Frame, NdiSourceInfo, OmtSourceInfo, SourceStats};
@@ -273,6 +274,20 @@ pub struct SourceKind {
 }
 
 impl SourceKind {
+    /// A kind that resolves but has no live source behind it yet. A restart puts
+    /// one in place while the old source is released and its replacement opens:
+    /// the device has to be free before it is reopened, and every binding on the
+    /// key (frames, stats, settings) still has to resolve.
+    fn pending(config: SourceConfig, runtime: SourceRuntimeConfig) -> Self {
+        return Self {
+            source: Box::new(PendingSource {
+                stats: Arc::new(Mutex::new(SourceStats::new())),
+            }),
+            config,
+            runtime,
+        };
+    }
+
     fn new(key: &SourceKey, config: SourceConfig, runtime: SourceRuntimeConfig) -> Self {
         let source: Box<dyn VideoSource> = match (&config, &runtime) {
             (SourceConfig::Test(c), SourceRuntimeConfig::Test) => {
@@ -376,9 +391,38 @@ impl SourceKind {
     }
 }
 
+/// How long a restart may stay outstanding before its key is released for another attempt.
+const RESTART_TIMEOUT: Duration = Duration::from_secs(20);
+
 pub struct RestartResult {
     pub key: SourceKey,
     pub kind: SourceKind,
+}
+
+/// The stand-in a restart leaves behind for the key it is rebuilding.
+struct PendingSource {
+    stats: Arc<Mutex<SourceStats>>,
+}
+
+impl VideoSource for PendingSource {
+    fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
+        return None;
+    }
+
+    fn stats(&self) -> Arc<Mutex<SourceStats>> {
+        return self.stats.clone();
+    }
+}
+
+/// Drop a source that a restart replaced. Dropping joins the capture thread
+fn reap_replaced_source(key: SourceKey, kind: SourceKind) {
+    let thread_name = format!("{}-reap-{}", key.protocol.name().to_lowercase(), key.source_ref);
+    let spawned = std::thread::Builder::new()
+        .name(thread_name)
+        .spawn(move || drop(kind));
+    if let Err(e) = spawned {
+        tracing::error!("Failed to spawn a source reaper: {e}");
+    }
 }
 
 /// Reusable full-frame buffers to be used by VideoSource producers
@@ -437,7 +481,7 @@ pub struct SourceRegistry {
     next_test: u32,
     next_vnc: u32,
     next_rdp: u32,
-    pending_restarts: HashSet<SourceKey>,
+    pending_restarts: HashMap<SourceKey, Instant>,
     restart_tx: Sender<RestartResult>,
     restart_rx: Receiver<RestartResult>,
 }
@@ -450,7 +494,7 @@ impl SourceRegistry {
             next_test: 0,
             next_vnc: 0,
             next_rdp: 0,
-            pending_restarts: HashSet::new(),
+            pending_restarts: HashMap::new(),
             restart_tx: tx,
             restart_rx: rx,
         }
@@ -686,7 +730,7 @@ impl SourceRegistry {
 
     /// Whether a source for this key is live or being restarted.
     pub fn contains(&self, key: &SourceKey) -> bool {
-        self.sources.contains_key(key) || self.pending_restarts.contains(key)
+        self.sources.contains_key(key) || self.pending_restarts.contains_key(key)
     }
 
     pub fn get(&self, key: &SourceKey) -> Option<&SourceKind> {
@@ -707,43 +751,81 @@ impl SourceRegistry {
         self.sources.remove(key);
     }
 
-    /// Restart the source under `key` with its current config. Test and Spout
-    /// rebuild inline (no blocking work); every other protocol reopens a device
-    /// or receiver on a thread, and the key stays pending until
-    /// `apply_pending_restarts` reinserts the new source — quads show a
-    /// placeholder meanwhile.
+    /// Restart the source under `key` with its current config.
     pub fn restart(&mut self, key: &SourceKey) {
-        let Some(kind) = self.sources.remove(key) else {
+        if self.pending_restarts.contains_key(key) {
+            return;
+        }
+        let Some(live) = self.sources.remove(key) else {
             return;
         };
-        let inline = match &kind.runtime {
+        // rebuild inline (no blocking work)
+        let inline = match &live.runtime {
             SourceRuntimeConfig::Test => true,
             #[cfg(target_os = "windows")]
             SourceRuntimeConfig::Spout => true,
             _ => false,
         };
         if inline {
-            self.sources.insert(key.clone(), kind.respawn(key));
+            self.sources.insert(key.clone(), live.respawn(key));
             return;
         }
+        let config = live.config.clone();
+        let runtime = live.runtime.clone();
+        self.sources
+            .insert(key.clone(), SourceKind::pending(config.clone(), runtime.clone()));
+        self.pending_restarts.insert(key.clone(), Instant::now());
         let key = key.clone();
-        self.pending_restarts.insert(key.clone());
         let tx = self.restart_tx.clone();
         let thread_name =
             format!("{}-restart-{}", key.protocol.name().to_lowercase(), key.source_ref);
         std::thread::Builder::new()
             .name(thread_name)
             .spawn(move || {
-                let kind = kind.respawn(&key);
+                // The old source is released on this thread, so opening the replacement never contends with it
+                drop(live);
+                let kind = SourceKind::new(&key, config, runtime);
                 let _ = tx.send(RestartResult { key, kind });
             })
             .expect("spawn source restart thread");
     }
 
     pub fn apply_pending_restarts(&mut self) {
-        while let Ok(result) = self.restart_rx.try_recv() {
+        // A teardown that never returns must not make a source unrebuildable:
+        // give up on the wait and let the next request try again.
+        let now = Instant::now();
+        let stuck: Vec<SourceKey> = self
+            .pending_restarts
+            .iter()
+            .filter(|(_, started)| now.duration_since(**started) >= RESTART_TIMEOUT)
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in stuck {
+            self.pending_restarts.remove(&key);
+            tracing::warn!(
+                source = key.source_ref,
+                "Gave up waiting for a source restart to finish; it stays idle until it is restarted"
+            );
+        }
+
+        while let Ok(mut result) = self.restart_rx.try_recv() {
             self.pending_restarts.remove(&result.key);
-            self.sources.insert(result.key, result.kind);
+            // A config edited while the replacement was being built is newer
+            // than the one it was built from: keep it, and build once more
+            let newer = match self.sources.get(&result.key) {
+                Some(kind) if kind.config != result.kind.config => Some(kind.config.clone()),
+                _ => None,
+            };
+            let edited = newer.is_some();
+            if let Some(config) = newer {
+                result.kind.config = config;
+            }
+            if let Some(replaced) = self.sources.insert(result.key.clone(), result.kind) {
+                reap_replaced_source(result.key.clone(), replaced);
+            }
+            if edited {
+                self.restart(&result.key);
+            }
         }
     }
 
@@ -898,5 +980,84 @@ mod tests {
         let key = registry.add_test(None);
         registry.restart(&key);
         assert!(registry.get(&key).is_some());
+    }
+
+    /// A source being rebuilt on a thread stays live and keeps its config, so
+    /// everything keyed on it (frames, stats, config UI) still resolves while
+    /// the replacement is built.
+    #[test]
+    fn a_threaded_restart_keeps_the_source_resolvable() {
+        let mut registry = SourceRegistry::new();
+        let key = registry.add_vnc(vnc::VncSourceConfig {
+            host: "studio.example".to_string(),
+            ..Default::default()
+        });
+        registry.restart(&key);
+
+        let live = registry.get(&key).expect("source vanished during its restart");
+        assert!(matches!(&live.config, SourceConfig::Vnc(config) if config.host == "studio.example"));
+
+        // The replacement lands under the same key, and asking again while one
+        // is in flight does not queue a second build.
+        registry.restart(&key);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while registry.pending_restarts.contains_key(&key) && Instant::now() < deadline {
+            registry.apply_pending_restarts();
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(!registry.pending_restarts.contains_key(&key));
+        assert!(registry.get(&key).is_some());
+    }
+
+    /// A config edited while a replacement was being built is newer than the one
+    /// that replacement was built from: it is kept, and the source is built once
+    /// more so nothing the user typed is silently reverted.
+    #[test]
+    fn an_edit_during_a_restart_survives_the_swap() {
+        let mut registry = SourceRegistry::new();
+        let first = vnc::VncSourceConfig {
+            host: "one.example".to_string(),
+            ..Default::default()
+        };
+        let edited = SourceConfig::Vnc(vnc::VncSourceConfig {
+            host: "two.example".to_string(),
+            ..first.clone()
+        });
+        let key = registry.add_vnc(first.clone());
+
+        // The user's newer edit is already on the live source when the
+        // replacement, built from the older config, lands.
+        registry.sources.get_mut(&key).unwrap().config = edited.clone();
+        registry.pending_restarts.insert(key.clone(), Instant::now());
+        let stale = SourceKind::new(&key, SourceConfig::Vnc(first), SourceRuntimeConfig::Vnc);
+        registry.restart_tx.send(RestartResult { key: key.clone(), kind: stale }).unwrap();
+
+        registry.apply_pending_restarts();
+
+        assert_eq!(registry.get(&key).map(|kind| kind.config.clone()), Some(edited));
+    }
+
+    /// A teardown that never finishes must not strand the key: after the wait it
+    /// is released so the source can be restarted again, and it stays resolvable
+    /// so its settings remain reachable.
+    #[test]
+    fn a_stuck_restart_is_given_up_on() {
+        let mut registry = SourceRegistry::new();
+        let key = registry.add_vnc(vnc::VncSourceConfig {
+            host: "studio.example".to_string(),
+            ..Default::default()
+        });
+        registry.pending_restarts.insert(
+            key.clone(),
+            Instant::now() - RESTART_TIMEOUT - Duration::from_secs(1),
+        );
+
+        registry.apply_pending_restarts();
+
+        assert!(!registry.pending_restarts.contains_key(&key));
+        assert!(registry.get(&key).is_some());
+
+        registry.restart(&key);
+        assert!(registry.pending_restarts.contains_key(&key));
     }
 }

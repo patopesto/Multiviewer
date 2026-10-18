@@ -3,6 +3,7 @@ use crate::compositor::{self, Rect};
 use crate::config::{Canvas, Output, Source, TextureMode, CONFIG_VERSION};
 use crate::engine::project::AUTO_SAVE_INTERVAL;
 use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection, NdiReceiverBandwidth, NdiReceiverColorFormat};
+use crate::sources::VncSourceConfig;
 use std::time::{Duration, Instant};
 
 fn test_engine(canvas: Canvas) -> Engine {
@@ -645,6 +646,31 @@ fn enabling_output_with_missing_runtime_recreates_it() {
     assert!(engine.cfg.canvas.outputs.iter().any(|o| o.uuid == id && o.enabled));
     let registered = engine.output_registry.get(&id).expect("runtime object recreated");
     assert!(registered.enabled());
+}
+
+/// A placement whose source has not been configured yet still gets a runtime, so
+/// its Protocol Settings stay reachable and the host can be filled in. Without
+/// one the side panel hides every field on that source, which is a dead end.
+#[test]
+fn an_unconfigured_manual_source_is_registered() {
+    let mut placement = Source::new(
+        "Remote".into(),
+        Protocol::Vnc,
+        Some("VNC 1".into()),
+        0.0, 0.0, 640, 360, 0, TextureMode::Fit, false, false,
+    );
+    placement.config = SourceConfig::Vnc(VncSourceConfig::default());
+    let mut engine = test_engine(Canvas {
+        sources: vec![placement],
+        ..Default::default()
+    });
+
+    // The discovery tick is what registers a placement's runtime.
+    engine.last_discovery = Instant::now() - Duration::from_secs(1);
+    engine.update();
+
+    let key = SourceKey::new(Protocol::Vnc, "VNC 1".to_string());
+    assert!(engine.registry.get(&key).is_some());
 }
 
 /// An edit on one placement persists to every placement bound to the same

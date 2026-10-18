@@ -331,7 +331,7 @@ impl Engine {
         }
     }
 
-    /// Auto-connect sources for protocols with no discovery service
+    /// Auto-connect sources for protocols with no discovery service.
     fn reconnect_manual(&mut self, protocol: Protocol) {
         for source in &self.cfg.canvas.sources {
             if source.protocol != protocol {
@@ -349,16 +349,10 @@ impl Engine {
             }
             match &source.config {
                 SourceConfig::Vnc(config) => {
-                    if !config.is_configured() {
-                        continue;
-                    }
                     self.registry.add_vnc_at(key, config.clone());
                     self.dirty = true;
                 }
                 SourceConfig::Rdp(config) => {
-                    if !config.is_configured() {
-                        continue;
-                    }
                     self.registry.add_rdp_at(key, config.clone());
                     self.dirty = true;
                 }

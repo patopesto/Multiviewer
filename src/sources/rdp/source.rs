@@ -279,7 +279,9 @@ fn run_capture(
     source_ref: SourceRef,
 ) {
     if !config.is_configured() {
-        tracing::warn!(source = source_ref, "RDP source is not configured");
+        // Expected while a source is still being set up: its settings are in the
+        // panel, and the source has to stay registered for them to be reachable.
+        tracing::debug!(source = source_ref, "RDP source is not configured");
         return;
     }
     let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
