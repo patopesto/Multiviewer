@@ -170,8 +170,8 @@ importers:
         specifier: ^8.0.3
         version: 8.0.3(@astrojs/markdown-satteri@0.4.3)(astro@7.3.8(yaml@2.9.1))
       '@patopest/astro-theme':
-        specifier: git+https://gitlab.com/patopest/astro-theme.git#dd5ce44d89c57651acc67e0f0e5442b3a4299535
-        version: https://gitlab.com/patopest/astro-theme/-/archive/dd5ce44d89c57651acc67e0f0e5442b3a4299535/astro-theme-dd5ce44d89c57651acc67e0f0e5442b3a4299535.tar.gz(astro@7.3.8(yaml@2.9.1))
+        specifier: git+https://gitlab.com/patopest/astro-theme.git#f5df4f64363dc563cce06a5a79b98850195054b1
+        version: https://gitlab.com/patopest/astro-theme/-/archive/f5df4f64363dc563cce06a5a79b98850195054b1/astro-theme-f5df4f64363dc563cce06a5a79b98850195054b1.tar.gz(astro@7.3.8(yaml@2.9.1))
       astro:
         specifier: ^7.3.8
         version: 7.3.8(yaml@2.9.1)
@@ -614,8 +614,8 @@ packages:
   '@oxc-project/types@0.153.0':
     resolution: {integrity: sha512-jSNrRIyvPVLL5E1z/tS5zLAprosGz/FuI1PWwEOz59j3E4TTTzSpqKb/RDGqJhhW0QHYISGXxq582wGx6T11Tw==}
 
-  '@patopest/astro-theme@https://gitlab.com/patopest/astro-theme/-/archive/dd5ce44d89c57651acc67e0f0e5442b3a4299535/astro-theme-dd5ce44d89c57651acc67e0f0e5442b3a4299535.tar.gz':
-    resolution: {gitHosted: true, integrity: sha512-c9QEPVt/YZTNzxrzFrfA9bTU/3Tn/5lz1891arS/EewDyQvaRn35lIcLuySKw/vwuCtM8ThSJMpHkemOAyWfcA==, tarball: https://gitlab.com/patopest/astro-theme/-/archive/dd5ce44d89c57651acc67e0f0e5442b3a4299535/astro-theme-dd5ce44d89c57651acc67e0f0e5442b3a4299535.tar.gz}
+  '@patopest/astro-theme@https://gitlab.com/patopest/astro-theme/-/archive/f5df4f64363dc563cce06a5a79b98850195054b1/astro-theme-f5df4f64363dc563cce06a5a79b98850195054b1.tar.gz':
+    resolution: {gitHosted: true, integrity: sha512-UKOcj8PopXNSS5uGWI9acdsh5wn/9dtq++psdApqO27iIeSc01n4ivjw6joKAb1VYHXo+lwtu6FzIhB5+pKCYQ==, tarball: https://gitlab.com/patopest/astro-theme/-/archive/f5df4f64363dc563cce06a5a79b98850195054b1/astro-theme-f5df4f64363dc563cce06a5a79b98850195054b1.tar.gz}
     version: 0.1.0
     peerDependencies:
       astro: ^7.0.0
@@ -2171,7 +2171,7 @@ snapshots:
 
   '@oxc-project/types@0.153.0': {}
 
-  '@patopest/astro-theme@https://gitlab.com/patopest/astro-theme/-/archive/dd5ce44d89c57651acc67e0f0e5442b3a4299535/astro-theme-dd5ce44d89c57651acc67e0f0e5442b3a4299535.tar.gz(astro@7.3.8(yaml@2.9.1))':
+  '@patopest/astro-theme@https://gitlab.com/patopest/astro-theme/-/archive/f5df4f64363dc563cce06a5a79b98850195054b1/astro-theme-f5df4f64363dc563cce06a5a79b98850195054b1.tar.gz(astro@7.3.8(yaml@2.9.1))':
     dependencies:
       astro: 7.3.8(yaml@2.9.1)
       marked: 15.0.12
