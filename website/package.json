@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@astrojs/mdx": "^8.0.3",
-    "@patopest/astro-theme": "git+https://gitlab.com/patopest/astro-theme.git#dd5ce44d89c57651acc67e0f0e5442b3a4299535",
+    "@patopest/astro-theme": "git+https://gitlab.com/patopest/astro-theme.git#f5df4f64363dc563cce06a5a79b98850195054b1",
     "astro": "^7.3.8",
     "motion": "^14.2.0",
     "sharp": "^0.35.5"
