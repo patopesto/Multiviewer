@@ -4,7 +4,7 @@ use crate::APP_NAME;
 use crate::ui::source_settings;
 use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::engine::Engine;
-use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceStats, OutputConfig};
+use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceRegistry, SourceStats, OutputConfig};
 use crate::sources::{DecklinkOutputConfig, NdiOutputConfig, OmtOutputConfig, DecklinkMode};
 use crate::sources::VncSourceConfig;
 use crate::sources::RdpSourceConfig;
@@ -164,151 +164,31 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
 
     collapsable_section(ui, "Outputs", false, false, |ui| {
         settings_grid(ui, "output_grid", |ui| {
-            ui.label("NDI Output");
-            settings_value(ui, |ui| {
-                let ndi_index = engine
-                    .cfg
-                    .canvas
-                    .outputs
-                    .iter()
-                    .position(|o| o.protocol == Protocol::Ndi);
-                let registry_id = ndi_index
-                    .as_ref()
-                    .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
-                let mut enabled = registry_id
-                    .as_ref()
-                    .and_then(|id| engine.output_registry.get(id))
-                    .map(|ok| ok.enabled())
-                    .unwrap_or(false);
-
-                if ui.checkbox(&mut enabled, "Enable").changed() {
-                    if enabled {
-                        if let Some(id) = registry_id {
-                            engine.set_output_enabled(&id, true);
-                        } else {
-                            let name = "NDI Output".to_string();
-                            let ndi_config = NdiOutputConfig {
-                                sender_name: APP_NAME.to_string(),
-                            };
-                            engine.add_output(Protocol::Ndi, name, OutputConfig::Ndi(ndi_config));
-                        }
-                    } else if let Some(id) = registry_id {
-                        engine.remove_output(&id);
-                    }
-                }
+            output_enable_row(ui, engine, Protocol::Ndi, |_| {
+                OutputConfig::Ndi(NdiOutputConfig {
+                    sender_name: APP_NAME.to_string(),
+                })
             });
-            ui.end_row();
 
-            ui.label("OMT Output");
-            settings_value(ui, |ui| {
-                let omt_index = engine
-                    .cfg
-                    .canvas
-                    .outputs
-                    .iter()
-                    .position(|o| o.protocol == Protocol::Omt);
-                let registry_id = omt_index
-                    .as_ref()
-                    .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
-                let mut enabled = registry_id
-                    .as_ref()
-                    .and_then(|id| engine.output_registry.get(id))
-                    .map(|ok| ok.enabled())
-                    .unwrap_or(false);
-
-                if ui.checkbox(&mut enabled, "Enable").changed() {
-                    if enabled {
-                        if let Some(id) = registry_id {
-                            engine.set_output_enabled(&id, true);
-                        } else {
-                            let name = "OMT Output".to_string();
-                            let omt_config = OmtOutputConfig {
-                                sender_name: APP_NAME.to_string(),
-                            };
-                            engine.add_output(Protocol::Omt, name, OutputConfig::Omt(omt_config));
-                        }
-                    } else if let Some(id) = registry_id {
-                        engine.remove_output(&id);
-                    }
-                }
+            output_enable_row(ui, engine, Protocol::Omt, |_| {
+                OutputConfig::Omt(OmtOutputConfig {
+                    sender_name: APP_NAME.to_string(),
+                })
             });
-            ui.end_row();
 
             #[cfg(target_os = "macos")]
-            {
-                ui.label("Syphon Output");
-                settings_value(ui, |ui| {
-                    let syphon_index = engine
-                        .cfg
-                        .canvas
-                        .outputs
-                        .iter()
-                        .position(|o| o.protocol == Protocol::Syphon);
-                    let registry_id = syphon_index
-                        .as_ref()
-                        .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
-                    let mut enabled = registry_id
-                        .as_ref()
-                        .and_then(|id| engine.output_registry.get(id))
-                        .map(|ok| ok.enabled())
-                        .unwrap_or(false);
-
-                    if ui.checkbox(&mut enabled, "Enable").changed() {
-                        if enabled {
-                            if let Some(id) = registry_id {
-                                engine.set_output_enabled(&id, true);
-                            } else {
-                                let name = "Syphon Output".to_string();
-                                let syphon_config = SyphonOutputConfig {
-                                    server_name: name.clone(),
-                                };
-                                engine.add_output(Protocol::Syphon, name, OutputConfig::Syphon(syphon_config));
-                            }
-                        } else if let Some(id) = registry_id {
-                            engine.remove_output(&id);
-                        }
-                    }
-                });
-                ui.end_row();
-            }
+            output_enable_row(ui, engine, Protocol::Syphon, |name| {
+                OutputConfig::Syphon(SyphonOutputConfig {
+                    server_name: name.to_string(),
+                })
+            });
 
             #[cfg(target_os = "windows")]
-            {
-                ui.label("Spout Output");
-                settings_value(ui, |ui| {
-                    let spout_index = engine
-                        .cfg
-                        .canvas
-                        .outputs
-                        .iter()
-                        .position(|o| o.protocol == Protocol::Spout);
-                    let registry_id = spout_index
-                        .as_ref()
-                        .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
-                    let mut enabled = registry_id
-                        .as_ref()
-                        .and_then(|id| engine.output_registry.get(id))
-                        .map(|ok| ok.enabled())
-                        .unwrap_or(false);
-
-                    if ui.checkbox(&mut enabled, "Enable").changed() {
-                        if enabled {
-                            if let Some(id) = registry_id {
-                                engine.set_output_enabled(&id, true);
-                            } else {
-                                let name = "Spout Output".to_string();
-                                let spout_config = SpoutOutputConfig {
-                                    sender_name: APP_NAME.to_string(),
-                                };
-                                engine.add_output(Protocol::Spout, name, OutputConfig::Spout(spout_config));
-                            }
-                        } else if let Some(id) = registry_id {
-                            engine.remove_output(&id);
-                        }
-                    }
-                });
-                ui.end_row();
-            }
+            output_enable_row(ui, engine, Protocol::Spout, |_| {
+                OutputConfig::Spout(SpoutOutputConfig {
+                    sender_name: APP_NAME.to_string(),
+                })
+            });
 
             ui.label("DeckLink Output");
             settings_value(ui, |ui| {
@@ -1195,76 +1075,18 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 });
                         }
                         Protocol::Vnc => {
-                            let vnc_sources: Vec<(String, String)> = engine
-                                .registry
-                                .list_sources(Protocol::Vnc)
-                                .into_iter()
-                                .map(|(key, kind)| {
-                                    let label = match &kind.config {
-                                        SourceConfig::Vnc(config) => config.label(&key.source_ref),
-                                        _ => key.source_ref.clone(),
-                                    };
-                                    (key.source_ref.clone(), label)
-                                })
-                                .collect();
                             let current = source.source_ref.as_deref().unwrap_or("");
-                            let current_label = vnc_sources
-                                .iter()
-                                .find(|(id, _)| id == current)
-                                .map(|(_, label)| label.clone())
-                                .unwrap_or_else(|| current.to_string());
-                            egui::ComboBox::from_id_salt("vnc_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current_label)
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // No discovery service: the list is the connections this project has created.
-                                    for (id, label) in &vnc_sources {
-                                        if ui.selectable_label(current == id, label).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    if ui.selectable_label(false, "+ New VNC Source").clicked() {
-                                        new_vnc_source = true;
-                                    }
-                                });
+                            let (selected, new) =
+                                manual_source_combo(ui, &engine.registry, Protocol::Vnc, current);
+                            selected_source = selected;
+                            new_vnc_source |= new;
                         }
                         Protocol::Rdp => {
-                            let rdp_sources: Vec<(String, String)> = engine
-                                .registry
-                                .list_sources(Protocol::Rdp)
-                                .into_iter()
-                                .map(|(key, kind)| {
-                                    let label = match &kind.config {
-                                        SourceConfig::Rdp(config) => config.label(&key.source_ref),
-                                        _ => key.source_ref.clone(),
-                                    };
-                                    (key.source_ref.clone(), label)
-                                })
-                                .collect();
                             let current = source.source_ref.as_deref().unwrap_or("");
-                            let current_label = rdp_sources
-                                .iter()
-                                .find(|(id, _)| id == current)
-                                .map(|(_, label)| label.clone())
-                                .unwrap_or_else(|| current.to_string());
-                            egui::ComboBox::from_id_salt("rdp_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current_label)
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // No discovery service: the list is the connections this project has created.
-                                    for (id, label) in &rdp_sources {
-                                        if ui.selectable_label(current == id, label).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    if ui.selectable_label(false, "+ New RDP Source").clicked() {
-                                        new_rdp_source = true;
-                                    }
-                                });
+                            let (selected, new) =
+                                manual_source_combo(ui, &engine.registry, Protocol::Rdp, current);
+                            selected_source = selected;
+                            new_rdp_source |= new;
                         }
                         Protocol::Unknown(_) => {
                             // No runtime source exists for unavailable protocols.
@@ -1455,6 +1277,96 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
     if let Some(key) = restart_key {
         engine.registry.restart(&key);
     }
+}
+
+/// Global output toggle for one protocol. Enabling it with no output yet
+/// creates one from `make_config`.
+fn output_enable_row(
+    ui: &mut egui::Ui,
+    engine: &mut Engine,
+    protocol: Protocol,
+    make_config: impl FnOnce(&str) -> OutputConfig,
+) {
+    let label = protocol.label();
+    ui.label(format!("{label} Output"));
+    settings_value(ui, |ui| {
+        let registry_id = engine
+            .cfg
+            .canvas
+            .outputs
+            .iter()
+            .position(|o| o.protocol == protocol)
+            .map(|i| engine.cfg.canvas.outputs[i].uuid.clone());
+        let mut enabled = registry_id
+            .as_ref()
+            .and_then(|id| engine.output_registry.get(id))
+            .map(|ok| ok.enabled())
+            .unwrap_or(false);
+
+        if ui.checkbox(&mut enabled, "Enable").changed() {
+            if enabled {
+                if let Some(id) = registry_id {
+                    engine.set_output_enabled(&id, true);
+                } else {
+                    let name = format!("{label} Output");
+                    engine.add_output(protocol.clone(), name.clone(), make_config(&name));
+                }
+            } else if let Some(id) = registry_id {
+                engine.remove_output(&id);
+            }
+        }
+    });
+    ui.end_row();
+}
+
+/// Source picker for protocols with no discovery service: the connections this
+/// project has created, plus an entry to add another. Returns the source_ref to
+/// select and whether the "new" entry was clicked.
+fn manual_source_combo(
+    ui: &mut egui::Ui,
+    registry: &SourceRegistry,
+    protocol: Protocol,
+    current: &str,
+) -> (Option<SourceRef>, bool) {
+    let sources: Vec<(SourceRef, String)> = registry
+        .list_sources(protocol.clone())
+        .into_iter()
+        .map(|(key, kind)| {
+            let label = match &kind.config {
+                SourceConfig::Vnc(config) => config.label(&key.source_ref),
+                SourceConfig::Rdp(config) => config.label(&key.source_ref),
+                _ => key.source_ref.clone(),
+            };
+            (key.source_ref.clone(), label)
+        })
+        .collect();
+    let current_label = sources
+        .iter()
+        .find(|(id, _)| id == current)
+        .map(|(_, label)| label.clone())
+        .unwrap_or_else(|| current.to_string());
+    let mut selected = None;
+    let mut new = false;
+    egui::ComboBox::from_id_salt(format!("{}_source", protocol.name().to_lowercase()))
+        .width(ui.available_width())
+        .height(1000.0)
+        .selected_text(current_label)
+        .truncate()
+        .show_ui(ui, |ui| {
+            // No discovery service: the list is the connections this project has created.
+            for (id, label) in &sources {
+                if ui.selectable_label(current == id, label).clicked() {
+                    selected = Some(id.clone());
+                }
+            }
+            if ui
+                .selectable_label(false, format!("+ New {} Source", protocol.label()))
+                .clicked()
+            {
+                new = true;
+            }
+        });
+    return (selected, new);
 }
 
 fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {

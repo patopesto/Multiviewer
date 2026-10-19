@@ -1,10 +1,7 @@
-use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use serde::de::Deserializer;
-use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use vnc::{PixelFormat as VncPixelFormat, VncClient, VncConnector, VncEncoding, VncEvent, X11Event};
@@ -12,11 +9,9 @@ use vnc::{PixelFormat as VncPixelFormat, VncClient, VncConnector, VncEncoding, V
 use crate::secret;
 use super::super::{
     CpuFrame, Frame, FramePool, Framebuffer, PixelFormat, SourceRef, SourceStats, VideoSource,
+    PUBLISH_INTERVAL, publish_due, sleep_while_running,
 };
 
-/// RFB carries 32-bit pixels; we request BGRA so the compositor can sample them
-/// directly.
-const BGRA_BYTES: usize = 4;
 /// Default RFB port.
 const DEFAULT_PORT: u16 = 5900;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -25,8 +20,6 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// then goes silent must not park the source thread: `Drop` joins it.
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 const RETRY_DELAY: Duration = Duration::from_secs(1);
-/// Granularity of the retry sleep, so a stop request is seen promptly.
-const RETRY_SLICE: Duration = Duration::from_millis(50);
 /// Quiet time that marks the end of a server update. RFB has no end-of-update
 /// signal the client exposes, so a server that pauses mid-update looks the same
 /// as one that finished; this window is the best-effort boundary.
@@ -38,10 +31,6 @@ const ACTIVE_REQUEST_INTERVAL: Duration = Duration::from_millis(4);
 const IDLE_REQUEST_INTERVAL: Duration = Duration::from_millis(16);
 /// No event for this long means the stream is idle rather than active.
 const ACTIVE_WINDOW: Duration = Duration::from_millis(250);
-/// Floor between two published frames; a full frame is a whole-framebuffer copy.
-const PUBLISH_INTERVAL: Duration = Duration::from_millis(16);
-/// Never hold a dirty frame longer than this, even mid-stream.
-const MAX_PUBLISH_INTERVAL: Duration = Duration::from_millis(33);
 /// How often the keep-awake moves the remote pointer.
 const WAKE_INTERVAL: Duration = Duration::from_secs(10);
 /// Where the keep-awake parks the remote cursor. It alternates by one pixel so
@@ -62,7 +51,8 @@ const MAX_WAIT: Duration = Duration::from_millis(25);
 const MIN_WAIT: Duration = Duration::from_millis(1);
 
 // @docs protocol="VNC" direction=input
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct VncSourceConfig {
     // @docs label="Host" default=""
     /// Server address: an IP literal or a hostname.
@@ -73,6 +63,7 @@ pub struct VncSourceConfig {
     // @docs label="Password" default=""
     /// The server's VNC password, not an account password. Stored encrypted with a
     /// key built into the app.
+    #[serde(serialize_with = "secret::serialize_encrypted", deserialize_with = "secret::deserialize_encrypted")]
     pub password: String,
     // @docs label="Keep awake"
     /// Send a pointer event every couple of seconds so the server does not blank an
@@ -119,46 +110,6 @@ impl std::fmt::Debug for VncSourceConfig {
             .field("password", &password)
             .field("keep_awake", &self.keep_awake)
             .finish();
-    }
-}
-
-fn default_port() -> u16 {
-    return DEFAULT_PORT;
-}
-
-#[derive(Deserialize)]
-struct VncSourceConfigWire {
-    #[serde(default)]
-    host: String,
-    #[serde(default = "default_port")]
-    port: u16,
-    #[serde(default)]
-    password: String,
-    #[serde(default)]
-    keep_awake: bool,
-}
-
-impl Serialize for VncSourceConfig {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("VncSourceConfig", 4)?;
-        state.serialize_field("host", &self.host)?;
-        state.serialize_field("port", &self.port)?;
-        state.serialize_field("password", &secret::encrypt(&self.password))?;
-        state.serialize_field("keep_awake", &self.keep_awake)?;
-        return state.end();
-    }
-}
-
-impl<'de> Deserialize<'de> for VncSourceConfig {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let wire = VncSourceConfigWire::deserialize(deserializer)?;
-        return Ok(Self {
-            host: wire.host,
-            port: wire.port,
-            password: secret::decrypt(&wire.password),
-            keep_awake: wire.keep_awake,
-        });
     }
 }
 
@@ -218,15 +169,6 @@ fn request_due(quiet: Duration, since_request: Duration) -> bool {
 fn next_wait(until_request: Duration, until_publish: Duration) -> Duration {
     let soonest = until_request.min(until_publish);
     return soonest.clamp(MIN_WAIT, MAX_WAIT);
-}
-
-/// Whether to publish. A settled batch is a whole update; the fallback stops a
-/// continuously streaming server from freezing the tile.
-fn publish_due(quiet: Duration, since_publish: Duration) -> bool {
-    if since_publish < PUBLISH_INTERVAL {
-        return false;
-    }
-    return quiet >= SETTLE || since_publish >= MAX_PUBLISH_INTERVAL;
 }
 
 /// Connect and publish frames until `running` clears, reconnecting on failure.
@@ -374,7 +316,7 @@ async fn run_session(
             let quiet = last_event_at.elapsed();
 
             if pending
-                && publish_due(quiet, last_publish_at.elapsed())
+                && publish_due(SETTLE, quiet, last_publish_at.elapsed())
                 && let Some(fb) = &framebuffer
             {
                 let frame_span = tracing::debug_span!("vnc_frame");
@@ -429,22 +371,6 @@ async fn run_session(
     }
 }
 
-/// Sleep for `duration`, returning early once `running` clears. Keeps the
-/// source thread responsive to `Drop` instead of holding up its join.
-async fn sleep_while_running(running: &AtomicBool, duration: Duration) {
-    let deadline = Instant::now() + duration;
-    while running.load(Ordering::Relaxed) && Instant::now() < deadline {
-        let slice = RETRY_SLICE.min(deadline.saturating_duration_since(Instant::now()));
-        tokio::time::sleep(slice).await;
-    }
-}
-
-/// Run one network step under a bound, so a peer that stops answering cannot
-/// park the source thread. `None` means the step ran out of time.
-async fn bounded<T>(timeout: Duration, step: impl Future<Output = T>) -> Option<T> {
-    return tokio::time::timeout(timeout, step).await.ok();
-}
-
 /// Open and authenticate one session. Returns `None` on any failure so the
 /// caller retries after a delay.
 async fn connect(
@@ -488,7 +414,8 @@ async fn connect(
             return None;
         }
     };
-    let state = match bounded(HANDSHAKE_TIMEOUT, state.try_start()).await {
+    // Bounded, so a peer that stops answering cannot park the source thread.
+    let state = match tokio::time::timeout(HANDSHAKE_TIMEOUT, state.try_start()).await.ok() {
         Some(Ok(state)) => state,
         Some(Err(e)) => {
             tracing::warn!(source = source_ref, "VNC handshake failed: {e}");
@@ -588,7 +515,7 @@ fn resize(framebuffer: &mut Option<Framebuffer>, width: u32, height: u32) -> App
             Applied::Dirty
         }
         None => {
-            *framebuffer = Some(Framebuffer::new(width, height, BGRA_BYTES));
+            *framebuffer = Some(Framebuffer::new(width, height));
             Applied::Dirty
         }
     }
@@ -619,18 +546,6 @@ impl VideoSource for VncSource {
 mod tests {
     use super::*;
     use std::io::{Read, Write};
-
-    /// `bounded` is what keeps a silent peer from parking the source thread:
-    /// the step it wraps always gives up.
-    #[test]
-    fn a_bounded_step_gives_up_on_time() {
-        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
-        runtime.block_on(async {
-            assert_eq!(bounded(Duration::from_millis(50), async { 7 }).await, Some(7));
-            let never = core::future::pending::<u8>();
-            assert_eq!(bounded(Duration::from_millis(50), never).await, None);
-        });
-    }
 
     #[test]
     fn is_configured_requires_a_host() {
@@ -694,18 +609,6 @@ mod tests {
         assert_eq!(next_wait(Duration::ZERO, Duration::ZERO), MIN_WAIT);
         let long = Duration::from_secs(30);
         assert_eq!(next_wait(long, long), MAX_WAIT);
-    }
-
-    /// A settled batch publishes at the floor; a stream that never settles is
-    /// still published at the maximum interval instead of freezing.
-    #[test]
-    fn publish_prefers_settled_with_a_maximum_delay() {
-        assert!(!publish_due(SETTLE, Duration::ZERO));
-        assert!(publish_due(SETTLE, PUBLISH_INTERVAL));
-
-        assert!(!publish_due(Duration::ZERO, PUBLISH_INTERVAL));
-        assert!(!publish_due(Duration::ZERO, MAX_PUBLISH_INTERVAL / 2));
-        assert!(publish_due(Duration::ZERO, MAX_PUBLISH_INTERVAL));
     }
 
     /// The keep-awake alternates between two adjacent spots, so consecutive

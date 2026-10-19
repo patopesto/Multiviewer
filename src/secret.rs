@@ -1,5 +1,8 @@
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
+use serde::de::Deserializer;
+use serde::ser::Serializer;
+use serde::Deserialize;
 
 const PREFIX: &str = "v1:";
 const NONCE_LEN: usize = 12;
@@ -66,6 +69,16 @@ pub fn decrypt(blob: &str) -> String {
 
 fn to_hex(bytes: &[u8]) -> String {
     return bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+}
+
+/// Serde adapter for a `String` field: encrypt on write, decrypt on read.
+pub fn serialize_encrypted<S: Serializer>(secret: &str, serializer: S) -> Result<S::Ok, S::Error> {
+    return serializer.serialize_str(&encrypt(secret));
+}
+
+/// See [`serialize_encrypted`].
+pub fn deserialize_encrypted<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    return Ok(decrypt(&String::deserialize(deserializer)?));
 }
 
 fn from_hex(text: &str) -> Option<Vec<u8>> {

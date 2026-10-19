@@ -414,67 +414,6 @@ impl VideoSource for PendingSource {
     }
 }
 
-/// Drop a source that a restart replaced. Dropping joins the capture thread
-fn reap_replaced_source(key: SourceKey, kind: SourceKind) {
-    let thread_name = format!("{}-reap-{}", key.protocol.name().to_lowercase(), key.source_ref);
-    let spawned = std::thread::Builder::new()
-        .name(thread_name)
-        .spawn(move || drop(kind));
-    if let Err(e) = spawned {
-        tracing::error!("Failed to spawn a source reaper: {e}");
-    }
-}
-
-/// Reusable full-frame buffers to be used by VideoSource producers
-#[derive(Default)]
-pub struct FramePool {
-    free: Vec<Vec<u8>>,
-    pending: Option<Arc<Vec<u8>>>,
-}
-
-impl FramePool {
-    pub fn new() -> Self {
-        return Self::default();
-    }
-
-    /// A buffer of exactly `len` bytes, reusing the deferred one
-    pub fn take(&mut self, len: usize) -> Vec<u8> {
-        if let Some(arc) = self.pending.take() {
-            match Arc::try_unwrap(arc) {
-                Ok(vec) => self.free.push(vec),
-                Err(arc) => self.pending = Some(arc),
-            }
-        }
-        if let Some(i) = self.free.iter().position(|v| v.capacity() >= len) {
-            let mut vec = self.free.swap_remove(i);
-            vec.resize(len, 0);
-            return vec;
-        }
-        return vec![0u8; len];
-    }
-
-    /// Hand back a buffer that was taken but never published.
-    pub fn release(&mut self, vec: Vec<u8>) {
-        self.free.push(vec);
-    }
-
-    /// Recycle the frame just published into the slot.
-    pub fn give(&mut self, frame: Option<Frame>) {
-        let Some(Frame::Cpu(cpu)) = frame else {
-            return;
-        };
-        match Arc::try_unwrap(cpu.data) {
-            Ok(vec) => self.free.push(vec),
-            // Compositor still holds the clone: retry at the next `take`.
-            Err(arc) => {
-                if self.pending.is_none() {
-                    self.pending = Some(arc);
-                }
-            }
-        }
-    }
-}
-
 // Registry of all live sources. Owned by the UI thread; sources render on their own threads.
 pub struct SourceRegistry {
     sources: HashMap<SourceKey, SourceKind>,
@@ -820,9 +759,9 @@ impl SourceRegistry {
             if let Some(config) = newer {
                 result.kind.config = config;
             }
-            if let Some(replaced) = self.sources.insert(result.key.clone(), result.kind) {
-                reap_replaced_source(result.key.clone(), replaced);
-            }
+            // The entry in the map is the pending stand-in, so dropping it inline
+            // is instant; the live source was already dropped on the restart thread.
+            self.sources.insert(result.key.clone(), result.kind);
             if edited {
                 self.restart(&result.key);
             }
@@ -854,6 +793,7 @@ impl SourceRegistry {
         self.sources.clear();
         self.next_test = 0;
         self.next_vnc = 0;
+        self.next_rdp = 0;
         self.pending_restarts.clear();
         while self.restart_rx.try_recv().is_ok() {}
     }
@@ -862,38 +802,6 @@ impl SourceRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// A held Arc defers reclaim; once released the same buffer is reused
-    /// instead of allocating.
-    #[test]
-    fn frame_pool_defers_reclaim_until_released() {
-        use super::super::{CpuFrame, PixelFormat};
-
-        let mut pool = FramePool::new();
-        let first = pool.take(64);
-        let ptr = first.as_ptr();
-        let data = Arc::new(first);
-        let held = data.clone();
-        pool.give(Some(Frame::Cpu(CpuFrame {
-            data,
-            w: 16,
-            h: 4,
-            fmt: PixelFormat::Rgba8,
-            pitch: 0,
-            seq: 0,
-        })));
-
-        // The clone is still held: this one must come from a fresh allocation.
-        let second = pool.take(64);
-        assert_ne!(second.as_ptr(), ptr);
-        drop(second);
-
-        // Clone released: the deferred buffer comes back.
-        drop(held);
-        let third = pool.take(64);
-        assert_eq!(third.as_ptr(), ptr);
-        assert!(pool.pending.is_none());
-    }
 
     /// A source_ref alone is not a registry identity: two protocols may carry
     /// the same reference without one lookup hitting the other's source.

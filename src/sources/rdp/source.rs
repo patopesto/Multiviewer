@@ -5,8 +5,6 @@ use std::time::{Duration, Instant};
 use ironrdp_client::config::{ConfigBuilder, Destination};
 use ironrdp_client::rdp::{RdpClient, RdpOutputEvent};
 use ironrdp_pdu::rdp::capability_sets::MajorPlatformType;
-use serde::de::Deserializer;
-use serde::ser::Serializer;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
@@ -14,6 +12,7 @@ use crate::secret;
 use crate::APP_NAME;
 use super::super::{
     CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource,
+    publish_due, sleep_while_running,
 };
 
 /// Default RDP port.
@@ -40,8 +39,6 @@ const CLIENT_BUILD: u32 = 0;
 /// only ever publishes the newest.
 const FRAME_QUEUE: usize = 2;
 const RETRY_DELAY: Duration = Duration::from_secs(2);
-/// Granularity of the retry sleep, so a stop request is seen promptly.
-const RETRY_SLICE: Duration = Duration::from_millis(50);
 /// How long the session waits for an event before it re-checks `running` and
 /// its own publish timer, so a stop request or the tail of a burst is never
 /// held up while the host is silent.
@@ -49,13 +46,10 @@ const IDLE_POLL: Duration = Duration::from_millis(25);
 /// Quiet time that marks the end of a burst of updates, so one screenful of
 /// damage publishes as one frame instead of several partial ones.
 const SETTLE: Duration = Duration::from_millis(16);
-/// Floor between two published frames; a full frame is a whole-desktop copy.
-const PUBLISH_INTERVAL: Duration = Duration::from_millis(16);
-/// Never hold a dirty frame longer than this, even mid-stream.
-const MAX_PUBLISH_INTERVAL: Duration = Duration::from_millis(33);
 
 // @docs protocol="RDP" direction=input
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RdpSourceConfig {
     // @docs label="Host" default=""
     /// Server address: an IP literal or a hostname.
@@ -72,6 +66,7 @@ pub struct RdpSourceConfig {
     pub domain: String,
     // @docs label="Password" default=""
     /// The account password. Stored encrypted with a key built into the app.
+    #[serde(serialize_with = "secret::serialize_encrypted", deserialize_with = "secret::deserialize_encrypted")]
     pub password: String,
     // @docs default="1280"
     /// Requested desktop width in pixels. The host may keep the resolution of a
@@ -168,70 +163,6 @@ impl std::fmt::Debug for RdpSourceConfig {
             .field("desktop_height", &self.desktop_height)
             .field("color_depth", &self.color_depth)
             .finish();
-    }
-}
-
-fn default_port() -> u16 {
-    return DEFAULT_PORT;
-}
-
-fn default_desktop_width() -> u16 {
-    return DEFAULT_DESKTOP_WIDTH;
-}
-
-fn default_desktop_height() -> u16 {
-    return DEFAULT_DESKTOP_HEIGHT;
-}
-
-#[derive(Deserialize)]
-struct RdpSourceConfigWire {
-    #[serde(default)]
-    host: String,
-    #[serde(default = "default_port")]
-    port: u16,
-    #[serde(default)]
-    username: String,
-    #[serde(default)]
-    domain: String,
-    #[serde(default)]
-    password: String,
-    #[serde(default = "default_desktop_width")]
-    desktop_width: u16,
-    #[serde(default = "default_desktop_height")]
-    desktop_height: u16,
-    #[serde(default)]
-    color_depth: RdpColorDepth,
-}
-
-impl Serialize for RdpSourceConfig {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("RdpSourceConfig", 8)?;
-        state.serialize_field("host", &self.host)?;
-        state.serialize_field("port", &self.port)?;
-        state.serialize_field("username", &self.username)?;
-        state.serialize_field("domain", &self.domain)?;
-        state.serialize_field("password", &secret::encrypt(&self.password))?;
-        state.serialize_field("desktop_width", &self.desktop_width)?;
-        state.serialize_field("desktop_height", &self.desktop_height)?;
-        state.serialize_field("color_depth", &self.color_depth)?;
-        return state.end();
-    }
-}
-
-impl<'de> Deserialize<'de> for RdpSourceConfig {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let wire = RdpSourceConfigWire::deserialize(deserializer)?;
-        return Ok(Self {
-            host: wire.host,
-            port: wire.port,
-            username: wire.username,
-            domain: wire.domain,
-            password: secret::decrypt(&wire.password),
-            desktop_width: wire.desktop_width,
-            desktop_height: wire.desktop_height,
-            color_depth: wire.color_depth,
-        });
     }
 }
 
@@ -360,7 +291,7 @@ async fn run_session(
                     }
 
                     if dirty
-                        && publish_due(last_event_at.elapsed(), last_publish_at.elapsed())
+                        && publish_due(SETTLE, last_event_at.elapsed(), last_publish_at.elapsed())
                         && let Some((buffer, w, h)) = latest.take()
                     {
                         let frame_span = tracing::debug_span!("rdp_frame");
@@ -433,25 +364,6 @@ fn to_bgra(pixels: &[u32], out: &mut [u8]) {
         quad[2] = (*pixel >> 16) as u8;
         quad[3] = 0xff;
     }
-}
-
-/// Sleep for `duration`, returning early once `running` clears, so the source
-/// thread joins promptly instead of waiting out a retry.
-async fn sleep_while_running(running: &AtomicBool, duration: Duration) {
-    let deadline = Instant::now() + duration;
-    while running.load(Ordering::Relaxed) && Instant::now() < deadline {
-        let slice = RETRY_SLICE.min(deadline.saturating_duration_since(Instant::now()));
-        tokio::time::sleep(slice).await;
-    }
-}
-
-/// Whether to publish. A settled batch is a whole screen; the fallback stops a
-/// host that never pauses from freezing the tile.
-fn publish_due(quiet: Duration, since_publish: Duration) -> bool {
-    if since_publish < PUBLISH_INTERVAL {
-        return false;
-    }
-    return quiet >= SETTLE || since_publish >= MAX_PUBLISH_INTERVAL;
 }
 
 impl Drop for RdpSource {

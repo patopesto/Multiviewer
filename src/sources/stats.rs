@@ -35,6 +35,29 @@ fn fps_of(instants: &VecDeque<Instant>) -> f64 {
     return (instants.len() - 1) as f64 / secs;
 }
 
+/// Push a byte sample, evict samples older than the FPS window, and return the
+/// resulting MB/s rate. Less than two samples is not a measurable rate.
+fn windowed_rate(samples: &mut VecDeque<(Instant, u64)>, bytes: u64) -> f32 {
+    let now = Instant::now();
+    samples.push_back((now, bytes));
+    while let Some(&(t, _)) = samples.front() {
+        if now.duration_since(t) > FPS_WINDOW {
+            samples.pop_front();
+        } else {
+            break;
+        }
+    }
+    if samples.len() < 2 {
+        return 0.0;
+    }
+    let span = now.duration_since(samples.front().unwrap().0).as_secs_f32();
+    let total: u64 = samples.iter().map(|(_, b)| *b).sum();
+    if span > 0.0 {
+        return total as f32 / 1_000_000.0 / span;
+    }
+    return 0.0;
+}
+
 #[derive(Debug, Clone)]
 pub struct SourceStats {
     pub width: u32,
@@ -126,27 +149,7 @@ impl SourceStats {
 
     /// Wire bytes received since the previous call, as a windowed MB/s rate.
     pub fn record_network(&mut self, bytes: u64) {
-        let now = Instant::now();
-        self.network_samples.push_back((now, bytes));
-        while let Some(&(t, _)) = self.network_samples.front() {
-            if now.duration_since(t) > FPS_WINDOW {
-                self.network_samples.pop_front();
-            } else {
-                break;
-            }
-        }
-        if self.network_samples.len() < 2 {
-            return;
-        }
-        let span = now
-            .duration_since(self.network_samples.front().unwrap().0)
-            .as_secs_f32();
-        let total: u64 = self.network_samples.iter().map(|(_, b)| *b).sum();
-        self.network_mbps = if span > 0.0 {
-            total as f32 / 1_000_000.0 / span
-        } else {
-            0.0
-        };
+        self.network_mbps = windowed_rate(&mut self.network_samples, bytes);
     }
 
     /// Session-average decode time reported by the source SDK.
@@ -181,27 +184,7 @@ impl SourceStats {
         }
         self.upload_time_ms = self.average(&self.upload_times);
 
-        let now = Instant::now();
-        self.upload_samples.push_back((now, bytes));
-        while let Some(&(t, _)) = self.upload_samples.front() {
-            if now.duration_since(t) > FPS_WINDOW {
-                self.upload_samples.pop_front();
-            } else {
-                break;
-            }
-        }
-        if self.upload_samples.len() < 2 {
-            return;
-        }
-        let span = now
-            .duration_since(self.upload_samples.front().unwrap().0)
-            .as_secs_f32();
-        let total: u64 = self.upload_samples.iter().map(|(_, b)| *b).sum();
-        self.upload_mbps = if span > 0.0 {
-            total as f32 / 1_000_000.0 / span
-        } else {
-            0.0
-        };
+        self.upload_mbps = windowed_rate(&mut self.upload_samples, bytes);
     }
 
     #[cfg(target_os = "macos")]
