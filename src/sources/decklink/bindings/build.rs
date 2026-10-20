@@ -5,6 +5,8 @@ fn main() {
 
     println!("cargo:rerun-if-changed=shim/platform.h");
     println!("cargo:rerun-if-changed=shim/platform.cpp");
+    println!("cargo:rerun-if-changed=shim/decklink_discovery.cpp");
+    println!("cargo:rerun-if-changed=shim/decklink_discovery.h");
     println!("cargo:rerun-if-changed=shim/decklink_input.cpp");
     println!("cargo:rerun-if-changed=shim/decklink_input.h");
     println!("cargo:rerun-if-changed=shim/decklink_output.cpp");
@@ -26,6 +28,7 @@ fn main() {
 
     // Common shim files — compiled on all platforms
     build.file("shim/platform.cpp");
+    build.file("shim/decklink_discovery.cpp");
     build.file("shim/decklink_input.cpp");
     build.file("shim/decklink_output.cpp");
 

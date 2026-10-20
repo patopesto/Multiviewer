@@ -1,13 +1,13 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use core_graphics2::window::{preflight_screen_capture_access, request_screen_capture_access};
 use objc2::rc::Retained;
 use screen_capture_kit::shareable_content::SCShareableContent;
 
 use super::source::{ScreenCaptureKitSettings, ScreenCaptureKitSourceConfig};
+use crate::sources::PollGate;
 
 const INCLUDE_UNTITLED_WINDOWS: bool = false;
 
@@ -229,22 +229,25 @@ pub fn ensure_screen_capture_access_requested() {
 /// Background shareable-content discovery.
 pub struct Discovery {
     targets: Arc<Mutex<Targets>>,
+    gate: PollGate,
 }
 
 impl Discovery {
     pub fn start() -> Self {
         let targets = Arc::new(Mutex::new(Targets::default()));
         let targets2 = targets.clone();
+        let gate = PollGate::new();
+        let gate2 = gate.clone();
         std::thread::Builder::new()
             .name("screencapturekit-discovery".into())
             .spawn(move || {
-                // Screen-recording permission errors repeat every cycle; log each distinct one once instead of every 2 seconds.
+                // Screen-recording permission errors repeat every cycle; log each distinct one once instead of on every poll.
                 let mut last_error: Option<String> = None;
                 loop {
                     // Preflight never prompts; SCShareableContent does.
                     if !preflight_screen_capture_access() {
                         *targets2.lock().unwrap() = Targets::default();
-                        std::thread::sleep(Duration::from_secs(2));
+                        gate2.wait();
                         continue;
                     }
                     match fetch_targets() {
@@ -260,11 +263,16 @@ impl Discovery {
                             }
                         }
                     }
-                    std::thread::sleep(Duration::from_secs(2));
+                    gate2.wait();
                 }
             })
             .expect("spawn screencapturekit-discovery");
-        Self { targets }
+        Self { targets, gate }
+    }
+
+    /// Refresh now instead of waiting out the idle interval.
+    pub fn request_refresh(&self) {
+        self.gate.request();
     }
 
     pub fn list(&self) -> Targets {

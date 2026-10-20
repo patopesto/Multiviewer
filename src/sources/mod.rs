@@ -26,7 +26,7 @@ mod windowscapture;
 
 pub use common::{Protocol, PixelFormat, Frame, CpuFrame, GpuFrame, ConvUniform};
 pub use common::{FramePool, Framebuffer};
-pub use common::{PUBLISH_INTERVAL, publish_due, sleep_while_running};
+pub use common::{PUBLISH_INTERVAL, PollGate, publish_due, sleep_while_running};
 pub use source::{
     SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
     SourceRegistry, VideoSource,

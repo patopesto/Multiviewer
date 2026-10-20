@@ -208,6 +208,7 @@ pub struct OutputStats {
     pub frames_sent: u64,
     pub frames_dropped: u64,
     pub send_time_ms: f32,
+    pub error: Option<String>,
     send_instants: VecDeque<Instant>,
 }
 

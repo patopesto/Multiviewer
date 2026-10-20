@@ -18,16 +18,6 @@
 
 /* ── helpers ─────────────────────────────────────────────────────────── */
 
-static std::string get_display_name(IDeckLink* decklink) {
-    DECKLINK_DLSTRING_T name = nullptr;
-    if (decklink->GetDisplayName(&name) != S_OK) {
-        return "";
-    }
-    std::string result = DecklinkStringToStd(name);
-    DecklinkStringFree(name);
-    return result;
-}
-
 static std::string get_model_name(IDeckLink* decklink) {
     DECKLINK_DLSTRING_T name = nullptr;
     if (decklink->GetModelName(&name) != S_OK) {
@@ -36,110 +26,6 @@ static std::string get_model_name(IDeckLink* decklink) {
     std::string result = DecklinkStringToStd(name);
     DecklinkStringFree(name);
     return result;
-}
-
-
-
-/* ── Discovery ───────────────────────────────────────────────────────── */
-
-struct DiscoveredPort {
-    std::string display_name;
-    bool has_signal;
-    uint32_t connections;
-};
-
-struct DecklinkSourceDiscovery {
-    std::vector<DiscoveredPort> ports;
-};
-
-
-DecklinkSourceDiscovery* decklink_source_discovery_new(void) {
-    DecklinkComScope com_scope;
-    auto* d = new DecklinkSourceDiscovery();
-
-    IDeckLinkIterator* iterator = nullptr;
-    if (FAILED(DecklinkCreateIterator(&iterator))) {
-        return d;
-    }
-
-    IDeckLink* decklink = nullptr;
-    while (iterator->Next(&decklink) == S_OK) {
-        IDeckLinkInput* input = nullptr;
-        if (decklink->QueryInterface(IID_IDeckLinkInput, (void**)&input) != S_OK) {
-            decklink->Release();
-            continue;
-        }
-        input->Release();
-
-        std::string model = get_model_name(decklink);
-        std::string display = get_display_name(decklink);
-
-        int64_t num_sub = 1;
-        int64_t sub_index = 0;
-        IDeckLinkProfileAttributes* attr = nullptr;
-        if (decklink->QueryInterface(IID_IDeckLinkProfileAttributes, (void**)&attr) == S_OK) {
-            attr->GetInt(BMDDeckLinkNumberOfSubDevices, &num_sub);
-            attr->GetInt(BMDDeckLinkSubDeviceIndex, &sub_index);
-            attr->Release();
-        }
-
-        bool has_signal = false;
-        IDeckLinkStatus* status = nullptr;
-        if (decklink->QueryInterface(IID_IDeckLinkStatus, (void**)&status) == S_OK) {
-            DecklinkBool locked = 0;
-            status->GetFlag(bmdDeckLinkStatusVideoInputSignalLocked, &locked);
-            has_signal = locked != 0;
-            status->Release();
-        }
-
-        uint32_t connections = 0;
-        attr = nullptr;
-        if (decklink->QueryInterface(IID_IDeckLinkProfileAttributes, (void**)&attr) == S_OK) {
-            int64_t conn_mask = 0;
-            if (attr->GetInt(BMDDeckLinkVideoInputConnections, &conn_mask) == S_OK) {
-                connections = static_cast<uint32_t>(conn_mask);
-            }
-            attr->Release();
-        }
-
-        std::string name;
-        if (num_sub > 1) {
-            name = model + " - Input " + std::to_string(static_cast<int>(sub_index) + 1);
-        } else {
-            name = model;
-        }
-
-        d->ports.push_back({name, has_signal, connections});
-        decklink->Release();
-    }
-
-    iterator->Release();
-    return d;
-}
-
-
-void decklink_source_discovery_free(DecklinkSourceDiscovery* d) {
-    delete d;
-}
-
-
-int decklink_source_discovery_count(DecklinkSourceDiscovery* d) {
-    return static_cast<int>(d->ports.size());
-}
-
-
-void decklink_source_discovery_get(DecklinkSourceDiscovery* d, int idx, char* name, size_t name_len, bool* has_signal, uint32_t* connections) {
-    if (idx < 0 || idx >= static_cast<int>(d->ports.size())) {
-        if (name_len > 0) name[0] = '\0';
-        *has_signal = false;
-        *connections = 0;
-        return;
-    }
-    const auto& p = d->ports[idx];
-    strncpy(name, p.display_name.c_str(), name_len - 1);
-    name[name_len - 1] = '\0';
-    *has_signal = p.has_signal;
-    *connections = p.connections;
 }
 
 

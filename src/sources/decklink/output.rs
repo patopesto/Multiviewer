@@ -45,6 +45,10 @@ struct ScaleVert {
 
 const SCALE_INDICES: [u16; 6] = [0, 1, 2, 2, 1, 3];
 
+/// A device another process owns fails to enable; retry slowly so we recover
+/// when it is released instead of fighting it for the device.
+const START_RETRY: Duration = Duration::from_secs(10);
+
 // @docs protocol="DeckLink" direction=output
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DecklinkOutputConfig {
@@ -138,6 +142,7 @@ impl DecklinkOutput {
                 let mut next_frame = Instant::now();
 
                 let mut started = false;
+                let mut start_logged = false;
                 while let Ok(buffer) = frame_rx.recv() {
                     pending_t.store(false, Ordering::Release);
                     if buffer.len() < 16 {
@@ -155,10 +160,25 @@ impl DecklinkOutput {
                     if !started {
                         if unsafe { decklink_output_start(output, mode_id) } {
                             started = true;
+                            start_logged = false;
+                            stats_clone.lock().unwrap().error = None;
                             tracing::info!(output=thread_name, "DeckLink output started on {}", mode_id);
                         } else {
-                            tracing::error!(output=thread_name, "DeckLink output start failed");
-                            break;
+                            {
+                                let mut s = stats_clone.lock().unwrap();
+                                s.error = Some("device busy or unavailable".to_string());
+                                s.frames_dropped += 1;
+                            }
+                            if !start_logged {
+                                tracing::error!(
+                                    output=thread_name,
+                                    "DeckLink output start failed; retrying every {}s",
+                                    START_RETRY.as_secs()
+                                );
+                                start_logged = true;
+                            }
+                            thread::sleep(START_RETRY);
+                            continue;
                         }
                     }
 

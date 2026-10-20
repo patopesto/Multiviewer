@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 
@@ -385,6 +386,51 @@ pub fn publish_due(settle: Duration, quiet: Duration, since_publish: Duration) -
     return quiet >= settle || since_publish >= MAX_PUBLISH_INTERVAL;
 }
 
+/// Idle gap between protocol discovery polls. Protocols whose discovery costs
+/// vendor-framework work (DeckLink enumerates IOKit driver classes, screen
+/// capture enumerates every running app) poll this slowly until the UI asks for
+/// a refresh.
+pub const DISCOVERY_INTERVAL: Duration = Duration::from_secs(30);
+/// How often a waiting discovery thread rechecks its refresh request.
+const DISCOVERY_WAKE_SLICE: Duration = Duration::from_millis(200);
+
+/// Poll cadence for a discovery thread: wait out [`DISCOVERY_INTERVAL`], or
+/// wake as soon as the UI requests a refresh.
+#[derive(Clone)]
+pub struct PollGate {
+    refresh: Arc<AtomicBool>,
+}
+
+impl PollGate {
+    pub fn new() -> Self {
+        return Self {
+            refresh: Arc::new(AtomicBool::new(false)),
+        };
+    }
+
+    /// Ask the polling thread to poll now instead of waiting out the interval.
+    pub fn request(&self) {
+        self.refresh.store(true, Ordering::Release);
+    }
+
+    /// Block until the next poll is due, returning early on [`PollGate::request`].
+    pub fn wait(&self) {
+        let deadline = Instant::now() + DISCOVERY_INTERVAL;
+        while Instant::now() < deadline {
+            if self.refresh.swap(false, Ordering::AcqRel) {
+                return;
+            }
+            thread::sleep(DISCOVERY_WAKE_SLICE);
+        }
+    }
+}
+
+impl Default for PollGate {
+    fn default() -> Self {
+        return Self::new();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -535,5 +581,15 @@ mod tests {
         assert!(!publish_due(settle, Duration::ZERO, PUBLISH_INTERVAL));
         assert!(!publish_due(settle, Duration::ZERO, MAX_PUBLISH_INTERVAL / 2));
         assert!(publish_due(settle, Duration::ZERO, MAX_PUBLISH_INTERVAL));
+    }
+
+    /// A pending request skips the idle interval instead of sleeping it out.
+    #[test]
+    fn poll_gate_wakes_on_request() {
+        let gate = PollGate::new();
+        gate.request();
+        let start = Instant::now();
+        gate.wait();
+        assert!(start.elapsed() < DISCOVERY_INTERVAL / 2);
     }
 }

@@ -1,25 +1,44 @@
 pub enum DecklinkSourceHandle {}
-pub enum DecklinkSourceDiscovery {}
-pub enum DecklinkOutputDiscovery {}
+pub enum DecklinkDiscovery {}
 pub enum DecklinkOutputHandle {}
 
 unsafe extern "C" {
     // API information
     pub fn decklink_api_version(buf: *mut std::ffi::c_char, buf_len: i32) -> i32;
 
-    // Input
-    pub fn decklink_source_discovery_new() -> *mut DecklinkSourceDiscovery;
-    pub fn decklink_source_discovery_free(d: *mut DecklinkSourceDiscovery);
-    pub fn decklink_source_discovery_count(d: *mut DecklinkSourceDiscovery) -> i32;
-    pub fn decklink_source_discovery_get(
-        d: *mut DecklinkSourceDiscovery,
+    // Discovery (one iterator pass for both input and output ports)
+    pub fn decklink_discovery_new() -> *mut DecklinkDiscovery;
+    pub fn decklink_discovery_free(d: *mut DecklinkDiscovery);
+    pub fn decklink_discovery_input_count(d: *mut DecklinkDiscovery) -> i32;
+    pub fn decklink_discovery_input_get(
+        d: *mut DecklinkDiscovery,
         idx: i32,
         name: *mut std::ffi::c_char,
         name_len: usize,
         has_signal: *mut bool,
         connections: *mut u32,
     );
+    pub fn decklink_discovery_output_count(d: *mut DecklinkDiscovery) -> i32;
+    pub fn decklink_discovery_output_get(
+        d: *mut DecklinkDiscovery,
+        idx: i32,
+        name: *mut std::ffi::c_char,
+        name_len: usize,
+        mode_count: *mut i32,
+    );
+    pub fn decklink_discovery_output_mode(
+        d: *mut DecklinkDiscovery,
+        idx: i32,
+        mode_idx: i32,
+        mode_name: *mut std::ffi::c_char,
+        mode_name_len: usize,
+        mode_id: *mut u32,
+        w: *mut i32,
+        h: *mut i32,
+        fps: *mut f64,
+    );
 
+    // Input
     pub fn decklink_source_new(display_name: *const std::ffi::c_char) -> *mut DecklinkSourceHandle;
     pub fn decklink_source_free(s: *mut DecklinkSourceHandle);
     pub fn decklink_source_set_connection(s: *mut DecklinkSourceHandle, connection: u32);
@@ -37,28 +56,6 @@ unsafe extern "C" {
     ) -> bool;
 
     // Output
-    pub fn decklink_output_discovery_new() -> *mut DecklinkOutputDiscovery;
-    pub fn decklink_output_discovery_free(d: *mut DecklinkOutputDiscovery);
-    pub fn decklink_output_discovery_count(d: *mut DecklinkOutputDiscovery) -> i32;
-    pub fn decklink_output_discovery_get(
-        d: *mut DecklinkOutputDiscovery,
-        idx: i32,
-        name: *mut std::ffi::c_char,
-        name_len: usize,
-        mode_count: *mut i32,
-    );
-    pub fn decklink_output_discovery_get_mode(
-        d: *mut DecklinkOutputDiscovery,
-        idx: i32,
-        mode_idx: i32,
-        mode_name: *mut std::ffi::c_char,
-        mode_name_len: usize,
-        mode_id: *mut u32,
-        w: *mut i32,
-        h: *mut i32,
-        fps: *mut f64,
-    );
-
     pub fn decklink_output_new(display_name: *const std::ffi::c_char) -> *mut DecklinkOutputHandle;
     pub fn decklink_output_free(o: *mut DecklinkOutputHandle);
     pub fn decklink_output_start(o: *mut DecklinkOutputHandle, mode_id: u32) -> bool;

@@ -28,153 +28,6 @@ static std::string get_model_name(IDeckLink* decklink) {
     return result;
 }
 
-static std::string get_mode_name(IDeckLinkDisplayMode* mode) {
-    DECKLINK_DLSTRING_T name = nullptr;
-    if (mode->GetName(&name) != S_OK) {
-        return "";
-    }
-    std::string result = DecklinkStringToStd(name);
-    DecklinkStringFree(name);
-    return result;
-}
-
-
-
-/* ── Discovery ────────────────────────────────────────────────── */
-
-struct OutputMode {
-    std::string name;
-    BMDDisplayMode mode;
-    long w = 0;
-    long h = 0;
-    double fps = 0.0;
-};
-
-struct OutputPort {
-    std::string display_name;
-    IDeckLinkOutput* output = nullptr;
-    std::vector<OutputMode> modes;
-};
-
-struct DecklinkOutputDiscovery {
-    std::vector<OutputPort> ports;
-};
-
-
-DecklinkOutputDiscovery* decklink_output_discovery_new(void) {
-    DecklinkComScope com_scope;
-    auto* d = new DecklinkOutputDiscovery();
-
-    IDeckLinkIterator* iterator = nullptr;
-    if (FAILED(DecklinkCreateIterator(&iterator))) {
-        return d;
-    }
-
-    IDeckLink* decklink = nullptr;
-    while (iterator->Next(&decklink) == S_OK) {
-        IDeckLinkOutput* output = nullptr;
-        if (decklink->QueryInterface(IID_IDeckLinkOutput, (void**)&output) != S_OK) {
-            decklink->Release();
-            continue;
-        }
-
-        std::string model = get_model_name(decklink);
-
-        int64_t num_sub = 1;
-        int64_t sub_index = 0;
-        IDeckLinkProfileAttributes* attr = nullptr;
-        if (decklink->QueryInterface(IID_IDeckLinkProfileAttributes, (void**)&attr) == S_OK) {
-            attr->GetInt(BMDDeckLinkNumberOfSubDevices, &num_sub);
-            attr->GetInt(BMDDeckLinkSubDeviceIndex, &sub_index);
-            attr->Release();
-        }
-
-        std::string name = (num_sub > 1)
-            ? model + " - Output " + std::to_string(static_cast<int>(sub_index) + 1)
-            : model;
-
-        OutputPort port;
-        port.display_name = name;
-        port.output = output;
-
-        IDeckLinkDisplayModeIterator* mode_iter = nullptr;
-        if (output->GetDisplayModeIterator(&mode_iter) == S_OK && mode_iter) {
-            IDeckLinkDisplayMode* mode = nullptr;
-            while (mode_iter->Next(&mode) == S_OK) {
-                BMDDisplayMode mode_id = mode->GetDisplayMode();
-                long w = mode->GetWidth();
-                long h = mode->GetHeight();
-                BMDTimeValue frame_duration = 0;
-                BMDTimeValue time_scale = 0;
-                double fps = 0.0;
-                if (mode->GetFrameRate(&frame_duration, &time_scale) == S_OK && frame_duration > 0) {
-                    fps = static_cast<double>(time_scale) / static_cast<double>(frame_duration);
-                }
-                port.modes.push_back({get_mode_name(mode), mode_id, w, h, fps});
-                mode->Release();
-            }
-            mode_iter->Release();
-        }
-
-        d->ports.push_back(std::move(port));
-        decklink->Release();
-    }
-
-    iterator->Release();
-    return d;
-}
-
-
-void decklink_output_discovery_free(DecklinkOutputDiscovery* d) {
-    if (!d) return;
-    for (auto& port : d->ports) {
-        if (port.output) {
-            port.output->Release();
-            port.output = nullptr;
-        }
-    }
-    delete d;
-}
-
-
-int decklink_output_discovery_count(DecklinkOutputDiscovery* d) {
-    return static_cast<int>(d->ports.size());
-}
-
-
-void decklink_output_discovery_get(DecklinkOutputDiscovery* d, int idx, char* name, size_t name_len, int* mode_count) {
-    if (idx < 0 || idx >= static_cast<int>(d->ports.size())) {
-        if (name_len > 0) name[0] = '\0';
-        *mode_count = 0;
-        return;
-    }
-    const auto& p = d->ports[idx];
-    strncpy(name, p.display_name.c_str(), name_len - 1);
-    name[name_len - 1] = '\0';
-    *mode_count = static_cast<int>(p.modes.size());
-}
-
-
-void decklink_output_discovery_get_mode(DecklinkOutputDiscovery* d, int idx, int mode_idx, char* mode_name, size_t mode_name_len, uint32_t* mode_id, int* w, int* h, double* fps) {
-    if (mode_name_len > 0) mode_name[0] = '\0';
-    *mode_id = 0;
-    *w = 0;
-    *h = 0;
-    *fps = 0.0;
-    if (idx < 0 || idx >= static_cast<int>(d->ports.size())) return;
-    const auto& port = d->ports[idx];
-    if (mode_idx < 0 || mode_idx >= static_cast<int>(port.modes.size())) return;
-    const auto& m = port.modes[mode_idx];
-    strncpy(mode_name, m.name.c_str(), mode_name_len - 1);
-    mode_name[mode_name_len - 1] = '\0';
-    *mode_id = static_cast<uint32_t>(m.mode);
-    *w = static_cast<int>(m.w);
-    *h = static_cast<int>(m.h);
-    *fps = m.fps;
-}
-
-
-
 /* ── forward declarations ──────────────────────────────────────────────────── */
 
 struct DecklinkOutput {
@@ -258,7 +111,7 @@ void decklink_output_free(DecklinkOutput* o) {
 
 bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
     DecklinkComScope com_scope;
-    if (!o || o->target_name.empty()) return false;
+    if (!o) return false;
     if (o->output) return true;
 
     IDeckLinkIterator* iterator = nullptr;
@@ -266,6 +119,8 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
         return false;
     }
 
+    // An empty target name means the first device that can play back.
+    const bool first_available = o->target_name.empty();
     IDeckLink* decklink = nullptr;
     bool found = false;
     while (iterator->Next(&decklink) == S_OK) {
@@ -284,25 +139,28 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
             ? model + " - Output " + std::to_string(static_cast<int>(sub_index) + 1)
             : model;
 
-        if (name == o->target_name) {
-            found = true;
-            break;
+        if (first_available || name == o->target_name) {
+            HRESULT hr = decklink->QueryInterface(IID_IDeckLinkOutput, (void**)&o->output);
+            decklink->Release();
+            if (hr == S_OK) {
+                found = true;
+                break;
+            }
+            fprintf(stderr, "[decklink] QueryInterface IID_IDeckLinkOutput failed\n");
+            continue;
         }
         decklink->Release();
     }
     iterator->Release();
 
     if (!found) {
-        fprintf(stderr, "[decklink] output device '%s' not found\n", o->target_name.c_str());
+        if (first_available) {
+            fprintf(stderr, "[decklink] no output device available\n");
+        } else {
+            fprintf(stderr, "[decklink] output device '%s' not found\n", o->target_name.c_str());
+        }
         return false;
     }
-
-    if (decklink->QueryInterface(IID_IDeckLinkOutput, (void**)&o->output) != S_OK) {
-        fprintf(stderr, "[decklink] QueryInterface IID_IDeckLinkOutput failed\n");
-        decklink->Release();
-        return false;
-    }
-    decklink->Release();
 
     BMDDisplayMode mode = static_cast<BMDDisplayMode>(mode_id);
     HRESULT hr = o->output->EnableVideoOutput(mode, bmdVideoOutputFlagDefault);

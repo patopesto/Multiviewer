@@ -9,17 +9,9 @@
 extern "C" {
 #endif
 
-/* ── Source discovery ────────────────────────────────────────────────── */
-
-typedef struct DecklinkSourceDiscovery DecklinkSourceDiscovery;
-typedef struct DecklinkSource DecklinkSource;
-
-DecklinkSourceDiscovery* decklink_source_discovery_new(void);
-void decklink_source_discovery_free(DecklinkSourceDiscovery* d);
-int decklink_source_discovery_count(DecklinkSourceDiscovery* d);
-void decklink_source_discovery_get(DecklinkSourceDiscovery* d, int idx, char* name, size_t name_len, bool* has_signal, uint32_t* connections);
-
 /* ── Source runtime -────────────────────────────────────────────────── */
+
+typedef struct DecklinkSource DecklinkSource;
 
 DecklinkSource* decklink_source_new(const char* display_name);
 void decklink_source_free(DecklinkSource* s);

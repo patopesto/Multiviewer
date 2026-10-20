@@ -223,6 +223,28 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
             });
             ui.end_row();
 
+            // Worker errors (device busy, driver missing) sit next to the toggle
+            // so a silently dead output is visible.
+            let decklink_error = engine
+                .cfg
+                .canvas
+                .outputs
+                .iter()
+                .find(|o| o.protocol == Protocol::Decklink)
+                .and_then(|o| engine.output_registry.get(&o.uuid))
+                .and_then(|output| {
+                    let stats = output.stats();
+                    let error = stats.lock().unwrap().error.clone();
+                    return error;
+                });
+            if let Some(error) = decklink_error {
+                ui.label("Status");
+                settings_value(ui, |ui| {
+                    ui.colored_label(ui.visuals().warn_fg_color, error);
+                });
+                ui.end_row();
+            }
+
             // Device / mode selection only when a DeckLink output exists.
             if let Some(idx) = engine
                 .cfg
@@ -244,7 +266,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
 
                 ui.label("Decklink Device");
                 settings_value(ui, |ui| {
-                    egui::ComboBox::from_id_salt("decklink_output_device")
+                    let combo = egui::ComboBox::from_id_salt("decklink_output_device")
                         .width(ui.available_width())
                         .selected_text(if current_device.is_empty() {
                             "(select device)".to_string()
@@ -273,6 +295,11 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                                 }
                             }
                         });
+                    if combo.response.clicked()
+                        && let Some(discovery) = engine.decklink.as_ref()
+                    {
+                        discovery.request_refresh();
+                    }
                 });
                 ui.end_row();
 
@@ -322,16 +349,26 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             continue;
                         };
                         let stats = ok.stats();
-                        let (sent, dropped, fps) = {
+                        let (sent, dropped, fps, error) = {
                             let s = stats.lock().unwrap();
-                            (s.frames_sent, s.frames_dropped, s.computed_fps)
+                            (
+                                s.frames_sent,
+                                s.frames_dropped,
+                                s.computed_fps,
+                                s.error.clone(),
+                            )
                         };
                         ui.label(format!("{} Stats", output.protocol.label()));
                         settings_value(ui, |ui| {
-                            ui.label(format!(
+                            let mut line = format!(
                                 "{} sent \u{2022} {} dropped \u{2022} {:.1} fps",
                                 sent, dropped, fps
-                            ));
+                            );
+                            if let Some(error) = &error {
+                                line.push_str(" \u{2022} ");
+                                line.push_str(error);
+                            }
+                            ui.label(line);
                         });
                         ui.end_row();
                     }
@@ -682,7 +719,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .as_ref()
                                 .map(|d| d.list())
                                 .unwrap_or_default();
-                            egui::ComboBox::from_id_salt("decklink_source")
+                            let combo = egui::ComboBox::from_id_salt("decklink_source")
                                 .width(ui.available_width())
                                 .height(1000.0)
                                 .selected_text(current.to_string())
@@ -708,6 +745,11 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         ui.weak("(scanning...)");
                                     }
                                 });
+                            if combo.response.clicked()
+                                && let Some(discovery) = engine.decklink.as_ref()
+                            {
+                                discovery.request_refresh();
+                            }
                         }
                         #[cfg(target_os = "macos")]
                         Protocol::Syphon => {
@@ -823,7 +865,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .as_ref()
                                 .map(|d| d.list())
                                 .unwrap_or_default();
-                            egui::ComboBox::from_id_salt("screencapturekit_source")
+                            let combo = egui::ComboBox::from_id_salt("screencapturekit_source")
                                 .width(ui.available_width())
                                 .height(1000.0)
                                 .selected_text(current_label)
@@ -863,6 +905,11 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                         ui.weak("(scanning...)");
                                     }
                                 });
+                            if combo.response.clicked()
+                                && let Some(discovery) = engine.screencapturekit.as_ref()
+                            {
+                                discovery.request_refresh();
+                            }
                         }
                         #[cfg(target_os = "windows")]
                         Protocol::Spout => {
@@ -1235,6 +1282,14 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
             // to the old protocol and must not follow the source.
             if matches!(source.config, SourceConfig::Unknown(_)) {
                 source.config = SourceConfig::for_protocol(&source.protocol);
+            }
+            // The lists are polled lazily; refresh the one just selected now.
+            if let Some(discovery) = engine.decklink.as_ref() {
+                discovery.request_refresh();
+            }
+            #[cfg(target_os = "macos")]
+            if let Some(discovery) = engine.screencapturekit.as_ref() {
+                discovery.request_refresh();
             }
             engine.dirty = true;
         }
