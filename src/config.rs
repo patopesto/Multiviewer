@@ -2,6 +2,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::control::ControlConfig;
 use crate::sources::{Protocol, SourceConfig, SourceRef, OutputConfig};
 
 /// Schema version of the project file. Bump on every breaking change.
@@ -21,6 +22,8 @@ pub struct Config {
     #[serde(default = "config_version")]
     pub version: u32,
     pub canvas: Canvas,
+    #[serde(default)]
+    pub control: ControlConfig,
 }
 
 impl Default for Config {
@@ -28,6 +31,7 @@ impl Default for Config {
         Self {
             version: CONFIG_VERSION,
             canvas: Canvas::default(),
+            control: ControlConfig::default(),
         }
     }
 }

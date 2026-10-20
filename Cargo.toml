@@ -58,6 +58,7 @@ uuid = { version = "1", features = ["v4"] }
 multiviewer-decklink = { path = "src/sources/decklink/bindings" }
 rfd = "0.15"
 dirs = "6"
+rosc = "0.11"
 
 [build-dependencies]
 cc = "1.0"

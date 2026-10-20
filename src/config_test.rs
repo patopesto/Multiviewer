@@ -879,3 +879,55 @@ fn config_version_round_trips() {
     assert_eq!(reloaded.version, CONFIG_VERSION);
     assert_eq!(reloaded.canvas.width, 1234);
 }
+
+#[test]
+fn control_config_round_trips() {
+    let mut cfg = Config::default();
+    cfg.control.osc.enabled = true;
+    cfg.control.osc.bind = "0.0.0.0".to_string();
+    cfg.control.osc.port = 9100;
+
+    let json = serde_json::to_string(&cfg).unwrap();
+    let reloaded: Config = serde_json::from_str(&json).unwrap();
+
+    assert!(reloaded.control.osc.enabled);
+    assert_eq!(reloaded.control.osc.bind, "0.0.0.0");
+    assert_eq!(reloaded.control.osc.port, 9100);
+}
+
+/// A project from before control existed loads with the listener disabled.
+#[test]
+fn config_without_control_section_defaults_to_disabled() {
+    let mut v = serde_json::to_value(Config::default()).unwrap();
+    v.as_object_mut().unwrap().remove("control");
+
+    let cfg: Config = serde_json::from_value(v).unwrap();
+
+    assert!(!cfg.control.osc.enabled);
+    assert_eq!(cfg.control.osc.bind, "127.0.0.1");
+    assert_eq!(cfg.control.osc.port, 9000);
+}
+
+#[test]
+fn osc_prefix_round_trips() {
+    let mut cfg = Config::default();
+    cfg.control.osc.prefix = "/multiviewer".to_string();
+
+    let reloaded: Config = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+
+    assert_eq!(reloaded.control.osc.prefix, "/multiviewer");
+}
+
+/// A project from before the prefix existed answers at the root.
+#[test]
+fn config_without_prefix_defaults_to_root() {
+    let mut v = serde_json::to_value(Config::default()).unwrap();
+    v["control"]["osc"]
+        .as_object_mut()
+        .unwrap()
+        .remove("prefix");
+
+    let cfg: Config = serde_json::from_value(v).unwrap();
+
+    assert_eq!(cfg.control.osc.prefix, "");
+}

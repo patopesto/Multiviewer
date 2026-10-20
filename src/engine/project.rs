@@ -3,6 +3,8 @@ use std::time::{Duration, Instant};
 
 use super::Engine;
 use crate::config::{Config, ConfigError, Source, TextureMode, CONFIG_VERSION};
+#[cfg(test)]
+use crate::config::Canvas;
 use crate::session::{Session, SessionError};
 use crate::sources::{OutputRegistry, Protocol, SourceConfig, SourceRegistry};
 use crate::sources::DecklinkDiscovery;
@@ -25,6 +27,8 @@ use crate::sources::WindowsCaptureDiscovery;
 
 use super::interaction::DragState;
 use super::{SnapGuides, ViewState};
+use crate::compositor::Rect;
+use crate::control::ControlRegistry;
 
 pub const AUTO_SAVE_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -106,6 +110,7 @@ impl Engine {
             cfg,
             registry,
             output_registry,
+            control: ControlRegistry::new(),
             ndi: Some(ndi),
             decklink: Some(decklink),
             omt: Some(omt),
@@ -135,6 +140,8 @@ impl Engine {
             drag_state: DragState::None,
             snap_guides: SnapGuides::default(),
             view: ViewState::new(),
+            canvas_rect: Rect::default(),
+            ui_visible: true,
             load_warnings: Vec::new(),
         };
 
@@ -152,6 +159,7 @@ impl Engine {
         self.restore_test_sources();
         self.seed_demo_layout();
         self.load_outputs();
+        self.restart_control();
     }
 
     /// A project from a newer build is loaded best-effort; unknown fields are
@@ -305,5 +313,53 @@ impl Engine {
                 tracing::error!("Auto-save failed: {e}");
             }
         }
+    }
+}
+
+#[cfg(test)]
+impl Engine {
+    /// Engine with no discovery services, for tests.
+    pub fn test_instance(canvas: Canvas) -> Self {
+        return Self {
+            cfg: Config {
+                canvas,
+                ..Config::default()
+            },
+            registry: SourceRegistry::new(),
+            output_registry: OutputRegistry::new(),
+            control: ControlRegistry::new(),
+            ndi: None,
+            decklink: None,
+            omt: None,
+            #[cfg(target_os = "macos")]
+            syphon: None,
+            #[cfg(target_os = "macos")]
+            avfoundation: None,
+            #[cfg(target_os = "macos")]
+            screencapturekit: None,
+            #[cfg(target_os = "windows")]
+            spout: None,
+            #[cfg(target_os = "windows")]
+            mediafoundation: None,
+            #[cfg(target_os = "windows")]
+            directshow: None,
+            #[cfg(target_os = "windows")]
+            windowscapture: None,
+            comp: None,
+            device: None,
+            queue: None,
+            project_path: None,
+            dirty: false,
+            last_saved_at: Instant::now(),
+            last_discovery: Instant::now(),
+            selected_source_id: None,
+            expanded_source_id: None,
+            drag_state: DragState::None,
+            snap_guides: SnapGuides::default(),
+            view: ViewState::new(),
+            canvas_rect: Rect::default(),
+            ui_visible: true,
+            load_warnings: Vec::new(),
+        };
     }
 }

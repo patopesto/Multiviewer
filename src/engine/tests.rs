@@ -1,47 +1,14 @@
 use super::*;
 use crate::compositor::{self, Rect};
 use crate::config::{Canvas, Output, Source, TextureMode, CONFIG_VERSION};
+use crate::control::{Command, ControlMessage, Selector};
 use crate::engine::project::AUTO_SAVE_INTERVAL;
 use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::VncSourceConfig;
 use std::time::{Duration, Instant};
 
 fn test_engine(canvas: Canvas) -> Engine {
-    Engine {
-        cfg: Config { canvas, ..Config::default() },
-        registry: SourceRegistry::new(),
-        output_registry: OutputRegistry::new(),
-        ndi: None,
-        decklink: None,
-        omt: None,
-        #[cfg(target_os = "macos")]
-        syphon: None,
-        #[cfg(target_os = "macos")]
-        avfoundation: None,
-        #[cfg(target_os = "macos")]
-        screencapturekit: None,
-        #[cfg(target_os = "windows")]
-        spout: None,
-        #[cfg(target_os = "windows")]
-        mediafoundation: None,
-        #[cfg(target_os = "windows")]
-        directshow: None,
-        #[cfg(target_os = "windows")]
-        windowscapture: None,
-        comp: None,
-        device: None,
-        queue: None,
-        project_path: None,
-        dirty: false,
-        last_saved_at: Instant::now(),
-        last_discovery: Instant::now(),
-        selected_source_id: None,
-        expanded_source_id: None,
-        drag_state: DragState::None,
-        snap_guides: SnapGuides::default(),
-        view: ViewState::new(),
-        load_warnings: Vec::new(),
-    }
+    return Engine::test_instance(canvas);
 }
 
 /// A project authored where unavailable protocols exist (Syphon on
@@ -763,4 +730,77 @@ fn current_project_version_does_not_warn() {
 
     assert!(engine.load_warnings.is_empty());
     assert_eq!(engine.cfg.version, CONFIG_VERSION);
+}
+
+#[test]
+fn control_commands_mutate_the_canvas() {
+    let mut engine = test_engine(Canvas::default());
+
+    engine.apply_command(Command::AddSource).unwrap();
+    let uuid = engine
+        .selected_source_id
+        .clone()
+        .expect("added source is selected");
+
+    engine
+        .apply_command(Command::SetSourceX {
+            source: Selector::Key(uuid),
+            value: 123.0,
+        })
+        .unwrap();
+    engine
+        .apply_command(Command::SetSourceSize {
+            source: Selector::Index(1),
+            width: 321,
+            height: 123,
+        })
+        .unwrap();
+
+    let source = &engine.cfg.canvas.sources[0];
+    assert_eq!(source.x, 123.0);
+    assert_eq!(source.width, 321);
+    assert_eq!(source.height, 123);
+    assert!(engine.dirty);
+
+    engine.apply_command(Command::ToggleUi).unwrap();
+    assert!(!engine.ui_visible);
+}
+
+#[test]
+fn control_rejects_unknown_targets_and_bad_values() {
+    let mut engine = test_engine(Canvas::default());
+
+    assert!(
+        engine
+            .apply_command(Command::RemoveSource(Selector::Index(99)))
+            .is_err()
+    );
+    assert!(
+        engine
+            .apply_command(Command::SetSourceX {
+                source: Selector::Index(1),
+                value: f32::NAN,
+            })
+            .is_err()
+    );
+    assert!(
+        engine
+            .apply_command(Command::Zoom { factor: 0.0 })
+            .is_err()
+    );
+}
+
+#[test]
+fn control_query_runs_against_the_engine() {
+    let mut engine = test_engine(Canvas::default());
+    let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+    engine
+        .control
+        .enqueue(ControlMessage::Query(Box::new(move |engine: &Engine| {
+            let _ = reply_tx.send(engine.cfg.canvas.width);
+        })));
+
+    engine.update();
+
+    assert_eq!(reply_rx.recv().unwrap(), 1920);
 }

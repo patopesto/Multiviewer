@@ -8,6 +8,7 @@ use tracing_subscriber::prelude::*;
 
 mod compositor;
 mod config;
+mod control;
 mod engine;
 mod platform;
 mod secret;

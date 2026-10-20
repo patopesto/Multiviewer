@@ -65,7 +65,6 @@ pub fn update(
     engine: &mut Engine,
     ctx: &egui::Context,
     frame: &mut eframe::Frame,
-    ui_visible: bool,
 ) {
     let rect = ui.available_rect_before_wrap();
     let panel_rect = Rect {
@@ -74,6 +73,8 @@ pub fn update(
         w: rect.width(),
         h: rect.height(),
     };
+    let ui_visible = engine.ui_visible;
+    engine.canvas_rect = panel_rect;
     let (response, painter) = ui.allocate_painter(rect.size(), egui::Sense::click_and_drag());
 
     // Only start a drag if the press actually happened on the canvas.

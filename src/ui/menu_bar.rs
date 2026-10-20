@@ -9,6 +9,7 @@ pub enum MenuAction {
     Shortcut(Shortcut),
     OpenRecent(PathBuf),
     ShowShortcuts,
+    ShowControl,
     ShowAbout,
     ShowLicenses,
 }
@@ -50,6 +51,12 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
                 menu_item(ui, &mut actions, Shortcut::ZoomIn, true);
                 menu_item(ui, &mut actions, Shortcut::ZoomOut, true);
                 menu_item(ui, &mut actions, Shortcut::RecenterView, true);
+            });
+
+            menu_button(ui, "Control", |ui| {
+                if ui.button("Control Settings...").clicked() {
+                    actions.push(MenuAction::ShowControl);
+                }
             });
 
             menu_button(ui, "About", |ui| {

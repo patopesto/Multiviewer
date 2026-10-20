@@ -31,12 +31,12 @@ pub struct App {
     pending_confirm: Option<Confirm>,
     show_about: bool,
     show_shortcuts: bool,
+    show_control: bool,
     show_licenses: bool,
     licenses_cache: CommonMarkCache,
     vendor_versions: Vec<(&'static str, Option<String>)>,
     gpu_backend: Option<String>,
     gpu_name: Option<String>,
-    ui_visible: bool,
     next_frame: Instant,
     next_output_frame: Instant,
     render_stats: RenderStats,
@@ -112,12 +112,12 @@ impl App {
             pending_confirm: None,
             show_about: false,
             show_shortcuts: false,
+            show_control: false,
             show_licenses: false,
             licenses_cache: CommonMarkCache::default(),
             vendor_versions: Engine::vendor_versions(),
             gpu_backend,
             gpu_name,
-            ui_visible: true,
             next_frame: Instant::now(),
             next_output_frame: Instant::now(),
             render_stats: RenderStats::new(),
@@ -175,7 +175,7 @@ impl eframe::App for App {
         }
 
         // App not focused: cap whether any output is enabled
-        let target_fps = if self.engine.output_registry.any_enabled() {
+        let target_fps = if self.engine.output_registry.any_enabled() || self.engine.control_enabled() {
             ACTIVE_FPS
         } else {
             IDLE_FPS
@@ -197,7 +197,7 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        if self.ui_visible {
+        if self.engine.ui_visible {
             let actions = menu_bar::draw(ui, &self.engine, &self.recent_projects);
             side_panel::draw(ui, &mut self.engine);
             self.handle_menu_actions(&actions, ui);
@@ -206,13 +206,14 @@ impl eframe::App for App {
         self.draw_confirmation_modal(&ctx);
         self.draw_about_modal(&ctx);
         self.draw_shortcuts_modal(&ctx);
+        self.draw_control_window(&ctx);
         self.draw_licenses_modal(&ctx);
-        if self.ui_visible {
+        if self.engine.ui_visible {
             self.draw_status_bar(ui);
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
-            canvas::update(ui, &mut self.engine, &ctx, frame, self.ui_visible);
+            canvas::update(ui, &mut self.engine, &ctx, frame);
         });
     }
 
@@ -322,6 +323,7 @@ impl App {
                 MenuAction::OpenRecent(path) => self.confirm_or(Confirm::OpenPath(path.clone())),
                 MenuAction::ShowAbout => self.show_about = true,
                 MenuAction::ShowShortcuts => self.show_shortcuts = true,
+                MenuAction::ShowControl => self.show_control = true,
                 MenuAction::ShowLicenses => self.show_licenses = true,
             }
         }
@@ -338,7 +340,7 @@ impl App {
         };
 
         // In hidden UI mode only allow toggling back and exiting expanded view.
-        if !self.ui_visible {
+        if !self.engine.ui_visible {
             match shortcut {
                 Shortcut::ToggleUi | Shortcut::ExitExpanded => {}
                 _ => return,
@@ -419,7 +421,7 @@ impl App {
             Shortcut::RecenterView => self.engine.recenter_view(&panel_rect),
             Shortcut::ZoomIn => self.engine.zoom_view(&panel_rect, 1.1),
             Shortcut::ZoomOut => self.engine.zoom_view(&panel_rect, 1.0 / 1.1),
-            Shortcut::ToggleUi => self.ui_visible = !self.ui_visible,
+            Shortcut::ToggleUi => self.engine.ui_visible = !self.engine.ui_visible,
         }
     }
 
@@ -628,6 +630,100 @@ impl App {
             });
         if !open {
             self.show_shortcuts = false;
+        }
+    }
+
+    fn draw_control_window(&mut self, ctx: &egui::Context) {
+        if !self.show_control {
+            return;
+        }
+        let mut open = true;
+        let mut dirty = false;
+        let mut apply = false;
+        let mut confirm_remote = false;
+        let status = self.engine.control_status_label();
+        let needs_confirmation = self.engine.control_needs_remote_confirmation();
+
+        egui::Window::new("Control")
+            .collapsible(false)
+            .resizable(false)
+            .movable(false)
+            .default_size([420.0, 220.0])
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.heading("OSC");
+                let osc = &mut self.engine.cfg.control.osc;
+
+                if ui.checkbox(&mut osc.enabled, "Enabled").changed() {
+                    dirty = true;
+                }
+
+                egui::Grid::new("control_osc_grid")
+                    .num_columns(2)
+                    .spacing([12.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("Bind address");
+                        if ui
+                            .add(egui::TextEdit::singleline(&mut osc.bind).desired_width(160.0))
+                            .changed()
+                        {
+                            dirty = true;
+                        }
+                        ui.end_row();
+
+                        ui.label("Port");
+                        if ui
+                            .add(egui::DragValue::new(&mut osc.port).range(1..=65535))
+                            .changed()
+                        {
+                            dirty = true;
+                        }
+                        ui.end_row();
+
+                        ui.label("Prefix");
+                        if ui
+                            .add(
+                                egui::TextEdit::singleline(&mut osc.prefix)
+                                    .hint_text("/multiviewer")
+                                    .desired_width(160.0),
+                            )
+                            .changed()
+                        {
+                            dirty = true;
+                        }
+                        ui.end_row();
+                    });
+                ui.weak("Leave the prefix empty to answer at the root (/source/...).");
+
+                ui.add_space(8.0);
+                ui.label(status.as_str());
+                if needs_confirmation {
+                    ui.colored_label(
+                        egui::Color32::from_rgb(220, 160, 40),
+                        "A non-loopback bind exposes control to the network.",
+                    );
+                    if ui.button("Allow remote access").clicked() {
+                        confirm_remote = true;
+                    }
+                }
+
+                ui.separator();
+                if ui.button("Apply").clicked() {
+                    apply = true;
+                }
+            });
+
+        if dirty {
+            self.engine.dirty = true;
+        }
+        if confirm_remote {
+            self.engine.confirm_remote_control();
+        } else if apply {
+            self.engine.restart_control();
+        }
+        if !open {
+            self.show_control = false;
         }
     }
 

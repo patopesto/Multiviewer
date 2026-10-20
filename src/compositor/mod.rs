@@ -16,6 +16,7 @@ mod resources;
 mod tests;
 
 /// A simple rectangle, replacing the previous egui::Rect dependency.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,

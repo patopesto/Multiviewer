@@ -2,8 +2,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use crate::compositor::Compositor;
+use crate::compositor::{Compositor, Rect};
 use crate::config::{Config, SourceId};
+use crate::control::ControlRegistry;
 use crate::sources::{OutputRegistry, SourceRegistry};
 use crate::sources::{DecklinkDiscovery, decklink_version};
 use crate::sources::{NdiDiscovery, ndi_version};
@@ -23,6 +24,7 @@ use crate::sources::DirectShowDiscovery;
 #[cfg(target_os = "windows")]
 use crate::sources::WindowsCaptureDiscovery;
 
+mod control;
 mod interaction;
 mod outputs;
 mod project;
@@ -70,6 +72,7 @@ pub struct Engine {
     pub cfg: Config,
     pub registry: SourceRegistry,
     pub output_registry: OutputRegistry,
+    pub control: ControlRegistry,
     // Protocols
     pub ndi: Option<NdiDiscovery>,
     pub decklink: Option<DecklinkDiscovery>,
@@ -101,6 +104,9 @@ pub struct Engine {
     pub drag_state: DragState,
     pub snap_guides: SnapGuides,
     pub view: ViewState,
+    /// Last canvas panel rectangle, used by control commands that zoom or recenter.
+    pub canvas_rect: Rect,
+    pub ui_visible: bool,
     pub load_warnings: Vec<String>,
 }
 
