@@ -1,7 +1,7 @@
 use super::*;
 use crate::compositor::{self, Rect};
 use crate::config::{Canvas, Output, Source, TextureMode, CONFIG_VERSION};
-use crate::control::{Command, ControlMessage, Selector};
+use crate::control::{Command, Selector};
 use crate::engine::project::AUTO_SAVE_INTERVAL;
 use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::VncSourceConfig;
@@ -788,21 +788,6 @@ fn control_rejects_unknown_targets_and_bad_values() {
             .apply_command(Command::Zoom { factor: 0.0 })
             .is_err()
     );
-}
-
-#[test]
-fn control_query_runs_against_the_engine() {
-    let mut engine = test_engine(Canvas::default());
-    let (reply_tx, reply_rx) = std::sync::mpsc::channel();
-    engine
-        .control
-        .enqueue(ControlMessage::Query(Box::new(move |engine: &Engine| {
-            let _ = reply_tx.send(engine.cfg.canvas.width);
-        })));
-
-    engine.update();
-
-    assert_eq!(reply_rx.recv().unwrap(), 1920);
 }
 
 #[test]

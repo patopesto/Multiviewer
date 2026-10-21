@@ -175,7 +175,9 @@ impl eframe::App for App {
         }
 
         // App not focused: cap whether any output is enabled
-        let target_fps = if self.engine.output_registry.any_enabled() || self.engine.control_enabled() {
+        let target_fps = if self.engine.output_registry.any_enabled()
+            || self.engine.control.is_enabled()
+        {
             ACTIVE_FPS
         } else {
             IDLE_FPS

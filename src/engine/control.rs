@@ -4,7 +4,6 @@ use crate::config::Source;
 use crate::control::{
     Command, ControlStatus, Selector, is_loopback_bind, normalize_prefix,
 };
-use crate::sources::SourceKey;
 
 #[derive(Debug)]
 pub enum ControlError {
@@ -131,50 +130,22 @@ impl Engine {
 
     /// Resolve a control selector to a source placement uuid.
     pub fn resolve_source(&self, selector: &Selector) -> Option<String> {
-        return match selector {
-            Selector::Index(index) => index
-                .checked_sub(1)
-                .and_then(|index| self.cfg.canvas.sources.get(index))
-                .map(|source| source.uuid.clone()),
-            Selector::Key(key) => self
-                .cfg
-                .canvas
-                .sources
-                .iter()
-                .find(|source| &source.name == key)
-                .or_else(|| {
-                    self.cfg
-                        .canvas
-                        .sources
-                        .iter()
-                        .find(|source| &source.uuid == key)
-                })
-                .map(|source| source.uuid.clone()),
-        };
+        return resolve(
+            &self.cfg.canvas.sources,
+            selector,
+            |source| source.name.as_str(),
+            |source| source.uuid.as_str(),
+        );
     }
 
     /// Resolve a control selector to an output uuid.
     pub fn resolve_output(&self, selector: &Selector) -> Option<String> {
-        return match selector {
-            Selector::Index(index) => index
-                .checked_sub(1)
-                .and_then(|index| self.cfg.canvas.outputs.get(index))
-                .map(|output| output.uuid.clone()),
-            Selector::Key(key) => self
-                .cfg
-                .canvas
-                .outputs
-                .iter()
-                .find(|output| &output.name == key)
-                .or_else(|| {
-                    self.cfg
-                        .canvas
-                        .outputs
-                        .iter()
-                        .find(|output| &output.uuid == key)
-                })
-                .map(|output| output.uuid.clone()),
-        };
+        return resolve(
+            &self.cfg.canvas.outputs,
+            selector,
+            |output| output.name.as_str(),
+            |output| output.uuid.as_str(),
+        );
     }
 
     fn update_source(
@@ -193,18 +164,6 @@ impl Engine {
         update(source);
         self.dirty = true;
         return Ok(());
-    }
-
-    /// Whether a placement's runtime source is live.
-    pub fn is_source_connected(&self, source: &Source) -> bool {
-        return source
-            .source_ref
-            .as_ref()
-            .map(|source_ref| {
-                self.registry
-                    .contains(&SourceKey::new(source.protocol.clone(), source_ref.clone()))
-            })
-            .unwrap_or(false);
     }
 
     /// Restart the listeners to match the current project configuration.
@@ -237,11 +196,26 @@ impl Engine {
         let osc = &self.cfg.control.osc;
         return osc.enabled && !self.control.remote_confirmed() && !is_loopback_bind(&osc.bind);
     }
+}
 
-    /// Control stays responsive while the window is unfocused.
-    pub fn control_enabled(&self) -> bool {
-        return self.control.is_enabled();
-    }
+/// Resolve a selector against a canvas list: 1-based index, then name, then uuid.
+fn resolve<T>(
+    items: &[T],
+    selector: &Selector,
+    name: fn(&T) -> &str,
+    uuid: fn(&T) -> &str,
+) -> Option<String> {
+    return match selector {
+        Selector::Index(index) => index
+            .checked_sub(1)
+            .and_then(|index| items.get(index))
+            .map(|item| uuid(item).to_string()),
+        Selector::Key(key) => items
+            .iter()
+            .find(|item| name(item) == key)
+            .or_else(|| items.iter().find(|item| uuid(item) == key))
+            .map(|item| uuid(item).to_string()),
+    };
 }
 
 fn finite(value: f32) -> Result<f32, ControlError> {

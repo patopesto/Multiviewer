@@ -2,7 +2,6 @@ use std::time::{Duration, Instant};
 
 use super::Engine;
 use crate::config::{Source, TextureMode};
-use crate::control::ControlMessage;
 use crate::sources::{Protocol, SourceConfig, SourceKey};
 use crate::sources::DecklinkSourceConfig;
 use crate::sources::NdiSourceConfig;
@@ -16,14 +15,9 @@ const DISCOVERY_INTERVAL: Duration = Duration::from_millis(250);
 
 impl Engine {
     pub fn update(&mut self) {
-        for message in self.control.drain() {
-            match message {
-                ControlMessage::Command(command) => {
-                    if let Err(e) = self.apply_command(command) {
-                        tracing::warn!("control command rejected: {e}");
-                    }
-                }
-                ControlMessage::Query(query) => query(&*self),
+        for command in self.control.drain() {
+            if let Err(e) = self.apply_command(command) {
+                tracing::warn!("control command rejected: {e}");
             }
         }
 

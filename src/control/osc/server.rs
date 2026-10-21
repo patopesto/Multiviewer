@@ -1,20 +1,17 @@
 use std::io::ErrorKind;
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Sender};
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use rosc::{OscMessage, OscPacket, OscType, decoder, encoder};
+use rosc::{OscMessage, OscPacket, OscType, decoder};
 
 use super::super::command::{Command, Selector};
-use super::super::registry::{ControlMessage, StateQuery};
 use crate::config::TextureMode;
-use crate::engine::Engine;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
-const QUERY_TIMEOUT: Duration = Duration::from_millis(500);
 
 /// A UDP OSC listener. Bind happens on the caller's thread so a bad address or
 /// a taken port is reported immediately; the receive loop runs on its own.
@@ -28,7 +25,7 @@ impl OscServer {
         bind: &str,
         port: u16,
         prefix: String,
-        tx: Sender<ControlMessage>,
+        tx: Sender<Command>,
     ) -> Result<(Self, SocketAddr), std::io::Error> {
         let socket = UdpSocket::bind((bind, port))?;
         socket.set_read_timeout(Some(POLL_INTERVAL))?;
@@ -51,66 +48,40 @@ impl Drop for OscServer {
     }
 }
 
-fn run_server(
-    socket: UdpSocket,
-    tx: Sender<ControlMessage>,
-    prefix: String,
-    running: Arc<AtomicBool>,
-) {
+fn run_server(socket: UdpSocket, tx: Sender<Command>, prefix: String, running: Arc<AtomicBool>) {
     let mut buffer = [0u8; 65535];
     while running.load(Ordering::Acquire) {
-        match socket.recv_from(&mut buffer) {
-            Ok((len, from)) => handle_datagram(&buffer[..len], from, &socket, &tx, &prefix),
-            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
+        let (len, from) = match socket.recv_from(&mut buffer) {
+            Ok(received) => received,
+            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => continue,
             Err(e) => {
                 tracing::error!("OSC listener stopped: {e}");
                 break;
             }
-        }
+        };
+        let packet = match decoder::decode_udp(&buffer[..len]) {
+            Ok((_, packet)) => packet,
+            Err(e) => {
+                tracing::debug!(from = %from, "ignoring malformed OSC packet: {e}");
+                continue;
+            }
+        };
+        handle_packet(packet, from, &tx, &prefix);
     }
 }
 
-fn handle_datagram(
-    data: &[u8],
-    from: SocketAddr,
-    socket: &UdpSocket,
-    tx: &Sender<ControlMessage>,
-    prefix: &str,
-) {
-    let packet = match decoder::decode_udp(data) {
-        Ok((_, packet)) => packet,
-        Err(e) => {
-            tracing::debug!(from = %from, "ignoring malformed OSC packet: {e}");
-            return;
-        }
-    };
-    handle_packet(packet, from, socket, tx, prefix);
-}
-
-fn handle_packet(
-    packet: OscPacket,
-    from: SocketAddr,
-    socket: &UdpSocket,
-    tx: &Sender<ControlMessage>,
-    prefix: &str,
-) {
+fn handle_packet(packet: OscPacket, from: SocketAddr, tx: &Sender<Command>, prefix: &str) {
     match packet {
-        OscPacket::Message(message) => handle_message(message, from, socket, tx, prefix),
+        OscPacket::Message(message) => handle_message(message, from, tx, prefix),
         OscPacket::Bundle(bundle) => {
             for packet in bundle.content {
-                handle_packet(packet, from, socket, tx, prefix);
+                handle_packet(packet, from, tx, prefix);
             }
         }
     }
 }
 
-fn handle_message(
-    message: OscMessage,
-    from: SocketAddr,
-    socket: &UdpSocket,
-    tx: &Sender<ControlMessage>,
-    prefix: &str,
-) {
+fn handle_message(message: OscMessage, from: SocketAddr, tx: &Sender<Command>, prefix: &str) {
     let Some(address) = strip_prefix(&message.addr, prefix) else {
         tracing::debug!(
             from = %from,
@@ -119,117 +90,13 @@ fn handle_message(
         );
         return;
     };
-    if address == "/query/state" {
-        answer_query(socket, from, tx, prefix);
-        return;
-    }
     match parse_message(address, &message.args) {
         Some(command) => {
             tracing::debug!(from = %from, command = ?command, "OSC command");
-            let _ = tx.send(ControlMessage::Command(command));
+            let _ = tx.send(command);
         }
         None => tracing::debug!(from = %from, addr = %message.addr, "ignoring unknown OSC address"),
     }
-}
-
-/// State is encoded on the UI thread, which owns the only copy of it.
-fn answer_query(
-    socket: &UdpSocket,
-    to: SocketAddr,
-    tx: &Sender<ControlMessage>,
-    prefix: &str,
-) {
-    let (reply_tx, reply_rx) = mpsc::channel::<Vec<OscMessage>>();
-    let prefix = prefix.to_string();
-    let query: StateQuery = Box::new(move |engine| {
-        let _ = reply_tx.send(state_messages(engine, &prefix));
-    });
-    if tx.send(ControlMessage::Query(query)).is_err() {
-        return;
-    }
-    match reply_rx.recv_timeout(QUERY_TIMEOUT) {
-        Ok(messages) => send_messages(socket, to, messages),
-        Err(_) => tracing::warn!("control state query timed out"),
-    }
-}
-
-/// One message per state element, read straight from the engine.
-fn state_messages(engine: &Engine, prefix: &str) -> Vec<OscMessage> {
-    let canvas = &engine.cfg.canvas;
-    let mut messages = Vec::new();
-    messages.push(state_message(
-        &format!("{prefix}/state/canvas"),
-        vec![
-            OscType::Int(canvas.width as i32),
-            OscType::Int(canvas.height as i32),
-        ],
-    ));
-    messages.push(state_message(
-        &format!("{prefix}/state/selection"),
-        vec![OscType::String(
-            engine.selected_source_id.clone().unwrap_or_default(),
-        )],
-    ));
-    messages.push(state_message(
-        &format!("{prefix}/state/view"),
-        vec![
-            OscType::Float(engine.view.zoom),
-            OscType::Float(engine.view.pan.x),
-            OscType::Float(engine.view.pan.y),
-        ],
-    ));
-    messages.push(state_message(
-        &format!("{prefix}/state/ui"),
-        vec![OscType::Bool(engine.ui_visible)],
-    ));
-    for (index, source) in canvas.sources.iter().enumerate() {
-        messages.push(state_message(
-            &format!("{prefix}/state/source"),
-            vec![
-                OscType::Int(index as i32 + 1),
-                OscType::String(source.uuid.clone()),
-                OscType::String(source.name.clone()),
-                OscType::String(source.protocol.name().to_string()),
-                OscType::Float(source.x),
-                OscType::Float(source.y),
-                OscType::Int(source.width as i32),
-                OscType::Int(source.height as i32),
-                OscType::Int(source.z),
-                OscType::String(source.mode.label().to_string()),
-                OscType::Bool(source.flip_h),
-                OscType::Bool(source.flip_v),
-                OscType::Bool(engine.is_source_connected(source)),
-            ],
-        ));
-    }
-    for (index, output) in canvas.outputs.iter().enumerate() {
-        messages.push(state_message(
-            &format!("{prefix}/state/output"),
-            vec![
-                OscType::Int(index as i32 + 1),
-                OscType::String(output.uuid.clone()),
-                OscType::String(output.name.clone()),
-                OscType::String(output.protocol.name().to_string()),
-                OscType::Bool(output.enabled),
-            ],
-        ));
-    }
-    return messages;
-}
-
-fn send_messages(socket: &UdpSocket, to: SocketAddr, messages: Vec<OscMessage>) {
-    for message in messages {
-        if let Ok(bytes) = encoder::encode(&OscPacket::Message(message)) {
-            let _ = socket.send_to(&bytes, to);
-        }
-    }
-}
-
-fn state_message(addr: &str, args: Vec<OscType>) -> OscMessage {
-    return OscMessage {
-        addr: addr.to_string(),
-        args,
-    };
 }
 
 /// Strip the configured prefix. The remainder must start with `/`, so a
@@ -281,7 +148,7 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
         _ => {}
     }
 
-    let source = parse_selector(*rest.first()?)?;
+    let source = parse_selector(rest.first()?)?;
     return match *rest.get(1)? {
         "x" => Some(Command::SetSourceX {
             source,
@@ -328,7 +195,7 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
 }
 
 fn parse_output(rest: &[&str], args: &[OscType]) -> Option<Command> {
-    let output = parse_selector(*rest.first()?)?;
+    let output = parse_selector(rest.first()?)?;
     return match *rest.get(1)? {
         "enabled" => Some(Command::SetOutputEnabled {
             output,
@@ -408,8 +275,11 @@ fn arg_mode(arg: &OscType) -> Option<TextureMode> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+
+    use rosc::encoder;
+
     use super::*;
-    use crate::config::Canvas;
 
     #[test]
     fn parses_source_position() {
@@ -442,6 +312,32 @@ mod tests {
         assert_eq!(
             parse_message("/source/next", &[]),
             Some(Command::SelectNext)
+        );
+        assert_eq!(
+            parse_message("/source/prev", &[]),
+            Some(Command::SelectPrevious)
+        );
+        assert_eq!(
+            parse_message("/source/previous", &[]),
+            Some(Command::SelectPrevious)
+        );
+        assert_eq!(
+            parse_message("/source/1/width", &[OscType::Int(640)]),
+            Some(Command::SetSourceWidth {
+                source: Selector::Index(1),
+                value: 640,
+            })
+        );
+        assert_eq!(
+            parse_message("/source/1/height", &[OscType::Int(360)]),
+            Some(Command::SetSourceHeight {
+                source: Selector::Index(1),
+                value: 360,
+            })
+        );
+        assert_eq!(
+            parse_message("/source/select", &[OscType::String("CamA".to_string())]),
+            Some(Command::SelectSource(Selector::Key("CamA".to_string())))
         );
         assert_eq!(
             parse_message("/source/1/remove", &[]),
@@ -497,59 +393,21 @@ mod tests {
             OscServer::start("127.0.0.1", 0, "/multiviewer".to_string(), tx).unwrap();
 
         let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
-        let packet = OscPacket::Message(state_message(
-            "/multiviewer/source/1/x",
-            vec![OscType::Float(42.0)],
-        ));
-        sender
-            .send_to(&encoder::encode(&packet).unwrap(), addr)
-            .unwrap();
-
-        let message = rx.recv_timeout(Duration::from_secs(2)).unwrap();
-        match message {
-            ControlMessage::Command(command) => assert_eq!(
-                command,
-                Command::SetSourceX {
-                    source: Selector::Index(1),
-                    value: 42.0,
-                }
-            ),
-            ControlMessage::Query(_) => panic!("expected a command"),
-        }
-    }
-
-    /// A state query is answered by the UI side of the channel.
-    #[test]
-    fn listener_answers_a_state_query() {
-        let (tx, rx) = mpsc::channel();
-        let (_server, addr) = OscServer::start("127.0.0.1", 0, String::new(), tx).unwrap();
-
-        let responder = std::thread::spawn(move || {
-            let engine = Engine::test_instance(Canvas::default());
-            let message = rx.recv_timeout(Duration::from_secs(2)).unwrap();
-            match message {
-                ControlMessage::Query(query) => query(&engine),
-                ControlMessage::Command(_) => panic!("expected a query"),
-            }
+        let packet = OscPacket::Message(OscMessage {
+            addr: "/multiviewer/source/1/x".to_string(),
+            args: vec![OscType::Float(42.0)],
         });
-
-        let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
-        sender
-            .set_read_timeout(Some(Duration::from_secs(2)))
-            .unwrap();
-        let packet = OscPacket::Message(state_message("/query/state", vec![]));
         sender
             .send_to(&encoder::encode(&packet).unwrap(), addr)
             .unwrap();
 
-        let mut buffer = [0u8; 1024];
-        let (len, _) = sender.recv_from(&mut buffer).unwrap();
-        responder.join().unwrap();
-
-        let (_, packet) = decoder::decode_udp(&buffer[..len]).unwrap();
-        let OscPacket::Message(message) = packet else {
-            panic!("expected a message")
-        };
-        assert_eq!(message.addr, "/state/canvas");
+        let command = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(
+            command,
+            Command::SetSourceX {
+                source: Selector::Index(1),
+                value: 42.0,
+            }
+        );
     }
 }

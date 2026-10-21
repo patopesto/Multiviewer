@@ -1,10 +1,8 @@
-use serde::{Deserialize, Serialize};
-
 use crate::config::TextureMode;
 
 /// Which source or output a command targets. `Index` is 1-based list order;
 /// `Key` matches a name first and a uuid second.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Selector {
     Index(usize),
     Key(String),
@@ -12,7 +10,7 @@ pub enum Selector {
 
 /// Protocol-agnostic control vocabulary. Every control backend decodes its
 /// wire format into one of these and hands it to `Engine::apply_command`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Command {
     AddSource,
     RemoveSource(Selector),

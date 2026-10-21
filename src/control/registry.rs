@@ -4,9 +4,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use super::command::Command;
 use super::config::{ControlConfig, is_loopback_bind};
 use super::osc::{OscServer, normalize_prefix};
-use crate::engine::Engine;
 
-/// Messages applied per frame; a UDP flood must not stall a render frame.
+/// Commands applied per frame; a UDP flood must not stall a render frame.
 const MAX_COMMANDS_PER_FRAME: usize = 200;
 
 #[derive(Clone, Debug, Default)]
@@ -17,21 +16,11 @@ pub enum ControlStatus {
     Error(String),
 }
 
-/// Runs on the UI thread with a borrow of the engine, so state replies are
-/// encoded from the only copy of the state and nothing is cloned across threads.
-pub type StateQuery = Box<dyn FnOnce(&Engine) + Send>;
-
-/// What a control listener hands to the UI thread.
-pub enum ControlMessage {
-    Command(Command),
-    Query(StateQuery),
-}
-
 /// The live control listeners. Owned by the engine on the UI thread; each
-/// listener runs on its own thread and sends messages over a channel.
+/// listener runs on its own thread and sends commands over a channel.
 pub struct ControlRegistry {
-    tx: Sender<ControlMessage>,
-    rx: Receiver<ControlMessage>,
+    tx: Sender<Command>,
+    rx: Receiver<Command>,
     osc: Option<OscServer>,
     status: ControlStatus,
     remote_confirmed: bool,
@@ -89,23 +78,23 @@ impl ControlRegistry {
         self.apply(config);
     }
 
-    /// Take the messages received since the last call.
-    pub fn drain(&self) -> Vec<ControlMessage> {
-        let mut messages = Vec::new();
-        while messages.len() < MAX_COMMANDS_PER_FRAME {
-            let Ok(message) = self.rx.try_recv() else {
-                return messages;
+    /// Take the commands received since the last call.
+    pub fn drain(&self) -> Vec<Command> {
+        let mut commands = Vec::new();
+        while commands.len() < MAX_COMMANDS_PER_FRAME {
+            let Ok(command) = self.rx.try_recv() else {
+                return commands;
             };
-            messages.push(message);
+            commands.push(command);
         }
         let mut dropped = 0;
         while self.rx.try_recv().is_ok() {
             dropped += 1;
         }
         if dropped > 0 {
-            tracing::warn!("dropped {dropped} control messages (flood)");
+            tracing::warn!("dropped {dropped} control commands (flood)");
         }
-        return messages;
+        return commands;
     }
 
     pub fn status(&self) -> &ControlStatus {
@@ -118,11 +107,6 @@ impl ControlRegistry {
 
     pub fn is_enabled(&self) -> bool {
         return self.osc.is_some();
-    }
-
-    #[cfg(test)]
-    pub fn enqueue(&self, message: ControlMessage) {
-        let _ = self.tx.send(message);
     }
 }
 
