@@ -804,3 +804,29 @@ fn control_query_runs_against_the_engine() {
 
     assert_eq!(reply_rx.recv().unwrap(), 1920);
 }
+
+#[test]
+fn control_clear_selection_deselects() {
+    let mut engine = test_engine(Canvas::default());
+    engine.apply_command(Command::AddSource).unwrap();
+    assert!(engine.selected_source_id.is_some());
+
+    engine.apply_command(Command::ClearSelection).unwrap();
+
+    assert!(engine.selected_source_id.is_none());
+}
+
+/// A view command that arrives before the first frame has laid out the canvas
+/// must not divide by a zero-size viewport and poison the view with NaN.
+#[test]
+fn view_commands_ignore_an_uninitialised_viewport() {
+    let mut engine = test_engine(Canvas::default());
+    assert_eq!(engine.canvas_rect.width(), 0.0);
+
+    engine.apply_command(Command::Zoom { factor: 1.1 }).unwrap();
+    engine.apply_command(Command::RecenterView).unwrap();
+
+    assert_eq!(engine.view.zoom, 1.0);
+    assert!(engine.view.pan.x.is_finite());
+    assert!(engine.view.pan.y.is_finite());
+}

@@ -19,6 +19,7 @@ pub enum Command {
     SelectNext,
     SelectPrevious,
     SelectSource(Selector),
+    ClearSelection,
     ExpandSource(Selector),
     ExitExpanded,
     Nudge { dx: f32, dy: f32 },

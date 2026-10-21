@@ -9,7 +9,7 @@ pub enum MenuAction {
     Shortcut(Shortcut),
     OpenRecent(PathBuf),
     ShowShortcuts,
-    ShowControl,
+    ShowOSCControl,
     ShowAbout,
     ShowLicenses,
 }
@@ -54,8 +54,8 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
             });
 
             menu_button(ui, "Control", |ui| {
-                if ui.button("Control Settings...").clicked() {
-                    actions.push(MenuAction::ShowControl);
+                if ui.button("OSC Control...").clicked() {
+                    actions.push(MenuAction::ShowOSCControl);
                 }
             });
 

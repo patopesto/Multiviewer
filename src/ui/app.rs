@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
-use crate::compositor::Rect;
+use crate::control::{Command, Selector};
 use crate::engine::Engine;
 use crate::platform::poll_open_file;
 use crate::session::Session;
@@ -323,7 +323,7 @@ impl App {
                 MenuAction::OpenRecent(path) => self.confirm_or(Confirm::OpenPath(path.clone())),
                 MenuAction::ShowAbout => self.show_about = true,
                 MenuAction::ShowShortcuts => self.show_shortcuts = true,
-                MenuAction::ShowControl => self.show_control = true,
+                MenuAction::ShowOSCControl => self.show_control = true,
                 MenuAction::ShowLicenses => self.show_licenses = true,
             }
         }
@@ -352,22 +352,24 @@ impl App {
 
     /// Run one shortcut. Shared by keyboard detection and the menu bar so both paths behave identically.
     fn apply_shortcut(&mut self, shortcut: Shortcut, ui: &egui::Ui) {
-        let rect = ui.available_rect_before_wrap();
-        let panel_rect = Rect {
-            x: rect.min.x,
-            y: rect.min.y,
-            w: rect.width(),
-            h: rect.height(),
-        };
-        let ctx = ui.ctx();
-        let nudge_amount = if ctx.input(|i| i.modifiers.alt) { 10.0 } else { 1.0 };
-
+        // UI-only actions keep their dialogs and confirmation; everything else
+        // goes through the same command path as the control protocols.
         match shortcut {
-            Shortcut::NewProject => self.confirm_or(Confirm::New),
-            Shortcut::OpenProject => self.confirm_or(Confirm::Open),
+            Shortcut::NewProject => {
+                self.confirm_or(Confirm::New);
+                return;
+            }
+            Shortcut::OpenProject => {
+                self.confirm_or(Confirm::Open);
+                return;
+            }
+            Shortcut::SaveProjectAs => {
+                self.save_as_dialog();
+                return;
+            }
             Shortcut::SaveProject => {
                 if self.engine.project_path.is_some() {
-                    if let Err(e) = self.engine.save_project() {
+                    if let Err(e) = self.engine.apply_command(Command::SaveProject) {
                         self.last_error = Some(e.to_string());
                     } else {
                         self.last_error = None;
@@ -375,53 +377,17 @@ impl App {
                 } else {
                     self.save_as_dialog();
                 }
+                return;
             }
-            Shortcut::SaveProjectAs => self.save_as_dialog(),
-            Shortcut::AddSource => {
-                let uuid = self.engine.add_source();
-                self.engine.selected_source_id = Some(uuid);
-            }
-            Shortcut::DeleteSource => {
-                // Avoid deleting while a source is expanded; user can press Esc first.
-                if self.engine.expanded_source_id.is_some() {
-                    return;
-                }
-                if let Some(uuid) = self.engine.selected_source_id.take() {
-                    self.engine.remove_source(&uuid);
-                }
-            }
-            Shortcut::ExpandSource => {
-                if self.engine.expanded_source_id.is_some() {
-                    self.engine.clear_expanded_source();
-                } else if let Some(uuid) = self.engine.selected_source_id.clone() {
-                    self.engine.expand_source(uuid);
-                }
-            }
-            Shortcut::ExitExpanded => {
-                if self.engine.expanded_source_id.is_some() {
-                    self.engine.clear_expanded_source();
-                } else {
-                    self.engine.selected_source_id = None;
-                }
-            }
-            Shortcut::SelectNextSource => self.engine.select_source(1),
-            Shortcut::SelectPreviousSource => self.engine.select_source(-1),
-            Shortcut::NudgeUp => {
-                self.engine.nudge_selected_source(0.0, -nudge_amount);
-            }
-            Shortcut::NudgeDown => {
-                self.engine.nudge_selected_source(0.0, nudge_amount);
-            }
-            Shortcut::NudgeLeft => {
-                self.engine.nudge_selected_source(-nudge_amount, 0.0);
-            }
-            Shortcut::NudgeRight => {
-                self.engine.nudge_selected_source(nudge_amount, 0.0);
-            }
-            Shortcut::RecenterView => self.engine.recenter_view(&panel_rect),
-            Shortcut::ZoomIn => self.engine.zoom_view(&panel_rect, 1.1),
-            Shortcut::ZoomOut => self.engine.zoom_view(&panel_rect, 1.0 / 1.1),
-            Shortcut::ToggleUi => self.engine.ui_visible = !self.engine.ui_visible,
+            _ => {}
+        }
+
+        let nudge_amount = if ui.ctx().input(|i| i.modifiers.alt) { 10.0 } else { 1.0 };
+        let Some(command) = shortcut_command(shortcut, &self.engine, nudge_amount) else {
+            return;
+        };
+        if let Err(e) = self.engine.apply_command(command) {
+            self.last_error = Some(e.to_string());
         }
     }
 
@@ -644,7 +610,7 @@ impl App {
         let status = self.engine.control_status_label();
         let needs_confirmation = self.engine.control_needs_remote_confirmation();
 
-        egui::Window::new("Control")
+        egui::Window::new("OSC Control")
             .collapsible(false)
             .resizable(false)
             .movable(false)
@@ -652,7 +618,6 @@ impl App {
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .open(&mut open)
             .show(ctx, |ui| {
-                ui.heading("OSC");
                 let osc = &mut self.engine.cfg.control.osc;
 
                 if ui.checkbox(&mut osc.enabled, "Enabled").changed() {
@@ -751,6 +716,63 @@ impl App {
     }
 }
 
+/// Translate a keyboard shortcut into the shared control command vocabulary.
+/// Returns `None` for actions that are UI-only (dialogs, confirmation).
+fn shortcut_command(shortcut: Shortcut, engine: &Engine, nudge_amount: f32) -> Option<Command> {
+    let selected = || engine.selected_source_id.clone().map(Selector::Key);
+    return match shortcut {
+        Shortcut::AddSource => Some(Command::AddSource),
+        // Deleting while expanded would pull the view out from under the user.
+        Shortcut::DeleteSource => {
+            if engine.expanded_source_id.is_some() {
+                None
+            } else {
+                selected().map(Command::RemoveSource)
+            }
+        }
+        Shortcut::ExpandSource => {
+            if engine.expanded_source_id.is_some() {
+                Some(Command::ExitExpanded)
+            } else {
+                selected().map(Command::ExpandSource)
+            }
+        }
+        Shortcut::ExitExpanded => {
+            if engine.expanded_source_id.is_some() {
+                Some(Command::ExitExpanded)
+            } else {
+                Some(Command::ClearSelection)
+            }
+        }
+        Shortcut::SelectNextSource => Some(Command::SelectNext),
+        Shortcut::SelectPreviousSource => Some(Command::SelectPrevious),
+        Shortcut::NudgeUp => Some(Command::Nudge {
+            dx: 0.0,
+            dy: -nudge_amount,
+        }),
+        Shortcut::NudgeDown => Some(Command::Nudge {
+            dx: 0.0,
+            dy: nudge_amount,
+        }),
+        Shortcut::NudgeLeft => Some(Command::Nudge {
+            dx: -nudge_amount,
+            dy: 0.0,
+        }),
+        Shortcut::NudgeRight => Some(Command::Nudge {
+            dx: nudge_amount,
+            dy: 0.0,
+        }),
+        Shortcut::RecenterView => Some(Command::RecenterView),
+        Shortcut::ZoomIn => Some(Command::Zoom { factor: 1.1 }),
+        Shortcut::ZoomOut => Some(Command::Zoom { factor: 1.0 / 1.1 }),
+        Shortcut::ToggleUi => Some(Command::ToggleUi),
+        Shortcut::NewProject
+        | Shortcut::OpenProject
+        | Shortcut::SaveProject
+        | Shortcut::SaveProjectAs => None,
+    };
+}
+
 fn ensure_extension(mut path: std::path::PathBuf, ext: &str) -> std::path::PathBuf {
     if path.extension().and_then(|e| e.to_str()) != Some(ext) {
         path.set_extension(ext);
@@ -769,6 +791,7 @@ fn advance_deadline(prev: Instant, now: Instant, interval: Duration) -> Instant 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Canvas;
 
     #[test]
     fn ensure_extension_appends_when_missing() {
@@ -812,5 +835,75 @@ mod tests {
         let deadline = Instant::now();
         let now = deadline + Duration::from_millis(100);
         assert_eq!(advance_deadline(deadline, now, interval), now + interval);
+    }
+
+    #[test]
+    fn shortcut_mapping_uses_the_control_commands() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let uuid = engine.add_source();
+        engine.selected_source_id = Some(uuid.clone());
+
+        assert_eq!(
+            shortcut_command(Shortcut::AddSource, &engine, 1.0),
+            Some(Command::AddSource)
+        );
+        assert_eq!(
+            shortcut_command(Shortcut::DeleteSource, &engine, 1.0),
+            Some(Command::RemoveSource(Selector::Key(uuid)))
+        );
+        assert_eq!(
+            shortcut_command(Shortcut::NudgeUp, &engine, 1.0),
+            Some(Command::Nudge {
+                dx: 0.0,
+                dy: -1.0
+            })
+        );
+        assert_eq!(
+            shortcut_command(Shortcut::NudgeRight, &engine, 10.0),
+            Some(Command::Nudge {
+                dx: 10.0,
+                dy: 0.0
+            })
+        );
+        assert_eq!(
+            shortcut_command(Shortcut::ZoomIn, &engine, 1.0),
+            Some(Command::Zoom { factor: 1.1 })
+        );
+        assert_eq!(
+            shortcut_command(Shortcut::SelectNextSource, &engine, 1.0),
+            Some(Command::SelectNext)
+        );
+        assert_eq!(shortcut_command(Shortcut::SaveProject, &engine, 1.0), None);
+        assert_eq!(shortcut_command(Shortcut::NewProject, &engine, 1.0), None);
+    }
+
+    #[test]
+    fn expanded_view_guards_shortcut_commands() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let uuid = engine.add_source();
+        engine.selected_source_id = Some(uuid.clone());
+        engine.expanded_source_id = Some(uuid);
+
+        assert_eq!(shortcut_command(Shortcut::DeleteSource, &engine, 1.0), None);
+        assert_eq!(
+            shortcut_command(Shortcut::ExpandSource, &engine, 1.0),
+            Some(Command::ExitExpanded)
+        );
+        assert_eq!(
+            shortcut_command(Shortcut::ExitExpanded, &engine, 1.0),
+            Some(Command::ExitExpanded)
+        );
+    }
+
+    #[test]
+    fn escape_clears_selection_when_not_expanded() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let uuid = engine.add_source();
+        engine.selected_source_id = Some(uuid);
+
+        assert_eq!(
+            shortcut_command(Shortcut::ExitExpanded, &engine, 1.0),
+            Some(Command::ClearSelection)
+        );
     }
 }

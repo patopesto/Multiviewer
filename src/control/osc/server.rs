@@ -277,6 +277,7 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
         ["prev"] | ["previous"] => return Some(Command::SelectPrevious),
         ["exit_expanded"] => return Some(Command::ExitExpanded),
         ["select"] => return Some(Command::SelectSource(selector_arg(args.first()?)?)),
+        ["deselect"] => return Some(Command::ClearSelection),
         _ => {}
     }
 
@@ -445,6 +446,10 @@ mod tests {
         assert_eq!(
             parse_message("/source/1/remove", &[]),
             Some(Command::RemoveSource(Selector::Index(1)))
+        );
+        assert_eq!(
+            parse_message("/source/deselect", &[]),
+            Some(Command::ClearSelection)
         );
     }
 

@@ -53,6 +53,7 @@ impl Engine {
                 let uuid = self.resolve_source(&selector).ok_or(ControlError::UnknownSource)?;
                 self.selected_source_id = Some(uuid);
             }
+            Command::ClearSelection => self.selected_source_id = None,
             Command::ExpandSource(selector) => {
                 let uuid = self.resolve_source(&selector).ok_or(ControlError::UnknownSource)?;
                 self.expand_source(uuid);
