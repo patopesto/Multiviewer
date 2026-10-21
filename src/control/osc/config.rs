@@ -31,9 +31,9 @@ pub fn normalize_prefix(raw: &str) -> Result<String, &'static str> {
     }
     if raw
         .chars()
-        .any(|c| c.is_whitespace() || INVALID_PREFIX_CHARS.contains(&c))
+        .any(|c| (c.is_whitespace() && c != ' ') || INVALID_PREFIX_CHARS.contains(&c))
     {
-        return Err("prefix contains an OSC-special character");
+        return Err("prefix contains an unsupported character");
     }
     let trimmed = raw.trim_end_matches('/');
     if trimmed.is_empty() {
@@ -64,12 +64,20 @@ mod tests {
         );
         assert_eq!(normalize_prefix("/mv/"), Ok("/mv".to_string()));
         assert_eq!(normalize_prefix(" /show/ "), Ok("/show".to_string()));
+        assert_eq!(
+            normalize_prefix("/my control"),
+            Ok("/my control".to_string())
+        );
+        assert_eq!(
+            normalize_prefix(" /my control/ "),
+            Ok("/my control".to_string())
+        );
     }
 
     #[test]
     fn rejects_invalid_prefixes() {
-        assert!(normalize_prefix("/multi viewer").is_err());
         assert!(normalize_prefix("/a//b").is_err());
         assert!(normalize_prefix("/a?b").is_err());
+        assert!(normalize_prefix("/a\tb").is_err());
     }
 }

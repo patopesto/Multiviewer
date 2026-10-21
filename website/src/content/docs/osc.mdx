@@ -19,7 +19,7 @@ After changing the bind address or port, click **Apply**. The status line in Con
 | Enabled | off | Start or stop the listener. |
 | Bind address | `127.0.0.1` | Interface to listen on. See [Bind addresses](#bind-addresses). |
 | Port | `9000` | UDP port. |
-| Prefix | empty | Address prefix. Leave empty to answer at the root. |
+| Prefix | empty | Address prefix. Leave empty to answer at the root. Spaces are allowed. |
 
 ## Bind addresses
 
@@ -36,11 +36,18 @@ on. The port is the UDP port; both must match on the sender side.
 
 Every path on this page is relative to the configured prefix. With an empty
 prefix, send `/source/2/x`; with a prefix of `/multiviewer`, send
-`/multiviewer/source/2/x`.
+`/multiviewer/source/2/x`. Prefixes may contain spaces, for example
+`/my control`.
 
 `{sel}` targets a source or output by its 1-based position in the list, its
-name, or its uuid. OSC addresses cannot contain spaces, so use the index or
-uuid for names with spaces.
+name, or its uuid. Names may contain spaces, so `/source/Mini 3/expand` expands
+the source named `Mini 3`. A name containing `/` cannot be used as a path
+segment, and a name made only of digits is read as an index; use the index or
+uuid in those cases.
+
+If an OSC client cannot send spaces in an address, keep names and prefixes
+space-free; some clients validate address patterns more strictly than the
+listener does.
 
 <OscTable groups={getOsc()} />
 
@@ -53,6 +60,10 @@ oscsend localhost 9000 /view/recenter
 
 # Same command with a /multiviewer prefix
 oscsend localhost 9000 /multiviewer/source/2/x 100
+
+# Names and prefixes may contain spaces; quote the address in the shell
+oscsend localhost 9000 '/source/Mini 3/expand'
+oscsend localhost 9000 '/my control/source/2/x' 100
 
 # Enable output 1 and save the project
 oscsend localhost 9000 /output/1/enabled 1

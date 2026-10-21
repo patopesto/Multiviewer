@@ -327,13 +327,17 @@ mod tests {
     fn parses_named_selector_and_mode() {
         assert_eq!(
             parse_message(
-                "/source/CamA/mode",
+                "/source/Mini 3/mode",
                 &[OscType::String("Fill".to_string())],
             ),
             Some(Command::SetSourceMode {
-                source: Selector::Key("CamA".to_string()),
+                source: Selector::Key("Mini 3".to_string()),
                 mode: TextureMode::Fill,
             })
+        );
+        assert_eq!(
+            parse_message("/source/Mini 3/expand", &[]),
+            Some(Command::ExpandSource(Selector::Key("Mini 3".to_string())))
         );
     }
 
@@ -412,6 +416,10 @@ mod tests {
             strip_prefix("/multiviewer/source/1/x", ""),
             Some("/multiviewer/source/1/x")
         );
+        assert_eq!(
+            strip_prefix("/my control/source/Mini 3/expand", "/my control"),
+            Some("/source/Mini 3/expand")
+        );
         assert_eq!(strip_prefix("/mvx/source/1/x", "/mv"), None);
         assert_eq!(strip_prefix("/other/source/1/x", "/mv"), None);
     }
@@ -439,6 +447,29 @@ mod tests {
                 source: Selector::Index(1),
                 value: 42.0,
             }
+        );
+    }
+
+    /// Spaces are preserved in both the configured prefix and a source name.
+    #[test]
+    fn listener_decodes_a_prefix_and_name_with_spaces() {
+        let (tx, rx) = mpsc::channel();
+        let (_server, addr) =
+            OscServer::start("127.0.0.1", 0, "/my control".to_string(), tx).unwrap();
+
+        let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
+        let packet = OscPacket::Message(OscMessage {
+            addr: "/my control/source/Mini 3/expand".to_string(),
+            args: vec![],
+        });
+        sender
+            .send_to(&encoder::encode(&packet).unwrap(), addr)
+            .unwrap();
+
+        let command = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(
+            command,
+            Command::ExpandSource(Selector::Key("Mini 3".to_string()))
         );
     }
 
