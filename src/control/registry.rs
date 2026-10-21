@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use super::command::Command;
-use super::config::{ControlConfig, is_loopback_bind};
+use super::config::ControlConfig;
 use super::osc::{OscServer, normalize_prefix};
 
 /// Commands applied per frame; a UDP flood must not stall a render frame.
@@ -23,7 +23,6 @@ pub struct ControlRegistry {
     rx: Receiver<Command>,
     osc: Option<OscServer>,
     status: ControlStatus,
-    remote_confirmed: bool,
 }
 
 impl ControlRegistry {
@@ -34,7 +33,6 @@ impl ControlRegistry {
             rx,
             osc: None,
             status: ControlStatus::Stopped,
-            remote_confirmed: false,
         }
     }
 
@@ -46,10 +44,6 @@ impl ControlRegistry {
 
         let osc = &config.osc;
         if !osc.enabled {
-            return;
-        }
-        if !is_loopback_bind(&osc.bind) && !self.remote_confirmed {
-            self.status = ControlStatus::Error("Remote bind needs confirmation".to_string());
             return;
         }
         let prefix = match normalize_prefix(&osc.prefix) {
@@ -70,12 +64,6 @@ impl ControlRegistry {
                 tracing::warn!("OSC control failed to start: {e}");
             }
         }
-    }
-
-    /// Allow a non-loopback bind for the rest of the session, then apply.
-    pub fn confirm_remote(&mut self, config: &ControlConfig) {
-        self.remote_confirmed = true;
-        self.apply(config);
     }
 
     /// Take the commands received since the last call.
@@ -101,10 +89,6 @@ impl ControlRegistry {
         return &self.status;
     }
 
-    pub fn remote_confirmed(&self) -> bool {
-        return self.remote_confirmed;
-    }
-
     pub fn is_enabled(&self) -> bool {
         return self.osc.is_some();
     }
@@ -124,23 +108,6 @@ mod tests {
                 bind: "127.0.0.1".to_string(),
                 port: 0,
                 prefix: "/a?b".to_string(),
-            },
-        };
-
-        registry.apply(&config);
-
-        assert!(matches!(registry.status(), ControlStatus::Error(_)));
-    }
-
-    #[test]
-    fn remote_bind_needs_confirmation() {
-        let mut registry = ControlRegistry::new();
-        let config = ControlConfig {
-            osc: OscControlConfig {
-                enabled: true,
-                bind: "0.0.0.0".to_string(),
-                port: 0,
-                ..OscControlConfig::default()
             },
         };
 

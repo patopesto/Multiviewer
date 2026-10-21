@@ -54,7 +54,10 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
             });
 
             menu_button(ui, "Control", |ui| {
-                if ui.button("OSC Control...").clicked() {
+                if ui.button("Keyboard Shortcuts...").clicked() {
+                    actions.push(MenuAction::ShowShortcuts);
+                }
+                if ui.button("OSC Settings...").clicked() {
                     actions.push(MenuAction::ShowOSCControl);
                 }
             });
@@ -62,9 +65,6 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
             menu_button(ui, "About", |ui| {
                 if ui.button(format!("About {}", APP_NAME)).clicked() {
                     actions.push(MenuAction::ShowAbout);
-                }
-                if ui.button("Keyboard Shortcuts...").clicked() {
-                    actions.push(MenuAction::ShowShortcuts);
                 }
                 if ui.button("Third-Party Licenses...").clicked() {
                     actions.push(MenuAction::ShowLicenses);

@@ -2,7 +2,7 @@ use super::Engine;
 use super::project::ProjectError;
 use crate::config::Source;
 use crate::control::{
-    Command, ControlStatus, Selector, is_loopback_bind, normalize_prefix,
+    Command, ControlStatus, Selector, normalize_prefix,
 };
 
 #[derive(Debug)]
@@ -178,23 +178,12 @@ impl Engine {
         self.control.apply(&config);
     }
 
-    /// Allow a non-loopback bind for this session and restart the listeners.
-    pub fn confirm_remote_control(&mut self) {
-        let config = self.cfg.control.clone();
-        self.control.confirm_remote(&config);
-    }
-
     pub fn control_status_label(&self) -> String {
         return match self.control.status() {
             ControlStatus::Stopped => "Stopped".to_string(),
             ControlStatus::Listening(addr) => format!("Listening on {addr}"),
             ControlStatus::Error(e) => format!("Error: {e}"),
         };
-    }
-
-    pub fn control_needs_remote_confirmation(&self) -> bool {
-        let osc = &self.cfg.control.osc;
-        return osc.enabled && !self.control.remote_confirmed() && !is_loopback_bind(&osc.bind);
     }
 }
 

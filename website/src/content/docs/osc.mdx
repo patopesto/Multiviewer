@@ -11,14 +11,26 @@ import { getOsc } from '../../data/osc.js';
 ## Enabling OSC
 
 Open **Control → OSC Settings...** and tick **Enabled**. The default
-listener accepts messages from this machine only.
+listener accepts messages from this machine only (see [Bind addresses](#bind-addresses)).  
+After changing the bind address or port, click **Apply**. The status line in Control Settings shows the address actually bound.
 
 | Setting | Default | Description |
 | --- | --- | --- |
 | Enabled | off | Start or stop the listener. |
-| Bind address | `127.0.0.1` | Interface to listen on. A non-loopback address needs the **Allow remote access** confirmation. |
+| Bind address | `127.0.0.1` | Interface to listen on. See [Bind addresses](#bind-addresses). |
 | Port | `9000` | UDP port. |
 | Prefix | empty | Address prefix. Leave empty to answer at the root. |
+
+## Bind addresses
+
+The bind address decides which network interfaces the listener accepts messages
+on. The port is the UDP port; both must match on the sender side.
+
+| Bind | Reachable from | Typical use |
+| --- | --- | --- |
+| `127.0.0.1` or `localhost` | this machine only | a control app on the same computer |
+| `0.0.0.0` | every IPv4 interface (use `::` for IPv6) | a trusted LAN, with a firewall rule |
+| a specific interface address, e.g. `192.168.1.50` | hosts that can route to that interface | a dedicated control network or one NIC |
 
 ## Addressing
 

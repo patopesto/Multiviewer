@@ -608,9 +608,7 @@ impl App {
         let mut open = true;
         let mut dirty = false;
         let mut apply = false;
-        let mut confirm_remote = false;
         let status = self.engine.control_status_label();
-        let needs_confirmation = self.engine.control_needs_remote_confirmation();
 
         egui::Window::new("OSC Control")
             .collapsible(false)
@@ -665,15 +663,6 @@ impl App {
 
                 ui.add_space(8.0);
                 ui.label(status.as_str());
-                if needs_confirmation {
-                    ui.colored_label(
-                        egui::Color32::from_rgb(220, 160, 40),
-                        "A non-loopback bind exposes control to the network.",
-                    );
-                    if ui.button("Allow remote access").clicked() {
-                        confirm_remote = true;
-                    }
-                }
 
                 ui.separator();
                 if ui.button("Apply").clicked() {
@@ -684,9 +673,7 @@ impl App {
         if dirty {
             self.engine.dirty = true;
         }
-        if confirm_remote {
-            self.engine.confirm_remote_control();
-        } else if apply {
+        if apply {
             self.engine.restart_control();
         }
         if !open {
