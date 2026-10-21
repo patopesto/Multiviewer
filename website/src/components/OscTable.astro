@@ -1,0 +1,93 @@
+---
+interface OscRoute {
+  path: string;
+  args: string;
+  desc: string;
+}
+interface OscGroup {
+  group: string;
+  routes: OscRoute[];
+}
+interface Props {
+  groups: OscGroup[];
+}
+const { groups } = Astro.props;
+
+// Descriptions are plain prose with `backticked` inline code.
+const inline = (text: string) =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+---
+
+{
+  groups.map((group) => (
+    <>
+      <p class="osc__group">{group.group}</p>
+      <table class="osc">
+        <thead>
+          <tr>
+            <th scope="col">Path</th>
+            <th scope="col">Arguments</th>
+            <th scope="col">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {group.routes.map((route) => (
+            <tr>
+              <td>
+                <code>{route.path}</code>
+              </td>
+              <td>
+                {route.args ? <code>{route.args}</code> : <span class="osc__none">none</span>}
+              </td>
+              <td>
+                <span set:html={inline(route.desc)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  ))
+}
+
+<style>
+  .osc {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    margin: 0 0 1.4rem;
+  }
+  .osc th,
+  .osc td {
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--line-soft);
+    text-align: left;
+    vertical-align: top;
+  }
+  .osc thead th {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+  }
+  .osc tbody td:first-child {
+    white-space: nowrap;
+  }
+  .osc__group {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    margin: 1.2rem 0 0.4rem;
+  }
+  .osc__none {
+    color: var(--text-dim);
+  }
+</style>

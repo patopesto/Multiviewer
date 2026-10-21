@@ -13,6 +13,11 @@ use crate::config::TextureMode;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
+/// Bump when adding or removing an OSC route; the docs route table and the
+/// `documented_routes_parse` test are checked against this value.
+#[cfg(test)]
+const OSC_ROUTE_COUNT: usize = 26;
+
 /// A UDP OSC listener. Bind happens on the caller's thread so a bad address or
 /// a taken port is reported immediately; the receive loop runs on its own.
 pub struct OscServer {
@@ -115,23 +120,29 @@ fn parse_message(addr: &str, args: &[OscType]) -> Option<Command> {
     let parts: Vec<&str> = addr.strip_prefix('/')?.split('/').collect();
     return match *parts.first()? {
         "source" => parse_source(&parts[1..], args),
+        // @osc path="/nudge" args="dx:float dy:float" group="Canvas & view" desc="Move the selected source by a delta."
         "nudge" => Some(Command::Nudge {
             dx: arg_f32(args.first()?)?,
             dy: arg_f32(args.get(1)?)?,
         }),
+        // @osc path="/canvas/size" args="width:uint height:uint" group="Canvas & view" desc="Set the canvas size in pixels."
         "canvas" if parts.get(1) == Some(&"size") => Some(Command::SetCanvasSize {
             width: arg_u32(args.first()?)?,
             height: arg_u32(args.get(1)?)?,
         }),
         "view" => match *parts.get(1)? {
+            // @osc path="/view/zoom" args="factor:float" group="Canvas & view" desc="Multiply the current zoom level."
             "zoom" => Some(Command::Zoom {
                 factor: arg_f32(args.first()?)?,
             }),
+            // @osc path="/view/recenter" group="Canvas & view" desc="Fit and center the canvas."
             "recenter" => Some(Command::RecenterView),
             _ => None,
         },
+        // @osc path="/ui/toggle" group="Canvas & view" desc="Show or hide the editor UI."
         "ui" if parts.get(1) == Some(&"toggle") => Some(Command::ToggleUi),
         "output" => parse_output(&parts[1..], args),
+        // @osc path="/project/save" group="Project" desc="Save the project in place."
         "project" if parts.get(1) == Some(&"save") => Some(Command::SaveProject),
         _ => None,
     };
@@ -139,56 +150,74 @@ fn parse_message(addr: &str, args: &[OscType]) -> Option<Command> {
 
 fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
     match rest {
+        // @osc path="/source/add" group="Sources" desc="Add a test source and select it."
         ["add"] => return Some(Command::AddSource),
+        // @osc path="/source/next" group="Sources" desc="Select the next source."
         ["next"] => return Some(Command::SelectNext),
+        // @osc path="/source/prev" group="Sources" desc="Select the previous source. Alias: `previous`."
         ["prev"] | ["previous"] => return Some(Command::SelectPrevious),
+        // @osc path="/source/exit_expanded" group="Sources" desc="Exit expanded view."
         ["exit_expanded"] => return Some(Command::ExitExpanded),
+        // @osc path="/source/select" args="selector:string|int" group="Sources" desc="Select a source by 1-based index, name or uuid."
         ["select"] => return Some(Command::SelectSource(selector_arg(args.first()?)?)),
+        // @osc path="/source/deselect" group="Sources" desc="Clear the selection."
         ["deselect"] => return Some(Command::ClearSelection),
         _ => {}
     }
 
     let source = parse_selector(rest.first()?)?;
     return match *rest.get(1)? {
+        // @osc path="/source/{sel}/x" args="value:float" group="Placement" desc="Horizontal position in canvas pixels."
         "x" => Some(Command::SetSourceX {
             source,
             value: arg_f32(args.first()?)?,
         }),
+        // @osc path="/source/{sel}/y" args="value:float" group="Placement" desc="Vertical position in canvas pixels."
         "y" => Some(Command::SetSourceY {
             source,
             value: arg_f32(args.first()?)?,
         }),
+        // @osc path="/source/{sel}/w" args="value:uint" group="Placement" desc="Placement width in pixels. Alias: `width`."
         "w" | "width" => Some(Command::SetSourceWidth {
             source,
             value: arg_u32(args.first()?)?,
         }),
+        // @osc path="/source/{sel}/h" args="value:uint" group="Placement" desc="Placement height in pixels. Alias: `height`."
         "h" | "height" => Some(Command::SetSourceHeight {
             source,
             value: arg_u32(args.first()?)?,
         }),
+        // @osc path="/source/{sel}/size" args="width:uint height:uint" group="Placement" desc="Placement size in pixels."
         "size" => Some(Command::SetSourceSize {
             source,
             width: arg_u32(args.first()?)?,
             height: arg_u32(args.get(1)?)?,
         }),
+        // @osc path="/source/{sel}/z" args="value:int" group="Placement" desc="Stacking order; higher values draw on top."
         "z" => Some(Command::SetSourceZ {
             source,
             value: arg_i32(args.first()?)?,
         }),
+        // @osc path="/source/{sel}/mode" args="mode:Fit|Fill|Stretch" group="Placement" desc="How the frame fills the placement. Accepts `Fit`, `Fill`, `Stretch` or 0/1/2."
         "mode" => Some(Command::SetSourceMode {
             source,
             mode: arg_mode(args.first()?)?,
         }),
+        // @osc path="/source/{sel}/flip_h" args="enabled:0|1" group="Placement" desc="Mirror the source horizontally."
         "flip_h" => Some(Command::SetSourceFlipH {
             source,
             value: arg_bool(args.first()?)?,
         }),
+        // @osc path="/source/{sel}/flip_v" args="enabled:0|1" group="Placement" desc="Mirror the source vertically."
         "flip_v" => Some(Command::SetSourceFlipV {
             source,
             value: arg_bool(args.first()?)?,
         }),
+        // @osc path="/source/{sel}/select" group="Sources" desc="Select this source."
         "select" => Some(Command::SelectSource(source)),
+        // @osc path="/source/{sel}/expand" group="Sources" desc="Show this source full-canvas."
         "expand" => Some(Command::ExpandSource(source)),
+        // @osc path="/source/{sel}/remove" group="Sources" desc="Remove this source."
         "remove" => Some(Command::RemoveSource(source)),
         _ => None,
     };
@@ -197,10 +226,12 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
 fn parse_output(rest: &[&str], args: &[OscType]) -> Option<Command> {
     let output = parse_selector(rest.first()?)?;
     return match *rest.get(1)? {
+        // @osc path="/output/{sel}/enabled" args="enabled:0|1" group="Outputs" desc="Enable or disable an output."
         "enabled" => Some(Command::SetOutputEnabled {
             output,
             enabled: arg_bool(args.first()?)?,
         }),
+        // @osc path="/output/{sel}/restart" group="Outputs" desc="Rebuild the output from its settings."
         "restart" => Some(Command::RestartOutput(output)),
         _ => None,
     };
@@ -409,5 +440,57 @@ mod tests {
                 value: 42.0,
             }
         );
+    }
+
+    /// Every `// @osc` route in this file must be accepted by the parser, so the
+    /// website table cannot drift from the code.
+    #[test]
+    fn documented_routes_parse() {
+        let source = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/src/control/osc/server.rs"
+        ))
+        .expect("read the OSC server source");
+        let routes: Vec<&str> = source
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("// @osc "))
+            .collect();
+        assert_eq!(routes.len(), OSC_ROUTE_COUNT);
+
+        for route in routes {
+            let path = directive_value(route, "path").expect("path");
+            let args = sample_args(directive_value(route, "args").unwrap_or(""));
+            let path = path.replace("{sel}", "1");
+            assert!(
+                parse_message(&path, &args).is_some(),
+                "documented route does not parse: {path}"
+            );
+        }
+    }
+
+    fn directive_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+        let needle = format!("{key}=\"");
+        let start = line.find(&needle)? + needle.len();
+        let rest = &line[start..];
+        let end = rest.find('"')?;
+        return Some(&rest[..end]);
+    }
+
+    fn sample_args(spec: &str) -> Vec<OscType> {
+        return spec
+            .split_whitespace()
+            .map(|param| {
+                let kind = param.split_once(':').map(|(_, kind)| kind).unwrap_or(param);
+                if kind == "float" {
+                    OscType::Float(1.0)
+                } else if kind.contains("string") {
+                    OscType::String("x".to_string())
+                } else if kind.contains('|') && !kind.contains("0|1") {
+                    OscType::String(kind.split('|').next().unwrap_or("x").to_string())
+                } else {
+                    OscType::Int(1)
+                }
+            })
+            .collect();
     }
 }

@@ -1,0 +1,48 @@
+---
+title: OSC control
+description: Control the canvas, sources and outputs over OSC.
+lead: Enable OSC in Control Settings, then send UDP messages to the configured address.
+order: 6
+---
+
+import OscTable from '../../components/OscTable.astro';
+import { getOsc } from '../../data/osc.js';
+
+## Enabling OSC
+
+Open **Control → OSC Settings...** and tick **Enabled**. The default
+listener accepts messages from this machine only.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| Enabled | off | Start or stop the listener. |
+| Bind address | `127.0.0.1` | Interface to listen on. A non-loopback address needs the **Allow remote access** confirmation. |
+| Port | `9000` | UDP port. |
+| Prefix | empty | Address prefix. Leave empty to answer at the root. |
+
+## Addressing
+
+Every path on this page is relative to the configured prefix. With an empty
+prefix, send `/source/2/x`; with a prefix of `/multiviewer`, send
+`/multiviewer/source/2/x`.
+
+`{sel}` targets a source or output by its 1-based position in the list, its
+name, or its uuid. OSC addresses cannot contain spaces, so use the index or
+uuid for names with spaces.
+
+<OscTable groups={getOsc()} />
+
+## Examples
+
+```bash
+# Move source 2 to x = 100 and recenter the view
+oscsend localhost 9000 /source/2/x 100
+oscsend localhost 9000 /view/recenter
+
+# Same command with a /multiviewer prefix
+oscsend localhost 9000 /multiviewer/source/2/x 100
+
+# Enable output 1 and save the project
+oscsend localhost 9000 /output/1/enabled 1
+oscsend localhost 9000 /project/save
+```
