@@ -8,7 +8,7 @@ use objc::runtime::{Class, Object};
 use objc::{msg_send, sel, sel_impl};
 
 pub use discovery::Discovery as SyphonDiscovery;
-pub use discovery::format_syphon_label;
+pub use discovery::{find_by_display_name, format_syphon_label};
 pub use source::{SyphonSource, SyphonSourceConfig};
 pub use output::{SyphonOutput, SyphonOutputConfig};
 

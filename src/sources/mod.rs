@@ -53,7 +53,7 @@ pub use rdp::{RdpColorDepth, RdpSourceConfig};
 #[cfg(target_os = "macos")]
 pub use syphon::{
     SyphonDiscovery, SyphonSourceConfig, SyphonOutputConfig, syphon_version,
-    SyphonServerInfo, format_syphon_label,
+    SyphonServerInfo, format_syphon_label, find_by_display_name as find_syphon_server,
 };
 #[cfg(target_os = "macos")]
 pub use avfoundation::{AvFoundationDiscovery, AvFoundationSourceConfig, AvFoundationMode};

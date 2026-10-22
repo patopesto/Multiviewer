@@ -40,12 +40,13 @@ impl Discovery {
     pub fn list(&self) -> Vec<SyphonServerInfo> {
         self.servers.lock().unwrap().clone()
     }
+}
 
-    pub fn find_by_display_name(&self, name: &str) -> Option<SyphonServerInfo> {
-        SyphonServerDirectory::servers()
-            .into_iter()
-            .find(|s| s.display_name() == name)
-    }
+/// Look up a server by display name, querying the directory for its current UUID.
+pub fn find_by_display_name(name: &str) -> Option<SyphonServerInfo> {
+    return SyphonServerDirectory::servers()
+        .into_iter()
+        .find(|s| s.display_name() == name);
 }
 
 #[cfg(test)]

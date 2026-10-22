@@ -7,7 +7,7 @@ use crate::sources::DecklinkSourceConfig;
 use crate::sources::NdiSourceConfig;
 use crate::sources::OmtSourceConfig;
 #[cfg(target_os = "macos")]
-use crate::sources::{AvFoundationSourceConfig, ensure_screen_capture_access_requested, ScreenCaptureKitSourceConfig, SyphonSourceConfig};
+use crate::sources::{find_syphon_server, AvFoundationSourceConfig, ensure_screen_capture_access_requested, ScreenCaptureKitSourceConfig, SyphonSourceConfig};
 #[cfg(target_os = "windows")]
 use crate::sources::{DirectShowSourceConfig, MediaFoundationSourceConfig, SpoutSourceConfig, WindowsCaptureSourceConfig};
 
@@ -442,8 +442,8 @@ impl Engine {
             }
             #[cfg(target_os = "macos")]
             Protocol::Syphon => {
-                if let Some(ref discovery) = self.syphon
-                    && let Some(info) = discovery.find_by_display_name(name)
+                if self.syphon.is_some()
+                    && let Some(info) = find_syphon_server(name)
                 {
                     let config = match self.source_placement_config(&Protocol::Syphon, name) {
                         Some(SourceConfig::Syphon(c)) => c.clone(),
