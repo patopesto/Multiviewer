@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
-use crate::control::{Command, Selector};
+use crate::control::{Command, ControlStatus, FeedbackMode, Selector};
 use crate::engine::Engine;
 use crate::platform::poll_open_file;
 use crate::session::Session;
@@ -608,18 +608,19 @@ impl App {
         let mut open = true;
         let mut dirty = false;
         let mut apply = false;
-        let status = self.engine.control_status_label();
+        let status = control_status_label(&self.engine);
 
         egui::Window::new("OSC Control")
             .collapsible(false)
             .resizable(false)
             .movable(false)
-            .default_size([420.0, 220.0])
+            .default_size([440.0, 420.0])
             .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
             .open(&mut open)
             .show(ctx, |ui| {
                 let osc = &mut self.engine.cfg.control.osc;
 
+                ui.heading("OSC input");
                 if ui.checkbox(&mut osc.enabled, "Enabled").changed() {
                     dirty = true;
                 }
@@ -629,26 +630,19 @@ impl App {
                     .spacing([12.0, 6.0])
                     .show(ui, |ui| {
                         ui.label("Bind address");
-                        if ui
-                            .add(egui::TextEdit::singleline(&mut osc.bind).desired_width(160.0))
-                            .changed()
-                        {
+                        if ui.add(egui::TextEdit::singleline(&mut osc.bind).desired_width(160.0)).changed() {
                             dirty = true;
                         }
                         ui.end_row();
 
                         ui.label("Port");
-                        if ui
-                            .add(egui::DragValue::new(&mut osc.port).range(1..=65535))
-                            .changed()
-                        {
+                        if ui.add(egui::DragValue::new(&mut osc.port).range(1..=65535)).changed() {
                             dirty = true;
                         }
                         ui.end_row();
 
                         ui.label("Prefix");
-                        if ui
-                            .add(
+                        if ui.add(
                                 egui::TextEdit::singleline(&mut osc.prefix)
                                     .hint_text("/multiviewer")
                                     .desired_width(160.0),
@@ -660,6 +654,54 @@ impl App {
                         ui.end_row();
                     });
                 ui.weak("Leave the prefix empty to answer at the root (/source/...).");
+
+                ui.separator();
+                ui.heading("Feedback output");
+                if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Off, "No feedback").changed() {
+                    dirty = true;
+                }
+                if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Senders, "Reply to senders",).changed() {
+                    dirty = true;
+                }
+                if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Configured, "Configured target").changed() {
+                    dirty = true;
+                }
+                if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Both, "Senders + configured target").changed() {
+                    dirty = true;
+                }
+
+                if matches!(
+                    osc.feedback_mode,
+                    FeedbackMode::Configured | FeedbackMode::Both
+                ) {
+                    egui::Grid::new("control_feedback_grid")
+                        .num_columns(2)
+                        .spacing([12.0, 6.0])
+                        .show(ui, |ui| {
+                            ui.label("Host");
+                            if ui.add(
+                                    egui::TextEdit::singleline(&mut osc.feedback_host)
+                                        .hint_text("127.0.0.1")
+                                        .desired_width(160.0),
+                                )
+                                .changed()
+                            {
+                                dirty = true;
+                            }
+                            ui.end_row();
+
+                            ui.label("Port");
+                            if ui.add(
+                                    egui::DragValue::new(&mut osc.feedback_port)
+                                        .range(0..=65535),
+                                )
+                                .changed()
+                            {
+                                dirty = true;
+                            }
+                            ui.end_row();
+                        });
+                }
 
                 ui.add_space(8.0);
                 ui.label(status.as_str());
@@ -703,6 +745,28 @@ impl App {
             self.show_licenses = false;
         }
     }
+}
+
+/// Status line for the OSC Control window.
+fn control_status_label(engine: &Engine) -> String {
+    let listener = match engine.control.status() {
+        ControlStatus::Stopped => "Stopped".to_string(),
+        ControlStatus::Listening(addr) => format!("Listening on {addr}"),
+        ControlStatus::Error(e) => format!("Error: {e}"),
+    };
+    let feedback = match engine.control.feedback_mode() {
+        FeedbackMode::Off => "feedback off".to_string(),
+        FeedbackMode::Senders => "feedback to senders".to_string(),
+        FeedbackMode::Configured => match engine.control.feedback_target() {
+            Some(addr) => format!("feedback to {addr}"),
+            None => "feedback target unavailable".to_string(),
+        },
+        FeedbackMode::Both => match engine.control.feedback_target() {
+            Some(addr) => format!("feedback to senders + {addr}"),
+            None => "feedback to senders (target unavailable)".to_string(),
+        },
+    };
+    return format!("{listener} · {feedback}");
 }
 
 /// Translate a keyboard shortcut into the shared control command vocabulary.

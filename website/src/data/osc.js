@@ -1,8 +1,11 @@
-// OSC command paths, read from the `// @osc` directives in the OSC server at
-// Astro build time so the docs page matches the parser and cannot drift.
+// OSC routes, read from the `// @osc` directives in the OSC server and feedback
+// modules at Astro build time so the docs page matches the code and cannot drift.
 import { readRust } from './rust-source.js';
 
-const GROUP_ORDER = ['Sources', 'Placement', 'Canvas & view', 'Outputs', 'Project'];
+const INPUT_ORDER = ['Sources', 'Placement', 'Canvas & view', 'Outputs', 'Project'];
+const FEEDBACK_ORDER = ['Global', 'Sources', 'Outputs'];
+
+const FILES = ['src/control/osc/server.rs', 'src/control/osc/feedback.rs'];
 
 function parseDirective(text) {
   const out = {};
@@ -10,9 +13,22 @@ function parseDirective(text) {
   return out;
 }
 
-function rank(group) {
-  const index = GROUP_ORDER.indexOf(group);
-  return index === -1 ? GROUP_ORDER.length : index;
+function rank(group, order) {
+  const index = order.indexOf(group);
+  return index === -1 ? order.length : index;
+}
+
+function groupRoutes(routes, order) {
+  const groups = [];
+  for (const route of routes) {
+    let entry = groups.find((candidate) => candidate.group === route.group);
+    if (!entry) {
+      entry = { group: route.group, routes: [] };
+      groups.push(entry);
+    }
+    entry.routes.push(route);
+  }
+  return groups.sort((a, b) => rank(a.group, order) - rank(b.group, order));
 }
 
 /**
@@ -20,6 +36,7 @@ function rank(group) {
  * @property {string} path
  * @property {string} args
  * @property {string} desc
+ * @property {string} kind
  *
  * @typedef {object} OscGroup
  * @property {string} group
@@ -27,35 +44,46 @@ function rank(group) {
  */
 
 /**
- * OSC routes grouped for the docs table, in `GROUP_ORDER`.
- * @returns {OscGroup[]}
+ * OSC routes split into input commands and feedback output.
+ * @returns {{ input: OscGroup[], feedback: OscGroup[] }}
  */
 export function getOsc() {
-  const text = readRust('src/control/osc/server.rs');
-  if (!text) return [];
-  const groups = [];
-  for (const raw of text.split('\n')) {
-    const line = raw.trim();
-    if (!line.startsWith('// @osc ')) continue;
-    const directive = parseDirective(line.slice(8));
-    const group = directive.group ?? 'Commands';
-    let entry = groups.find((candidate) => candidate.group === group);
-    if (!entry) {
-      entry = { group, routes: [] };
-      groups.push(entry);
+  const routes = [];
+  for (const file of FILES) {
+    const text = readRust(file);
+    if (!text) continue;
+    for (const raw of text.split('\n')) {
+      const line = raw.trim();
+      if (!line.startsWith('// @osc ')) continue;
+      const directive = parseDirective(line.slice(8));
+      routes.push({
+        path: directive.path ?? '',
+        args: directive.args ?? '',
+        desc: directive.desc ?? '',
+        kind: directive.kind ?? 'command',
+        group: directive.group ?? 'Commands',
+      });
     }
-    entry.routes.push({
-      path: directive.path ?? '',
-      args: directive.args ?? '',
-      desc: directive.desc ?? '',
-    });
   }
-  return groups.sort((a, b) => rank(a.group) - rank(b.group));
+  return {
+    input: groupRoutes(
+      routes.filter((route) => route.kind === 'command'),
+      INPUT_ORDER,
+    ),
+    feedback: groupRoutes(
+      routes.filter((route) => route.kind === 'feedback'),
+      FEEDBACK_ORDER,
+    ),
+  };
 }
 
 /** Number of documented OSC routes. */
 export function oscRouteCount() {
-  return getOsc().reduce((count, group) => count + group.routes.length, 0);
+  const { input, feedback } = getOsc();
+  return [...input, ...feedback].reduce(
+    (count, group) => count + group.routes.length,
+    0,
+  );
 }
 
 /** The `OSC_ROUTE_COUNT` tripwire from the Rust source, or null when absent. */

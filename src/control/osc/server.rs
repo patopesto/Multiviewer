@@ -6,9 +6,11 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use rosc::{OscMessage, OscPacket, OscType, decoder};
+use rosc::{OscMessage, OscPacket, OscType, decoder, encoder};
 
 use super::super::command::{Command, Selector};
+use super::super::registry::ControlMessage;
+use super::feedback::FeedbackValue;
 use crate::config::TextureMode;
 
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
@@ -16,11 +18,12 @@ const POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// Bump when adding or removing an OSC route; the docs route table and the
 /// `documented_routes_parse` test are checked against this value.
 #[cfg(test)]
-const OSC_ROUTE_COUNT: usize = 26;
+const OSC_ROUTE_COUNT: usize = 57;
 
 /// A UDP OSC listener. Bind happens on the caller's thread so a bad address or
 /// a taken port is reported immediately; the receive loop runs on its own.
 pub struct OscServer {
+    sender: UdpSocket,
     running: Arc<AtomicBool>,
     thread: Option<JoinHandle<()>>,
 }
@@ -30,17 +33,39 @@ impl OscServer {
         bind: &str,
         port: u16,
         prefix: String,
-        tx: Sender<Command>,
+        tx: Sender<ControlMessage>,
     ) -> Result<(Self, SocketAddr), std::io::Error> {
         let socket = UdpSocket::bind((bind, port))?;
         socket.set_read_timeout(Some(POLL_INTERVAL))?;
         let addr = socket.local_addr()?;
+        let sender = socket.try_clone()?;
         let running = Arc::new(AtomicBool::new(true));
         let thread_running = running.clone();
         let thread = thread::Builder::new()
             .name("osc-control".to_string())
             .spawn(move || run_server(socket, tx, prefix, thread_running))?;
-        return Ok((Self { running, thread: Some(thread) }, addr));
+        return Ok((
+            Self {
+                sender,
+                running,
+                thread: Some(thread),
+            },
+            addr,
+        ));
+    }
+
+    /// Send one feedback value. Uses a socket clone, so the UI thread does not
+    /// contend with the receive loop.
+    pub fn send_to(&self, target: SocketAddr, address: &str, value: &FeedbackValue) {
+        let packet = OscPacket::Message(OscMessage {
+            addr: address.to_string(),
+            args: vec![value.to_osc()],
+        });
+        if let Ok(bytes) = encoder::encode(&packet)
+            && let Err(e) = self.sender.send_to(&bytes, target)
+        {
+            tracing::debug!("failed to send OSC feedback to {target}: {e}");
+        }
     }
 }
 
@@ -53,7 +78,12 @@ impl Drop for OscServer {
     }
 }
 
-fn run_server(socket: UdpSocket, tx: Sender<Command>, prefix: String, running: Arc<AtomicBool>) {
+fn run_server(
+    socket: UdpSocket,
+    tx: Sender<ControlMessage>,
+    prefix: String,
+    running: Arc<AtomicBool>,
+) {
     let mut buffer = [0u8; 65535];
     while running.load(Ordering::Acquire) {
         let (len, from) = match socket.recv_from(&mut buffer) {
@@ -71,11 +101,18 @@ fn run_server(socket: UdpSocket, tx: Sender<Command>, prefix: String, running: A
                 continue;
             }
         };
+        // Any valid message opts the sender into feedback replies.
+        let _ = tx.send(ControlMessage::Seen(from));
         handle_packet(packet, from, &tx, &prefix);
     }
 }
 
-fn handle_packet(packet: OscPacket, from: SocketAddr, tx: &Sender<Command>, prefix: &str) {
+fn handle_packet(
+    packet: OscPacket,
+    from: SocketAddr,
+    tx: &Sender<ControlMessage>,
+    prefix: &str,
+) {
     match packet {
         OscPacket::Message(message) => handle_message(message, from, tx, prefix),
         OscPacket::Bundle(bundle) => {
@@ -86,7 +123,12 @@ fn handle_packet(packet: OscPacket, from: SocketAddr, tx: &Sender<Command>, pref
     }
 }
 
-fn handle_message(message: OscMessage, from: SocketAddr, tx: &Sender<Command>, prefix: &str) {
+fn handle_message(
+    message: OscMessage,
+    from: SocketAddr,
+    tx: &Sender<ControlMessage>,
+    prefix: &str,
+) {
     let Some(address) = strip_prefix(&message.addr, prefix) else {
         tracing::debug!(
             from = %from,
@@ -98,7 +140,7 @@ fn handle_message(message: OscMessage, from: SocketAddr, tx: &Sender<Command>, p
     match parse_message(address, &message.args) {
         Some(command) => {
             tracing::debug!(from = %from, command = ?command, "OSC command");
-            let _ = tx.send(command);
+            let _ = tx.send(ControlMessage::Command(command));
         }
         None => tracing::debug!(from = %from, addr = %message.addr, "ignoring unknown OSC address"),
     }
@@ -156,8 +198,6 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
         ["next"] => return Some(Command::SelectNext),
         // @osc path="/source/prev" group="Sources" desc="Select the previous source. Alias: `previous`."
         ["prev"] | ["previous"] => return Some(Command::SelectPrevious),
-        // @osc path="/source/exit_expanded" group="Sources" desc="Exit expanded view."
-        ["exit_expanded"] => return Some(Command::ExitExpanded),
         // @osc path="/source/select" args="selector:string|int" group="Sources" desc="Select a source by 1-based index, name or uuid."
         ["select"] => return Some(Command::SelectSource(selector_arg(args.first()?)?)),
         // @osc path="/source/deselect" group="Sources" desc="Clear the selection."
@@ -215,8 +255,14 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
         }),
         // @osc path="/source/{sel}/select" group="Sources" desc="Select this source."
         "select" => Some(Command::SelectSource(source)),
-        // @osc path="/source/{sel}/expand" group="Sources" desc="Show this source full-canvas."
-        "expand" => Some(Command::ExpandSource(source)),
+        // @osc path="/source/{sel}/expand" args="expanded:0|1" group="Sources" desc="Expand this source full-canvas; 0 exits expanded view."
+        "expand" => {
+            if arg_bool(args.first()?)? {
+                Some(Command::ExpandSource(source))
+            } else {
+                Some(Command::ExitExpanded)
+            }
+        }
         // @osc path="/source/{sel}/remove" group="Sources" desc="Remove this source."
         "remove" => Some(Command::RemoveSource(source)),
         _ => None,
@@ -336,7 +382,10 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_message("/source/Mini 3/expand", &[]),
+            parse_message(
+                "/source/Mini 3/expand",
+                &[OscType::Int(1)],
+            ),
             Some(Command::ExpandSource(Selector::Key("Mini 3".to_string())))
         );
     }
@@ -381,6 +430,14 @@ mod tests {
         assert_eq!(
             parse_message("/source/deselect", &[]),
             Some(Command::ClearSelection)
+        );
+        assert_eq!(
+            parse_message("/source/2/expand", &[OscType::Int(1)]),
+            Some(Command::ExpandSource(Selector::Index(2)))
+        );
+        assert_eq!(
+            parse_message("/source/2/expand", &[OscType::Int(0)]),
+            Some(Command::ExitExpanded)
         );
     }
 
@@ -440,7 +497,7 @@ mod tests {
             .send_to(&encoder::encode(&packet).unwrap(), addr)
             .unwrap();
 
-        let command = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let command = next_command(&rx);
         assert_eq!(
             command,
             Command::SetSourceX {
@@ -460,36 +517,81 @@ mod tests {
         let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
         let packet = OscPacket::Message(OscMessage {
             addr: "/my control/source/Mini 3/expand".to_string(),
-            args: vec![],
+            args: vec![OscType::Int(1)],
         });
         sender
             .send_to(&encoder::encode(&packet).unwrap(), addr)
             .unwrap();
 
-        let command = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let command = next_command(&rx);
         assert_eq!(
             command,
             Command::ExpandSource(Selector::Key("Mini 3".to_string()))
         );
     }
 
-    /// Every `// @osc` route in this file must be accepted by the parser, so the
-    /// website table cannot drift from the code.
+    fn next_command(rx: &mpsc::Receiver<ControlMessage>) -> Command {
+        loop {
+            match rx.recv_timeout(Duration::from_secs(2)).expect("control message") {
+                ControlMessage::Command(command) => return command,
+                ControlMessage::Seen(_) => {}
+            }
+        }
+    }
+
+    #[test]
+    fn sends_feedback_to_a_target() {
+        let (tx, _rx) = mpsc::channel();
+        let (server, _addr) = OscServer::start("127.0.0.1", 0, String::new(), tx).unwrap();
+
+        let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
+        receiver
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        server.send_to(
+            receiver.local_addr().unwrap(),
+            "/app",
+            &FeedbackValue::String("Multiviewer".to_string()),
+        );
+
+        let mut buffer = [0u8; 1024];
+        let (len, _) = receiver.recv_from(&mut buffer).unwrap();
+        let (_, packet) = decoder::decode_udp(&buffer[..len]).unwrap();
+        let OscPacket::Message(message) = packet else {
+            panic!("expected a message")
+        };
+        assert_eq!(message.addr, "/app");
+        assert_eq!(
+            message.args,
+            vec![OscType::String("Multiviewer".to_string())]
+        );
+    }
+
+    /// Every `// @osc` route in the server and feedback modules must be
+    /// accepted by the parser (commands) or namespaced correctly (feedback), so
+    /// the website table cannot drift from the code.
     #[test]
     fn documented_routes_parse() {
-        let source = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/control/osc/server.rs"
-        ))
-        .expect("read the OSC server source");
-        let routes: Vec<&str> = source
-            .lines()
-            .filter_map(|line| line.trim().strip_prefix("// @osc "))
-            .collect();
+        let mut routes = Vec::new();
+        for file in ["server.rs", "feedback.rs"] {
+            let path = format!("{}/src/control/osc/{file}", env!("CARGO_MANIFEST_DIR"));
+            let source = std::fs::read_to_string(path).expect("read the OSC source");
+            routes.extend(
+                source
+                    .lines()
+                    .filter_map(|line| line.trim().strip_prefix("// @osc "))
+                    .map(str::to_string),
+            );
+        }
         assert_eq!(routes.len(), OSC_ROUTE_COUNT);
 
-        for route in routes {
+        for route in &routes {
             let path = directive_value(route, "path").expect("path");
+            let kind = directive_value(route, "kind").unwrap_or("command");
+            if kind == "feedback" {
+                assert!(path.starts_with('/'), "bad feedback path: {path}");
+                continue;
+            }
             let args = sample_args(directive_value(route, "args").unwrap_or(""));
             let path = path.replace("{sel}", "1");
             assert!(

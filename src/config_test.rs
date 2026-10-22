@@ -1,4 +1,5 @@
 use super::*;
+use crate::control::FeedbackMode;
 use crate::sources::TestSourceConfig;
 use crate::sources::{NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{DecklinkSourceConfig, DecklinkOutputConfig, DecklinkVideoConnection, DecklinkMode};
@@ -930,4 +931,33 @@ fn config_without_prefix_defaults_to_root() {
     let cfg: Config = serde_json::from_value(v).unwrap();
 
     assert_eq!(cfg.control.osc.prefix, "");
+}
+
+#[test]
+fn osc_feedback_round_trips() {
+    let mut cfg = Config::default();
+    cfg.control.osc.feedback_mode = FeedbackMode::Both;
+    cfg.control.osc.feedback_host = "127.0.0.1".to_string();
+    cfg.control.osc.feedback_port = 9001;
+
+    let reloaded: Config = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+
+    assert_eq!(reloaded.control.osc.feedback_mode, FeedbackMode::Both);
+    assert_eq!(reloaded.control.osc.feedback_host, "127.0.0.1");
+    assert_eq!(reloaded.control.osc.feedback_port, 9001);
+}
+
+/// A project from before feedback existed loads with feedback disabled.
+#[test]
+fn config_without_feedback_fields_defaults_to_disabled() {
+    let mut v = serde_json::to_value(Config::default()).unwrap();
+    for key in ["feedback_mode", "feedback_host", "feedback_port"] {
+        v["control"]["osc"].as_object_mut().unwrap().remove(key);
+    }
+
+    let cfg: Config = serde_json::from_value(v).unwrap();
+
+    assert_eq!(cfg.control.osc.feedback_mode, FeedbackMode::Off);
+    assert_eq!(cfg.control.osc.feedback_host, "");
+    assert_eq!(cfg.control.osc.feedback_port, 0);
 }

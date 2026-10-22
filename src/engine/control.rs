@@ -2,8 +2,9 @@ use super::Engine;
 use super::project::ProjectError;
 use crate::config::Source;
 use crate::control::{
-    Command, ControlStatus, Selector, normalize_prefix,
+    Command, Selector, feedback_values, normalize_prefix,
 };
+use crate::sources::SourceKey;
 
 #[derive(Debug)]
 pub enum ControlError {
@@ -178,12 +179,26 @@ impl Engine {
         self.control.apply(&config);
     }
 
-    pub fn control_status_label(&self) -> String {
-        return match self.control.status() {
-            ControlStatus::Stopped => "Stopped".to_string(),
-            ControlStatus::Listening(addr) => format!("Listening on {addr}"),
-            ControlStatus::Error(e) => format!("Error: {e}"),
-        };
+    /// Whether a placement's runtime source is live.
+    pub fn is_source_connected(&self, source: &Source) -> bool {
+        return source
+            .source_ref
+            .as_ref()
+            .map(|source_ref| {
+                self.registry
+                    .contains(&SourceKey::new(source.protocol.clone(), source_ref.clone()))
+            })
+            .unwrap_or(false);
+    }
+
+    /// Publish OSC feedback for any state that changed since the last frame.
+    pub fn publish_control_feedback(&mut self) {
+        if !self.control.feedback_enabled() {
+            return;
+        }
+        let prefix = normalize_prefix(&self.cfg.control.osc.prefix).unwrap_or_default();
+        let values = feedback_values(self, &prefix);
+        self.control.publish_feedback(values);
     }
 }
 

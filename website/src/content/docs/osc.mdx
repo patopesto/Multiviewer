@@ -1,7 +1,7 @@
 ---
 title: OSC control
-description: Control the canvas, sources and outputs over OSC.
-lead: Enable OSC in Control Settings, then send UDP messages to the configured address.
+description: Control the canvas, sources and outputs over OSC, and receive feedback.
+lead: Enable OSC in Control Settings, send commands to the listener, and optionally receive feedback.
 order: 6
 ---
 
@@ -10,9 +10,8 @@ import { getOsc } from '../../data/osc.js';
 
 ## Enabling OSC
 
-Open **Control → OSC Settings...** and tick **Enabled**. The default
-listener accepts messages from this machine only (see [Bind addresses](#bind-addresses)).  
-After changing the bind address or port, click **Apply**. The status line in Control Settings shows the address actually bound.
+Open **Control → OSC Settings...** and tick **Enabled**. The default listener
+accepts messages from this machine only (see [Bind addresses](#bind-addresses)).
 
 | Setting | Default | Description |
 | --- | --- | --- |
@@ -20,6 +19,9 @@ After changing the bind address or port, click **Apply**. The status line in Con
 | Bind address | `127.0.0.1` | Interface to listen on. See [Bind addresses](#bind-addresses). |
 | Port | `9000` | UDP port. |
 | Prefix | empty | Address prefix. Leave empty to answer at the root. Spaces are allowed. |
+
+After changing the settings, click **Apply**. The status line in Control
+Settings shows the address actually bound.
 
 ## Bind addresses
 
@@ -31,6 +33,30 @@ on. The port is the UDP port; both must match on the sender side.
 | `127.0.0.1` or `localhost` | this machine only | a control app on the same computer |
 | `0.0.0.0` | every IPv4 interface (use `::` for IPv6) | a trusted LAN, with a firewall rule |
 | a specific interface address, e.g. `192.168.1.50` | hosts that can route to that interface | a dedicated control network or one NIC |
+
+## Feedback output
+
+Feedback sends the current state back as OSC. Choose one of four modes:
+
+- **No feedback** (default): nothing is sent.
+- **Reply to senders**: every address that sends a command receives feedback for
+  10 minutes after its last message.
+- **Configured target**: feedback goes only to the configured **Host** and
+  **Port**.
+- **Senders + configured target**: feedback goes to both the configured target
+  and recent senders.
+
+The configured target gets a full snapshot when the listener starts, and a new
+sender gets a full snapshot on its first command. In **Senders + configured
+target**, both receive their snapshots and every subsequent change. After that
+only changed values are sent. A removed source or output produces a reset (`0`,
+`0.0`, or an empty string) so stale button feedback clears. Feedback uses the
+same prefix as commands.
+
+Do not point the configured target at the listener's own port. Some addresses
+below are shared with commands, so a loop would feed the app its own output. The
+app rejects a loopback target on the listener port, but the safest rule is to
+use a different port for feedback.
 
 ## Addressing
 
@@ -45,11 +71,43 @@ the source named `Mini 3`. A name containing `/` cannot be used as a path
 segment, and a name made only of digits is read as an index; use the index or
 uuid in those cases.
 
-If an OSC client cannot send spaces in an address, keep names and prefixes
-space-free; some clients validate address patterns more strictly than the
-listener does.
+`{i}` is a 1-based source or output index in feedback paths. Per-index feedback
+follows list order, so reordering sources changes which button it belongs to.
+The `/source/count`, `/output/count`, and `/exists` addresses report adds and
+removals.
 
-<OscTable groups={getOsc()} />
+Some addresses appear in both tables: `/view/zoom`, the source position, size,
+order, mode and flip fields, and `/output/{i}/enabled`. Sending one commands the
+app; receiving it reports the current value. For example, sending
+`/source/2/x 100` moves a source, while feedback on `/source/2/x` reports its
+current position.
+
+## Input (commands)
+
+<OscTable groups={getOsc().input} />
+
+## Feedback (output)
+
+<OscTable groups={getOsc().feedback} />
+
+## Bitfocus Companion
+
+Use Companion's generic OSC connection:
+
+1. In Companion, set the target to the machine running Multiviewer on UDP
+   `9000`, and choose a listen port for feedback, for example `9001`.
+2. In **Control → OSC Settings...**, choose **Configured target** or
+   **Senders + configured target**, set **Host** and **Port** to the Companion
+   address and listen port, then click **Apply**.
+3. Add a button press for `/source/3/expand` and a feedback for
+   `/source/3/expanded`.
+4. For button text, bind a Companion variable to `/source/3/name`.
+
+Alternatively choose **Reply to senders** and leave the host and port empty;
+Companion starts receiving feedback after its first command.
+
+If Companion and Multiviewer run on different machines, bind Multiviewer to the
+LAN address (or `0.0.0.0`) and allow UDP `9000` and `9001` through the firewall.
 
 ## Examples
 
@@ -57,6 +115,10 @@ listener does.
 # Move source 2 to x = 100 and recenter the view
 oscsend localhost 9000 /source/2/x 100
 oscsend localhost 9000 /view/recenter
+
+# Expand source 2, then collapse it
+oscsend localhost 9000 /source/2/expand 1
+oscsend localhost 9000 /source/2/expand 0
 
 # Same command with a /multiviewer prefix
 oscsend localhost 9000 /multiviewer/source/2/x 100

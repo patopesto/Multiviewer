@@ -20,6 +20,7 @@ impl Engine {
                 tracing::warn!("control command rejected: {e}");
             }
         }
+        self.publish_control_feedback();
 
         // Rate-limit discovery changes
         let now = Instant::now();
