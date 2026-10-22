@@ -49,6 +49,9 @@ const SCALE_INDICES: [u16; 6] = [0, 1, 2, 2, 1, 3];
 /// when it is released instead of fighting it for the device.
 const START_RETRY: Duration = Duration::from_secs(10);
 
+/// How long `Drop` waits for the worker to release the device before detaching.
+const SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
+
 // @docs protocol="DeckLink" direction=output
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DecklinkOutputConfig {
@@ -684,8 +687,24 @@ impl VideoOutput for DecklinkOutput {
 impl Drop for DecklinkOutput {
     fn drop(&mut self) {
         drop(self.frame_tx.take());
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
+        let Some(thread) = self.thread.take() else {
+            return;
+        };
+        // The worker can be inside a blocking DeckLink call (device
+        // enumeration, EnableVideoOutput, StopScheduledPlayback) or in its start
+        // retry, so the engine thread must not join it blindly: with a configured
+        // device that is absent, that is seconds of frozen UI on a toggle.
+        // The grace covers the normal path, which keeps the device released
+        // before a restart opens it again; past it the worker finishes alone and
+        // releases its own handle.
+        let deadline = Instant::now() + SHUTDOWN_GRACE;
+        while self.liveness.is_alive() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(5));
         }
+        if self.liveness.is_alive() {
+            tracing::debug!(output = self.name, "DeckLink output worker still releasing the device; detaching");
+            return;
+        }
+        let _ = thread.join();
     }
 }
