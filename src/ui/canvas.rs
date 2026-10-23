@@ -296,36 +296,6 @@ fn draw_overlays(
         egui::StrokeKind::Inside,
     );
 
-    // Draw resize handles: corners and edge midpoints.
-    // const HANDLE_SIZE: f32 = 6.0;
-    // let hs = egui::vec2(HANDLE_SIZE, HANDLE_SIZE);
-    // let corners = [
-    //     egui::pos2(lx, ly),
-    //     egui::pos2(lx + lw, ly),
-    //     egui::pos2(lx + lw, ly + lh),
-    //     egui::pos2(lx, ly + lh),
-    // ];
-    // for p in corners {
-    //     painter.rect_filled(
-    //         egui::Rect::from_center_size(p, hs),
-    //         0.0,
-    //         egui::Color32::YELLOW,
-    //     );
-    // }
-    // let edges = [
-    //     egui::pos2(lx + lw / 2.0, ly),
-    //     egui::pos2(lx + lw, ly + lh / 2.0),
-    //     egui::pos2(lx + lw / 2.0, ly + lh),
-    //     egui::pos2(lx, ly + lh / 2.0),
-    // ];
-    // for p in edges {
-    //     painter.rect_filled(
-    //         egui::Rect::from_center_size(p, hs),
-    //         0.0,
-    //         egui::Color32::YELLOW,
-    //     );
-    // }
-
     // Snap guides.
     let guide_stroke = egui::Stroke::new(1.0, egui::Color32::CYAN);
     if let Some(gx) = engine.snap_guides.x {

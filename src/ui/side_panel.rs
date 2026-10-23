@@ -4,7 +4,7 @@ use crate::APP_NAME;
 use crate::ui::source_settings;
 use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::engine::Engine;
-use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceRegistry, SourceStats, OutputConfig};
+use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceRegistry, SourceKind, SourceStats, OutputConfig};
 use crate::sources::{DecklinkOutputConfig, NdiOutputConfig, OmtOutputConfig, DecklinkMode};
 use crate::sources::VncSourceConfig;
 use crate::sources::RdpSourceConfig;
@@ -45,8 +45,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
     let mut decklink_restart_idx: Option<usize> = None;
 
     settings_grid(ui, "global_settings_grid", |ui| {
-        ui.label("Canvas");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Canvas", |ui| {
             ui.horizontal(|ui| {
                 ui.label("W");
                 if ui.add(egui::DragValue::new(&mut engine.cfg.canvas.width).range(100..=7680).update_while_editing(false)).changed() {
@@ -58,15 +57,13 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 }
             });
         });
-        ui.end_row();
     });
 
     subsection_separator(ui);
     collapsable_section(ui, "Labels", false, false, |ui| {
         let label = &mut engine.cfg.canvas.label;
         settings_grid(ui, "labels_grid", |ui| {
-            ui.label("Visibility");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Visibility", |ui| {
                 egui::ComboBox::from_id_salt("label_visibility")
                     .width(ui.available_width())
                     .selected_text(label.visibility.label())
@@ -79,18 +76,14 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         }
                     });
             });
-            ui.end_row();
 
-            ui.label("Size");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Size", |ui| {
                 if ui.add(egui::DragValue::new(&mut label.size).range(1.0..=256.0).speed(1.0).suffix(" px")).changed() {
                     engine.dirty = true;
                 }
             });
-            ui.end_row();
 
-            ui.label("Position");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Position", |ui| {
                 egui::ComboBox::from_id_salt("label_position")
                     .width(ui.available_width())
                     .selected_text(label.position.label())
@@ -105,7 +98,6 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         }
                     });
             });
-            ui.end_row();
 
             color_picker_rgba_row(ui, "Text Color", &mut label.text_color);
             color_picker_rgba_row(ui, "Background", &mut label.background_color);
@@ -116,8 +108,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
     collapsable_section(ui, "Borders", false, false, |ui| {
         let border = &mut engine.cfg.canvas.border;
         settings_grid(ui, "borders_grid", |ui| {
-            ui.label("Visibility");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Visibility", |ui| {
                 egui::ComboBox::from_id_salt("global_source_borders")
                     .width(ui.available_width())
                     .selected_text(border.visibility.label())
@@ -130,10 +121,8 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         }
                     });
             });
-            ui.end_row();
 
-            ui.label("Border Color");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Border Color", |ui| {
                 let mut color_f32 = [
                     border.color[0] as f32 / 255.0,
                     border.color[1] as f32 / 255.0,
@@ -149,15 +138,12 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     engine.dirty = true;
                 }
             });
-            ui.end_row();
 
-            ui.label("Border Size");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Border Size", |ui| {
                 if ui.add(egui::DragValue::new(&mut border.width).range(0.0..=100.0)).changed() {
                     engine.dirty = true;
                 }
             });
-            ui.end_row();
         });
         subsection_separator(ui);
     });
@@ -190,38 +176,9 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                 })
             });
 
-            ui.label("DeckLink Output");
-            settings_value(ui, |ui| {
-                let decklink_index = engine
-                    .cfg
-                    .canvas
-                    .outputs
-                    .iter()
-                    .position(|o| o.protocol == Protocol::Decklink);
-                let registry_id = decklink_index
-                    .as_ref()
-                    .map(|i| engine.cfg.canvas.outputs[*i].uuid.clone());
-                let mut enabled = registry_id
-                    .as_ref()
-                    .and_then(|id| engine.output_registry.get(id))
-                    .map(|ok| ok.enabled())
-                    .unwrap_or(false);
-
-                if ui.checkbox(&mut enabled, "Enable").changed() {
-                    if enabled {
-                        if let Some(id) = registry_id {
-                            engine.set_output_enabled(&id, true);
-                        } else {
-                            let name = "DeckLink Output".to_string();
-                            let decklink_config = DecklinkOutputConfig::default();
-                            engine.add_output(Protocol::Decklink, name, OutputConfig::Decklink(decklink_config));
-                        }
-                    } else if let Some(id) = registry_id {
-                        engine.remove_output(&id);
-                    }
-                }
+            output_enable_row(ui, engine, Protocol::Decklink, |_| {
+                OutputConfig::Decklink(DecklinkOutputConfig::default())
             });
-            ui.end_row();
 
             // Worker errors (device busy, driver missing) sit next to the toggle
             // so a silently dead output is visible.
@@ -238,11 +195,9 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     return error;
                 });
             if let Some(error) = decklink_error {
-                ui.label("Status");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Status", |ui| {
                     ui.colored_label(ui.visuals().warn_fg_color, error);
                 });
-                ui.end_row();
             }
 
             // Device / mode selection only when a DeckLink output exists.
@@ -264,8 +219,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     _ => (String::new(), DecklinkMode::Hd1080p6000),
                 };
 
-                ui.label("Decklink Device");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Decklink Device", |ui| {
                     let combo = egui::ComboBox::from_id_salt("decklink_output_device")
                         .width(ui.available_width())
                         .selected_text(if current_device.is_empty() {
@@ -301,7 +255,6 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                         discovery.request_refresh();
                     }
                 });
-                ui.end_row();
 
                 let modes = outputs
                     .iter()
@@ -314,8 +267,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     .map(|m| m.name.to_string())
                     .unwrap_or_else(|| "Unknown".to_string());
 
-                ui.label("Decklink Mode");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Decklink Mode", |ui| {
                     egui::ComboBox::from_id_salt("decklink_output_mode")
                         .width(ui.available_width())
                         .selected_text(selected_label)
@@ -337,7 +289,6 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             }
                         });
                 });
-                ui.end_row();
             }
         });
 
@@ -358,8 +309,7 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                                 s.error.clone(),
                             )
                         };
-                        ui.label(format!("{} Stats", output.protocol.label()));
-                        settings_value(ui, |ui| {
+                        settings_row(ui, &format!("{} Stats", output.protocol.label()), |ui| {
                             let mut line = format!(
                                 "{} sent \u{2022} {} dropped \u{2022} {:.1} fps",
                                 sent, dropped, fps
@@ -370,7 +320,6 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                             }
                             ui.label(line);
                         });
-                        ui.end_row();
                     }
                 });
             });
@@ -533,18 +482,15 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
         ui.separator();
         collapsable_section(ui, "Properties", true, true, |ui| {
             settings_grid(ui, "source_properties_grid", |ui| {
-                ui.label("Name");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Name", |ui| {
                     let text_edit = egui::TextEdit::singleline(&mut source.name)
                         .desired_width(ui.available_width());
                     if ui.add(text_edit).changed() {
                         engine.dirty = true;
                     }
                 });
-                ui.end_row();
 
-                ui.label("Protocol");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Protocol", |ui| {
                     egui::ComboBox::from_id_salt("source_protocol")
                         .width(ui.available_width())
                         .selected_text(source.protocol.label())
@@ -598,154 +544,79 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             }
                         });
                 });
-                ui.end_row();
 
                 // Source dropdown
-                ui.label("Source");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Source", |ui| {
+                    let current = source.source_ref.as_deref().unwrap_or("");
                     match source.protocol {
                         Protocol::Test => {
-                            let test_ids: Vec<String> = engine
-                                .registry
-                                .list_sources(Protocol::Test)
-                                .into_iter()
-                                .map(|(key, _)| key.source_ref.clone())
-                                .collect();
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            egui::ComboBox::from_id_salt("test_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current.to_string())
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    for id in &test_ids {
-                                        if ui.selectable_label(current == id, id).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    if ui.selectable_label(false, "+ New Test Source").clicked() {
-                                        new_test_source = true;
-                                    }
-                                });
+                            let picker = source_picker(
+                                ui,
+                                "test_source",
+                                current,
+                                connected_sources(&engine.registry, Protocol::Test),
+                                Vec::new(),
+                                Some("+ New Test Source".to_string()),
+                                false,
+                            );
+                            selected_source = picker.selected;
+                            new_test_source |= picker.new_entry;
                         }
                         Protocol::Ndi => {
-                            let ndi_ids: Vec<String> = engine
-                                .registry
-                                .list_sources(Protocol::Ndi)
-                                .into_iter()
-                                .map(|(key, _)| key.source_ref.clone())
-                                .collect();
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let discovered =
-                                engine.ndi.as_ref().map(|d| d.list()).unwrap_or_default();
-                            egui::ComboBox::from_id_salt("ndi_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current.to_string())
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // Already connected NDI sources
-                                    for id in &ndi_ids {
-                                        if ui.selectable_label(current == id, id).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    // Discovered sources not yet connected (auto-connect on select)
-                                    for src in &discovered {
-                                        let name = &src.name;
-                                        if !ndi_ids.iter().any(|id| id == name)
-                                            && ui
-                                                .selectable_label(current == name, name.to_string())
-                                                .clicked()
-                                        {
-                                            new_connect = Some((Protocol::Ndi, name.clone()));
-                                            selected_source = Some(name.clone());
-                                        }
-                                    }
-                                    if ndi_ids.is_empty() && discovered.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
+                            let discovered = engine.ndi.as_ref().map(|d| d.list()).unwrap_or_default();
+                            let picker = source_picker(
+                                ui,
+                                "ndi_source",
+                                current,
+                                connected_sources(&engine.registry, Protocol::Ndi),
+                                vec![PickerGroup::flat(
+                                    discovered.iter().map(|src| PickerItem::plain(&src.name)),
+                                )],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::Ndi, id));
+                            }
                         }
                         Protocol::Omt => {
-                            let omt_ids: Vec<String> = engine
-                                .registry
-                                .list_sources(Protocol::Omt)
-                                .into_iter()
-                                .map(|(key, _)| key.source_ref.clone())
-                                .collect();
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let discovered =
-                                engine.omt.as_ref().map(|d| d.list()).unwrap_or_default();
-                            egui::ComboBox::from_id_salt("omt_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current.to_string())
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // Already connected OMT sources
-                                    for id in &omt_ids {
-                                        if ui.selectable_label(current == id, id).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    // Discovered sources not yet connected (auto-connect on select)
-                                    for addr in &discovered {
-                                        let name = addr.instance_name();
-                                        if !omt_ids.iter().any(|id| id == &name)
-                                            && ui
-                                                .selectable_label(current == name, name.clone())
-                                                .clicked()
-                                        {
-                                            new_connect = Some((Protocol::Omt, name.clone()));
-                                            selected_source = Some(name);
-                                        }
-                                    }
-                                    if omt_ids.is_empty() && discovered.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
+                            let discovered = engine.omt.as_ref().map(|d| d.list()).unwrap_or_default();
+                            let picker = source_picker(
+                                ui,
+                                "omt_source",
+                                current,
+                                connected_sources(&engine.registry, Protocol::Omt),
+                                vec![PickerGroup::flat(discovered.iter().map(|addr| {
+                                    PickerItem::plain(&addr.instance_name())
+                                }))],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::Omt, id));
+                            }
                         }
                         Protocol::Decklink => {
-                            let decklink_ids: Vec<String> = engine
-                                .registry
-                                .list_sources(Protocol::Decklink)
-                                .into_iter()
-                                .map(|(key, _)| key.source_ref.clone())
-                                .collect();
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let discovered = engine
-                                .decklink
-                                .as_ref()
-                                .map(|d| d.list())
-                                .unwrap_or_default();
-                            let combo = egui::ComboBox::from_id_salt("decklink_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current.to_string())
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // Already connected DeckLink sources
-                                    for id in &decklink_ids {
-                                        if ui.selectable_label(current == id, id).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    // Discovered ports not yet connected (auto-connect on select)
-                                    for port in &discovered {
-                                        let name = &port.name;
-                                        if !decklink_ids.iter().any(|id| id == name)
-                                            && ui.selectable_label(current == name, name).clicked()
-                                        {
-                                            new_connect = Some((Protocol::Decklink, name.clone()));
-                                            selected_source = Some(name.clone());
-                                        }
-                                    }
-                                    if decklink_ids.is_empty() && discovered.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
-                            if combo.response.clicked()
+                            let discovered =
+                                engine.decklink.as_ref().map(|d| d.list()).unwrap_or_default();
+                            let picker = source_picker(
+                                ui,
+                                "decklink_source",
+                                current,
+                                connected_sources(&engine.registry, Protocol::Decklink),
+                                vec![PickerGroup::flat(
+                                    discovered.iter().map(|port| PickerItem::plain(&port.name)),
+                                )],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::Decklink, id));
+                            }
+                            if picker.clicked
                                 && let Some(discovery) = engine.decklink.as_ref()
                             {
                                 discovery.request_refresh();
@@ -753,159 +624,91 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         }
                         #[cfg(target_os = "macos")]
                         Protocol::Syphon => {
-                            let syphon_sources: Vec<(String, String)> = engine
-                                .registry
-                                .list_sources(Protocol::Syphon)
-                                .into_iter()
-                                .map(|(key, kind)| {
-                                    let label = kind.display_label(&key.source_ref);
-                                    (key.source_ref.clone(), label)
-                                })
-                                .collect();
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let current_label = syphon_sources
-                                .iter()
-                                .find(|(id, _)| id == current)
-                                .map(|(_, label)| label.clone())
-                                .unwrap_or_else(|| current.to_string());
                             let discovered =
                                 engine.syphon.as_ref().map(|d| d.list()).unwrap_or_default();
-                            egui::ComboBox::from_id_salt("syphon_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current_label)
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // Already connected Syphon sources
-                                    for (id, label) in &syphon_sources {
-                                        if ui.selectable_label(current == id, label).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    // Discovered servers not yet connected (auto-connect on select)
-                                    for info in &discovered {
-                                        let id = info.display_name();
-                                        let label =
-                                            format_syphon_label(&info.app_name, &info.name);
-                                        if !syphon_sources.iter().any(|(c, _)| c == id)
-                                            && ui
-                                                .selectable_label(current == id, &label)
-                                                .clicked()
-                                        {
-                                            new_connect =
-                                                Some((Protocol::Syphon, id.to_string()));
-                                            selected_source = Some(id.to_string());
-                                        }
-                                    }
-                                    if syphon_sources.is_empty() && discovered.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
+                            let picker = source_picker(
+                                ui,
+                                "syphon_source",
+                                current,
+                                labelled_sources(&engine.registry, Protocol::Syphon, |key, kind| {
+                                    kind.display_label(&key.source_ref)
+                                }),
+                                vec![PickerGroup::flat(discovered.iter().map(|info| {
+                                    PickerItem::new(
+                                        info.display_name(),
+                                        &format_syphon_label(&info.app_name, &info.name),
+                                    )
+                                }))],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::Syphon, id));
+                            }
                         }
                         #[cfg(target_os = "macos")]
                         Protocol::AvFoundation => {
-                            let avf_ids: Vec<String> = engine
-                                .registry
-                                .list_sources(Protocol::AvFoundation)
-                                .into_iter()
-                                .map(|(key, _)| key.source_ref.clone())
-                                .collect();
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let discovered = engine
-                                .avfoundation
-                                .as_ref()
-                                .map(|d| d.list())
-                                .unwrap_or_default();
-                            egui::ComboBox::from_id_salt("avfoundation_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current.to_string())
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    for id in &avf_ids {
-                                        if ui.selectable_label(current == id, id).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    for device in &discovered {
-                                        if !avf_ids.iter().any(|id| id == &device.name)
-                                            && ui
-                                                .selectable_label(current == device.name, &device.name)
-                                                .clicked()
-                                        {
-                                            new_connect = Some((Protocol::AvFoundation, device.name.clone()));
-                                            selected_source = Some(device.name.clone());
-                                        }
-                                    }
-                                    if avf_ids.is_empty() && discovered.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
+                            let discovered =
+                                engine.avfoundation.as_ref().map(|d| d.list()).unwrap_or_default();
+                            let picker = source_picker(
+                                ui,
+                                "avfoundation_source",
+                                current,
+                                connected_sources(&engine.registry, Protocol::AvFoundation),
+                                vec![PickerGroup::flat(
+                                    discovered
+                                        .iter()
+                                        .map(|device| PickerItem::plain(&device.name)),
+                                )],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::AvFoundation, id));
+                            }
                         }
                         #[cfg(target_os = "macos")]
                         Protocol::ScreenCaptureKit => {
-                            let mut sck_sources: Vec<(String, String)> = engine
-                                .registry
-                                .list_sources(Protocol::ScreenCaptureKit)
-                                .into_iter()
-                                .map(|(key, kind)| {
-                                    let label = kind.display_label(&key.source_ref);
-                                    (key.source_ref.clone(), label)
-                                })
-                                .collect();
-                            sck_sources.sort_by_cached_key(|(_, label)| label.to_lowercase());
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let current_label = sck_sources
-                                .iter()
-                                .find(|(id, _)| id == current)
-                                .map(|(_, label)| label.clone())
-                                .unwrap_or_else(|| current.to_string());
                             let targets = engine
                                 .screencapturekit
                                 .as_ref()
                                 .map(|d| d.list())
                                 .unwrap_or_default();
-                            let combo = egui::ComboBox::from_id_salt("screencapturekit_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current_label)
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // Already connected targets
-                                    for (id, label) in &sck_sources {
-                                        if ui.selectable_label(current == id, label).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    // Discovered targets not yet connected, grouped by kind (auto-connect on select)
-                                    for (header, group) in [
-                                        ("Displays", &targets.displays),
-                                        ("Windows", &targets.windows),
-                                    ] {
-                                        let pending: Vec<_> = group
-                                            .iter()
-                                            .filter(|t| {
-                                                !sck_sources
-                                                    .iter()
-                                                    .any(|(c, _)| c == &t.source_ref)
-                                            })
-                                            .collect();
-                                        if pending.is_empty() {
-                                            continue;
-                                        }
-                                        ui.label(egui::RichText::new(header).weak());
-                                        for target in pending {
-                                            if ui.selectable_label(current == target.source_ref, &target.label).clicked() {
-                                                new_connect = Some((Protocol::ScreenCaptureKit, target.source_ref.clone()));
-                                                selected_source = Some(target.source_ref.clone());
-                                            }
-                                        }
-                                    }
-                                    if targets.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
-                            if combo.response.clicked()
+                            let mut connected = labelled_sources(
+                                &engine.registry,
+                                Protocol::ScreenCaptureKit,
+                                |key, kind| kind.display_label(&key.source_ref),
+                            );
+                            connected.sort_by_cached_key(|item| item.label.to_lowercase());
+                            let picker = source_picker(
+                                ui,
+                                "screencapturekit_source",
+                                current,
+                                connected,
+                                vec![
+                                    PickerGroup::titled(
+                                        "Displays",
+                                        targets.displays.iter().map(|target| {
+                                            PickerItem::new(&target.source_ref, &target.label)
+                                        }),
+                                    ),
+                                    PickerGroup::titled(
+                                        "Windows",
+                                        targets.windows.iter().map(|target| {
+                                            PickerItem::new(&target.source_ref, &target.label)
+                                        }),
+                                    ),
+                                ],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::ScreenCaptureKit, id));
+                            }
+                            if picker.clicked
                                 && let Some(discovery) = engine.screencapturekit.as_ref()
                             {
                                 discovery.request_refresh();
@@ -913,38 +716,22 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         }
                         #[cfg(target_os = "windows")]
                         Protocol::Spout => {
-                            let spout_ids: Vec<String> = engine
-                                .registry
-                                .list_sources(Protocol::Spout)
-                                .into_iter()
-                                .map(|(key, _)| key.source_ref.clone())
-                                .collect();
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let discovered =
-                                engine.spout.as_ref().map(|d| d.list()).unwrap_or_default();
-                            egui::ComboBox::from_id_salt("spout_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current.to_string())
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    for id in &spout_ids {
-                                        if ui.selectable_label(current == id, id).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    for name in &discovered {
-                                        if !spout_ids.iter().any(|id| id == name)
-                                            && ui.selectable_label(current == name, name).clicked()
-                                        {
-                                            new_connect = Some((Protocol::Spout, name.clone()));
-                                            selected_source = Some(name.clone());
-                                        }
-                                    }
-                                    if spout_ids.is_empty() && discovered.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
+                            let discovered = engine.spout.as_ref().map(|d| d.list()).unwrap_or_default();
+                            let picker = source_picker(
+                                ui,
+                                "spout_source",
+                                current,
+                                connected_sources(&engine.registry, Protocol::Spout),
+                                vec![PickerGroup::flat(
+                                    discovered.iter().map(|name| PickerItem::plain(name)),
+                                )],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::Spout, id));
+                            }
                         }
                         #[cfg(target_os = "windows")]
                         Protocol::MediaFoundation => {
@@ -953,55 +740,34 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .as_ref()
                                 .map(|d| d.list())
                                 .unwrap_or_default();
-                            let mf_sources: Vec<(String, String)> = engine
-                                .registry
-                                .list_sources(Protocol::MediaFoundation)
-                                .into_iter()
-                                .map(|(key, kind)| {
-                                    // Prefer the live friendly name: the label
-                                    // stored at connect time can be the raw
-                                    // symbolic link if discovery missed then.
-                                    let label = discovered
-                                        .iter()
-                                        .find(|d| d.id == key.source_ref)
-                                        .map(|d| d.name.clone())
-                                        .unwrap_or_else(|| kind.display_label(&key.source_ref));
-                                    (key.source_ref.clone(), label)
-                                })
-                                .collect();
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let current_label = mf_sources
-                                .iter()
-                                .find(|(id, _)| id == current)
-                                .map(|(_, label)| label.clone())
-                                .unwrap_or_else(|| current.to_string());
-                            egui::ComboBox::from_id_salt("mediafoundation_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current_label)
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // Already connected devices
-                                    for (id, label) in &mf_sources {
-                                        if ui.selectable_label(current == id, label).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    // Discovered devices not yet connected (auto-connect on select)
-                                    for device in &discovered {
-                                        if !mf_sources.iter().any(|(id, _)| id == &device.id)
-                                            && ui
-                                                .selectable_label(current == device.id, &device.name)
-                                                .clicked()
-                                        {
-                                            new_connect = Some((Protocol::MediaFoundation, device.id.clone()));
-                                            selected_source = Some(device.id.clone());
-                                        }
-                                    }
-                                    if mf_sources.is_empty() && discovered.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
+                            let picker = source_picker(
+                                ui,
+                                "mediafoundation_source",
+                                current,
+                                labelled_sources(
+                                    &engine.registry,
+                                    Protocol::MediaFoundation,
+                                    |key, kind| {
+                                        // Prefer the live friendly name: the label
+                                        // stored at connect time can be the raw
+                                        // symbolic link if discovery missed then.
+                                        discovered
+                                            .iter()
+                                            .find(|d| d.id == key.source_ref)
+                                            .map(|d| d.name.clone())
+                                            .unwrap_or_else(|| kind.display_label(&key.source_ref))
+                                    },
+                                ),
+                                vec![PickerGroup::flat(discovered.iter().map(|device| {
+                                    PickerItem::new(&device.id, &device.name)
+                                }))],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::MediaFoundation, id));
+                            }
                         }
                         #[cfg(target_os = "windows")]
                         Protocol::DirectShow => {
@@ -1010,130 +776,84 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                                 .as_ref()
                                 .map(|d| d.list())
                                 .unwrap_or_default();
-                            let ds_sources: Vec<(String, String)> = engine
-                                .registry
-                                .list_sources(Protocol::DirectShow)
-                                .into_iter()
-                                .map(|(key, kind)| {
-                                    let label = discovered
+                            let picker = source_picker(
+                                ui,
+                                "directshow_source",
+                                current,
+                                labelled_sources(&engine.registry, Protocol::DirectShow, |key, kind| {
+                                    discovered
                                         .iter()
                                         .find(|d| d.id == key.source_ref)
                                         .map(|d| d.name.clone())
-                                        .unwrap_or_else(|| kind.display_label(&key.source_ref));
-                                    (key.source_ref.clone(), label)
-                                })
-                                .collect();
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let current_label = ds_sources
-                                .iter()
-                                .find(|(id, _)| id == current)
-                                .map(|(_, label)| label.clone())
-                                .unwrap_or_else(|| current.to_string());
-                            egui::ComboBox::from_id_salt("directshow_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current_label)
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // Already connected devices
-                                    for (id, label) in &ds_sources {
-                                        if ui.selectable_label(current == id, label).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    // Discovered devices not yet connected (auto-connect on select)
-                                    for device in &discovered {
-                                        if !ds_sources.iter().any(|(id, _)| id == &device.id)
-                                            && ui
-                                                .selectable_label(current == device.id, &device.name)
-                                                .clicked()
-                                        {
-                                            new_connect = Some((Protocol::DirectShow, device.id.clone()));
-                                            selected_source = Some(device.id.clone());
-                                        }
-                                    }
-                                    if ds_sources.is_empty() && discovered.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
+                                        .unwrap_or_else(|| kind.display_label(&key.source_ref))
+                                }),
+                                vec![PickerGroup::flat(discovered.iter().map(|device| {
+                                    PickerItem::new(&device.id, &device.name)
+                                }))],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::DirectShow, id));
+                            }
                         }
                         #[cfg(target_os = "windows")]
                         Protocol::WindowsCapture => {
-                            let mut wc_sources: Vec<(String, String)> = engine
-                                .registry
-                                .list_sources(Protocol::WindowsCapture)
-                                .into_iter()
-                                .map(|(key, kind)| {
-                                    let label = kind.display_label(&key.source_ref);
-                                    (key.source_ref.clone(), label)
-                                })
-                                .collect();
-                            wc_sources.sort_by_cached_key(|(_, label)| label.to_lowercase());
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let current_label = wc_sources
-                                .iter()
-                                .find(|(id, _)| id == current)
-                                .map(|(_, label)| label.clone())
-                                .unwrap_or_else(|| current.to_string());
                             let targets = engine
                                 .windowscapture
                                 .as_ref()
                                 .map(|d| d.list())
                                 .unwrap_or_default();
-                            egui::ComboBox::from_id_salt("windowscapture_source")
-                                .width(ui.available_width())
-                                .height(1000.0)
-                                .selected_text(current_label)
-                                .truncate()
-                                .show_ui(ui, |ui| {
-                                    // Already connected targets
-                                    for (id, label) in &wc_sources {
-                                        if ui.selectable_label(current == id, label).clicked() {
-                                            selected_source = Some(id.clone());
-                                        }
-                                    }
-                                    // Discovered targets not yet connected, grouped by kind
-                                    for (header, group) in [
-                                        ("Displays", &targets.displays),
-                                        ("Windows", &targets.windows),
-                                    ] {
-                                        let pending: Vec<_> = group
-                                            .iter()
-                                            .filter(|t| {
-                                                !wc_sources
-                                                    .iter()
-                                                    .any(|(c, _)| c == &t.source_ref)
-                                            })
-                                            .collect();
-                                        if pending.is_empty() {
-                                            continue;
-                                        }
-                                        ui.label(egui::RichText::new(header).weak());
-                                        for target in pending {
-                                            if ui.selectable_label(current == target.source_ref, &target.label).clicked() {
-                                                new_connect = Some((Protocol::WindowsCapture, target.source_ref.clone()));
-                                                selected_source = Some(target.source_ref.clone());
-                                            }
-                                        }
-                                    }
-                                    if targets.is_empty() {
-                                        ui.weak("(scanning...)");
-                                    }
-                                });
+                            let mut connected = labelled_sources(
+                                &engine.registry,
+                                Protocol::WindowsCapture,
+                                |key, kind| kind.display_label(&key.source_ref),
+                            );
+                            connected.sort_by_cached_key(|item| item.label.to_lowercase());
+                            let picker = source_picker(
+                                ui,
+                                "windowscapture_source",
+                                current,
+                                connected,
+                                vec![
+                                    PickerGroup::titled(
+                                        "Displays",
+                                        targets.displays.iter().map(|target| {
+                                            PickerItem::new(&target.source_ref, &target.label)
+                                        }),
+                                    ),
+                                    PickerGroup::titled(
+                                        "Windows",
+                                        targets.windows.iter().map(|target| {
+                                            PickerItem::new(&target.source_ref, &target.label)
+                                        }),
+                                    ),
+                                ],
+                                None,
+                                true,
+                            );
+                            selected_source = picker.selected;
+                            if let Some(id) = picker.connect {
+                                new_connect = Some((Protocol::WindowsCapture, id));
+                            }
                         }
-                        Protocol::Vnc => {
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let (selected, new) =
-                                manual_source_combo(ui, &engine.registry, Protocol::Vnc, current);
-                            selected_source = selected;
-                            new_vnc_source |= new;
-                        }
-                        Protocol::Rdp => {
-                            let current = source.source_ref.as_deref().unwrap_or("");
-                            let (selected, new) =
-                                manual_source_combo(ui, &engine.registry, Protocol::Rdp, current);
-                            selected_source = selected;
-                            new_rdp_source |= new;
+                        Protocol::Vnc | Protocol::Rdp => {
+                            let protocol = source.protocol.clone();
+                            let picker = source_picker(
+                                ui,
+                                &format!("{}_source", protocol.name().to_lowercase()),
+                                current,
+                                manual_sources(&engine.registry, protocol.clone()),
+                                Vec::new(),
+                                Some(format!("+ New {} Source", protocol.label())),
+                                false,
+                            );
+                            selected_source = picker.selected;
+                            match protocol {
+                                Protocol::Vnc => new_vnc_source |= picker.new_entry,
+                                _ => new_rdp_source |= picker.new_entry,
+                            }
                         }
                         Protocol::Unknown(_) => {
                             // No runtime source exists for unavailable protocols.
@@ -1141,10 +861,9 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         }
                     }
                 });
-                ui.end_row();
+                // ui.end_row();
 
-                ui.label("Position");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Position", |ui| {
                     ui.label("X ");
                     if ui.add(egui::DragValue::new(&mut source.x)).changed() {
                         engine.dirty = true;
@@ -1154,10 +873,8 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         engine.dirty = true;
                     }
                 });
-                ui.end_row();
 
-                ui.label("Size");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Size", |ui| {
                     ui.label("W");
                     if ui
                         .add(egui::DragValue::new(&mut source.width).range(1..=7680))
@@ -1173,19 +890,15 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         engine.dirty = true;
                     }
                 });
-                ui.end_row();
 
-                ui.label("Order");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Order", |ui| {
                     ui.label("Z ");
                     if ui.add(egui::DragValue::new(&mut source.z)).changed() {
                         engine.dirty = true;
                     }
                 });
-                ui.end_row();
 
-                ui.label("Mode");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Mode", |ui| {
                     egui::ComboBox::from_id_salt("tex_mode")
                         .width(ui.available_width())
                         .selected_text(source.mode.label())
@@ -1195,10 +908,8 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             ui.selectable_value(&mut source.mode, TextureMode::Stretch, "Stretch");
                         });
                 });
-                ui.end_row();
 
-                ui.label("Flip");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Flip", |ui| {
                     ui.horizontal(|ui| {
                         if ui.checkbox(&mut source.flip_h, "Flip H").changed() {
                             engine.dirty = true;
@@ -1208,10 +919,8 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                         }
                     });
                 });
-                ui.end_row();
 
-                ui.label("Label");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Label", |ui| {
                     egui::ComboBox::from_id_salt("source_label_visibility")
                         .width(ui.available_width())
                         .selected_text(source.label_visibility.label())
@@ -1227,10 +936,8 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             }
                         });
                 });
-                ui.end_row();
 
-                ui.label("Borders");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Borders", |ui| {
                     egui::ComboBox::from_id_salt("source_border_visibility")
                         .width(ui.available_width())
                         .selected_text(source.border_visibility.label())
@@ -1246,7 +953,6 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
                             }
                         });
                 });
-                ui.end_row();
             });
             
             // Source-specific settings and stats, looked up by the quad's own
@@ -1343,8 +1049,7 @@ fn output_enable_row(
     make_config: impl FnOnce(&str) -> OutputConfig,
 ) {
     let label = protocol.label();
-    ui.label(format!("{label} Output"));
-    settings_value(ui, |ui| {
+    settings_row(ui, &format!("{label} Output"), |ui| {
         let registry_id = engine
             .cfg
             .canvas
@@ -1371,156 +1076,228 @@ fn output_enable_row(
             }
         }
     });
-    ui.end_row();
 }
 
-/// Source picker for protocols with no discovery service: the connections this
-/// project has created, plus an entry to add another. Returns the source_ref to
-/// select and whether the "new" entry was clicked.
-fn manual_source_combo(
-    ui: &mut egui::Ui,
+/// One selectable entry in the source picker.
+struct PickerItem {
+    id: String,
+    label: String,
+}
+
+impl PickerItem {
+    /// An entry whose label is its id.
+    fn plain(id: &str) -> Self {
+        return Self {
+            id: id.to_string(),
+            label: id.to_string(),
+        };
+    }
+
+    fn new(id: &str, label: &str) -> Self {
+        return Self {
+            id: id.to_string(),
+            label: label.to_string(),
+        };
+    }
+}
+
+/// A section of discovered sources. Screen capture splits them into displays
+/// and windows; every other protocol has a single unlabelled section.
+struct PickerGroup {
+    header: Option<&'static str>,
+    items: Vec<PickerItem>,
+}
+
+impl PickerGroup {
+    fn flat(items: impl IntoIterator<Item = PickerItem>) -> Self {
+        return Self {
+            header: None,
+            items: items.into_iter().collect(),
+        };
+    }
+
+    fn titled(header: &'static str, items: impl IntoIterator<Item = PickerItem>) -> Self {
+        return Self {
+            header: Some(header),
+            items: items.into_iter().collect(),
+        };
+    }
+}
+
+#[derive(Default)]
+struct PickerResult {
+    selected: Option<SourceRef>,
+    connect: Option<String>,
+    new_entry: bool,
+    clicked: bool,
+}
+
+/// Sources already live in the registry, labelled by their source_ref.
+fn connected_sources(registry: &SourceRegistry, protocol: Protocol) -> Vec<PickerItem> {
+    return registry
+        .list_sources(protocol)
+        .into_iter()
+        .map(|(key, _)| PickerItem::plain(&key.source_ref))
+        .collect();
+}
+
+/// Sources already live in the registry, with a caller-supplied label.
+fn labelled_sources(
     registry: &SourceRegistry,
     protocol: Protocol,
-    current: &str,
-) -> (Option<SourceRef>, bool) {
-    let sources: Vec<(SourceRef, String)> = registry
-        .list_sources(protocol.clone())
+    label: impl Fn(&SourceKey, &SourceKind) -> String,
+) -> Vec<PickerItem> {
+    return registry
+        .list_sources(protocol)
         .into_iter()
-        .map(|(key, kind)| {
-            let label = match &kind.config {
-                SourceConfig::Vnc(config) => config.label(&key.source_ref),
-                SourceConfig::Rdp(config) => config.label(&key.source_ref),
-                _ => key.source_ref.clone(),
-            };
-            (key.source_ref.clone(), label)
-        })
+        .map(|(key, kind)| PickerItem::new(&key.source_ref, &label(key, kind)))
         .collect();
-    let current_label = sources
+}
+
+/// The single picker shared by every protocol: already-connected sources, then
+/// the discovered ones not connected yet (selecting one connects it), then the
+/// "new" entry when the protocol has one.
+fn source_picker(
+    ui: &mut egui::Ui,
+    id_salt: &str,
+    current: &str,
+    connected: Vec<PickerItem>,
+    groups: Vec<PickerGroup>,
+    new_entry: Option<String>,
+    scanning: bool,
+) -> PickerResult {
+    let mut result = PickerResult::default();
+    let current_label = connected
         .iter()
-        .find(|(id, _)| id == current)
-        .map(|(_, label)| label.clone())
+        .chain(groups.iter().flat_map(|group| group.items.iter()))
+        .find(|item| item.id == current)
+        .map(|item| item.label.clone())
         .unwrap_or_else(|| current.to_string());
-    let mut selected = None;
-    let mut new = false;
-    egui::ComboBox::from_id_salt(format!("{}_source", protocol.name().to_lowercase()))
+
+    let combo = egui::ComboBox::from_id_salt(id_salt)
         .width(ui.available_width())
         .height(1000.0)
         .selected_text(current_label)
         .truncate()
         .show_ui(ui, |ui| {
-            // No discovery service: the list is the connections this project has created.
-            for (id, label) in &sources {
-                if ui.selectable_label(current == id, label).clicked() {
-                    selected = Some(id.clone());
+            for item in &connected {
+                if ui.selectable_label(current == item.id, &item.label).clicked() {
+                    result.selected = Some(item.id.clone());
                 }
             }
-            if ui
-                .selectable_label(false, format!("+ New {} Source", protocol.label()))
-                .clicked()
+            for group in &groups {
+                let pending: Vec<&PickerItem> = group
+                    .items
+                    .iter()
+                    .filter(|item| !connected.iter().any(|c| c.id == item.id))
+                    .collect();
+                if pending.is_empty() {
+                    continue;
+                }
+                if let Some(header) = group.header {
+                    ui.label(egui::RichText::new(header).weak());
+                }
+                for item in pending {
+                    if ui.selectable_label(current == item.id, &item.label).clicked() {
+                        result.connect = Some(item.id.clone());
+                        result.selected = Some(item.id.clone());
+                    }
+                }
+            }
+            if scanning && connected.is_empty() && groups.iter().all(|group| group.items.is_empty()) {
+                ui.weak("(scanning...)");
+            }
+            if let Some(label) = &new_entry
+                && ui.selectable_label(false, label).clicked()
             {
-                new = true;
+                result.new_entry = true;
             }
         });
-    return (selected, new);
+    result.clicked = combo.response.clicked();
+    return result;
+}
+
+/// VNC and RDP have no discovery: the picker lists the connections this project
+/// has created, labelled with their host and port.
+fn manual_sources(registry: &SourceRegistry, protocol: Protocol) -> Vec<PickerItem> {
+    return labelled_sources(registry, protocol, |key, kind| match &kind.config {
+        SourceConfig::Vnc(config) => config.label(&key.source_ref),
+        SourceConfig::Rdp(config) => config.label(&key.source_ref),
+        _ => key.source_ref.clone(),
+    });
 }
 
 fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
     settings_grid(ui, "source_stats_grid", |ui| {
         if stats.off_screen {
-            ui.label("Status");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Status", |ui| {
                 ui.colored_label(
                     egui::Color32::YELLOW,
                     "Off-screen \u{2014} holding last frame",
                 );
             });
-            ui.end_row();
         }
 
-        ui.label("Resolution");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Resolution", |ui| {
             ui.label(format!(
                 "{}x{} {}",
                 stats.width, stats.height, stats.pixel_format
             ));
         });
-        ui.end_row();
 
-        ui.label("FPS Nominal");
-        settings_value(ui, |ui| {
+        settings_row(ui, "FPS Nominal", |ui| {
             if stats.nominal_fps > 0.0 {
                 ui.label(format!("{:.2}", stats.nominal_fps));
             } else {
                 ui.label("-");
             }
         });
-        ui.end_row();
 
-        ui.label("FPS Computed");
-        settings_value(ui, |ui| {
+        settings_row(ui, "FPS Computed", |ui| {
             ui.label(format!("{:.2}", stats.computed_fps));
         });
-        ui.end_row();
 
-        ui.label("Frames received");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Frames received", |ui| {
             ui.label(format!("{}", stats.frames_received));
         });
-        ui.end_row();
 
-        ui.label("Frames consumed");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Frames consumed", |ui| {
             ui.label(format!("{}", stats.frames_consumed));
         });
-        ui.end_row();
 
-        ui.label("Frames dropped");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Frames dropped", |ui| {
             ui.label(format!("{}", stats.frames_dropped));
         });
-        ui.end_row();
 
-        ui.label("Receive");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Receive", |ui| {
             ui.label(format!("{:.2} ms", stats.receive_time_ms));
         });
-        ui.end_row();
 
         if stats.gpu_direct {
             // A GPU-direct source has no CPU copy or upload; report the wire
             // rate and the decoder's own timing instead.
             if stats.network_mbps > 0.0 {
-                ui.label("Network");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Network", |ui| {
                     ui.label(format!("{:.1} MB/s", stats.network_mbps));
                 });
-                ui.end_row();
             }
             if stats.decode_ms > 0.0 {
-                ui.label("Decode");
-                settings_value(ui, |ui| {
+                settings_row(ui, "Decode", |ui| {
                     ui.label(format!("{:.2} ms", stats.decode_ms));
                 });
-                ui.end_row();
             }
         } else {
-            ui.label("CPU->GPU copy");
-            settings_value(ui, |ui| {
+            settings_row(ui, "CPU->GPU copy", |ui| {
                 ui.label(format!("{:.2} ms", stats.copy_time_ms));
             });
-            ui.end_row();
 
-            ui.label("GPU upload");
-            settings_value(ui, |ui| {
+            settings_row(ui, "GPU upload", |ui| {
                 ui.label(format!("{:.2} ms", stats.upload_time_ms));
             });
-            ui.end_row();
 
-            ui.label("GPU bandwidth");
-            settings_value(ui, |ui| {
+            settings_row(ui, "GPU bandwidth", |ui| {
                 ui.label(format!("{:.1} MB/s", stats.upload_mbps));
             });
-            ui.end_row();
         }
     });
 }
@@ -1566,13 +1343,15 @@ pub fn settings_grid<R>(
         .show(ui, contents)
 }
 
-pub fn settings_value(ui: &mut Ui, contents: impl FnOnce(&mut Ui)) {
+/// One label/value row of a [`settings_grid`].
+pub fn settings_row(ui: &mut Ui, label: &str, contents: impl FnOnce(&mut Ui)) {
+    ui.label(label);
     ui.with_layout(Layout::left_to_right(Align::Center), contents);
+    ui.end_row();
 }
 
 fn color_picker_rgba_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 4]) {
-    ui.label(label);
-    settings_value(ui, |ui| {
+    settings_row(ui, label, |ui| {
         let mut color_f32 = [
             color[0] as f32 / 255.0,
             color[1] as f32 / 255.0,
@@ -1588,5 +1367,64 @@ fn color_picker_rgba_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 4]) {
             ];
         }
     });
-    ui.end_row();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{Canvas, Source, TextureMode};
+
+    /// Every protocol the host supports has its own picker arm; each must build
+    /// its item list and draw a frame without panicking, with no discovery
+    /// service running and one placement selected.
+    #[test]
+    fn picker_draws_for_every_available_protocol() {
+        let protocols = [
+            Protocol::Test,
+            Protocol::Ndi,
+            Protocol::Omt,
+            Protocol::Decklink,
+            Protocol::Vnc,
+            Protocol::Rdp,
+            #[cfg(target_os = "macos")]
+            Protocol::Syphon,
+            #[cfg(target_os = "macos")]
+            Protocol::AvFoundation,
+            #[cfg(target_os = "macos")]
+            Protocol::ScreenCaptureKit,
+            #[cfg(target_os = "windows")]
+            Protocol::Spout,
+            #[cfg(target_os = "windows")]
+            Protocol::MediaFoundation,
+            #[cfg(target_os = "windows")]
+            Protocol::DirectShow,
+            #[cfg(target_os = "windows")]
+            Protocol::WindowsCapture,
+        ];
+
+        for protocol in protocols {
+            let mut canvas = Canvas::default();
+            canvas.sources.push(Source::new(
+                "Source".to_string(),
+                protocol,
+                Some("ref".to_string()),
+                0.0,
+                0.0,
+                640,
+                360,
+                0,
+                TextureMode::Fit,
+                false,
+                false,
+            ));
+            let mut engine = Engine::test_instance(canvas);
+            engine.selected_source_id = Some(engine.cfg.canvas.sources[0].uuid.clone());
+
+            let ctx = egui::Context::default();
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                draw(ui, &mut engine);
+            });
+            output.textures_delta.clear();
+        }
+    }
 }

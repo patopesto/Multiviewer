@@ -490,86 +490,79 @@ impl App {
         if !self.show_about {
             return;
         }
-        let mut open = true;
         let mut open_licenses = false;
-        egui::Window::new(format!("About {}", APP_NAME))
-            .collapsible(false)
-            .resizable(false)
-            .movable(false)
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .open(&mut open)
-            .show(ctx, |ui| {
-                ui.heading(APP_NAME);
-                ui.label(env!("CARGO_PKG_DESCRIPTION"));
-                let copyright = env!("APP_COPYRIGHT");
-                let authors = env!("CARGO_PKG_AUTHORS").replace(':', ", ");
-                let credit = if !copyright.is_empty() && (authors.is_empty() || copyright.contains(authors.as_str())) {
-                    copyright.to_string()
-                } else if !copyright.is_empty() {
-                    format!("{copyright} · {authors}")
-                } else if !authors.is_empty() {
-                    format!("© {} {authors}", env!("BUILD_DATE").get(..4).unwrap_or(""))
-                } else {
-                    String::new()
-                };
-                if !credit.is_empty() {
-                    ui.label(credit);
+        let open = centered_window(ctx, format!("About {}", APP_NAME), false, None, |ui| {
+            ui.heading(APP_NAME);
+            ui.label(env!("CARGO_PKG_DESCRIPTION"));
+            let copyright = env!("APP_COPYRIGHT");
+            let authors = env!("CARGO_PKG_AUTHORS").replace(':', ", ");
+            let credit = if !copyright.is_empty() && (authors.is_empty() || copyright.contains(authors.as_str())) {
+                copyright.to_string()
+            } else if !copyright.is_empty() {
+                format!("{copyright} · {authors}")
+            } else if !authors.is_empty() {
+                format!("© {} {authors}", env!("BUILD_DATE").get(..4).unwrap_or(""))
+            } else {
+                String::new()
+            };
+            if !credit.is_empty() {
+                ui.label(credit);
+            }
+            ui.horizontal(|ui| {
+                let license = format!("{} License", env!("CARGO_PKG_LICENSE"));
+                let license_url = format!("{}/-/blob/master/LICENSE", env!("CARGO_PKG_REPOSITORY"));
+                if !license.is_empty() {
+                    ui.hyperlink_to(license, license_url);
                 }
-                ui.horizontal(|ui| {
-                    let license = format!("{} License", env!("CARGO_PKG_LICENSE"));
-                    let license_url = format!("{}/-/blob/master/LICENSE", env!("CARGO_PKG_REPOSITORY"));
-                    if !license.is_empty() {
-                        ui.hyperlink_to(license, license_url);
-                    }
-                    let homepage = env!("CARGO_PKG_HOMEPAGE");
-                    if !homepage.is_empty() {
-                        ui.hyperlink_to("Website", homepage);
-                    }
-                    let repository = env!("CARGO_PKG_REPOSITORY");
-                    if !repository.is_empty() {
-                        ui.hyperlink_to("Repository", repository);
-                    }
-                });
-                ui.separator();
-
-                egui::Grid::new("about_metadata").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
-                    ui.label("Version");
-                    ui.label(env!("CARGO_PKG_VERSION"));
-                    ui.end_row();
-                    ui.label("Commit");
-                    ui.label(env!("GIT_COMMIT"));
-                    ui.end_row();
-                    ui.label("Build Date");
-                    ui.label(env!("BUILD_DATE"));
-                    ui.end_row();
-
-                    ui.label("Renderer");
-                    ui.label(match (&self.gpu_backend, &self.gpu_name) {
-                        (Some(backend), Some(name)) => format!("{backend} · {name}"),
-                        _ => "unavailable".to_string(),
-                    });
-                    ui.end_row();
-                });
-
-                ui.separator();
-
-                egui::Grid::new("about_versions").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
-                    for (name, version) in &self.vendor_versions {
-                        ui.label(*name);
-                        ui.label(version.as_deref().unwrap_or("unavailable"));
-                        ui.end_row();
-                    }
-                });
-                ui.separator();
-
-                ui.horizontal(|ui| {
-                    ui.label("NDI® is a registered trademark of Vizrt NDI AB.");
-                    ui.hyperlink_to("ndi.video", "https://ndi.video/");
-                });
-                if ui.button("Third-Party Licenses…").clicked() {
-                    open_licenses = true;
+                let homepage = env!("CARGO_PKG_HOMEPAGE");
+                if !homepage.is_empty() {
+                    ui.hyperlink_to("Website", homepage);
+                }
+                let repository = env!("CARGO_PKG_REPOSITORY");
+                if !repository.is_empty() {
+                    ui.hyperlink_to("Repository", repository);
                 }
             });
+            ui.separator();
+
+            egui::Grid::new("about_metadata").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
+                ui.label("Version");
+                ui.label(env!("CARGO_PKG_VERSION"));
+                ui.end_row();
+                ui.label("Commit");
+                ui.label(env!("GIT_COMMIT"));
+                ui.end_row();
+                ui.label("Build Date");
+                ui.label(env!("BUILD_DATE"));
+                ui.end_row();
+
+                ui.label("Renderer");
+                ui.label(match (&self.gpu_backend, &self.gpu_name) {
+                    (Some(backend), Some(name)) => format!("{backend} · {name}"),
+                    _ => "unavailable".to_string(),
+                });
+                ui.end_row();
+            });
+
+            ui.separator();
+
+            egui::Grid::new("about_versions").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
+                for (name, version) in &self.vendor_versions {
+                    ui.label(*name);
+                    ui.label(version.as_deref().unwrap_or("unavailable"));
+                    ui.end_row();
+                }
+            });
+            ui.separator();
+
+            ui.horizontal(|ui| {
+                ui.label("NDI® is a registered trademark of Vizrt NDI AB.");
+                ui.hyperlink_to("ndi.video", "https://ndi.video/");
+            });
+            if ui.button("Third-Party Licenses…").clicked() {
+                open_licenses = true;
+            }
+        });
         if open_licenses {
             self.show_about = false;
             self.show_licenses = true;
@@ -583,19 +576,11 @@ impl App {
         if !self.show_shortcuts {
             return;
         }
-        let mut open = true;
-        egui::Window::new("Keyboard Shortcuts")
-            .collapsible(false)
-            .resizable(true)
-            .movable(false)
-            .default_size([460.0, 520.0])
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .open(&mut open)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    shortcuts::draw_reference(ui);
-                });
+        let open = centered_window(ctx, "Keyboard Shortcuts", true, Some([460.0, 520.0]), |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                shortcuts::draw_reference(ui);
             });
+        });
         if !open {
             self.show_shortcuts = false;
         }
@@ -605,46 +590,75 @@ impl App {
         if !self.show_control {
             return;
         }
-        let mut open = true;
         let mut dirty = false;
         let mut apply = false;
         let status = control_status_label(&self.engine);
 
-        egui::Window::new("OSC Control")
-            .collapsible(false)
-            .resizable(false)
-            .movable(false)
-            .default_size([440.0, 420.0])
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .open(&mut open)
-            .show(ctx, |ui| {
-                let osc = &mut self.engine.cfg.control.osc;
+        let open = centered_window(ctx, "OSC Control", false, Some([440.0, 420.0]), |ui| {
+            let osc = &mut self.engine.cfg.control.osc;
 
-                ui.heading("OSC input");
-                if ui.checkbox(&mut osc.enabled, "Enabled").changed() {
-                    dirty = true;
-                }
+            ui.heading("OSC input");
+            if ui.checkbox(&mut osc.enabled, "Enabled").changed() {
+                dirty = true;
+            }
 
-                egui::Grid::new("control_osc_grid")
+            egui::Grid::new("control_osc_grid")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label("Bind address");
+                    if ui.add(egui::TextEdit::singleline(&mut osc.bind).desired_width(160.0)).changed() {
+                        dirty = true;
+                    }
+                    ui.end_row();
+
+                    ui.label("Port");
+                    if ui.add(egui::DragValue::new(&mut osc.port).range(1..=65535)).changed() {
+                        dirty = true;
+                    }
+                    ui.end_row();
+
+                    ui.label("Prefix");
+                    if ui.add(
+                            egui::TextEdit::singleline(&mut osc.prefix)
+                                .hint_text("/multiviewer")
+                                .desired_width(160.0),
+                        )
+                        .changed()
+                    {
+                        dirty = true;
+                    }
+                    ui.end_row();
+                });
+            ui.weak("Leave the prefix empty to answer at the root (/source/...).");
+
+            ui.separator();
+            ui.heading("Feedback output");
+            if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Off, "No feedback").changed() {
+                dirty = true;
+            }
+            if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Senders, "Reply to senders",).changed() {
+                dirty = true;
+            }
+            if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Configured, "Configured target").changed() {
+                dirty = true;
+            }
+            if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Both, "Senders + configured target").changed() {
+                dirty = true;
+            }
+
+            if matches!(
+                osc.feedback_mode,
+                FeedbackMode::Configured | FeedbackMode::Both
+            ) {
+                egui::Grid::new("control_feedback_grid")
                     .num_columns(2)
                     .spacing([12.0, 6.0])
                     .show(ui, |ui| {
-                        ui.label("Bind address");
-                        if ui.add(egui::TextEdit::singleline(&mut osc.bind).desired_width(160.0)).changed() {
-                            dirty = true;
-                        }
-                        ui.end_row();
-
-                        ui.label("Port");
-                        if ui.add(egui::DragValue::new(&mut osc.port).range(1..=65535)).changed() {
-                            dirty = true;
-                        }
-                        ui.end_row();
-
-                        ui.label("Prefix");
+                        ui.label("Host");
                         if ui.add(
-                                egui::TextEdit::singleline(&mut osc.prefix)
-                                    .hint_text("/multiviewer")
+                                egui::TextEdit::singleline(&mut osc.feedback_host)
+                                    .hint_text("127.0.0.1")
                                     .desired_width(160.0),
                             )
                             .changed()
@@ -652,65 +666,28 @@ impl App {
                             dirty = true;
                         }
                         ui.end_row();
+
+                        ui.label("Port");
+                        if ui.add(
+                                egui::DragValue::new(&mut osc.feedback_port)
+                                    .range(0..=65535),
+                            )
+                            .changed()
+                        {
+                            dirty = true;
+                        }
+                        ui.end_row();
                     });
-                ui.weak("Leave the prefix empty to answer at the root (/source/...).");
+            }
 
-                ui.separator();
-                ui.heading("Feedback output");
-                if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Off, "No feedback").changed() {
-                    dirty = true;
-                }
-                if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Senders, "Reply to senders",).changed() {
-                    dirty = true;
-                }
-                if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Configured, "Configured target").changed() {
-                    dirty = true;
-                }
-                if ui.radio_value(&mut osc.feedback_mode, FeedbackMode::Both, "Senders + configured target").changed() {
-                    dirty = true;
-                }
+            ui.add_space(8.0);
+            ui.label(status.as_str());
 
-                if matches!(
-                    osc.feedback_mode,
-                    FeedbackMode::Configured | FeedbackMode::Both
-                ) {
-                    egui::Grid::new("control_feedback_grid")
-                        .num_columns(2)
-                        .spacing([12.0, 6.0])
-                        .show(ui, |ui| {
-                            ui.label("Host");
-                            if ui.add(
-                                    egui::TextEdit::singleline(&mut osc.feedback_host)
-                                        .hint_text("127.0.0.1")
-                                        .desired_width(160.0),
-                                )
-                                .changed()
-                            {
-                                dirty = true;
-                            }
-                            ui.end_row();
-
-                            ui.label("Port");
-                            if ui.add(
-                                    egui::DragValue::new(&mut osc.feedback_port)
-                                        .range(0..=65535),
-                                )
-                                .changed()
-                            {
-                                dirty = true;
-                            }
-                            ui.end_row();
-                        });
-                }
-
-                ui.add_space(8.0);
-                ui.label(status.as_str());
-
-                ui.separator();
-                if ui.button("Apply").clicked() {
-                    apply = true;
-                }
-            });
+            ui.separator();
+            if ui.button("Apply").clicked() {
+                apply = true;
+            }
+        });
 
         if dirty {
             self.engine.dirty = true;
@@ -727,24 +704,39 @@ impl App {
         if !self.show_licenses {
             return;
         }
-        let mut open = true;
-        egui::Window::new("Third-Party Licenses")
-            .collapsible(false)
-            .resizable(true)
-            .movable(false)
-            .default_size([560.0, 620.0])
-            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
-            .open(&mut open)
-            .show(ctx, |ui| {
-                ui.style_mut().url_in_tooltip = true;
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    CommonMarkViewer::new().show(ui, &mut self.licenses_cache, LICENSES_TEXT);
-                });
+        let open = centered_window(ctx, "Third-Party Licenses", true, Some([560.0, 620.0]), |ui| {
+            ui.style_mut().url_in_tooltip = true;
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                CommonMarkViewer::new().show(ui, &mut self.licenses_cache, LICENSES_TEXT);
             });
+        });
         if !open {
             self.show_licenses = false;
         }
     }
+}
+
+/// A centred, non-movable window with the app's modal chrome. Returns whether
+/// it should stay open (false once its title-bar X was used).
+fn centered_window(
+    ctx: &egui::Context,
+    title: impl Into<egui::WidgetText>,
+    resizable: bool,
+    size: Option<[f32; 2]>,
+    contents: impl FnOnce(&mut egui::Ui),
+) -> bool {
+    let mut open = true;
+    let mut window = egui::Window::new(title)
+        .collapsible(false)
+        .resizable(resizable)
+        .movable(false)
+        .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+        .open(&mut open);
+    if let Some(size) = size {
+        window = window.default_size(size);
+    }
+    window.show(ctx, contents);
+    return open;
 }
 
 /// Status line for the OSC Control window.

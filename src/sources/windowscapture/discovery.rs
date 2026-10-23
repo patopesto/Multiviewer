@@ -108,10 +108,6 @@ impl Targets {
     pub fn find_by_source_ref(&self, source_ref: &str) -> Option<Target> {
         return self.iter().find(|t| t.source_ref == source_ref).cloned();
     }
-
-    pub fn is_empty(&self) -> bool {
-        return self.displays.is_empty() && self.windows.is_empty();
-    }
 }
 
 fn fetch_targets() -> Result<Targets, String> {

@@ -1,4 +1,4 @@
-use crate::ui::side_panel::{settings_grid, settings_value};
+use crate::ui::side_panel::{settings_grid, settings_row};
 use crate::sources::{SourceKind, SourceRuntimeConfig, SourceConfig};
 use crate::sources::{TestSourceConfig, TestPattern, RadarDirection};
 use crate::sources::{NdiSourceConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
@@ -56,8 +56,7 @@ pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> boo
 fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
     let old = cfg.clone();
     settings_grid(ui, "test_settings_grid", |ui| {
-        ui.label("Size");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Size", |ui| {
             ui.horizontal(|ui| {
                 ui.label("W");
                 ui.add(egui::DragValue::new(&mut cfg.width).range(100..=4096));
@@ -65,10 +64,8 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
                 ui.add(egui::DragValue::new(&mut cfg.height).range(100..=4096));
             });
         });
-        ui.end_row();
 
-        ui.label("Pattern");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Pattern", |ui| {
             let patterns = TestPattern::ALL.to_vec();
             egui::ComboBox::from_id_salt("test_pattern")
                 .width(ui.available_width())
@@ -79,29 +76,23 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
                     }
                 });
         });
-        ui.end_row();
 
         if let TestPattern::UvGradient { red, green, blue, rotation } = &mut cfg.pattern {
-            ui.label("Channels");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Channels", |ui| {
                 ui.horizontal(|ui| {
                     ui.checkbox(red, "R");
                     ui.checkbox(green, "G");
                     ui.checkbox(blue, "B");
                 });
             });
-            ui.end_row();
 
-            ui.label("Rotation");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Rotation", |ui| {
                 ui.add(egui::DragValue::new(rotation).range(0.0..=360.0).speed(1.0).suffix("°"));
             });
-            ui.end_row();
         }
 
         if let TestPattern::Grid { cols, rows, bg_color, line_color } = &mut cfg.pattern {
-            ui.label("Grid");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Grid", |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Cols");
                     ui.add(egui::DragValue::new(cols).range(1..=50));
@@ -109,27 +100,21 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
                     ui.add(egui::DragValue::new(rows).range(1..=50));
                 });
             });
-            ui.end_row();
 
             color_picker_row(ui, "Primary Color", line_color);
             color_picker_row(ui, "Background", bg_color);
         }
 
         if let TestPattern::Radar { width, speed, direction, bg_color, line_color } = &mut cfg.pattern {
-            ui.label("Width");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Width", |ui| {
                 ui.add(egui::DragValue::new(width).range(1..=cfg.width));
             });
-            ui.end_row();
 
-            ui.label("Speed");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Speed", |ui| {
                 ui.add(egui::DragValue::new(speed).range(0.0..=50.0).speed(0.5));
             });
-            ui.end_row();
 
-            ui.label("Direction");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Direction", |ui| {
                 egui::ComboBox::from_id_salt("radar_direction")
                     .width(ui.available_width())
                     .selected_text(format!("{:?}", direction))
@@ -140,27 +125,21 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
                         ui.selectable_value(direction, RadarDirection::Up, "Up");
                     });
             });
-            ui.end_row();
 
             color_picker_row(ui, "Primary Color", line_color);
             color_picker_row(ui, "Background", bg_color);
         }
 
-        ui.label("FPS");
-        settings_value(ui, |ui| {
+        settings_row(ui, "FPS", |ui| {
             ui.add(egui::DragValue::new(&mut cfg.fps).range(1.0..=240.0).speed(1.0));
         });
-        ui.end_row();
 
-        ui.label("Cursor");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Cursor", |ui| {
             ui.checkbox(&mut cfg.cursor.enabled, "Enabled");
         });
-        ui.end_row();
 
         if cfg.cursor.enabled {
-            ui.label("Cursor speed");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Cursor speed", |ui| {
                 ui.horizontal(|ui| {
                     ui.label("X ");
                     ui.add(egui::DragValue::new(&mut cfg.cursor.speed_x).range(0.0..=100.0).speed(0.5));
@@ -168,13 +147,10 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
                     ui.add(egui::DragValue::new(&mut cfg.cursor.speed_y).range(0.0..=100.0).speed(0.5));
                 });
             });
-            ui.end_row();
 
-            ui.label("Cursor width");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Cursor width", |ui| {
                 ui.add(egui::DragValue::new(&mut cfg.cursor.width).range(1..=100));
             });
-            ui.end_row();
         }
     });
     return *cfg != old;
@@ -195,8 +171,7 @@ fn ndi_format_label(cf: NdiReceiverColorFormat) -> String {
 fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
     let old = cfg.clone();
     settings_grid(ui, "ndi_settings_grid", |ui| {
-        ui.label("Bandwidth");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Bandwidth", |ui| {
             egui::ComboBox::from_id_salt("ndi_bw")
                 .width(ui.available_width())
                 .selected_text(format!("{:?}", cfg.bandwidth))
@@ -205,10 +180,8 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
                     ui.selectable_value(&mut cfg.bandwidth, NdiReceiverBandwidth::Lowest, "Lowest");
                 });
         });
-        ui.end_row();
 
-        ui.label("Pixel Format");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Pixel Format", |ui| {
             egui::ComboBox::from_id_salt("ndi_pixel_format")
                 .width(ui.available_width())
                 .selected_text(ndi_format_label(cfg.color_format))
@@ -225,7 +198,6 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
                     }
                 });
         });
-        ui.end_row();
     });
     return *cfg != old;
 }
@@ -233,8 +205,7 @@ fn ndi_settings_ui(cfg: &mut NdiSourceConfig, ui: &mut egui::Ui) -> bool {
 fn omt_settings_ui(cfg: &mut OmtSourceConfig, ui: &mut egui::Ui) -> bool {
     let old = cfg.clone();
     settings_grid(ui, "omt_settings_grid", |ui| {
-        ui.label("Quality");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Quality", |ui| {
             egui::ComboBox::from_id_salt("omt_quality")
                 .width(ui.available_width())
                 .selected_text(format!("{:?}", cfg.quality))
@@ -245,13 +216,10 @@ fn omt_settings_ui(cfg: &mut OmtSourceConfig, ui: &mut egui::Ui) -> bool {
                     ui.selectable_value(&mut cfg.quality, OmtQuality::High, "High");
                 });
         });
-        ui.end_row();
 
-        ui.label("Preview");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Preview", |ui| {
             ui.checkbox(&mut cfg.preview, "");
         });
-        ui.end_row();
     });
     return *cfg != old;
 }
@@ -276,8 +244,7 @@ fn decklink_settings_ui(
     };
 
     settings_grid(ui, "decklink_settings_grid", |ui| {
-        ui.label("Connection");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Connection", |ui| {
             egui::ComboBox::from_id_salt("decklink_conn")
                 .width(ui.available_width())
                 .selected_text(cfg.connection.label())
@@ -287,7 +254,6 @@ fn decklink_settings_ui(
                     }
                 });
         });
-        ui.end_row();
     });
     return *cfg != old;
 }
@@ -296,6 +262,21 @@ fn decklink_settings_ui(
 fn syphon_settings_ui(_cfg: &mut SyphonSourceConfig, _ui: &mut egui::Ui) -> bool {
     // No tunables yet
     return false;
+}
+
+#[cfg(target_os = "macos")]
+impl ModeChoice for AvFoundationMode {
+    fn from_dims(width: u32, height: u32, fps_num: u32, fps_den: u32) -> Self {
+        return Self { width, height, fps_num, fps_den };
+    }
+
+    fn dims(self) -> (u32, u32, u32, u32) {
+        return (self.width, self.height, self.fps_num, self.fps_den);
+    }
+
+    fn text(&self) -> String {
+        return self.label();
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -312,59 +293,22 @@ fn avfoundation_settings_ui(
     };
     modes.sort_unstable();
     modes.dedup();
-
-    let current = if cfg.width > 0 && cfg.height > 0 && cfg.fps_num > 0 && cfg.fps_den > 0 {
-        Some(AvFoundationMode {
-            width: cfg.width,
-            height: cfg.height,
-            fps_num: cfg.fps_num,
-            fps_den: cfg.fps_den,
-        })
-    } else {
-        None
-    };
     let old = cfg.clone();
 
     settings_grid(ui, "avfoundation_settings_grid", |ui| {
-        ui.label("Mode");
-        settings_value(ui, |ui| {
-            let text = current
-                .map(|m| m.label())
-                .unwrap_or_else(|| "Auto (device default)".to_string());
-            egui::ComboBox::from_id_salt("avfoundation_mode")
-                .width(ui.available_width())
-                .height(1000.0)
-                .selected_text(text)
-                .truncate()
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(current.is_none(), "Auto (device default)").clicked() {
-                        cfg.width = 0;
-                        cfg.height = 0;
-                        cfg.fps_num = 0;
-                        cfg.fps_den = 0;
-                    }
-                    for m in &modes {
-                        if ui.selectable_label(current == Some(*m), m.label()).clicked() {
-                            cfg.width = m.width;
-                            cfg.height = m.height;
-                            cfg.fps_num = m.fps_num;
-                            cfg.fps_den = m.fps_den;
-                        }
-                    }
-                    if modes.is_empty() {
-                        ui.weak("(no modes reported)");
-                    }
-                });
+        settings_row(ui, "Mode", |ui| {
+            mode_row(
+                ui,
+                "avfoundation_mode",
+                [&mut cfg.width, &mut cfg.height, &mut cfg.fps_num, &mut cfg.fps_den],
+                &modes,
+            );
         });
-        ui.end_row();
 
-        ui.label("Drop late frames");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Drop late frames", |ui| {
             ui.checkbox(&mut cfg.drop_late_frames, "Enabled");
         });
-        ui.end_row();
     });
-
 
     return *cfg != old;
 }
@@ -375,8 +319,7 @@ fn screencapturekit_settings_ui(cfg: &mut ScreenCaptureKitSourceConfig, ui: &mut
     let old = settings.clone();
 
     settings_grid(ui, "screencapturekit_settings_grid", |ui| {
-        ui.label("Cursor");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Cursor", |ui| {
             egui::ComboBox::from_id_salt("screencapturekit_cursor")
                 .width(ui.available_width())
                 .selected_text(if settings.show_cursor { "Show" } else { "Hide" })
@@ -385,11 +328,8 @@ fn screencapturekit_settings_ui(cfg: &mut ScreenCaptureKitSourceConfig, ui: &mut
                     ui.selectable_value(&mut settings.show_cursor, false, "Hide");
                 });
         });
-        ui.end_row();
 
-        ui.label("Max FPS");
-        settings_value(ui, |ui| max_fps_drag(ui, &mut settings.max_fps));
-        ui.end_row();
+        settings_row(ui, "Max FPS", |ui| max_fps_drag(ui, &mut settings.max_fps));
     });
 
     return *settings != old;
@@ -402,95 +342,74 @@ fn spout_settings_ui(_cfg: &mut SpoutSourceConfig, _ui: &mut egui::Ui) -> bool {
 }
 
 #[cfg(target_os = "windows")]
+impl ModeChoice for MediaFoundationMode {
+    fn from_dims(width: u32, height: u32, fps_num: u32, fps_den: u32) -> Self {
+        return Self { width, height, fps_num, fps_den };
+    }
+
+    fn dims(self) -> (u32, u32, u32, u32) {
+        return (self.width, self.height, self.fps_num, self.fps_den);
+    }
+
+    fn text(&self) -> String {
+        return self.label();
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn mediafoundation_settings_ui(cfg: &mut MediaFoundationSourceConfig, runtime: &SourceRuntimeConfig, ui: &mut egui::Ui) -> bool {
     // modes are enumerated by the capture thread on open; absent a live source
     // (or before enumeration finishes) only "Auto" is offered.
-    let modes = match runtime {
+    let mut modes = match runtime {
         SourceRuntimeConfig::MediaFoundation { modes, .. } => modes.lock().unwrap().clone(),
         _ => Vec::new(),
     };
-    let mut modes = modes;
     modes.sort_unstable();
     modes.dedup();
-
-    let current = if cfg.width > 0 && cfg.height > 0 && cfg.fps_num > 0 && cfg.fps_den > 0 {
-        Some(MediaFoundationMode {
-            width: cfg.width,
-            height: cfg.height,
-            fps_num: cfg.fps_num,
-            fps_den: cfg.fps_den,
-        })
-    } else {
-        None
-    };
     let old = cfg.clone();
 
-    // Formats the compositor can render, plus Auto (the device default).
-    const PIXEL_FORMATS: [Option<PixelFormat>; 5] = [
-        None,
-        Some(PixelFormat::Bgra8),
-        Some(PixelFormat::Uyvy422),
-        Some(PixelFormat::Yuy2),
-        Some(PixelFormat::Nv12),
-    ];
-
     settings_grid(ui, "mediafoundation_settings_grid", |ui| {
-        ui.label("Mode");
-        settings_value(ui, |ui| {
-            let text = current
-                .map(|m| m.label())
-                .unwrap_or_else(|| "Auto (device default)".to_string());
-            egui::ComboBox::from_id_salt("mediafoundation_mode")
-                .width(ui.available_width())
-                .height(1000.0)
-                .selected_text(text)
-                .truncate()
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(current.is_none(), "Auto (device default)").clicked() {
-                        cfg.width = 0;
-                        cfg.height = 0;
-                        cfg.fps_num = 0;
-                        cfg.fps_den = 0;
-                    }
-                    for m in &modes {
-                        if ui.selectable_label(current == Some(*m), m.label()).clicked() {
-                            cfg.width = m.width;
-                            cfg.height = m.height;
-                            cfg.fps_num = m.fps_num;
-                            cfg.fps_den = m.fps_den;
-                        }
-                    }
-                    if modes.is_empty() {
-                        ui.weak("(no modes reported)");
-                    }
-                });
+        settings_row(ui, "Mode", |ui| {
+            mode_row(
+                ui,
+                "mediafoundation_mode",
+                [&mut cfg.width, &mut cfg.height, &mut cfg.fps_num, &mut cfg.fps_den],
+                &modes,
+            );
         });
-        ui.end_row();
 
-        ui.label("Pixel Format");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Pixel Format", |ui| {
             egui::ComboBox::from_id_salt("mediafoundation_pixel_format")
                 .width(ui.available_width())
-                .selected_text(mediafoundation_format_label(cfg.pixel_format))
+                .selected_text(pixel_format_label(cfg.pixel_format))
                 .show_ui(ui, |ui| {
                     for choice in PIXEL_FORMATS {
-                        if ui.selectable_label(cfg.pixel_format == choice, mediafoundation_format_label(choice)).clicked() {
+                        if ui.selectable_label(cfg.pixel_format == choice, pixel_format_label(choice)).clicked() {
                             cfg.pixel_format = choice;
                         }
                     }
                 });
         });
-        ui.end_row();
     });
 
     return *cfg != old;
 }
 
-/// Display label for a requested Media Foundation output format; `None` is Auto.
+/// Formats the compositor can render, plus Auto (the device default).
 #[cfg(target_os = "windows")]
-fn mediafoundation_format_label(format: Option<PixelFormat>) -> &'static str {
+const PIXEL_FORMATS: [Option<PixelFormat>; 5] = [
+    None,
+    Some(PixelFormat::Bgra8),
+    Some(PixelFormat::Uyvy422),
+    Some(PixelFormat::Yuy2),
+    Some(PixelFormat::Nv12),
+];
+
+/// Display label for a requested capture format; `None` is Auto.
+#[cfg(target_os = "windows")]
+fn pixel_format_label(format: Option<PixelFormat>) -> &'static str {
     return match format {
-        None => "Auto (device default)",
+        None => AUTO_MODE_LABEL,
         Some(PixelFormat::Bgra8) => "RGB32",
         Some(PixelFormat::Uyvy422) => "UYVY 4:2:2",
         Some(PixelFormat::Yuy2) => "YUY2 4:2:2",
@@ -499,99 +418,55 @@ fn mediafoundation_format_label(format: Option<PixelFormat>) -> &'static str {
     };
 }
 
-/// Display label for a requested DirectShow output format; `None` is Auto (RGB32).
 #[cfg(target_os = "windows")]
-fn directshow_format_label(format: Option<PixelFormat>) -> &'static str {
-    return match format {
-        None => "Auto (device default)",
-        Some(PixelFormat::Bgra8) => "RGB32",
-        Some(PixelFormat::Uyvy422) => "UYVY 4:2:2",
-        Some(PixelFormat::Yuy2) => "YUY2 4:2:2",
-        Some(PixelFormat::Nv12) => "NV12 4:2:0",
-        Some(PixelFormat::Rgba8) => "RGBA8",
-    };
+impl ModeChoice for DirectShowMode {
+    fn from_dims(width: u32, height: u32, fps_num: u32, fps_den: u32) -> Self {
+        return Self { width, height, fps_num, fps_den };
+    }
+
+    fn dims(self) -> (u32, u32, u32, u32) {
+        return (self.width, self.height, self.fps_num, self.fps_den);
+    }
+
+    fn text(&self) -> String {
+        return self.label();
+    }
 }
 
 #[cfg(target_os = "windows")]
 fn directshow_settings_ui(cfg: &mut DirectShowSourceConfig, runtime: &SourceRuntimeConfig, ui: &mut egui::Ui) -> bool {
     // modes are enumerated by the capture thread on open; absent a live source
     // (or before enumeration finishes) only "Auto" is offered.
-    let modes = match runtime {
+    let mut modes = match runtime {
         SourceRuntimeConfig::DirectShow { modes, .. } => modes.lock().unwrap().clone(),
         _ => Vec::new(),
     };
-    let mut modes = modes;
     modes.sort_unstable();
     modes.dedup();
-
-    let current = if cfg.width > 0 && cfg.height > 0 && cfg.fps_num > 0 && cfg.fps_den > 0 {
-        Some(DirectShowMode {
-            width: cfg.width,
-            height: cfg.height,
-            fps_num: cfg.fps_num,
-            fps_den: cfg.fps_den,
-        })
-    } else {
-        None
-    };
     let old = cfg.clone();
 
-    // Formats the compositor can render, plus Auto (the device default).
-    const PIXEL_FORMATS: [Option<PixelFormat>; 5] = [
-        None,
-        Some(PixelFormat::Bgra8),
-        Some(PixelFormat::Uyvy422),
-        Some(PixelFormat::Yuy2),
-        Some(PixelFormat::Nv12),
-    ];
-
     settings_grid(ui, "directshow_settings_grid", |ui| {
-        ui.label("Mode");
-        settings_value(ui, |ui| {
-            let text = current
-                .map(|m| m.label())
-                .unwrap_or_else(|| "Auto (device default)".to_string());
-            egui::ComboBox::from_id_salt("directshow_mode")
-                .width(ui.available_width())
-                .height(1000.0)
-                .selected_text(text)
-                .truncate()
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(current.is_none(), "Auto (device default)").clicked() {
-                        cfg.width = 0;
-                        cfg.height = 0;
-                        cfg.fps_num = 0;
-                        cfg.fps_den = 0;
-                    }
-                    for m in &modes {
-                        if ui.selectable_label(current == Some(*m), m.label()).clicked() {
-                            cfg.width = m.width;
-                            cfg.height = m.height;
-                            cfg.fps_num = m.fps_num;
-                            cfg.fps_den = m.fps_den;
-                        }
-                    }
-                    if modes.is_empty() {
-                        ui.weak("(no modes reported)");
-                    }
-                });
+        settings_row(ui, "Mode", |ui| {
+            mode_row(
+                ui,
+                "directshow_mode",
+                [&mut cfg.width, &mut cfg.height, &mut cfg.fps_num, &mut cfg.fps_den],
+                &modes,
+            );
         });
-        ui.end_row();
 
-        ui.label("Pixel Format");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Pixel Format", |ui| {
             egui::ComboBox::from_id_salt("directshow_pixel_format")
                 .width(ui.available_width())
-                .selected_text(directshow_format_label(cfg.pixel_format))
+                .selected_text(pixel_format_label(cfg.pixel_format))
                 .show_ui(ui, |ui| {
                     for choice in PIXEL_FORMATS {
-                        if ui.selectable_label(cfg.pixel_format == choice, directshow_format_label(choice)).clicked() {
+                        if ui.selectable_label(cfg.pixel_format == choice, pixel_format_label(choice)).clicked() {
                             cfg.pixel_format = choice;
                         }
                     }
                 });
         });
-        ui.end_row();
     });
 
     return *cfg != old;
@@ -604,8 +479,7 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
     let old = settings.clone();
 
     settings_grid(ui, "windowscapture_settings_grid", |ui| {
-        ui.label("Cursor");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Cursor", |ui| {
             egui::ComboBox::from_id_salt("windowscapture_cursor")
                 .width(ui.available_width())
                 .selected_text(settings.cursor.label())
@@ -619,10 +493,8 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
                     }
                 });
         });
-        ui.end_row();
 
-        ui.label("Borders");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Borders", |ui| {
             egui::ComboBox::from_id_salt("windowscapture_borders")
                 .width(ui.available_width())
                 .selected_text(settings.border.label())
@@ -636,12 +508,10 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
                     }
                 });
         });
-        ui.end_row();
 
         // Secondary windows only apply to a window target.
         if is_window {
-            ui.label("Secondary Windows");
-            settings_value(ui, |ui| {
+            settings_row(ui, "Secondary Windows", |ui| {
                 egui::ComboBox::from_id_salt("windowscapture_secondary_windows")
                     .width(ui.available_width())
                     .selected_text(settings.secondary_windows.label())
@@ -659,12 +529,9 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
                         }
                     });
             });
-            ui.end_row();
         }
 
-        ui.label("Max FPS");
-        settings_value(ui, |ui| max_fps_drag(ui, &mut settings.max_fps));
-        ui.end_row();
+        settings_row(ui, "Max FPS", |ui| max_fps_drag(ui, &mut settings.max_fps));
     });
 
     return *settings != old;
@@ -673,47 +540,15 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
 fn vnc_settings_ui(cfg: &mut VncSourceConfig, ui: &mut egui::Ui) -> bool {
     let mut committed = false;
     settings_grid(ui, "vnc_settings_grid", |ui| {
-        ui.label("Host");
-        settings_value(ui, |ui| {
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut cfg.host)
-                    .hint_text("hostname or IP")
-                    .desired_width(ui.available_width()),
-            );
-            committed |= commit_field_edit(ui, "vnc_host", response.changed(), response.lost_focus(), false);
-        });
-        ui.end_row();
+        committed |= endpoint_rows(ui, "vnc", &mut cfg.host, &mut cfg.port);
 
-        ui.label("Port");
-        settings_value(ui, |ui| {
-            // The value only lands in the config when the edit finishes, so a
-            // half-typed port is never dialled.
-            let response = ui.add(
-                egui::DragValue::new(&mut cfg.port)
-                    .range(1..=65535)
-                    .update_while_editing(false),
-            );
-            committed |= commit_field_edit(
-                ui,
-                "vnc_port",
-                response.changed(),
-                response.lost_focus(),
-                response.drag_stopped(),
-            );
-        });
-        ui.end_row();
-
-        ui.label("Password");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Password", |ui| {
             committed |= password_row(ui, "vnc_password", &mut cfg.password);
         });
-        ui.end_row();
 
-        ui.label("Keep awake");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Keep awake", |ui| {
             committed |= ui.checkbox(&mut cfg.keep_awake, "").changed();
         });
-        ui.end_row();
     });
     return committed;
 }
@@ -721,38 +556,9 @@ fn vnc_settings_ui(cfg: &mut VncSourceConfig, ui: &mut egui::Ui) -> bool {
 fn rdp_settings_ui(cfg: &mut RdpSourceConfig, ui: &mut egui::Ui) -> bool {
     let mut committed = false;
     settings_grid(ui, "rdp_settings_grid", |ui| {
-        ui.label("Host");
-        settings_value(ui, |ui| {
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut cfg.host)
-                    .hint_text("hostname or IP")
-                    .desired_width(ui.available_width()),
-            );
-            committed |= commit_field_edit(ui, "rdp_host", response.changed(), response.lost_focus(), false);
-        });
-        ui.end_row();
+        committed |= endpoint_rows(ui, "rdp", &mut cfg.host, &mut cfg.port);
 
-        ui.label("Port");
-        settings_value(ui, |ui| {
-            // The value only lands in the config when the edit finishes, so a
-            // half-typed port is never dialled.
-            let response = ui.add(
-                egui::DragValue::new(&mut cfg.port)
-                    .range(1..=65535)
-                    .update_while_editing(false),
-            );
-            committed |= commit_field_edit(
-                ui,
-                "rdp_port",
-                response.changed(),
-                response.lost_focus(),
-                response.drag_stopped(),
-            );
-        });
-        ui.end_row();
-
-        ui.label("Username");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Username", |ui| {
             let response = ui.add(
                 egui::TextEdit::singleline(&mut cfg.username)
                     .hint_text("user or user@domain")
@@ -760,10 +566,8 @@ fn rdp_settings_ui(cfg: &mut RdpSourceConfig, ui: &mut egui::Ui) -> bool {
             );
             committed |= commit_field_edit(ui, "rdp_username", response.changed(), response.lost_focus(), false);
         });
-        ui.end_row();
 
-        ui.label("Domain");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Domain", |ui| {
             let response = ui.add(
                 egui::TextEdit::singleline(&mut cfg.domain)
                     .hint_text("optional")
@@ -771,16 +575,12 @@ fn rdp_settings_ui(cfg: &mut RdpSourceConfig, ui: &mut egui::Ui) -> bool {
             );
             committed |= commit_field_edit(ui, "rdp_domain", response.changed(), response.lost_focus(), false);
         });
-        ui.end_row();
 
-        ui.label("Password");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Password", |ui| {
             committed |= password_row(ui, "rdp_password", &mut cfg.password);
         });
-        ui.end_row();
 
-        ui.label("Size");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Size", |ui| {
             // A `DragValue` never takes focus, so the release is the commit.
             ui.horizontal(|ui| {
                 ui.label("W");
@@ -796,10 +596,8 @@ fn rdp_settings_ui(cfg: &mut RdpSourceConfig, ui: &mut egui::Ui) -> bool {
                 );
             });
         });
-        ui.end_row();
 
-        ui.label("Color depth");
-        settings_value(ui, |ui| {
+        settings_row(ui, "Color depth", |ui| {
             egui::ComboBox::from_id_salt("rdp_color_depth")
                 .width(ui.available_width())
                 .selected_text(cfg.color_depth.label())
@@ -811,15 +609,105 @@ fn rdp_settings_ui(cfg: &mut RdpSourceConfig, ui: &mut egui::Ui) -> bool {
                     }
                 });
         });
-        ui.end_row();
     });
     return committed;
 }
 
 // Helpers
+/// A device capture mode, as the device pickers need it: build it from the four
+/// persisted fields, read those fields back, and label it.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+trait ModeChoice: Copy + PartialEq {
+    fn from_dims(width: u32, height: u32, fps_num: u32, fps_den: u32) -> Self;
+    fn dims(self) -> (u32, u32, u32, u32);
+    fn text(&self) -> String;
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+const AUTO_MODE_LABEL: &str = "Auto (device default)";
+
+/// Mode picker shared by every device source: "Auto" plus the modes the device
+/// advertised, written straight into the four config fields.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn mode_row<M: ModeChoice>(ui: &mut egui::Ui, id_salt: &str, fields: [&mut u32; 4], modes: &[M]) {
+    let [width, height, fps_num, fps_den] = fields;
+    let current = if *width > 0 && *height > 0 && *fps_num > 0 && *fps_den > 0 {
+        Some(M::from_dims(*width, *height, *fps_num, *fps_den))
+    } else {
+        None
+    };
+    let text = current
+        .as_ref()
+        .map(|mode| mode.text())
+        .unwrap_or_else(|| AUTO_MODE_LABEL.to_string());
+
+    egui::ComboBox::from_id_salt(id_salt)
+        .width(ui.available_width())
+        .height(1000.0)
+        .selected_text(text)
+        .truncate()
+        .show_ui(ui, |ui| {
+            if ui.selectable_label(current.is_none(), AUTO_MODE_LABEL).clicked() {
+                *width = 0;
+                *height = 0;
+                *fps_num = 0;
+                *fps_den = 0;
+            }
+            for mode in modes {
+                if ui.selectable_label(current == Some(*mode), mode.text()).clicked() {
+                    let (w, h, n, d) = mode.dims();
+                    *width = w;
+                    *height = h;
+                    *fps_num = n;
+                    *fps_den = d;
+                }
+            }
+            if modes.is_empty() {
+                ui.weak("(no modes reported)");
+            }
+        });
+}
+
+/// Host and port rows shared by the VNC and RDP settings.
+fn endpoint_rows(ui: &mut egui::Ui, id_prefix: &str, host: &mut String, port: &mut u16) -> bool {
+    let mut committed = false;
+    settings_row(ui, "Host", |ui| {
+        let response = ui.add(
+            egui::TextEdit::singleline(host)
+                .hint_text("hostname or IP")
+                .desired_width(ui.available_width()),
+        );
+        committed |= commit_field_edit(
+            ui,
+            &format!("{id_prefix}_host"),
+            response.changed(),
+            response.lost_focus(),
+            false,
+        );
+    });
+
+    settings_row(ui, "Port", |ui| {
+        // The value only lands in the config when the edit finishes, so a
+        // half-typed port is never dialled.
+        let response = ui.add(
+            egui::DragValue::new(port)
+                .range(1..=65535)
+                .update_while_editing(false),
+        );
+        committed |= commit_field_edit(
+            ui,
+            &format!("{id_prefix}_port"),
+            response.changed(),
+            response.lost_focus(),
+            response.drag_stopped(),
+        );
+    });
+
+    return committed;
+}
+
 fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
-    ui.label(label);
-    settings_value(ui, |ui| {
+    settings_row(ui, label, |ui| {
         let mut color_f32 = [
             color[0] as f32 / 255.0,
             color[1] as f32 / 255.0,
@@ -833,7 +721,6 @@ fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
             ];
         }
     });
-    ui.end_row();
 }
 
 #[allow(dead_code)]
