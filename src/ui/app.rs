@@ -236,14 +236,14 @@ impl App {
             return;
         };
         self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
-        self.engine.begin_frame();
+        self.engine.begin_frame(&rs.device, &rs.queue);
 
         // Outputs run at their own fixed rate
         let now = Instant::now();
         if now + FRAME_TOLERANCE >= self.next_output_frame {
             let interval = Duration::from_secs_f64(1.0 / ACTIVE_FPS);
             self.next_output_frame = advance_deadline(self.next_output_frame, now, interval);
-            self.engine.render_outputs();
+            self.engine.render_outputs(&rs.device, &rs.queue);
         }
     }
 

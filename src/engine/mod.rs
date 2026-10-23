@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Instant;
 
 use crate::compositor::{Compositor, Rect};
@@ -93,8 +92,6 @@ pub struct Engine {
     pub windowscapture: Option<WindowsCaptureDiscovery>,
     // Other
     comp: Option<Compositor>,
-    device: Option<Arc<wgpu::Device>>,
-    queue: Option<Arc<wgpu::Queue>>,
     pub project_path: Option<PathBuf>,
     pub dirty: bool,
     last_saved_at: Instant,

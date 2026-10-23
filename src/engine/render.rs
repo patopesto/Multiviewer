@@ -13,29 +13,21 @@ impl Engine {
         if self.comp.is_none() {
             self.comp = Some(Compositor::new(device, queue, target_format));
         }
-        if self.device.is_none() {
-            self.device = Some(Arc::new(device.clone()));
-        }
-        if self.queue.is_none() {
-            self.queue = Some(Arc::new(queue.clone()));
-        }
     }
 
     /// Start a new frame: clear the compositor's per-frame source cache and pull every canvas source once
-    pub fn begin_frame(&mut self) {
+    pub fn begin_frame(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let Some(comp) = self.comp.as_mut() else {
             return;
         };
         comp.begin_frame();
-        if let (Some(device), Some(queue)) = (self.device.as_ref(), self.queue.as_ref()) {
-            comp.prefetch_sources(
-                device,
-                queue,
-                &self.registry,
-                &self.cfg.canvas,
-                self.expanded_source_id.as_deref(),
-            );
-        }
+        comp.prefetch_sources(
+            device,
+            queue,
+            &self.registry,
+            &self.cfg.canvas,
+            self.expanded_source_id.as_deref(),
+        );
     }
 
     pub fn build_frame(
@@ -57,16 +49,10 @@ impl Engine {
         )
     }
 
-    pub fn render_outputs(&mut self) {
+    pub fn render_outputs(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         if !self.output_registry.any_ready() {
             return;
         }
-        let Some(ref device) = self.device else {
-            return;
-        };
-        let Some(ref queue) = self.queue else {
-            return;
-        };
         let comp = self.comp.as_mut().expect("compositor not initialized");
         comp.render_canvas(
             device,

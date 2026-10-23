@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 use super::Engine;
 use crate::config::{Source, TextureMode};
-use crate::sources::{Protocol, SourceConfig, SourceKey};
+use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRegistry};
 use crate::sources::DecklinkSourceConfig;
 use crate::sources::NdiSourceConfig;
 use crate::sources::OmtSourceConfig;
@@ -12,6 +12,23 @@ use crate::sources::{find_syphon_server, AvFoundationSourceConfig, ensure_screen
 use crate::sources::{DirectShowSourceConfig, MediaFoundationSourceConfig, SpoutSourceConfig, WindowsCaptureSourceConfig};
 
 const DISCOVERY_INTERVAL: Duration = Duration::from_millis(250);
+
+/// Placements of `protocol` that name a source_ref but have no runtime source yet, paired with the key they bind to.
+fn pending_sources<'a>(
+    placements: &'a [Source],
+    registry: &SourceRegistry,
+    protocol: &Protocol,
+) -> Vec<(&'a Source, SourceKey)> {
+    return placements
+        .iter()
+        .filter(|placement| placement.protocol == *protocol)
+        .filter_map(|placement| {
+            let source_ref = placement.source_ref.as_deref()?;
+            let key = SourceKey::new(protocol.clone(), source_ref.to_string());
+            return (!registry.contains(&key)).then_some((placement, key));
+        })
+        .collect();
+}
 
 impl Engine {
     pub fn update(&mut self) {
@@ -53,130 +70,104 @@ impl Engine {
 
     /// Auto-connect pending NDI sources when they appear in discovery
     fn reconnect_ndi(&mut self) {
-        let Some(ref discovery) = self.ndi else {
+        let Some(discovery) = &self.ndi else {
             return;
         };
         let discovered = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol == Protocol::Ndi
-                && let Some(ref source_ref) = source.source_ref
-            {
-                let key = SourceKey::new(Protocol::Ndi, source_ref.clone());
-                if !self.registry.contains(&key)
-                    && let Some(src) = discovered.iter().find(|s| &s.name == source_ref)
-                {
-                    let config = match &source.config {
-                        SourceConfig::Ndi(c) => c.clone(),
-                        _ => NdiSourceConfig::default(),
-                    };
-                    self.registry.add_ndi(key, config, src.clone());
-                    self.dirty = true;
-                }
-            }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Ndi) {
+            let Some(src) = discovered.iter().find(|s| s.name == key.source_ref) else {
+                continue;
+            };
+            let config = match &placement.config {
+                SourceConfig::Ndi(c) => c.clone(),
+                _ => NdiSourceConfig::default(),
+            };
+            self.registry.add_ndi(key, config, src.clone());
+            self.dirty = true;
         }
     }
 
     /// Auto-connect pending OMT sources when they appear in discovery
     fn reconnect_omt(&mut self) {
-        let Some(ref discovery) = self.omt else {
+        let Some(discovery) = &self.omt else {
             return;
         };
         let discovered = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol == Protocol::Omt
-                && let Some(ref source_ref) = source.source_ref
-            {
-                let key = SourceKey::new(Protocol::Omt, source_ref.clone());
-                if !self.registry.contains(&key)
-                    && let Some(src) = discovered.iter().find(|s| &s.instance_name() == source_ref)
-                {
-                    let config = match &source.config {
-                        SourceConfig::Omt(c) => c.clone(),
-                        _ => OmtSourceConfig::default(),
-                    };
-                    self.registry.add_omt(key, config, src.clone());
-                    self.dirty = true;
-                }
-            }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Omt) {
+            let Some(src) = discovered
+                .iter()
+                .find(|s| s.instance_name() == key.source_ref)
+            else {
+                continue;
+            };
+            let config = match &placement.config {
+                SourceConfig::Omt(c) => c.clone(),
+                _ => OmtSourceConfig::default(),
+            };
+            self.registry.add_omt(key, config, src.clone());
+            self.dirty = true;
         }
     }
 
     /// Auto-connect pending DeckLink sources when they appear in discovery
     fn reconnect_decklink(&mut self) {
-        let Some(ref discovery) = self.decklink else {
+        let Some(discovery) = &self.decklink else {
             return;
         };
         let discovered = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol == Protocol::Decklink
-                && let Some(ref source_ref) = source.source_ref
-            {
-                let key = SourceKey::new(Protocol::Decklink, source_ref.clone());
-                if !self.registry.contains(&key)
-                    && let Some(port) = discovered.iter().find(|p| &p.name == source_ref)
-                {
-                    let config = match &source.config {
-                        SourceConfig::Decklink(c) => c.clone(),
-                        _ => DecklinkSourceConfig::default(),
-                    };
-                    self.registry.add_decklink(key, config, port.connections);
-                    self.dirty = true;
-                }
-            }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Decklink) {
+            let Some(port) = discovered.iter().find(|p| p.name == key.source_ref) else {
+                continue;
+            };
+            let config = match &placement.config {
+                SourceConfig::Decklink(c) => c.clone(),
+                _ => DecklinkSourceConfig::default(),
+            };
+            self.registry.add_decklink(key, config, port.connections);
+            self.dirty = true;
         }
     }
 
     /// Auto-connect pending Syphon sources on macOS
     #[cfg(target_os = "macos")]
     fn reconnect_syphon(&mut self) {
-        let Some(ref discovery) = self.syphon else {
+        let Some(discovery) = &self.syphon else {
             return;
         };
         let discovered = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol == Protocol::Syphon
-                && let Some(ref source_ref) = source.source_ref
-            {
-                let key = SourceKey::new(Protocol::Syphon, source_ref.clone());
-                if !self.registry.contains(&key)
-                    && let Some(info) = discovered
-                        .iter()
-                        .find(|s| s.display_name() == source_ref.as_str())
-                {
-                    let config = match &source.config {
-                        SourceConfig::Syphon(c) => c.clone(),
-                        _ => SyphonSourceConfig::default(),
-                    };
-                    self.registry.add_syphon(key, config, info.clone());
-                    self.dirty = true;
-                }
-            }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Syphon) {
+            let Some(info) = discovered
+                .iter()
+                .find(|s| s.display_name() == key.source_ref)
+            else {
+                continue;
+            };
+            let config = match &placement.config {
+                SourceConfig::Syphon(c) => c.clone(),
+                _ => SyphonSourceConfig::default(),
+            };
+            self.registry.add_syphon(key, config, info.clone());
+            self.dirty = true;
         }
     }
 
     /// Auto-connect pending AVFoundation sources on macOS
     #[cfg(target_os = "macos")]
     fn reconnect_avfoundation(&mut self) {
-        let Some(ref avf) = self.avfoundation else {
+        let Some(avf) = &self.avfoundation else {
             return;
         };
-        for source in &self.cfg.canvas.sources {
-            if source.protocol == Protocol::AvFoundation
-                && let Some(ref source_ref) = source.source_ref
-            {
-                let key = SourceKey::new(Protocol::AvFoundation, source_ref.clone());
-                if !self.registry.contains(&key)
-                    && let Some(device) = avf.find_by_name(source_ref)
-                {
-                    let mut config = match &source.config {
-                        SourceConfig::AvFoundation(c) => c.clone(),
-                        _ => AvFoundationSourceConfig::default(),
-                    };
-                    config.device_unique_id = device.unique_id.clone();
-                    self.registry.add_avfoundation(key, config);
-                    self.dirty = true;
-                }
-            }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::AvFoundation) {
+            let Some(device) = avf.find_by_name(&key.source_ref) else {
+                continue;
+            };
+            let mut config = match &placement.config {
+                SourceConfig::AvFoundation(c) => c.clone(),
+                _ => AvFoundationSourceConfig::default(),
+            };
+            config.device_unique_id = device.unique_id.clone();
+            self.registry.add_avfoundation(key, config);
+            self.dirty = true;
         }
     }
 
@@ -193,168 +184,125 @@ impl Engine {
         {
             ensure_screen_capture_access_requested();
         }
-        let Some(ref discovery) = self.screencapturekit else {
+        let Some(discovery) = &self.screencapturekit else {
             return;
         };
         let targets = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol != Protocol::ScreenCaptureKit {
-                continue;
-            }
-            let Some(ref source_ref) = source.source_ref else {
-                continue;
-            };
-            let key = SourceKey::new(Protocol::ScreenCaptureKit, source_ref.clone());
-            if self.registry.contains(&key) {
-                continue;
-            }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::ScreenCaptureKit) {
             let default_config = ScreenCaptureKitSourceConfig::default();
-            let source_placement_config = match &source.config {
-                SourceConfig::ScreenCaptureKit(c) => Some(c),
-                _ => None,
+            let candidate = match &placement.config {
+                SourceConfig::ScreenCaptureKit(c) => c,
+                _ => &default_config,
             };
             // Stale window ids re-match on app + title; exact source_ref needs no config.
-            let candidate = source_placement_config.unwrap_or(&default_config);
-            if let Some(target) = targets.iter().find(|t| t.matches(source_ref, candidate)) {
-                let config = target.to_config();
-                let label = target.label.clone();
-                self.registry.add_screencapturekit(key, config, label);
-                self.dirty = true;
-            }
+            let Some(target) = targets.iter().find(|t| t.matches(&key.source_ref, candidate)) else {
+                continue;
+            };
+            self.registry.add_screencapturekit(
+                key,
+                target.to_config(),
+                target.label.clone(),
+            );
+            self.dirty = true;
         }
     }
 
     /// Auto-connect pending Spout sources on Windows
     #[cfg(target_os = "windows")]
     fn reconnect_spout(&mut self) {
-        let Some(ref discovery) = self.spout else {
+        let Some(discovery) = &self.spout else {
             return;
         };
         let discovered = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol == Protocol::Spout
-                && let Some(ref source_ref) = source.source_ref
-            {
-                let key = SourceKey::new(Protocol::Spout, source_ref.clone());
-                if !self.registry.contains(&key) && discovered.iter().any(|s| s == source_ref) {
-                    let config = match &source.config {
-                        SourceConfig::Spout(c) => c.clone(),
-                        _ => SpoutSourceConfig::default(),
-                    };
-                    self.registry.add_spout(key, config);
-                    self.dirty = true;
-                }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Spout) {
+            if !discovered.iter().any(|s| *s == key.source_ref) {
+                continue;
             }
+            let config = match &placement.config {
+                SourceConfig::Spout(c) => c.clone(),
+                _ => SpoutSourceConfig::default(),
+            };
+            self.registry.add_spout(key, config);
+            self.dirty = true;
         }
     }
 
     /// Auto-connect pending Media Foundation sources on Windows
     #[cfg(target_os = "windows")]
     fn reconnect_mediafoundation(&mut self) {
-        let Some(ref discovery) = self.mediafoundation else {
+        let Some(discovery) = &self.mediafoundation else {
             return;
         };
         let discovered = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol == Protocol::MediaFoundation
-                && let Some(ref source_ref) = source.source_ref
-            {
-                let key = SourceKey::new(Protocol::MediaFoundation, source_ref.clone());
-                if !self.registry.contains(&key)
-                    && let Some(device) = discovered.iter().find(|d| &d.id == source_ref)
-                {
-                    let mut config = match &source.config {
-                        SourceConfig::MediaFoundation(c) => c.clone(),
-                        _ => MediaFoundationSourceConfig::default(),
-                    };
-                    config.device_id = device.id.clone();
-                    self.registry
-                        .add_mediafoundation(key, config, device.name.clone());
-                    self.dirty = true;
-                }
-            }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::MediaFoundation) {
+            let Some(device) = discovered.iter().find(|d| d.id == key.source_ref) else {
+                continue;
+            };
+            let mut config = match &placement.config {
+                SourceConfig::MediaFoundation(c) => c.clone(),
+                _ => MediaFoundationSourceConfig::default(),
+            };
+            config.device_id = device.id.clone();
+            self.registry.add_mediafoundation(key, config, device.name.clone());
+            self.dirty = true;
         }
     }
 
     /// Auto-connect pending DirectShow sources on Windows
     #[cfg(target_os = "windows")]
     fn reconnect_directshow(&mut self) {
-        let Some(ref discovery) = self.directshow else {
+        let Some(discovery) = &self.directshow else {
             return;
         };
         let discovered = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol == Protocol::DirectShow
-                && let Some(ref source_ref) = source.source_ref
-            {
-                let key = SourceKey::new(Protocol::DirectShow, source_ref.clone());
-                if !self.registry.contains(&key)
-                    && let Some(device) = discovered.iter().find(|d| &d.id == source_ref)
-                {
-                    let mut config = match &source.config {
-                        SourceConfig::DirectShow(c) => c.clone(),
-                        _ => DirectShowSourceConfig::default(),
-                    };
-                    config.device_id = device.id.clone();
-                    self.registry.add_directshow(key, config, device.name.clone());
-                    self.dirty = true;
-                }
-            }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::DirectShow) {
+            let Some(device) = discovered.iter().find(|d| d.id == key.source_ref) else {
+                continue;
+            };
+            let mut config = match &placement.config {
+                SourceConfig::DirectShow(c) => c.clone(),
+                _ => DirectShowSourceConfig::default(),
+            };
+            config.device_id = device.id.clone();
+            self.registry.add_directshow(key, config, device.name.clone());
+            self.dirty = true;
         }
     }
 
     /// Auto-connect pending Windows Graphics Capture sources on Windows
     #[cfg(target_os = "windows")]
     fn reconnect_windowscapture(&mut self) {
-        let Some(ref discovery) = self.windowscapture else {
+        let Some(discovery) = &self.windowscapture else {
             return;
         };
         let targets = discovery.list();
-        for source in &self.cfg.canvas.sources {
-            if source.protocol != Protocol::WindowsCapture {
-                continue;
-            }
-            let Some(ref source_ref) = source.source_ref else {
-                continue;
-            };
-            let key = SourceKey::new(Protocol::WindowsCapture, source_ref.clone());
-            if self.registry.contains(&key) {
-                continue;
-            }
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::WindowsCapture) {
             let default_config = WindowsCaptureSourceConfig::default();
-            let source_placement_config = match &source.config {
-                SourceConfig::WindowsCapture(c) => Some(c),
-                _ => None,
+            let candidate = match &placement.config {
+                SourceConfig::WindowsCapture(c) => c,
+                _ => &default_config,
             };
-            let candidate = source_placement_config.unwrap_or(&default_config);
-            if let Some(target) = targets.iter().find(|t| t.matches(source_ref, candidate)) {
-                let mut config = target.to_config();
-                // Discovery only supplies target identity; keep the settings already chosen for this source.
-                *config.settings_mut() = candidate.settings().clone();
-                let label = target.label.clone();
-                self.registry.add_windows_capture(key, config, label);
-                self.dirty = true;
-            }
+            let Some(target) = targets.iter().find(|t| t.matches(&key.source_ref, candidate)) else {
+                continue;
+            };
+            let mut config = target.to_config();
+            // Discovery only supplies target identity; keep the settings already chosen for this source.
+            *config.settings_mut() = candidate.settings().clone();
+            self.registry.add_windows_capture(key, config, target.label.clone());
+            self.dirty = true;
         }
     }
 
     /// Auto-connect sources for protocols with no discovery service.
     fn reconnect_manual(&mut self, protocol: Protocol) {
-        for source in &self.cfg.canvas.sources {
-            if source.protocol != protocol {
+        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &protocol) {
+            if key.source_ref.is_empty() {
                 continue;
             }
-            let Some(source_ref) = source.source_ref.clone() else {
-                continue;
-            };
-            if source_ref.is_empty() {
-                continue;
-            }
-            let key = SourceKey::new(protocol.clone(), source_ref);
-            if self.registry.contains(&key) {
-                continue;
-            }
-            match &source.config {
+            // Protocols with a discovery service never reach here, and a
+            // placement whose config does not match its protocol has
+            // nothing to open with either.
+            match &placement.config {
                 SourceConfig::Vnc(config) => {
                     self.registry.add_vnc_at(key, config.clone());
                     self.dirty = true;
@@ -363,9 +311,6 @@ impl Engine {
                     self.registry.add_rdp_at(key, config.clone());
                     self.dirty = true;
                 }
-                // Protocols with a discovery service never reach here, and a
-                // placement whose config does not match its protocol has
-                // nothing to open with either.
                 _ => {}
             }
         }
@@ -398,7 +343,6 @@ impl Engine {
     }
 
     /// Persist `config` to every source placement bound to `(protocol, source_ref)`.
-    #[allow(dead_code)]
     fn apply_config_to_placements(&mut self, protocol: &Protocol, source_ref: &str, config: SourceConfig) {
         for placement in self.cfg.canvas.sources.iter_mut().filter(|s| {
             s.protocol == *protocol && s.source_ref.as_deref() == Some(source_ref)
@@ -604,14 +548,19 @@ impl Engine {
         else {
             return;
         };
-        for placement in self.cfg.canvas.sources.iter_mut() {
-            let bound = placement.uuid == source_uuid
-                || (source_ref.is_some()
-                    && placement.protocol == protocol
-                    && placement.source_ref == source_ref);
-            if bound {
-                placement.config = config.clone();
-            }
+        // The edited placement always takes the config; the siblings sharing
+        // its key follow through the same write the connect path uses.
+        if let Some(placement) = self
+            .cfg
+            .canvas
+            .sources
+            .iter_mut()
+            .find(|s| s.uuid == source_uuid)
+        {
+            placement.config = config.clone();
+        }
+        if let Some(source_ref) = &source_ref {
+            self.apply_config_to_placements(&protocol, source_ref, config);
         }
         self.dirty = true;
     }
@@ -655,5 +604,44 @@ impl Engine {
         let source = self.cfg.canvas.sources.remove(from_index);
         self.cfg.canvas.sources.insert(to_index, source);
         self.dirty = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Canvas;
+
+    /// Only placements of the requested protocol that name a source_ref and have
+    /// no live runtime source are pending; a live key, another protocol and an
+    /// unbound placement are all skipped.
+    #[test]
+    fn pending_sources_skips_live_unbound_and_other_protocols() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let live = engine.registry.add_test(None);
+        for (protocol, source_ref) in [
+            (Protocol::Test, Some(live.source_ref.clone())),
+            (Protocol::Test, Some("Test B".to_string())),
+            (Protocol::Ndi, Some(live.source_ref)),
+            (Protocol::Test, None),
+        ] {
+            engine.cfg.canvas.sources.push(Source::new(
+                "placement".to_string(),
+                protocol,
+                source_ref,
+                0.0,
+                0.0,
+                1,
+                1,
+                0,
+                TextureMode::Fit,
+                false,
+                false,
+            ));
+        }
+
+        let pending = pending_sources(&engine.cfg.canvas.sources, &engine.registry, &Protocol::Test);
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].1.source_ref, "Test B");
     }
 }

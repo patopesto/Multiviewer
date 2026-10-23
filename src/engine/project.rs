@@ -64,73 +64,32 @@ impl From<SessionError> for ProjectError {
 }
 
 impl Engine {
-    pub fn new_project() -> Self {
-        let cfg = Config::default();
-        let registry = SourceRegistry::new();
-        let output_registry = OutputRegistry::new();
-
-        // Start NDI discovery before restoring sources
-        let ndi = NdiDiscovery::start();
-
-        // Start DeckLink discovery
-        let decklink = DecklinkDiscovery::start();
-
-        // Start OMT discovery
-        let omt = OmtDiscovery::start();
-
-        // Start Syphon discovery on macOS
-        #[cfg(target_os = "macos")]
-        let syphon = Some(SyphonDiscovery::start());
-
-        // Start AVFoundation device discovery on macOS
-        #[cfg(target_os = "macos")]
-        let avfoundation = Some(AvFoundationDiscovery::start());
-
-        // Start ScreenCaptureKit display discovery on macOS
-        #[cfg(target_os = "macos")]
-        let screencapturekit = Some(ScreenCaptureKitDiscovery::start());
-
-        // Start Spout sender discovery on Windows
-        #[cfg(target_os = "windows")]
-        let spout = Some(SpoutDiscovery::start());
-
-        // Start Media Foundation device discovery on Windows
-        #[cfg(target_os = "windows")]
-        let mediafoundation = Some(MediaFoundationDiscovery::start());
-
-        // Start DirectShow device discovery on Windows
-        #[cfg(target_os = "windows")]
-        let directshow = Some(DirectShowDiscovery::start());
-
-        // Start Windows Graphics Capture discovery on Windows
-        #[cfg(target_os = "windows")]
-        let windowscapture = Some(WindowsCaptureDiscovery::start());
-
-        let mut engine = Self {
+    /// An engine with no discovery services: `new_project` attaches the ones it
+    /// starts, tests leave them all off.
+    fn new(cfg: Config) -> Self {
+        return Self {
             cfg,
-            registry,
-            output_registry,
+            registry: SourceRegistry::new(),
+            output_registry: OutputRegistry::new(),
             control: ControlRegistry::new(),
-            ndi: Some(ndi),
-            decklink: Some(decklink),
-            omt: Some(omt),
+            ndi: None,
+            decklink: None,
+            omt: None,
             #[cfg(target_os = "macos")]
-            syphon,
+            syphon: None,
             #[cfg(target_os = "macos")]
-            avfoundation,
+            avfoundation: None,
             #[cfg(target_os = "macos")]
-            screencapturekit,
+            screencapturekit: None,
             #[cfg(target_os = "windows")]
-            spout,
+            spout: None,
             #[cfg(target_os = "windows")]
-            mediafoundation,
+            mediafoundation: None,
             #[cfg(target_os = "windows")]
-            directshow,
+            directshow: None,
             #[cfg(target_os = "windows")]
-            windowscapture,
+            windowscapture: None,
             comp: None,
-            device: None,
-            queue: None,
             project_path: None,
             dirty: false,
             last_saved_at: Instant::now(),
@@ -144,6 +103,28 @@ impl Engine {
             ui_visible: true,
             load_warnings: Vec::new(),
         };
+    }
+
+    pub fn new_project() -> Self {
+        let mut engine = Self::new(Config::default());
+
+        // NDI discovery has to be up before the project's sources are restored.
+        engine.ndi = Some(NdiDiscovery::start());
+        engine.decklink = Some(DecklinkDiscovery::start());
+        engine.omt = Some(OmtDiscovery::start());
+        #[cfg(target_os = "macos")]
+        {
+            engine.syphon = Some(SyphonDiscovery::start());
+            engine.avfoundation = Some(AvFoundationDiscovery::start());
+            engine.screencapturekit = Some(ScreenCaptureKitDiscovery::start());
+        }
+        #[cfg(target_os = "windows")]
+        {
+            engine.spout = Some(SpoutDiscovery::start());
+            engine.mediafoundation = Some(MediaFoundationDiscovery::start());
+            engine.directshow = Some(DirectShowDiscovery::start());
+            engine.windowscapture = Some(WindowsCaptureDiscovery::start());
+        }
 
         engine.rebuild_from_config();
         return engine;
@@ -320,46 +301,9 @@ impl Engine {
 impl Engine {
     /// Engine with no discovery services, for tests.
     pub fn test_instance(canvas: Canvas) -> Self {
-        return Self {
-            cfg: Config {
-                canvas,
-                ..Config::default()
-            },
-            registry: SourceRegistry::new(),
-            output_registry: OutputRegistry::new(),
-            control: ControlRegistry::new(),
-            ndi: None,
-            decklink: None,
-            omt: None,
-            #[cfg(target_os = "macos")]
-            syphon: None,
-            #[cfg(target_os = "macos")]
-            avfoundation: None,
-            #[cfg(target_os = "macos")]
-            screencapturekit: None,
-            #[cfg(target_os = "windows")]
-            spout: None,
-            #[cfg(target_os = "windows")]
-            mediafoundation: None,
-            #[cfg(target_os = "windows")]
-            directshow: None,
-            #[cfg(target_os = "windows")]
-            windowscapture: None,
-            comp: None,
-            device: None,
-            queue: None,
-            project_path: None,
-            dirty: false,
-            last_saved_at: Instant::now(),
-            last_discovery: Instant::now(),
-            selected_source_id: None,
-            expanded_source_id: None,
-            drag_state: DragState::None,
-            snap_guides: SnapGuides::default(),
-            view: ViewState::new(),
-            canvas_rect: Rect::default(),
-            ui_visible: true,
-            load_warnings: Vec::new(),
-        };
+        return Self::new(Config {
+            canvas,
+            ..Config::default()
+        });
     }
 }

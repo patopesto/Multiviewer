@@ -439,10 +439,11 @@ impl SourceRegistry {
         }
     }
 
-    /// Register a live source under its key. A key that is already live or
-    /// mid-restart is left alone, so every placement binding it shares one receiver.
-    fn add(&mut self, key: SourceKey, kind: SourceKind) -> SourceKey {
+    /// Build and register a source under `key`, unless one is already live or
+    /// restarting. Every placement binding a key shares one runtime source.
+    fn add_new(&mut self, key: SourceKey, config: SourceConfig, runtime: SourceRuntimeConfig) -> SourceKey {
         if !self.contains(&key) {
+            let kind = SourceKind::new(&key, config, runtime);
             self.sources.insert(key.clone(), kind);
         }
         return key;
@@ -465,12 +466,11 @@ impl SourceRegistry {
                 break key;
             }
         };
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::Test(config.unwrap_or_default()),
             SourceRuntimeConfig::Test,
         );
-        return self.add(key, kind);
     }
 
     /// Create a dedicated VNC source under a fresh key. The connection details
@@ -489,12 +489,7 @@ impl SourceRegistry {
     /// Create a VNC source under a known key, preserving the binding a project
     /// was saved with.
     pub fn add_vnc_at(&mut self, key: SourceKey, config: vnc::VncSourceConfig) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
-        let kind = SourceKind::new(&key, SourceConfig::Vnc(config), SourceRuntimeConfig::Vnc);
-        self.sources.insert(key.clone(), kind);
-        return key;
+        return self.add_new(key, SourceConfig::Vnc(config), SourceRuntimeConfig::Vnc);
     }
 
     /// Create a dedicated RDP source under a fresh key. The connection details
@@ -513,158 +508,103 @@ impl SourceRegistry {
     /// Create an RDP source under a known key, preserving the binding a project
     /// was saved with.
     pub fn add_rdp_at(&mut self, key: SourceKey, config: rdp::RdpSourceConfig) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
-        let kind = SourceKind::new(&key, SourceConfig::Rdp(config), SourceRuntimeConfig::Rdp);
-        self.sources.insert(key.clone(), kind);
-        return key;
+        return self.add_new(key, SourceConfig::Rdp(config), SourceRuntimeConfig::Rdp);
     }
 
     pub fn add_ndi(&mut self, key: SourceKey, config: ndi::NdiSourceConfig, discovered: NdiSourceInfo) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::Ndi(config),
             SourceRuntimeConfig::Ndi { discovered },
         );
-        self.sources.insert(key.clone(), kind);
-        return key;
     }
 
     pub fn add_omt(&mut self, key: SourceKey, config: omt::OmtSourceConfig, discovered: OmtSourceInfo) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::Omt(config),
             SourceRuntimeConfig::Omt { discovered },
         );
-        self.sources.insert(key.clone(), kind);
-        return key;
     }
 
     pub fn add_decklink(&mut self, key: SourceKey, config: decklink::DecklinkSourceConfig, supported_connections: decklink::DecklinkVideoConnections) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::Decklink(config),
             SourceRuntimeConfig::Decklink { supported_connections },
         );
-        self.sources.insert(key.clone(), kind);
-        return key;
     }
 
     #[cfg(target_os = "macos")]
     pub fn add_syphon(&mut self, key: SourceKey, config: syphon::SyphonSourceConfig, info: SyphonServerInfo) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::Syphon(config),
             SourceRuntimeConfig::Syphon { info },
         );
-        self.sources.insert(key.clone(), kind);
-        return key;
     }
 
     #[cfg(target_os = "macos")]
     pub fn add_avfoundation(&mut self, key: SourceKey, config: avfoundation::AvFoundationSourceConfig) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::AvFoundation(config),
             SourceRuntimeConfig::AvFoundation {
                 modes: Arc::new(Mutex::new(Vec::new())),
             },
         );
-        self.sources.insert(key.clone(), kind);
-        return key;
     }
 
     #[cfg(target_os = "macos")]
     pub fn add_screencapturekit(&mut self, key: SourceKey, config: screencapturekit::ScreenCaptureKitSourceConfig, label: String) -> SourceKey {
         // First SCK source in the process triggers the one-time TCC prompt.
         screencapturekit::ensure_screen_capture_access_requested();
-        if self.contains(&key) {
-            return key;
-        }
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::ScreenCaptureKit(config),
             SourceRuntimeConfig::ScreenCaptureKit { label },
         );
-        self.sources.insert(key.clone(), kind);
-        return key;
     }
 
     #[cfg(target_os = "windows")]
     pub fn add_spout(&mut self, key: SourceKey, config: spout::SpoutSourceConfig) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
-        let kind = SourceKind::new(&key, SourceConfig::Spout(config), SourceRuntimeConfig::Spout);
-        self.sources.insert(key.clone(), kind);
-        return key;
+        return self.add_new(key, SourceConfig::Spout(config), SourceRuntimeConfig::Spout);
     }
 
     #[cfg(target_os = "windows")]
     pub fn add_mediafoundation(&mut self, key: SourceKey, config: mediafoundation::MediaFoundationSourceConfig, label: String) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
         tracing::debug!(source_ref = %key.source_ref, label = %label, "add_mediafoundation");
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::MediaFoundation(config),
             SourceRuntimeConfig::MediaFoundation {
                 label,
                 modes: Arc::new(Mutex::new(Vec::new())),
             },
         );
-        self.sources.insert(key.clone(), kind);
-        return key;
     }
 
     #[cfg(target_os = "windows")]
     pub fn add_directshow(&mut self, key: SourceKey, config: directshow::DirectShowSourceConfig, label: String) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
         tracing::debug!(source_ref = %key.source_ref, label = %label, "add_directshow");
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::DirectShow(config),
             SourceRuntimeConfig::DirectShow {
                 label,
                 modes: Arc::new(Mutex::new(Vec::new())),
             },
         );
-        self.sources.insert(key.clone(), kind);
-        return key;
     }
 
     #[cfg(target_os = "windows")]
     pub fn add_windows_capture(&mut self, key: SourceKey, config: windowscapture::WindowsCaptureSourceConfig, label: String) -> SourceKey {
-        if self.contains(&key) {
-            return key;
-        }
         tracing::debug!(source_ref = %key.source_ref, label = %label, "add_windows_capture");
-        let kind = SourceKind::new(
-            &key,
+        return self.add_new(
+            key,
             SourceConfig::WindowsCapture(config),
             SourceRuntimeConfig::WindowsCapture { label },
         );
-        self.sources.insert(key.clone(), kind);
-        return key;
     }
 
     /// Whether a source for this key is live or being restarted.
@@ -680,14 +620,10 @@ impl SourceRegistry {
         self.sources.get_mut(key)
     }
 
-    #[allow(dead_code)] 
+    /// Live sources, for the tests that count them.
+    #[allow(dead_code)]
     pub fn iter(&self) -> impl Iterator<Item = (&SourceKey, &SourceKind)> {
         self.sources.iter()
-    }
-
-    #[allow(dead_code)]
-    pub fn remove(&mut self, key: &SourceKey) {
-        self.sources.remove(key);
     }
 
     /// Restart the source under `key` with its current config.
@@ -809,11 +745,11 @@ mod tests {
     fn keys_are_protocol_scoped() {
         let mut registry = SourceRegistry::new();
         let key = SourceKey::new(Protocol::Test, "Camera".into());
-        registry.add(key.clone(), SourceKind::new(
-            &key,
+        registry.add_new(
+            key.clone(),
             SourceConfig::Test(Default::default()),
             SourceRuntimeConfig::Test,
-        ));
+        );
 
         assert!(registry.contains(&key));
         let other_protocol = SourceKey::new(Protocol::Ndi, "Camera".into());
@@ -831,11 +767,11 @@ mod tests {
         let key = registry.add_test(None);
         let count = registry.iter().count();
 
-        let again = registry.add(key.clone(), SourceKind::new(
-            &key,
+        let again = registry.add_new(
+            key.clone(),
             SourceConfig::Test(Default::default()),
             SourceRuntimeConfig::Test,
-        ));
+        );
         assert_eq!(again, key);
         assert_eq!(registry.iter().count(), count);
         assert!(registry.get(&key).is_some());

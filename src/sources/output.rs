@@ -18,7 +18,6 @@ use super::spout;
 pub type OutputId = String;
 
 /// Runtime video output. Implemented by NDI, Syphon, and DeckLink.
-#[allow(dead_code)]
 pub trait VideoOutput: Send {
     fn present(
         &self,
@@ -269,12 +268,6 @@ impl OutputRegistry {
         self.outputs.get_mut(id)
     }
 
-    #[allow(dead_code)]
-    pub fn iter(&self) -> impl Iterator<Item = (&OutputId, &OutputKind)> {
-        self.outputs.iter()
-    }
-
-    #[allow(dead_code)]
     pub fn remove(&mut self, id: &OutputId) {
         self.outputs.remove(id);
     }
