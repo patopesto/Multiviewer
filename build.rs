@@ -256,7 +256,8 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName",      "{publisher}"
-            VALUE "FileDescription",  "{description}"
+            VALUE "FileDescription",  "{product}"
+            VALUE "Comments",         "{description}"
             VALUE "FileVersion",      "{version}"
             VALUE "InternalName",     "{crate_name}"
             VALUE "LegalCopyright",   "{copyright}"
