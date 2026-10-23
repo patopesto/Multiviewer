@@ -1,3 +1,6 @@
+use serde::de::DeserializeOwned;
+use serde::Serialize;
+
 use super::*;
 use crate::control::FeedbackMode;
 use crate::sources::TestSourceConfig;
@@ -54,6 +57,73 @@ fn default_output_config_wire_form() {
     assert_eq!(v, serde_json::json!({"protocol": "Unknown"}));
 }
 
+/// A project entry (`Source` or `Output`) that may use a protocol this build lacks.
+trait ProjectEntry: Serialize + DeserializeOwned {
+    fn protocol(&self) -> &Protocol;
+    /// The verbatim config kept for a protocol this platform cannot interpret.
+    fn unknown_config(&self) -> Option<&serde_json::Value>;
+}
+
+impl ProjectEntry for Source {
+    fn protocol(&self) -> &Protocol {
+        return &self.protocol;
+    }
+
+    fn unknown_config(&self) -> Option<&serde_json::Value> {
+        return match &self.config {
+            SourceConfig::Unknown(v) => Some(v),
+            _ => None,
+        };
+    }
+}
+
+impl ProjectEntry for Output {
+    fn protocol(&self) -> &Protocol {
+        return &self.protocol;
+    }
+
+    fn unknown_config(&self) -> Option<&serde_json::Value> {
+        return match &self.config {
+            OutputConfig::Unknown(v) => Some(v),
+            _ => None,
+        };
+    }
+}
+
+/// Every key in `expected` must be present in `actual` with the same value;
+/// keys the typed config adds (unset defaults) are allowed.
+fn assert_json_subset(expected: &serde_json::Value, actual: &serde_json::Value, path: &str) {
+    if let serde_json::Value::Object(map) = expected {
+        for (key, value) in map {
+            assert_json_subset(value, &actual[key], &format!("{path}.{key}"));
+        }
+        return;
+    }
+    assert_eq!(expected, actual, "{path} lost on save");
+}
+
+/// The load/save contract for an entry whose protocol this platform may not
+/// have: an unavailable protocol must load as `Unknown`, label itself
+/// "(Unavailable)" and keep its config verbatim, and on every platform a save
+/// must carry back what the file specified. `available` is the caller's own
+/// platform answer; the caller keeps its typed asserts for that case.
+fn assert_unavailable_round_trip<T: ProjectEntry>(json: &str, protocol: &str, available: bool) -> T {
+    let input: serde_json::Value = serde_json::from_str(json).unwrap();
+    let parsed: T = serde_json::from_value(input.clone()).unwrap();
+
+    if !available {
+        assert_eq!(parsed.protocol(), &Protocol::Unknown(protocol.to_string()));
+        assert_eq!(parsed.protocol().label(), format!("{protocol} (Unavailable)"));
+        let raw = parsed.unknown_config().expect("expected Unknown config");
+        assert_eq!(raw, &input["config"], "config not preserved");
+    }
+
+    let saved = serde_json::to_value(&parsed).unwrap();
+    assert_eq!(saved["protocol"], protocol);
+    assert_json_subset(&input["config"], &saved["config"], "config");
+    return parsed;
+}
+
 /// A macOS-authored Syphon output must load on any platform and be written
 /// back byte-for-byte compatible, so opening the project on macOS again
 /// restores it untouched.
@@ -61,23 +131,10 @@ fn default_output_config_wire_form() {
 fn syphon_output_round_trips_on_unavailable_platform() {
     let json = r#"{"uuid":"out1","name":"Program","protocol":"Syphon","enabled":true,
         "config":{"protocol":"Syphon","server_name":"Multiviewer"}}"#;
-    let parsed: Output = serde_json::from_str(json).unwrap();
+    let parsed: Output = assert_unavailable_round_trip(json, "Syphon", cfg!(target_os = "macos"));
+    assert_eq!(parsed.name, "Program");
     #[cfg(target_os = "macos")]
     assert_eq!(parsed.protocol, Protocol::Syphon);
-    #[cfg(not(target_os = "macos"))]
-    {
-        assert_eq!(parsed.protocol, Protocol::Unknown("Syphon".to_string()));
-        assert_eq!(parsed.protocol.label(), "Syphon (Unavailable)");
-        // The raw config is preserved rather than interpreted.
-        let OutputConfig::Unknown(v) = &parsed.config else {
-            panic!("expected Unknown config")
-        };
-        assert_eq!(v.get("server_name"), Some(&serde_json::json!("Multiviewer")));
-    }
-
-    let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["protocol"], "Syphon");
-    assert_eq!(saved["config"]["server_name"], "Multiviewer");
 }
 
 #[cfg(target_os = "windows")]
@@ -105,7 +162,8 @@ fn spout_output_config_round_trips() {
 fn spout_output_round_trips_on_unavailable_platform() {
     let json = r#"{"uuid":"out1","name":"Program","protocol":"Spout","enabled":true,
         "config":{"protocol":"Spout","sender_name":"Multiviewer"}}"#;
-    let parsed: Output = serde_json::from_str(json).unwrap();
+    let parsed: Output = assert_unavailable_round_trip(json, "Spout", cfg!(target_os = "windows"));
+    assert_eq!(parsed.name, "Program");
     #[cfg(target_os = "windows")]
     {
         assert_eq!(parsed.protocol, Protocol::Spout);
@@ -114,20 +172,6 @@ fn spout_output_round_trips_on_unavailable_platform() {
         };
         assert_eq!(c.sender_name, "Multiviewer");
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        assert_eq!(parsed.protocol, Protocol::Unknown("Spout".to_string()));
-        assert_eq!(parsed.protocol.label(), "Spout (Unavailable)");
-        // The raw config is preserved rather than interpreted.
-        let OutputConfig::Unknown(v) = &parsed.config else {
-            panic!("expected Unknown config")
-        };
-        assert_eq!(v.get("sender_name"), Some(&serde_json::json!("Multiviewer")));
-    }
-
-    let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["protocol"], "Spout");
-    assert_eq!(saved["config"]["sender_name"], "Multiviewer");
 }
 
 /// A macOS-authored AVFoundation source (device-specific config) must
@@ -142,29 +186,13 @@ fn avfoundation_source_round_trips_on_unavailable_platform() {
         "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"AvFoundation","device_unique_id":"0x802000000a5f123"}
     }"#;
-    let parsed: Source = serde_json::from_str(json).unwrap();
+    let parsed: Source = assert_unavailable_round_trip(json, "AvFoundation", cfg!(target_os = "macos"));
     #[cfg(target_os = "macos")]
     assert_eq!(parsed.protocol, Protocol::AvFoundation);
-    #[cfg(not(target_os = "macos"))]
-    {
-        assert_eq!(parsed.protocol, Protocol::Unknown("AvFoundation".to_string()));
-        assert_eq!(parsed.protocol.label(), "AvFoundation (Unavailable)");
-        let SourceConfig::Unknown(v) = &parsed.config else {
-            panic!("expected Unknown config")
-        };
-        assert_eq!(
-            v.get("device_unique_id"),
-            Some(&serde_json::json!("0x802000000a5f123"))
-        );
-    }
     // Layout is independent of protocol availability.
     assert_eq!(parsed.name, "Camera");
     assert_eq!(parsed.x, 10.0);
     assert_eq!(parsed.z, 3);
-
-    let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["protocol"], "AvFoundation");
-    assert_eq!(saved["config"]["device_unique_id"], "0x802000000a5f123");
 }
 
 /// A Windows-authored Media Foundation source (device-specific config) must
@@ -179,7 +207,8 @@ fn mediafoundation_source_round_trips_on_unavailable_platform() {
         "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"MediaFoundation","device_id":"\\\\?\\usb#vid_046d&pid_085b","width":0,"height":0,"fps_num":0,"fps_den":0,"pixel_format":"Bgra8"}
     }"#;
-    let parsed: Source = serde_json::from_str(json).unwrap();
+    let parsed: Source =
+        assert_unavailable_round_trip(json, "MediaFoundation", cfg!(target_os = "windows"));
     #[cfg(target_os = "windows")]
     {
         assert_eq!(parsed.protocol, Protocol::MediaFoundation);
@@ -189,30 +218,9 @@ fn mediafoundation_source_round_trips_on_unavailable_platform() {
         assert_eq!(c.device_id, r"\\?\usb#vid_046d&pid_085b");
         assert_eq!(c.pixel_format, Some(PixelFormat::Bgra8));
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        assert_eq!(parsed.protocol, Protocol::Unknown("MediaFoundation".to_string()));
-        assert_eq!(parsed.protocol.label(), "MediaFoundation (Unavailable)");
-        let SourceConfig::Unknown(v) = &parsed.config else {
-            panic!("expected Unknown config")
-        };
-        assert_eq!(
-            v.get("device_id"),
-            Some(&serde_json::json!(r"\\?\usb#vid_046d&pid_085b"))
-        );
-        assert_eq!(v.get("pixel_format"), Some(&serde_json::json!("Bgra8")));
-    }
     // Layout is independent of protocol availability.
     assert_eq!(parsed.name, "Webcam");
     assert_eq!(parsed.x, 10.0);
-
-    let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["protocol"], "MediaFoundation");
-    assert_eq!(
-        saved["config"]["device_id"],
-        r"\\?\usb#vid_046d&pid_085b"
-    );
-    assert_eq!(saved["config"]["pixel_format"], "Bgra8");
 }
 
 /// A Windows-authored DirectShow source (device-specific config) must
@@ -227,7 +235,8 @@ fn directshow_source_round_trips_on_unavailable_platform() {
         "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"DirectShow","device_id":"\\\\?\\usb#vid_1edb&pid_bd3f","width":0,"height":0,"fps_num":0,"fps_den":0,"pixel_format":"Yuy2"}
     }"#;
-    let parsed: Source = serde_json::from_str(json).unwrap();
+    let parsed: Source =
+        assert_unavailable_round_trip(json, "DirectShow", cfg!(target_os = "windows"));
     #[cfg(target_os = "windows")]
     {
         assert_eq!(parsed.protocol, Protocol::DirectShow);
@@ -237,27 +246,7 @@ fn directshow_source_round_trips_on_unavailable_platform() {
         assert_eq!(c.device_id, r"\\?\usb#vid_1edb&pid_bd3f");
         assert_eq!(c.pixel_format, Some(PixelFormat::Yuy2));
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        assert_eq!(parsed.protocol, Protocol::Unknown("DirectShow".to_string()));
-        assert_eq!(parsed.protocol.label(), "DirectShow (Unavailable)");
-        let SourceConfig::Unknown(v) = &parsed.config else {
-            panic!("expected Unknown config")
-        };
-        assert_eq!(
-            v.get("device_id"),
-            Some(&serde_json::json!(r"\\?\usb#vid_1edb&pid_bd3f"))
-        );
-        assert_eq!(v.get("pixel_format"), Some(&serde_json::json!("Yuy2")));
-    }
     assert_eq!(parsed.name, "DeckLink");
-
-    let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["protocol"], "DirectShow");
-    assert_eq!(
-        saved["config"]["device_id"],
-        r"\\?\usb#vid_1edb&pid_bd3f"
-    );
 }
 
 /// A macOS-authored ScreenCaptureKit source must survive load + save on a platform without it.
@@ -272,7 +261,8 @@ fn screencapturekit_source_round_trips_on_unavailable_platform() {
         "config":{"protocol":"ScreenCaptureKit","kind":"display",
                   "display_id":"724561234"}
     }"#;
-    let parsed: Source = serde_json::from_str(json).unwrap();
+    let parsed: Source =
+        assert_unavailable_round_trip(json, "ScreenCaptureKit", cfg!(target_os = "macos"));
     #[cfg(target_os = "macos")]
     {
         assert_eq!(parsed.protocol, Protocol::ScreenCaptureKit);
@@ -284,26 +274,9 @@ fn screencapturekit_source_round_trips_on_unavailable_platform() {
         };
         assert_eq!(display_id, "724561234");
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        assert_eq!(parsed.protocol, Protocol::Unknown("ScreenCaptureKit".to_string()));
-        assert_eq!(parsed.protocol.label(), "ScreenCaptureKit (Unavailable)");
-        let SourceConfig::Unknown(v) = &parsed.config else {
-            panic!("expected Unknown config")
-        };
-        assert_eq!(
-            v.get("display_id"),
-            Some(&serde_json::json!("724561234"))
-        );
-    }
     // Layout is independent of protocol availability.
     assert_eq!(parsed.name, "Screen");
     assert_eq!(parsed.source_ref.as_deref(), Some("display:724561234"));
-
-    let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["protocol"], "ScreenCaptureKit");
-    assert_eq!(saved["config"]["kind"], "display");
-    assert_eq!(saved["config"]["display_id"], "724561234");
 }
 
 /// Window ScreenCaptureKit sources must survive load + save on a platform that has no ScreenCaptureKit.
@@ -319,7 +292,8 @@ fn screencapturekit_window_source_round_trip() {
                   "window_id":4242,"bundle_id":"com.apple.TextEdit",
                   "title":"Untitled"}
     }"#;
-    let parsed: Source = serde_json::from_str(window_json).unwrap();
+    let parsed: Source =
+        assert_unavailable_round_trip(window_json, "ScreenCaptureKit", cfg!(target_os = "macos"));
     #[cfg(target_os = "macos")]
     {
         assert_eq!(parsed.protocol, Protocol::ScreenCaptureKit);
@@ -339,19 +313,8 @@ fn screencapturekit_window_source_round_trip() {
         assert_eq!(bundle_id, "com.apple.TextEdit");
         assert_eq!(title, "Untitled");
     }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let SourceConfig::Unknown(v) = &parsed.config else {
-            panic!("expected Unknown config")
-        };
-        assert_eq!(v.get("window_id"), Some(&serde_json::json!(4242)));
-        assert_eq!(parsed.protocol, Protocol::Unknown("ScreenCaptureKit".to_string()));
-    }
-    let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["config"]["kind"], "window");
-    assert_eq!(saved["config"]["window_id"], 4242);
-    assert_eq!(saved["config"]["title"], "Untitled");
     // A target variant only carries its own fields.
+    let saved = serde_json::to_value(&parsed).unwrap();
     assert!(saved["config"].get("display_id").is_none());
 }
 
@@ -369,7 +332,8 @@ fn windows_capture_source_round_trips_on_unavailable_platform() {
                   "device_name":"\\\\.\\DISPLAY1",
                   "settings":{"cursor":"default","border":"default","secondary_windows":"default"}}
     }"#;
-    let parsed: Source = serde_json::from_str(json).unwrap();
+    let parsed: Source =
+        assert_unavailable_round_trip(json, "WindowsCapture", cfg!(target_os = "windows"));
     #[cfg(target_os = "windows")]
     {
         assert_eq!(parsed.protocol, Protocol::WindowsCapture);
@@ -381,25 +345,8 @@ fn windows_capture_source_round_trips_on_unavailable_platform() {
         };
         assert_eq!(device_name, "\\\\.\\DISPLAY1");
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        assert_eq!(parsed.protocol, Protocol::Unknown("WindowsCapture".to_string()));
-        assert_eq!(parsed.protocol.label(), "WindowsCapture (Unavailable)");
-        let SourceConfig::Unknown(v) = &parsed.config else {
-            panic!("expected Unknown config")
-        };
-        assert_eq!(
-            v.get("device_name"),
-            Some(&serde_json::json!("\\\\.\\DISPLAY1"))
-        );
-    }
     assert_eq!(parsed.name, "Screen");
     assert_eq!(parsed.source_ref.as_deref(), Some("display:\\\\.\\DISPLAY1"));
-
-    let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["protocol"], "WindowsCapture");
-    assert_eq!(saved["config"]["kind"], "display");
-    assert_eq!(saved["config"]["device_name"], "\\\\.\\DISPLAY1");
 }
 
 /// Window Windows Graphics Capture sources must survive load + save on a
@@ -419,7 +366,8 @@ fn windows_capture_window_source_round_trip() {
                               "border":"hide",
                               "secondary_windows":"include"}}
     }"#;
-    let parsed: Source = serde_json::from_str(window_json).unwrap();
+    let parsed: Source =
+        assert_unavailable_round_trip(window_json, "WindowsCapture", cfg!(target_os = "windows"));
     #[cfg(target_os = "windows")]
     {
         assert_eq!(parsed.protocol, Protocol::WindowsCapture);
@@ -445,22 +393,7 @@ fn windows_capture_window_source_round_trip() {
             WindowsCaptureSecondaryWindows::Include
         );
     }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let SourceConfig::Unknown(v) = &parsed.config else {
-            panic!("expected Unknown config")
-        };
-        assert_eq!(v.get("hwnd"), Some(&serde_json::json!(4242)));
-        assert_eq!(v["settings"]["cursor"], serde_json::json!("hide"));
-        assert_eq!(parsed.protocol, Protocol::Unknown("WindowsCapture".to_string()));
-    }
     let saved = serde_json::to_value(&parsed).unwrap();
-    assert_eq!(saved["config"]["kind"], "window");
-    assert_eq!(saved["config"]["hwnd"], 4242);
-    assert_eq!(saved["config"]["title"], "Untitled");
-    assert_eq!(saved["config"]["settings"]["cursor"], "hide");
-    assert_eq!(saved["config"]["settings"]["border"], "hide");
-    assert_eq!(saved["config"]["settings"]["secondary_windows"], "include");
     assert!(saved["config"].get("device_name").is_none());
 }
 
