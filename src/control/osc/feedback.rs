@@ -198,7 +198,7 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
         // @osc path="/output/{i}/protocol" kind="feedback" args="value:string" group="Outputs" desc="Output protocol."
         push(
             &format!("/output/{i}/protocol"),
-            FeedbackValue::String(output.protocol.name().to_string()),
+            FeedbackValue::String(output.protocol.label()),
         );
         // @osc path="/output/{i}/enabled" kind="feedback" args="value:0|1" group="Outputs" desc="Whether the output is enabled."
         push(

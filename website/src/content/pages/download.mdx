@@ -1,9 +1,10 @@
 ---
 title: Download
-description: Download the latest version of Multiviewer for macOS, Windows and Linux.
+description: Download the latest version of Multiviewer for macOS, Windows and Linux, plus ready-made control templates.
 ---
 
 import DownloadGrid from '@patopest/astro-theme/components/DownloadGrid.astro';
+import TemplateDownloads from '../../components/TemplateDownloads.astro';
 import { project } from '../../project';
 
 <div class="container prose section">
@@ -15,6 +16,11 @@ Multiviewer is free to download, and the source is on GitLab. Pick the build for
 </div>
 
 <DownloadGrid project={project} />
+
+<TemplateDownloads
+  title="Integrations"
+  lead="Ready-to-import layouts and macros for the control tools you already use."
+/>
 
 <div class="container prose section">
 

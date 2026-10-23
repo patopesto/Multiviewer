@@ -1,0 +1,5336 @@
+{
+	"version": 12,
+	"type": "page",
+	"companionBuild": "5.1.0+9981-stable-257b325d09",
+	"page": {
+		"id": "FqFcQOpA8wrEuQmzN8Jmk",
+		"name": "Multiviewer",
+		"controls": {
+			"0": {
+				"0": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Select $(local:source_index)",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": true,
+						"notes": ""
+					},
+					"feedbacks": [
+						{
+							"id": "Osdi2Enc_Dfue2cGF8v8e",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(local:source_index)/selected",
+									"isExpression": false
+								},
+								"arguments": {
+									"isExpression": false,
+									"value": 1
+								},
+								"comparison": {
+									"isExpression": false,
+									"value": "equal"
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [
+								{
+									"overrideId": "3RjKTvhZhOiCNwfZ4ohd2",
+									"elementId": "box0",
+									"elementProperty": "color",
+									"override": {
+										"value": 4737096,
+										"isExpression": false
+									}
+								}
+							]
+						}
+					],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "1MgdwukQm4JRk-RbldwvX",
+										"definitionId": "send_blank",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(local:source_index)/select",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "hWQk8WVOGSwROK8rn471Z",
+							"definitionId": "user_value",
+							"connectionId": "internal",
+							"options": {
+								"persist_value": {
+									"isExpression": false,
+									"value": false
+								},
+								"startup_value": {
+									"isExpression": false,
+									"value": "1"
+								}
+							},
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "source_index",
+							"children": {}
+						}
+					]
+				},
+				"1": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Select $(local:source_index)",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": true,
+						"notes": ""
+					},
+					"feedbacks": [
+						{
+							"id": "sO6iRLFYeHnQOwfYdxvCR",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(local:source_index)/selected",
+									"isExpression": false
+								},
+								"arguments": {
+									"isExpression": false,
+									"value": 1
+								},
+								"comparison": {
+									"isExpression": false,
+									"value": "equal"
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [
+								{
+									"overrideId": "3RjKTvhZhOiCNwfZ4ohd2",
+									"elementId": "box0",
+									"elementProperty": "color",
+									"override": {
+										"value": 4737096,
+										"isExpression": false
+									}
+								}
+							]
+						}
+					],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "kNqO0quqZWePMG_Bjjx-g",
+										"definitionId": "send_blank",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(local:source_index)/select",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "oJrJqY04OsF5y5726d_c3",
+							"definitionId": "user_value",
+							"connectionId": "internal",
+							"options": {
+								"persist_value": {
+									"isExpression": false,
+									"value": false
+								},
+								"startup_value": {
+									"isExpression": false,
+									"value": "1"
+								}
+							},
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "source_index",
+							"children": {}
+						}
+					]
+				},
+				"2": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Select $(local:source_index)",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": true,
+						"notes": ""
+					},
+					"feedbacks": [
+						{
+							"id": "nuVpBmAKZ44elcSXeesa2",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(local:source_index)/selected",
+									"isExpression": false
+								},
+								"arguments": {
+									"isExpression": false,
+									"value": 1
+								},
+								"comparison": {
+									"isExpression": false,
+									"value": "equal"
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [
+								{
+									"overrideId": "3RjKTvhZhOiCNwfZ4ohd2",
+									"elementId": "box0",
+									"elementProperty": "color",
+									"override": {
+										"value": 4737096,
+										"isExpression": false
+									}
+								}
+							]
+						}
+					],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "qPJ8-_ELtMIwmymIUH92B",
+										"definitionId": "send_blank",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(local:source_index)/select",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "gQJJHjYpXCMw4pDdbioDl",
+							"definitionId": "user_value",
+							"connectionId": "internal",
+							"options": {
+								"persist_value": {
+									"isExpression": false,
+									"value": false
+								},
+								"startup_value": {
+									"isExpression": false,
+									"value": "1"
+								}
+							},
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "source_index",
+							"children": {}
+						}
+					]
+				},
+				"3": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Select Next",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 35,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "bOZ7ez_0J5aiLZ8mmI83w",
+										"definitionId": "send_blank",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/next",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				},
+				"4": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 2368548,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "$(local:source_name)",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "YAHSL2U3nPC8pMFe3vhal",
+							"definitionId": "osc_feedback_value",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(page:selected_index)/name",
+									"isExpression": false
+								},
+								"index": {
+									"isExpression": false,
+									"value": 0
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "source_name"
+						}
+					]
+				},
+				"6": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Nudge ⬆️",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "Lhr1eyj3yhBYbi5_Xtclk",
+										"definitionId": "send_multiple",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/nudge",
+												"isExpression": false
+											},
+											"arguments": {
+												"value": "0 -10",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				},
+				"7": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Zoom +",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 35,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "fx4I_0f6RT3fhfQ3Yt1NU",
+										"definitionId": "send_float",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/view/zoom",
+												"isExpression": false
+											},
+											"float": {
+												"value": 1.1,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				}
+			},
+			"1": {
+				"0": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Expand $(local:source_index)",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": true,
+						"notes": ""
+					},
+					"feedbacks": [
+						{
+							"id": "DBMZqJNuEkiot7FQOyCaY",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(local:source_index)/expanded",
+									"isExpression": false
+								},
+								"arguments": {
+									"isExpression": false,
+									"value": 1
+								},
+								"comparison": {
+									"isExpression": false,
+									"value": "equal"
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [
+								{
+									"overrideId": "3RjKTvhZhOiCNwfZ4ohd2",
+									"elementId": "box0",
+									"elementProperty": "color",
+									"override": {
+										"value": 10027008,
+										"isExpression": false
+									}
+								}
+							]
+						}
+					],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "HNrWN4lxOOCGq8D8s-0hx",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(local:source_index)/expand",
+												"isExpression": false
+											},
+											"value": {
+												"value": true,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						},
+						"1": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "jDybKuA59hnl-Iztt_RpF",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(local:source_index)/expand",
+												"isExpression": false
+											},
+											"value": {
+												"isExpression": false,
+												"value": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "yle7pWWiUAwilO_1oTRc6",
+							"definitionId": "user_value",
+							"connectionId": "internal",
+							"options": {
+								"persist_value": {
+									"isExpression": false,
+									"value": false
+								},
+								"startup_value": {
+									"isExpression": false,
+									"value": "1"
+								}
+							},
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "source_index",
+							"children": {}
+						}
+					]
+				},
+				"1": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Expand $(local:source_index)",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": true,
+						"notes": ""
+					},
+					"feedbacks": [
+						{
+							"id": "a6ooah0VmTm0fDG9hQkHz",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(local:source_index)/expanded",
+									"isExpression": false
+								},
+								"arguments": {
+									"isExpression": false,
+									"value": 1
+								},
+								"comparison": {
+									"isExpression": false,
+									"value": "equal"
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [
+								{
+									"overrideId": "3RjKTvhZhOiCNwfZ4ohd2",
+									"elementId": "box0",
+									"elementProperty": "color",
+									"override": {
+										"value": 10027008,
+										"isExpression": false
+									}
+								}
+							]
+						}
+					],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "LlBLwN4VTCXfPlugJRXHY",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(local:source_index)/expand",
+												"isExpression": false
+											},
+											"value": {
+												"value": true,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						},
+						"1": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "XPyS4_4iC_-LNhXWrWtUw",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(local:source_index)/expand",
+												"isExpression": false
+											},
+											"value": {
+												"isExpression": false,
+												"value": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "kHbRQNdXQ9NrWY1yEYgJ8",
+							"definitionId": "user_value",
+							"connectionId": "internal",
+							"options": {
+								"persist_value": {
+									"isExpression": false,
+									"value": false
+								},
+								"startup_value": {
+									"isExpression": false,
+									"value": "1"
+								}
+							},
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "source_index",
+							"children": {}
+						}
+					]
+				},
+				"2": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Expand $(local:source_index)",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": true,
+						"notes": ""
+					},
+					"feedbacks": [
+						{
+							"id": "wnvTRnhuTqTGxJnnRVXqf",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(local:source_index)/expanded",
+									"isExpression": false
+								},
+								"arguments": {
+									"isExpression": false,
+									"value": 1
+								},
+								"comparison": {
+									"isExpression": false,
+									"value": "equal"
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [
+								{
+									"overrideId": "3RjKTvhZhOiCNwfZ4ohd2",
+									"elementId": "box0",
+									"elementProperty": "color",
+									"override": {
+										"value": 10027008,
+										"isExpression": false
+									}
+								}
+							]
+						}
+					],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "-a-_jj7q7tClkV6Qzu9yv",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(local:source_index)/expand",
+												"isExpression": false
+											},
+											"value": {
+												"value": true,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						},
+						"1": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "oTtxKYxmY01SOAWEQu6sf",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(local:source_index)/expand",
+												"isExpression": false
+											},
+											"value": {
+												"isExpression": false,
+												"value": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "fFmFzBwoYA65LlVP3x108",
+							"definitionId": "user_value",
+							"connectionId": "internal",
+							"options": {
+								"persist_value": {
+									"isExpression": false,
+									"value": false
+								},
+								"startup_value": {
+									"isExpression": false,
+									"value": "1"
+								}
+							},
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "source_index",
+							"children": {}
+						}
+					]
+				},
+				"3": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "0AqOda_PwJYGJlc94MmiI",
+								"name": "Group",
+								"usage": "auto",
+								"type": "group",
+								"pinnedProperties": [],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"squareCoords": {
+									"value": false,
+									"isExpression": false
+								},
+								"children": [
+									{
+										"id": "geFnMibSwNVG_eZypj8Tx",
+										"name": "Box",
+										"usage": "auto",
+										"type": "box",
+										"pinnedProperties": [
+											"color",
+											"opacity"
+										],
+										"enabled": {
+											"value": true,
+											"isExpression": false
+										},
+										"opacity": {
+											"value": 100,
+											"isExpression": false
+										},
+										"x": {
+											"value": 0,
+											"isExpression": false
+										},
+										"y": {
+											"value": 0,
+											"isExpression": false
+										},
+										"width": {
+											"value": 50,
+											"isExpression": false
+										},
+										"height": {
+											"value": 50,
+											"isExpression": false
+										},
+										"rotation": {
+											"value": 0,
+											"isExpression": false
+										},
+										"color": {
+											"value": 2368548,
+											"isExpression": false
+										},
+										"cornerRadius": {
+											"value": 0,
+											"isExpression": false
+										},
+										"borderWidth": {
+											"value": 0,
+											"isExpression": false
+										},
+										"borderColor": {
+											"value": 0,
+											"isExpression": false
+										},
+										"borderPosition": {
+											"value": "inside",
+											"isExpression": false
+										}
+									},
+									{
+										"id": "LZfUbwRv_Ij09H9aSo6rB",
+										"name": "Box",
+										"usage": "auto",
+										"type": "box",
+										"pinnedProperties": [
+											"color",
+											"opacity"
+										],
+										"enabled": {
+											"value": true,
+											"isExpression": false
+										},
+										"opacity": {
+											"value": 100,
+											"isExpression": false
+										},
+										"x": {
+											"value": 10,
+											"isExpression": false
+										},
+										"y": {
+											"value": 10,
+											"isExpression": false
+										},
+										"width": {
+											"value": 50,
+											"isExpression": false
+										},
+										"height": {
+											"value": 50,
+											"isExpression": false
+										},
+										"rotation": {
+											"value": 0,
+											"isExpression": false
+										},
+										"color": {
+											"value": 0,
+											"isExpression": false
+										},
+										"cornerRadius": {
+											"value": 0,
+											"isExpression": false
+										},
+										"borderWidth": {
+											"value": 0,
+											"isExpression": false
+										},
+										"borderColor": {
+											"value": 0,
+											"isExpression": false
+										},
+										"borderPosition": {
+											"value": "inside",
+											"isExpression": false
+										}
+									}
+								]
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Flip",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 40,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [
+						{
+							"id": "EcOwL2MtBcUu15vqQnoC-",
+							"definitionId": "expression_value",
+							"connectionId": "internal",
+							"options": {
+								"expression": {
+									"value": "if ($(local:flip_h) & $(local:flip_v)) {\n    return 180\n}\nelse if ($(local:flip_h)) {\n    return 90\n}\nelse if ($(local:flip_v)) {\n    return 270\n}",
+									"isExpression": true
+								}
+							},
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [
+								{
+									"overrideId": "NGF20e8EXU2MnsAIXPojA",
+									"elementId": "0AqOda_PwJYGJlc94MmiI",
+									"elementProperty": "rotation",
+									"override": {
+										"value": "$(this:value)",
+										"isExpression": true
+									}
+								}
+							],
+							"children": {}
+						}
+					],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "zgeipMXN5EB8jmUsgHCi4",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/flip_h",
+												"isExpression": false
+											},
+											"value": {
+												"value": false,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									},
+									{
+										"id": "nkiRZD5zTgxJ4WiXqPNd0",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/flip_v",
+												"isExpression": false
+											},
+											"value": {
+												"value": false,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						},
+						"1": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "iRNXXslUhtok4oQwgJp2B",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/flip_h",
+												"isExpression": false
+											},
+											"value": {
+												"value": true,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									},
+									{
+										"id": "CgzXqkLTprC5fe5Xry9QN",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/flip_v",
+												"isExpression": false
+											},
+											"value": {
+												"value": false,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						},
+						"2": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "UjwEFIFhTLA4XeJeiLI3U",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/flip_h",
+												"isExpression": false
+											},
+											"value": {
+												"value": true,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									},
+									{
+										"id": "n-jvDQCrCWyFOJcE0bwVt",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/flip_v",
+												"isExpression": false
+											},
+											"value": {
+												"value": true,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						},
+						"3": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "LRMHHrcSTdOU_SQtBxlWr",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/flip_h",
+												"isExpression": false
+											},
+											"value": {
+												"value": false,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									},
+									{
+										"id": "5n8VW_--41g95EZe55wgS",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/flip_v",
+												"isExpression": false
+											},
+											"value": {
+												"value": true,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "V3XtWdRsx_puyoZpMeUdC",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(page:selected_index)/flip_h",
+									"isExpression": false
+								},
+								"arguments": {
+									"isExpression": false,
+									"value": 1
+								},
+								"comparison": {
+									"isExpression": false,
+									"value": "equal"
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "flip_h"
+						},
+						{
+							"id": "vq9kFsfoYWtn4idJ-BhQq",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(page:selected_index)/flip_v",
+									"isExpression": false
+								},
+								"arguments": {
+									"isExpression": false,
+									"value": 1
+								},
+								"comparison": {
+									"isExpression": false,
+									"value": "equal"
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "flip_v"
+						}
+					]
+				},
+				"4": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "$(local:mode)",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 40,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "if ($(local:mode) == 'Fit') return 0\nif ($(local:mode) == 'Fill') return 1\nif ($(local:mode) == 'Stretch') return 2",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "PrsDVKHnqIE84V_CCnuOc",
+										"definitionId": "send_string",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/mode",
+												"isExpression": false
+											},
+											"string": {
+												"value": "Fit",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						},
+						"1": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "BfUJrz5snd7vtARotjVMA",
+										"definitionId": "send_string",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/mode",
+												"isExpression": false
+											},
+											"string": {
+												"value": "Fill",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						},
+						"2": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "gEjOT3Xtix1N0csx47ZsW",
+										"definitionId": "send_string",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/source/$(page:selected_index)/mode",
+												"isExpression": false
+											},
+											"string": {
+												"value": "Stretch",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "Ex7kpTszsWAyW5naEL9tb",
+							"definitionId": "osc_feedback_value",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/source/$(page:selected_index)/mode",
+									"isExpression": false
+								},
+								"index": {
+									"isExpression": false,
+									"value": 0
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "mode"
+						}
+					]
+				},
+				"5": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Nudge ⬅",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "MFUs-3Kf-DSIHUPsoa4mJ",
+										"definitionId": "send_multiple",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/nudge",
+												"isExpression": false
+											},
+											"arguments": {
+												"value": "-10 0",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				},
+				"6": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Nudge ➡️",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "YdNXgkERPGuROKYwD1NCY",
+										"definitionId": "send_multiple",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/nudge",
+												"isExpression": false
+											},
+											"arguments": {
+												"value": "10 0",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				},
+				"7": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Zoom -",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 35,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "1h7QbBYNSXfA-C30gjaaz",
+										"definitionId": "send_float",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/view/zoom",
+												"isExpression": false
+											},
+											"float": {
+												"value": 0.9,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				}
+			},
+			"2": {
+				"0": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Output $(local:output_protocol) OFF",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [
+						{
+							"id": "pxo27yWfoJejfHm-usdfe",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/output/$(local:output_index)/enabled",
+									"isExpression": false
+								},
+								"arguments": {
+									"isExpression": false,
+									"value": 1
+								},
+								"comparison": {
+									"value": "equal",
+									"isExpression": false
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [
+								{
+									"overrideId": "leC37PXDaoTuN8SeDKfhD",
+									"elementId": "text0",
+									"elementProperty": "text",
+									"override": {
+										"value": "Output $(local:output_protocol) ON",
+										"isExpression": false
+									}
+								},
+								{
+									"overrideId": "TXWdSIxMYT558dWagMz7P",
+									"elementId": "box0",
+									"elementProperty": "color",
+									"override": {
+										"value": 4737096,
+										"isExpression": false
+									}
+								}
+							]
+						}
+					],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "S8L5iys6guwELAY8CWa6g",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/output/$(local:output_index)/enabled",
+												"isExpression": false
+											},
+											"value": {
+												"value": true,
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						},
+						"1": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "VKLx9IH3rNt2YojNmKoeP",
+										"definitionId": "send_boolean",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/output/$(local:output_index)/enabled",
+												"isExpression": false
+											},
+											"value": {
+												"isExpression": false,
+												"value": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": [
+						{
+							"id": "hUQav9Y1hps60D3BPNlTo",
+							"definitionId": "user_value",
+							"connectionId": "internal",
+							"options": {
+								"persist_value": {
+									"isExpression": false,
+									"value": false
+								},
+								"startup_value": {
+									"isExpression": false,
+									"value": "1"
+								}
+							},
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "output_index",
+							"children": {}
+						},
+						{
+							"id": "G3Faw99j_Kadk3wp8Sa4J",
+							"definitionId": "osc_feedback_value",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/output/$(local:output_index)/protocol",
+									"isExpression": false
+								},
+								"index": {
+									"isExpression": false,
+									"value": 0
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [],
+							"variableName": "output_protocol"
+						}
+					]
+				},
+				"1": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Center Canvas",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 35,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "xO38ojoyqrruHgh9GU_CM",
+										"definitionId": "send_blank",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/view/recenter",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				},
+				"2": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "fQMQm_ppMzR_OS1uJIrx7",
+								"name": "Image",
+								"usage": "auto",
+								"type": "image",
+								"pinnedProperties": [
+									"base64Image",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": -5,
+									"isExpression": false
+								},
+								"y": {
+									"value": -5,
+									"isExpression": false
+								},
+								"width": {
+									"value": 110,
+									"isExpression": false
+								},
+								"height": {
+									"value": 110,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"base64Image": {
+									"value": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZAAAAGQCAYAAACAvzbMAAAQAElEQVR4Aez9Cbht2VXfh851blO3Kd3qSypJJRVqkBASpVLfI5CQDAJJASEkvcQP/BHz4fBeeIkdx7Lz/Dm2eXmmVYJ55uGEz3mO/Xj5PofkS/ISC9wIDMhIxjQSyJYEQhICqdpb3a26zcr/N+Yaa80199rt2c3a58xdc8wxxn+MOeacYzZr733OuXUQyqtkoGSgZKBkoGRghQyUB8gKSStNSgZKBkoGSgZCKA+QsgtKBnaVgdJvycCeZ6A8QPZ8AcvwSwZKBkoGdpWBET1Aql3loPRbMlAyUDJQMrBCBkb0AKmXHH5xLxkoGSgZKBnYZQZG9ADZZRpK3yUDJQMlAyUDy2agPECWzVjxLxkoGQglBSUDZKA8QMhCoZKBkoHtZmArP/LcSifbzdvIeisPkJEtSBlOycCxyMBWfuQ5u5PyeDn8TisPkMPncPkIpUXJwBHIwOAFPAiOc7KzHy/jHPPYRlUeIGNbkTKekoE9ycDgBTwI7smEyjCXzkB5gCydsjU12KN3amuacQmzzxnY6/3aG/w+r8Loxl4eILtakvJObVeZ312/+3yP7fV+3evB726/LtDz8ANk5Bt95MNbIO3F5VhmoNxjx3LZj/Kkhx8gI9/oIx/eUd4voUyuZKBkoGTAMzD8AHFr4SUDJQMlAyUDJQNTMlAeIFMSU+CSgc1moHwRu9n8HsXo45tTeYCMb03KiLaWgV1e4kfvi9hdZnNrW2YPOtrmOpQHyB5siDLE1TMw+zAdvUt89UwdvmXJ5uFzuI4I21yH8gBZx4qVGKPNQHKYRjvGMrCSgX3NQHmA7OvKjWDcs9/dpwNc3DNtVeSSgZKBcWegPEDGvT6jHt3i7+4X9xz1hMvgSgZKBnoZWPgB0mtVlJKBkoGSgZKBo5eBJb8sGNcDZMnBH73VKzMqGSgZKBnYYQaW/LJgXA+QJQe/wzSXrksGtpiB0lXJwDgzMK4HyK5yVD757Crzpd+SgZKBPc7Agg+QXd2wW+q3fPLZ4y1chl4yUDKwqwws+ADZ1Q27ln53ldvSb8lAyUDJwB5mYPE37gs+QPYwB2XIi2SAnVIohJKDw+UglNdRysDib9zLA+TorPsql+DRmX2ZyS4zMH3vhakP51Be+5+B8gDZrzWcdVAXncmsGMUWpl54JTeL5SYs+JqVzwVDFLddZ6A8QHa9AsP9Tztcw95hqUsv6DUt/rI4+6dQCPueg2pNe0Jhlt6LtMlp2nhyv53pDHBnnY+oYzb+iIZzLIfCXsypSUTLcvsqOmvttEh7953FF4lTfMJSl+ou8jVrjd22yLjcF76I/zyfkL2G/DOX7aiL/5RgO+PZVS8s9OJ9s3yLexfP6Rkgk065l+MpxyfVXWb9INdTDp5SakNObUMyPtCQ7Yhj1RGf31KfmNgD0Lyc4JPSgR6bB9q4TqnN5Vk2NVWEMEEhe3kseGYqqmdgU8lhAb2P+bw8dufnaNiD9Usp9UrxaTLrlNrQoSEMHMIGPwyd0EAP035P29Z7Ou6lHgyLznH1PVC34xnai2BOPhbX4WDweaQt2pbctzWsIhylNpu6ulmko5SnMc0l3czpuFJ8nsz6QPjBnXLd8ZQPHXwwp9QX2fGUg6eU2oocwlHNQbrmyEPzBE8p9UlxZGzwWVTpkKT2VEdelBSmLWmbFiwCGSA18MMRC3a4CKV1ngFWBkpxdCdwl8l/KrsOn0XpgUSG3B8ZyvVpGLio/dpG8tSLkZiz7MUWpuZuX3Izb42xQ0PzAYdSGzrkGDI0pIPPokqHx+3IEDockrn3lRe6E3bI9WPO1/OZhOQf80SuZfpsTCcP6HrOyTmY81QGGyIOm+MuwyFw+CGppv1JDR4+RNigIdskFvb+Ij2uc2KNoWnzn2Wb1mYanu5dl+EQbeBDVGmfgsMhl52D5aQmVlLcgFKtngESvnrr0tI3Y5qJFHPZOflGTjlySn5whjiYE21cNn7hwoVTT3va0667/fbbz951113nnv3sZ5//6q/+6uuf+9znXnjRi150wwtf+MKbXvKSl9zy6le/+ulvectbvuYd73jH69/1rne989u//du/W/SD7/mO93zwO77jO/7qe97znr/x3ve+90dEf+d973vfP3jf+97/v7z//e//yAc+8IHfEP+34p8X/xPRvaL73v+B999n/P1D/AM92wfeL32mv2J8QD4ey+WZbRJ/tSt9KIfKw/Ca9HMln3tFf9KsKWvLGn+ENX+f1p49IPoR9sR3am98h/bIt3/7e35Q++W73/Wud72TPcReYk+xt9hj7DX2HHuPPcheZE+yN9mjOiy2XxM+sZdlc2yIg6WUnyn0lBSu/WSC7OQ+rhe+ZAZYhCWbFHdlIN94rqec3KIPcTAnDhMyHHLZOVhLHEId1qfq0L7gm77pm176rd/6rW965zvf+a3v/rZ3v1fYv/+mN73pg9/wDd/wY6961at++jWvec1/+7KXveznJf+zu++++19L/jcvfvGLP/Oc5zznEzrQv6LD/D+fO3fu71133XU/Lvqrp06f+vOnT5/+D0+dOvXnTp448WdOnDzx3oOq+lNVFV6rOX9tXdfPEr9Z/Jw470SZXwjZp2H5y+ylb6xxbiBrrErFnSOvGwc0lxMIuPRBFkSeH4nB5SVypWak/yRrKuFmrc+zxL9W+X1tpbU/ceLEe0V/xvaE9sZp7ZHrrjv1V7Vffpy9wx5iLz33uc/5BHuLPcZeY89J/nn2oOSfZk+yN9mj7373t72XPcveZQ8LewF7mr2t8bR7PZH9LDjHx2V4Shq+/fB+iIOlpC6sOGbKEai2NgUSv7XOjkBH+UZLdZfh5DXnYL7xXXYdnhMX9MnXvfnNd+pd3lt4x/ed3/mdf12H8Cf1ju6nbrvttr9z6623/vRTnvKUnzl//vzfPXv92Z8+c+bMf6HD/oMHBwcfEH+n+Ft1CbxC772eo9zfpEvilLgKQxObUewOUqUir/n+6kN+scR7bH4bi61KRQ3n+5c+/Fk93lw1e+wmLehz2HvswWYvsid/kD169uz1P82eZe+yh9nL7Gn2Nnucvc6ef93r3nyn4tg5EM/PB3p+jlyHQyQq52CQQtqOcnlIBys0IwMkd4a5mJoMsMmgRu1tPHDymHKXwX2jI0PoTrl+Qu/Ynv7ud7/7/d/1Xd/1IX218OvPvuOOf6p3eT+rd3w/dPLkye/XYXwvh7I6qF4WQvUCjeSpIYTrxMUmCwPhTb9ZUKpKrlzZlUFDVWsxQVWFvzwlqp4oBjcuCh7CofvwYKF9rb+PNnQrlD6UCkuCqs2vOXuWvfuCSnuZPc3eZo+z19nzz372Hf+UM8BZ4ExwNjTCExnlZwjdCV+XNakAoadc4QwHQ4aQIeRCMzJAMmeYi0kZSDcSMiTYNh35Q4dchufERu7R05/+9NMvf/nLb3vzm9/8fH2U/xZ9z/y3PvC+9330q77qqz559uzZn9KB+vd0D/PJ4VZ1dkF0VkQMMRW7Y1WpSPO3psFGFfRiRGKYFUeSipRKHw/EoqK6tUn2Eu3STFClIm2LfWjwKtZnwxlCO1Ypm5yH9Vv6sDT03nyAbH49TmgPs9fZ87dqzZ/DWeBMPEdn4306I5wVzgxnhzPEWdLQTgxQfg7RmYHzVFZz9RyMQvPC3oiFDWWARA7hBQu2kXwDwaGgF5y8wSHkWdTb2K997Wvv+LZv+7a3if/g8573vP/yjjvu+B/1Uf7vnzhx8nvrqnqe4rdFd30rdwJdupbKDaaLzyTnUro4VXsfCLbS2UxtqjRuKjdmj+1ccBen9KF0dMVz5FyWkislwY4XPCHPkXOZ8lxVOiP6pPK9nBnODmeIs9ScqTvUpHfepM86m9jY4JDLamKDA8tl9EJJBkhaohZRGWDjQBKtuAxPidzllG9e9ANt9pNvf/vbX6F3Tn/jWc961t+//vrrP6QfVv9FvbP6Fm3Vp6uXKthXBpWJqmKRqhLltk5OV9smKEyY/vIgrb8DaiJRRUJaSh9lPeKuiHW6NxLZjbvZV5U2/dNPHBx8C2fp+vPXf4izxRnjrHHmNFLOJ2cwJ/CcKvmnJFU9UEdyW9RKbRkgiSasrdrvQGwSnwFyTuRrHvlmPXnnnXeef9e77FcdP3zzzTd/WO+c/pw2/MtDqJ6mrckPB7t7yu5sKlHTK+eylqyiJiGoTWhfgHLle6VKcp0YpcpNtYqE0gd5qMlEHUqugu2HI7avToaD8LSDEwcv54xx1vRD+A+/613veidnMITAWfNzeSB9HrFjclIzK+AmlCoo7SULnoHKBXGX4RAbDu6EnpNtUH73/a1vfetL3/Oe9/wHr3/D6//x+XPnf/agqu5RTCu111GIXyk1spmo0EUcchwk8pyIhB0yEEGw5PSLI6kyqFaRQAg5ISWETVT6ICckAt6kSWrUmhpdVHJFPkgEfNy5qnTmzp8/97Ovf/3r/zFnkTPJ2dTI7ZyK5+cX3c83PNXlHsDgUCqjj5Y2PVCSNNrJb2lg5BiiO7iRKhXbNM7J1RDZhtTXUqf1ruf1d99991+79dZbf+bUqVN/rQrV19ahPtCRI/Z8qjIXNcyhzqNvkWtnmiX1m9ktkENd875la30s0lF/aOOcR5fI6dJ65zHczzHtQz8/0Xu36ms5i5xJziZnlLOqRNm5FR8602BkbRqpWXs3II+WFjlKhxk8iTpM+31vywbxObgMr5R4cjNEbDxwuNGb3/zm533Lt3zLT124cOHvnTx58ru1a/lhOHE8drDtFpqXWawKPVydhvQllz4koLGnnzgaKPRimatVfbwf0Gx9qGkTgsL1LYFXZw5yCCFWLQu88mZq04cE4CcanAfZlc2KuVoVvKvAqx8wYOtDTZsQZOpbAq/OHOQQQqxaFnjlzdSmDwnATzQ4j84cYvgGaFjg1Q8Y8OtDnXPpI/RfSs2CudIHkup5nE3OKGeVM6tgdn4bzq5Dhw+RemN15B1aHvQCFzuOpTrWX2GlC488i3xD+QY7wQ/p3vjGNz5LH4///B133PGL+u71PSGEW0T4hHSLVUROd7rJVtk759C8zA9Z/iqyWQ3SUNOm0UofSoRSpFJypVT0vqtMtkrZVyE0OeBs3sJZ5cxydjnDnOUQAjbOuXPkSvgsktkKPiYcryr+e/3Ha85xtr7g8JZkcpnN4+QbquUvf/nLn/aWt7zl333m05/+3/AbIGp0QW3bYmfXqgjpo3QUVMu3rSX0SuuntiqyxVpCiO2QIpnFqkZP5Ogb62jt6tKHnjUlV+2GyHeJpcaq6NLuF6nRN9ZSe6X1U1sV2WItYax79wJn9+k6w5xlzrTG2p5xyZx/15EhJj9Ecp+YJtiRJ5Jy5CeZTNAXHwjZOTJEPqBURreNpHcqp/Tx9/XPf+5z+XeAfigcHLy8rvs/46AhQXuUgPFYxdp93Ny8S3K4x9MW7t9zSMDoG2v3MbOgjfehDksfJEHUFKVdUqwlWLH1kFRyRRJEJaLtnAAAEABJREFUTYlZinUDtTfzunPF2T3QGT537twPcaY525xx9due+UZGZ8ngELKTXLohSgEXOx6FZByPmYZ2kYNevsjwnMiJkz045I9+4u1vf/ufvfHGG/9BdeLEn9Lm4x8UlKlfau+GqJjgNUJwSyIEvZpvtuUX38VJEDqr1B7JXeF1bIFoUiugNX1oFhvvQ/2WPpTzRdaj5CrYVrZcRTHwUl5gkZq9K2xT+0pxz3Gmb7zxhn/AGVe/vXMvXSfHvu6HayQ26pTLxTA4hA1+5ImEHPlJaoLpgiLnRB5SajfQ7bfffuZtb3vbPd/1Xd/1/zl16tTf1IPjKYqnQgixplTt/uE0VPqepDE0KhoiPH5XLR8UflwPx2hvsRAAoMYHUVSVPpQFFVJUchV8O5COwMuECinYH3sEvcBKrsIiudKD5CmnTp/+m5x1zjxnP4T2wdHeCQlWSc5JkBVwE45yxaV5lOfH3NKFRIYcZ/4QGDylE9dff/2p173ude+95ZZb/iv94O3tNGrJL/4G4Jw2YmgPb2hePWODxadI96AB1g6GtVT6aFLRJLBhBpZc9feOJYWqSVLDQNp/5t0UVWVfKQmUJkkNAyFXnHXOPGefO0D4tIeH3xfcH3Kzx5TLrsOPLJGAIzs5TSxfTHSIeUPIEDLUbpTnPOc5T9F3ov/Ps2fP/nXFeZE+eWCXGEt2BgXGXUiw+GwwyXZUrIKzsOhriT6CB4+9hoVfpY+FUzXxvsBvcMu5Lb9JcSmiGOXFuyh9jCBXzVl/EWefO4C7QMPi/EPtHSGMVYbAIWQnma2gm3AUKyZ9FOfFnNKFQx4i5t8jfT918o1vfONXvfKVr/yv9U7kexTohjBwDdh9EZqXfUWA3Hxfa/7Rg9ovaWS8jBiNCV5NAPE51JrdXvoIlt/Qe/VzW3LVJcdz0SElV00uJlIzAdzAHcBdwJ2gH7DzT6L07gtFQqfhEMlsBZsJR61i8kdtTswnXTBkI1UqdvvAmXtOJ1739re/5hnPeMaHDk6c+EbztGgcOZpIaZgkM5vafp2CHxZxM1ilB0HkWFpJLugWBMGeMo21YQarMrX0EUqutGlsM1i1N/tK7+hDfGn8JojbFKwa/Tz0EPlG7gR9pfUaDT/9BBLvj2A/J6lkGyLBVrCZcJQqEnCU5sNc0oVCbqnZtujM24kNAZ1817ve9Y6bbrrpx6uqer2+Cz3QziZe802FWqM1rFIURAh4gsxgle69yPHpJDSRA8atavoLofQR+q8mPXFdGqVhJVf9VMUcCbP8WLWzfaWjooFkxYZkVfDP1HhEBKkhB4xbtf151PVBpTuBu4E7QiPjkwh3BuT3CJypDpGaWMFmwlGpmPRRmQvzSBcIOSfmO0H6QdnJd7/73e87d/7ch7RTnh9CRbvQe7VQNNX2L+u5R8RcC6ZaZVCz7U2mipZYo7e0qT7SAWyqj3YSEkof7f2tbFiJqx1rA7wqudqXXFVVdfD88+fOf4i7gjtDSzhxlzQYC52TTFbATTgKFQk4CvNgDunCIOfEXMHgLd16661n3vrWt35APzD7z/Qt0o3xuZDeuE3oGozmcGFyRpOk0mCSKJUF6bDOLwRkMw8dm031QaeBl4RN9UF4o2X7kH+SCzQLowp567lSv7Go95Ir268xH8Hk474edahv5K7gzuDuCMG+vmrvE+mVCB2ek0xWwE3Y94qJ7vscGH+6IMg5MU8weEtsgDe96U3fow3xlxXk9u7Kl9YUGrWfmZOLLug4DfkHe/Ut8dCZoRchIkGRgl7exrkgWVINpKO+pfSRfhHSZSlKJVfdHiYjJVdkIaUlz/nt3BncHdwhitPeKY1MODB4TnKxAm7CPldMcp/Hz9jThUCeRsy1JRb+67/+6/+v11133V9SkNtEuq5V9++a7sInqnmYoPMYHRtNDTspWoAaLLndDWkd5KPSqmakgjBES6MJ6KRoAWqw0oeSEWyFgr2avEguuVISLDNNTuyTVTAk2KvBJZdcKQmWmSYn03N1G3cHdwh3iVq1d0sjE2AaycUKdhN2VR22XyZ92Bhjac9iQIwH7sQce8SC8+7h9OnTPyDn60OFq54JUlwOEQKJZCeLCuqMUZNeIUXXtm42n0UufdjDuCKxJVftFrGkWMX+qVo8atJLrtqcWJqsitlxQ9R2kqvruUO4S7hTNJ7ePdPoGhib3kiQcTDkvScmvM+T8IVwzlyQnZhfj/TDr1NveMMb3qt3Dz8o5+tFut/ZgiZ1cgJhae5/RFHfqO9F1U6wCh2zRYxLb0v7MBHicj9MWLkPj+Nx1UVw2W1gopX7UFsrHhfF5dJHCFpwldB7eX4AXS65CkcsV9dzl3CncLeEMPEzEe6fSriTRCvoCM6R946Y3N4NuhmwJz7lyMzJOXJKJ/TDr/fq+8sPhlDZ11Zh1osojT2e/wRo8JzZ/aBKRab5/hwmOVpZuY953ST2lfuwEc6ojmMfTTpsrVWpCEkSIW2wJC5lPQYz1IH7kavbuFO4WzTw/Fd7/f5hJshwSK7t6XcdbK+ICe3VgJvB5glHn0bMETrxzne+8x1nz5376yFUt7f/ZgStwuTL4HgjBFtmvXWPP3o0Sxh6tRYTVPnXDxKn+pc+lBolqORKeRguyk40mKCq5CrmY6BWdiJqgqrt5ep27hbuGA0gfYhoEPEGEZ7LgtqCrVX2ReBi3ZexDo2TpKfEfNDhLemj5cm3ve1trzl37txf1lc7N9r3TX5xO6cVPTQcWM8MEHOv9FYRzBShrU2yl2iXZoIqFWneJNg2CnqVPuybbGWiyY0SpdLpkpocec4wtzmXUtZDOVIeVAfPkXPgkquglzKhIqHZZ5I2uq/qG7ljuGu4c9Rbewc1Mr2DwVOSeT8Lk9nRyFfulsTTGD5EzKmhyvhLX/rSZ918881/saqq59Ew+EkLySvfaDLpmaGaEj97IDl1NkfgDAcOpTK6qPShJHhJ85PKjb3kqkkELM1PKmMTlVwpCV7S/KRyY99wrrhjuGu4c9Sj3T8ZZ1BDJLehiwl4vMQExzu6yZGReFDnLqMzFziELKpP3HXXXU95xjOe8V9UBwevkzO2EL++asQw4xVdQufvQAgsdaKF+PLdKc0+OkePWAsbKm5s/R2Qs0QVCWkpfZT1iLsi1uneSGQ3ln1lSfF0mJJXblxPrqqDqnoddw53j7oa+jpLdxM3iJFcrLSjMG1PKiayJ0PtJZsxk/CcmE9L58+fP/nKV77yrx6cOHirvroCDxbF7uA6VGqtOvhLqkTVKhK6e6pGoxJhE7HX+NMLiSFQQaF5IcuVz82lj2B5LLnSplAJerF3bM80e4R9Yrrs2LaRq9IHydZiqJBzy/+a1kNhdOUcvJW7hztIXXD3pKTOrceUy60t4K0yZoFJjXl8Q2MjudOI+Rjdeuut1731rW/9rpMnT/473RfuCqfVVW0lfg3VAVFSrYKDMavQGkIXqdi5d176UH4sGeJe0EUqJVdsEEuEpaKpPFHi2EQqZnNOM1ljMbARTbbKgCipVgEwZhVaQ+gilWPRh81TU9/VOT954uS/wx3EXaRh2L3U8Gn3F7hcli8rN1y+q14LJtUDRqp4fpwzTGQn5gGhww/uueeeF507c+775HiDqJSSgZKBY5YBLoOdTrkKN+iH6t/HXaRx2L0kzrBSGR2SyYrLzg2cV/nDcp7fuu1MZN0xNx2PxA4Rc2lJP8j6j6sT4YUbGUwJWjJQMlAysFAGqhdyF8m1vZsaeegOA5N5fwqTGvtoPanwnBi/E7YDvnN897vf/WcPDg6+WR9dsY19fmV8JQMlA0c2A7WuooNv/vZ3f/uf5W7SNLmT7K5qZNfBUpLZfk4CHy0x+NEOTgMjoWK9RILlxDyM3vjGN7767Nmz/wmNCpUMlAzsZwZmfCWzlxO67ux1/wl3kwZv91TD83sMXSYrLjs3cGwVkxnbmKaNh0QOEXMAP7j77rufeuHChT+nAE8RlVIyUDKwpxngQO/P0Bd63D2Fu4k7SvNq7yzJTHWIZBp/YSJjHSVJZWwpz2XGD2ZfXd11111v0+fFN/Z+c4UIPRpa7CGs18h+a6VD5K/S6bk0ZBzCsnY9FykqmUeiDhmHsKQJYs9FigrwMA0Zh7Csdc9FikrmkahDxiEsaYLYc5GiAjxMQ8YhLGvdc5Giknkk6pBxCEuaIPZcpKgAD9OQcQjLWvdcpKhkHok6ZBzCkiaIPRcpKsDDNGQcwrLWPRcpKplHog4Zh7CkCWLPRYoK8DC5kSvIPRxzvePcTdxRA19lEQDCGQ65nHLkUREX8KgGNGUwaUIZsxO4yV/zNV/z9DNnzvy7VVWd43fch5eRfzdXTRJjFJu/NJeCh48hlXtfoknZ1z40dJ+euObdT4cwL8y+b1R6ZFQb1Tyk8UCEUvlwfdDLpvtgxHveh9Kkoons+Tw0g+MyD+4m7ijuKk3b7i1xHbLgMhxdcP8UAYyRGPAYx5UmEXkaMX6jO5/1rO/SE/6lXGQ4c8EF/RTdNqdX3PqaLT58pJBZmknGvYrutVZQh7N2u1qpgVSFrmWTdw0JFxOoWkDpw/JQr5wr5TwmU3FiUVa1CLVyLlst0ezK+8p9eIwYn1phBdb70weDFikLqrtSIyovlWYipkyByEtKI8kiJ1OES5STagFl71oeVt+72kIxmYoTi7IqsFbO497ljnqW7ipZ7d5qeCU+i2RWCOpNEb2vEJtJrNBsXpMVRzM7LEFTYuxGb3jDG77qutOnv18Lf2Drp8OiVTMxPkR0UGqCqzJbXEzVAsFCiP84X5RjG0Uw34iZGPRCEISPPEofykdMh9WkJKZGqTLBYKtKrkqutCu0F5SHoPsQdrzOIPdQfXBadxV3VggTnzwqYU4St1i0LKv0xgW8Srs5bVYcTYxKApHggySQcYuF6ty5cyfvuOOOv6AGF0RWer3jZajdbZIAoofVVrlN5sFCm76haRbBxBxxgChZbVXpw5JFakzwfADEBFltldsaxwlGmz7YNItgYo44QJSstqr0YckiNSZ4PgBigqy2ym2N4wSjTR9smkUwMUccIEpWW3Ws+rjAncXdpQSRDKi90xIM3EmwnrrUIyIGPaLhTB2KJ9G49hucsR+87o2ve9WJEyfePNESD0A5wzqaADrTVGlOmwnzBDA1cmeY02bCPAF0oaZKc9pMmCeAqZE7w5w2E+YJoAs1VZrTZsI8AUyN3BnmtJkwTwBdqKnSnDYT5glgauTOMKfNhHkC6EJNlea0mTBPAFMjd4Y5bSbME0AXaqo0p82EeQKYGrkzxDbcWW/U3SXc7jFxbqycBI+7MPgxjZAEMh74NGLMZrvrrrvOXzh/4V1qcKOoX+I69bGi7XMGythLBo5SBm48r7uLO0yTsvtMvL3bJDuWcsHj+hTCgBnUmClNoMuM+0DJf96pU6fepMGfEJVSMlAyUDKwLxk4wd3FHaYB230m7vdbygWPtzDwsY2O5NlTuWMAABAASURBVPmYkFNivK6fuPHGG99QVdVz3LnwkoGSgZKBfclAVYXncIdpvLwB9nstveMck4sVdBO2Xk3pkMFOMW0dTpOD7MRAXIYz5oOnPe1pZ06fPv2dMoKJlVIyUDJQMrBPGagq7jDuMo3a7jVx7jMnqfaVVao7Bt8+MZKkVwadqKMSfajwCXr5y+/5xoODg8F/bXcbP/4ofSy+V0quSq4Wz8DinkdhX3GH3XPPPd+oWU/ccQ0mZg8R+O4pS/pYHiAkj+TAnXLd8YNz586duP76Cz8ghzh+TYrfKZduBUcEwbD49wcmqXLHxtgwGfg1wrrva2hTydGbgpQ+Sq60JdgKkXxzNGDDzFaHkqs0H/b3QWSmARsGovN37HJ1cOHChR/gTlMCuM+4WnKSyR4ijrsO3ykx4J0OYEbnniznjBWqXvva195dVdU92m1qru3H/5MSL2nxMWCCVWxHzI0S7I9tOewC1VKrQg0FyQqCDQrNy0yq5C+HFhTSyLFHzAbIUPpQEpRKy0dgBaJEjVZypUwoReycQDJKrjwhOmJKBucPEmrliOcqhOoe7rQQNP3Q/nFhFYLpzsO4Xgwr2GDHNa44mkpsGh3ccMMN7+YiMtLmsr1mXIi47iy9yZGAASagliyrnVlBsis8mBQx6bIiAGvdEIXQUjY1k58UyUITWYCMFHCROaGLeJIokEp0k8A4FF5eVcQkWSvFlFmNVCSoSFBBMJKMr2T8JVIUgwELadoTHyp9kBMRWSI32lB1WQ/tFxKhvVSTFEiycsSeIVsSKfIr+4oUkQxyo4SQKKnKkgyqG13ssPtKS8KdJmZvkMWVfE7wBMk0lqK9o6EwYLGdFpLFAOBO6BB6j172spfdfvLkyVdqJbG3pOu4lbWkiZyJRDMoJsCWyPSmMrgWXE+EKX00OXKmFJEky4vJbggxf8FfmdFheFmPkqt2D7AhRLZd6piXWnpSbK+1emZscQltzMan1WWjGFwv2UdNy47amA3e6o2LwfVCfXCncbepJVFyEmwlxQHQ4TujMTxAhiZPYiBscKeDW2+99SVVVT0DQ0p1qsySc8dcb9oOwUNY495nuWOuN95D8BDWuPdZ7pjrjfcQPIQ17n2WO+Z64z0ED2GNe5/ljrneeA/BQ1jj3me5Y6433kPwENa491numOuN9xA8hDXufZY75nrjPQQPYY17n+WOud54D8FDWOPeZ7ljrjfeQ/AQ1rj3We6Y6433EDyERXeuoShZnTvmujnxFqsREpa7cqdxt8mFO5mOnATpGRSMwtheDDYZE2NO1N2IDGKQzp49e1L0Eg3rFtHelXzT7N0EyoCPXwbKjLeVgVu420Qn1eHg/dfgYuMp2QNk61cciSIbcCd0yPWWf9VXfdUNp06dultGkizmZevj9o6X4kxkqQbFuWSgZOC4ZOAkdxt3nCbMVZGTYCspDoAO3wllD5CdjCHvlIRA4HCnA/2g6cYTJ058HYY+4dJHilYyUDKwgQzsx3u1DUx88yG527jj1BP3MpeakyD7CgsdeTTEQEczGA2EBE0lJff58rlDtCfleA6z3DFHeN05nUd4ejue2h3NHUeWZ9GOh9l1P4YHCIliRM6RIfQe6fvBr5cBTKyUsWagLNBYV6aMa+QZqJI7jmOUUjp0cHTnyDuhXT5A0sm7DJ9K+o6Qf3l3MlHress7K84s2+SIpiOz4syyTY84aZkVZ5ZtMtJ0ZFacWbbpEScts+LMsk1Gmo7MijPLNj3ipGVWnFm2yUjTkVlxZtmmR5y0zIozyzYZaToyK84s20DEqdCsOLNsUwMOGGbFmWFr7ripd6B6wiZmX2nBIceQt0q7fIDMmmiaEOTqpS996e0hVM8N9tIKqCAa4695TRAiriIh/vqcy/aHQIaCRzTW0l1QTy4KtUITw0ofpKJLY8mV5aNLCNvFdkr7J0p1VANH3UW83MGwsq8CryOVKxZ2xfOhXDw33nXsGiNBVhTR+KiqMT1ASJATSXLZ+NOf/vQ3kU42Wo2gg4fMAa7r+OdFda3jibcE/+tRueES5BK5bAE/kdv45yTcn46jiwLJAZmGtQKoCWKQqI5qyULqmuaSBamJVMm1FBUxhZCuqBJKH3XJVdm7Og+1DoeKmI6F9CN2PoImxkWgacHqZdZcvnbXBQl9CnrphmlxqbsvY3mAkJg0G+g9OnPmzKvjTqtt57EwEmIbdiGLBkVDxFXrmrcaU3zMSLWCRbEwwIQZs/aS4GKb7oNuRtkHeVFOYpmfqzKPmCnWkmzBPYVxG1GLlCgVOUtWbU9Uc5QeDaBGaZxl924MpZhEWtP5INS2z+Am5mFZscCSxFU0Ncmqx7AedteF9kGR3oMheYEn6m7EjT5AZszQTXCI2cOHCNvBiRMnXoswSM3aD9oScEG3tkXPv6e0LhPCgm4T7QxYsPGCbhZyolqw8YJuE+ENWLDxgm4WcqJasPGCbhPhDViw8YJuFnKiWrDxgm4T4Q1YsPE8t5n2mUYbhVULupnvRLVg4wXdJsIbsGDjBd0s5EQ1p3Fz1/ndPHQnghEWDrkM3yr5IDfS6Zw8LdInyanuueeeO+R8QVRKyUDJwMIZ4Pgs7Fwcx5OBC82dxwJC4xlZNpKNPkCyvmapaZKQnWhT3Xzzzc+TcFpUSslAycDCGVjDW7iF+yqOa8zA6ebO4x4kLNwJHUKH75TG8gAhCSTEqadfd911d1ZVdQqwUMlAyUDJwFHOAHcdd57m6PchXGrv5yLoO6cxPEA8OWkyqgaEVadOnXqOjPv1AGHkGvSuygn9ZPCM6Fx9LZyb4GBDVMsXPOUuC78msnjwBDfMdef4DJHbU+6y/L0P4wm+RB9nNd9Toh0vgS09Y2AsZ238mp9xn5dzx3Pu9pS7LF/LkfMEX6GP88rXubZdEuuQfbAHTyq2/VKBZaRUC2RAV57deWwfiCbOkZ2GMLdthe/yAcLkISYK75E+fKOHm2666eTBwcHtcjoh2p+iCWx7sGd12J//5JPhGx95JPyfHnww/Mf33hv+stFXMu54znM/dKjxu6/hvZiOuZ9zx3Pu9pS7LF/vw3iC9/rMcbUze+T/qeTvvf+B8M0XHw53X7oUbrh6ddtLYX1+nfpmDN97//2BMcW1YIw+fudgQ+T2lLssf8uR8wTX/P/yva47l5/hOY/2D/b8I2bjPWQff159fkB78RsfeTSwN9mjW1+M/evwBHced18zdO7CIcLsOPLWaRcPECa8yETxq5761KfeUB1UNy3S4Pj61OFrn3gi/If33hc++CdfDt/35a+Ed9x3f/i6hy6G5z30iOjhhqbJ2FMb+qLk7Zyn7Yaw1L6MPC9WZ3+h5v3mBx4I/+evfCX8p8oHOflTeqie0QN203uEPujrg3/ylfCX1DdjePMDD4YXPpTOtRtrf31SH5dTX8eG+CJ+i/jksWe1SW0uO49xXqK1eMd9D9ie/KDywR5lr256HfY9flVVN3H3aR52D4ovUvBdxG9tPpMPkLWFXikQCXAiQHXhwoUbD6oDPUDq9lOwpBB/Rx6XBraPyVGXMQoJRpuIS1KJDk1bV3BobLB96IML608/+FD4v3/xj8I9esd9Tg+S0LsomYlPcJqMPbWhL0reznnabghL7cvI82IN2LX+B5cvh7seezx8jx6qf+Er94Zbr1xhlZOO1U4FAHaYNSf2X9A77u/Rw+Ouxx4N9B3/boLoKdGT66nsWMrn2d13Eb9FfDye81ltUpvLzr09XJj2JHuTPcpe/dP6VMLebaywhuSrggI7zHqkC00sYkaSpoIMG2Mf+gRyE3efxsh9KDa+n38wqDE8QNIEMSYnw/XDpHMCzoe6UmG5pYlhFLMnQKWLoq4iAlbzh1MIBiHENhFXnKgGNg4a3ALV0mgru4y2YtZa1Rj7uPnqlfAf6JPGO0TxoaGBMvZCWQaUF11gL374kfDXvvzlcJe+5osXu/A1rLl2TXj2k5ct9ov1EA/6WUI2gKK2GVDOtRbsWfbuzXqgk799PYOaDVeFqNZ9wSxqzVR02H0Vwvnm7lM8habuiJsNzTnyTmgMDxAm7omY4Ppp0oWqqi6wNFqlYP8ciAQ9M3Tng0IKIUDFsMDiBeGso5kkSKfIAURMWCySVUy2ai/6OKNL6nv0Nc2rLl6Mg9esSpmXgTrcqk8jH9SnkRfoIcJ+0S5R/lRQtEEiA4UUT4AKDqLmqovbpN0nX61YxCS2WhymHJ+2Sip7lz185lpMqCBWQHlWQUGTSYlGEik9wlVwEA2vR+OIs3wUIBbJKiZbpbDicvZ4rDiIDJTGeTd9cOdx92kSE3eiMIrjyDujXT9AhpLgmPGTJ0/yB4Q3mrJwmmwbDHpPWPSwccd96YNxvvehh8Kr7N3uxIx8OoVPycCN+uH2v6cfst+mH66TyyluA/BkronxpxWLmAMN9gyanN9GJ6Cbmz38Xv2cxNfB+WL9Th/vhGX/zvmNzd1HKjwtzsGchjC3bZzv6gEyNOkUc1kP4uqssnDdxIYQuJ7SRe6k9UTuonSRO6mzLit9rd7xvuP+B0No3rnpTVQXgg4gEHhOKe6yc3xzGT2n1C+3uY5PSuDocAgZSuVcz23YndwGd8pt6KktkZ+vTyKvfvSxie8G3GURzuF59WOPheeJbA3oLycCgeUcLCXsOeV29NQHHQKDQ7mc6tiHCB+j5tjhgw6HkHNyHO7kPqnucsrxa/U6vEMPYPa0w/D1Ex3GqJ0U9fXVXeROWjn6dbr8uPuaReltVcfS4ENYat+IzBnYSOAFgqYTdhkO0Zz/ucqBPsbdiLIIHQefs3rX9q36oXnQV1i9+bJjIQdT2TF4irvsfMiOLafUL7e5jk9K4OhwCBlK5VzPbdid3AZ3ym3oqS2V9T38n3rk4fAUcdxWoQtXr4Vvfvjh+CCfFoA+seUcLCXsOeV29NQHHQKDQ7mc6tiHCJ+U8EGHQ8g5OQ53cp9Udznl+LmOrL3MnmZvO1x4CNx9Z8+ePVAu2jsxk6Vacbsp26wY3Db7G5roEGZj0s87DvR6qimlsgzceflyeCG/acXB673txQyYEhjkGDKEDndyHe6EDdk58hC53Xnu47jz1J5iLjsf8huyzfPzNs7xRw7h9scvhZfo66yoZXXnlhk69cVPXAq3PXZJQOqMDAmeuz74QbkvmFNqS2W3p9ztcMhtyJDrKU9xZCi1I4M5oUO5DjZEuV+qN7KasafZ2w1SmDLA3ccdKHFaGbo7h7Bp7Q+Nb/sBsuiALQnXXXed/UHNoo323k8HadYcSMqd+vrq3JOX5ZY757pc2gsMGcIHSmR9okEL5otEL/DUD30azfObZXcbsV12DubkmHPHc+5259hddu6YdM39Gx59FGCSPA2Tlhb5hkdoqziGwCFTVKWy1Da/yDnlvqk9taVy6uOy2+FQiqe64/AUR4bAUwJzcjzXHc957pfqjax1OKc3RuztBdKed3BkdT1AbucObHLSsHGGewKxAAAQAElEQVRNd0wPEBLkRJZcvh7lWBAznjHRAx20Z/Lw4GuX5uzZvXQYmf567aWoTMSd8BMw5Ldn2FfrU8hp5VWzWarQ5qv59LJn851Y1zGMn8zr60D2NnsctZBlgLuPPyzwmwHuZA67rnb9ACEZQzkwXE/fSk9hfpA05LMExilZwn0l1833cUqn/86rV1Ya3aEbbX56hx7iKgGu0wP5HA/kqY2HJ04b2k5tVgxLZ4C9fWrpVmmD4bVKPQ4vb6+Pqjo4yx3YjNnuxEZO2TQ89dmYvOsHiE9sKAlV8/0fv8brfgmfvpD8PnfiKHEovOC5ZWt9DI4kn8eBhnNWP3CMXzdJ0QOlyIfMg/IZ/7E/XwLiuQzv9k66HtZGbUv+ydd6iL09+QmE2KzDJKXrEa3dWkV90XqcfVRVuNDcgUMTG8IWnfDa/MbwAPFE5JzfQtAHkIObbXmbrxmQ48Zp/sBHqQCzu1QVclVHG4cbXS6NJbaUEmK4qOMDNSBmEUiMgwQJVKjYZld9WJIYTCGWdz1kq0ookrrYmqsJDQqRsjWR7W1LrKeVwIutB540jacz1pzXfT3nzECX382nTp1K72hPUc6Z+k4oHdxOBpB12ksMT9+qqm7kYmeDSNfOkkRhZ4hjg0g4kMmVDBSR6cZjU9Oxa3fhr4850SDF3MTxkVlMiIoE89l5HySL8cALrTcDtu4ssxKsMnfN19t7iUYGlHcVpV71sushfxUtoIqaK0iwf7oo6NRKn3nOaSgf2kBqAbNAFkM2XAAjN5NVZt9QH9x9uvP8jq5Ikci5xN0XH9wuRjIvEfx/QPDhB0nLjU8LTgMaw7XSkXnd2FETEXVxmmiYAYmaiIvHx3NaQ3ZxIS2rErSWPJDsBUjd9bzW0reCljhxLXvJXUBR6vpeGSDV7wCJfdc5mrfTsyHzzCIlaiJmbeaoEw0joPp6fQJhKNCsIPPss9oeyrbLB8i0gbfJ4OkrWvnnalqAaX2sFW8HvNao04Jta1bT+j+C+CoLWJZhAxth/UldNeKq7daalLo+pfsvvaNX2alrHVIeLB1cbtuUPpSEISzccMMNZzY1iDbuYM+tdSFh7mZbQx/tQOhsVO9YNaBRjkcZW3BcOqRyXq7wNYe9O+31oRg93XOT47nufjlf1C9vNzZ90XnIb1NlnWdw2hg30MeMO3CotyFs2mjXgu/iAcLAhyYKBrX28+fPPwVlo6SzttH4BF9jH2sMxciOMG0jU3kfue7pzfFcd7+cL+qXtxubvsw8lvFdYp4bCtsbwQb6SO7A9G50Oe1+CEvtG5F39QDxyTBpyPWUV+fOnbspBY69rHe3/E4KP8zrv/tVZmSLuHaxyY45d3waX8TPfXKex5xnd/95fm7P/V0/DPfY4qsWy3M6BgWawFK7y+7n3HF4iqUytiFyH+dDPinmfjkf8gFzP+ScUlsqux+Yk2MzuG1q+ZfSZqC5A6fekXKcZpNp82WbD5ClJ3ry5OmbN5+C/eqB+8lGjKCzaLIfPHQnMOSWR09UI1SzSzBulZSmZKqhbZ8yqugnn1bMRmVYI5isSgWkRy0mQcWCGG+8kI2oEqwdeIPBEhfUnktqm5AFqFjf1nCFivZO1hzFhFhlqoGGWSVVXKUdM3KryIwMBqFCqYyOD7xdGxTRhJ8wK40Bf3TnyE6O4dqT3aHh2PAxtRViSlHNbkLEzE9VA0nqcGG4G1aqNgOnT55c5Q5c+q5tO1xS2OYDZNGhtZM/efJgavK032bEa0PM8Jlvmt3H/PaLeKzUhzWiEqm0nzysQwN0MAe4ndABnHbYUuJiSnVkMMhkNTKueHDIbSbn9kY3G20aXczG37Y1QJV8DGtEk4XRPqUeLt9WnyYrhpngImKhNySkkRZheEPyJU5Ogm1uKZ5jjBfCxzmyExhEN2AmS1FBbONHJa57z0+OKq0fNgj/lCO7X2obkt0XG+TtchwbBO7cZEtCHKvjQCab0FaEbpUNCWPu46D/AFnPxbbGPI7xAdJO7+Dg4IZWyYTZmVzPlpjdRzagFdWl++AAGqlDpjlVdvsiXIFUOL+LkxqoTPeXUaWzS1GZ1AWqTOI+bhl7c3R8iOPr+DQZe2MTs34FeVlqPbz91PHJQcX6aLkElT6m3udiclDp2kmZ2m8eD98cG9IX9aNt6jtNxm+IUn+3N5jUtCy1HmnDJeQx9zHrDlxiihtzHcsDxNewx+uqOm/vnJh+s7/4jRmJevcCKDIFFcF+N0ZgVzhjZo1mhUMwRFXjH52kWzEf87JKsRoevWMttC2xuXD8RIwRoxAFtNo4GBeAXFbswyKosgh9boNI8FynYyjHcx2fWeT+zmf5DtloB2HLOVhKbncs1x2Hz7JhdxryU9pYMzGtk9JKMQUVoVlDcCeDrRIiPhR3qM9ZfkP+jsG9bc6xQY4jQ7kOBuV4ruOzDpoWN8dbXalUUTZXPB9aJ2usdbOY4sxDMrCCKrqKFBWp8peKC8x5RGNteFMpjCTh1lixI6BmAiSrBpSPihSVdfRxXtEovbtRgOsSd1fG8gAhA3lCqorfg5alPdxaqoAXiyWupQSxRUIQHPgjc/OXwgJW+CEQB6MAmbTQKrKpD5pajOimWriAUIuPqg/NgSkEDXGCZOthue5tcjzX3W8ad3/n0/ym4bSDsOccLCW3O5brjsNn2bA7DfmBaa2XWXPbh7SbFXfIlrZxe86n+Tiec2/v+DR9Gp63c7/D8mlxc7zVOW2NsuR66FizfDQO9tfhAvb2nJN3zYR5VFXF38GRDSFtyfXWsG3hEA+QzQ+1SV7TkbKqEiAQdofJVoEY+RaMijT8oqInhgTTaaM1EFMR6EWaypj70Iw0Dw2SeRRaTy5YcKXUdoHlFMkBZHWDTxSlyGZ+e8IZ+z6MV/nVqVR+JSi1qiVLUJFgqld2DlpFGvMzXc4q8WmCoIhiKmaNlTQV0mI6bdFbwFBpBjbKbvro34FxKGOqd/kA0crOToW+/7tutsdhrMnmOEyYmW030YdiqtgBabkElYhJ8ANhHF2DFIt2ZClmQ4aG9Gk4vtigXHYdDuHj5Lpzx+FgkMspR3bCB0KHQ9NkbJDbnYNBrouvUBRBd5pqlZhXCSq6dRpcisqwTR1O2ARMrIn7wbHDoVR23THn4A1da7hM/fEIUOlj+Aq0scBzHQxy3HmKuYwNSnWX4RB2SDLMEihhbSXGXVu4wUCb62PBO3DuXTo47DWAu3yA+PDzybe6nr7+/Z/7HnOujaqiG6rJgymTssFWRRuXgR9MkyMc4yR+5uO6c/nSBpIYCzYIDQ4hQ7mMDqU29IQQMVv/CA7AU8IGgcGhaTI2yO3OwSDXnYOtQml7ZKiJ4zkziEqkMpz3pg058HbILWGnMRRCF8N1tzsHHyLsELaUu+w4uqgdi2RKa3bBec+o4YE7yWZx0F0WtwIGSTEf8VLaDGR3YHs3Ng653sDbY7t+gMxMgJK3+b9E316u19cTB20Wcemk9lRP5dRnlkwbaJZPYuNnUN27Wl0OiW0QXyL2YPt58efYNcLV1mZOXN2iKkQXue8ic13Ex+NtmudjyfVp/ed+qZ7KaXtWQamCFYoZOKiqeXfgzDs0RtlcvesHyLSZWVL08W3K/0xqWrMjjnO47MBpnq0sQYUzGUmK+TjH12U4OjQkgznhA7me8hzv6/EH/am/y+7n3HHnjud8yD7Nx32dD/mBQY2PxKWLmsaHmVr28i1Dq6e2aTL+s2zYnfBzcizl2FxPZcdS7nbnqS2V3e7cbUM6GOQ+znMMHcLuHFkktZQuA9XBgd+Bdid2lnFIY3uApEmqqrry5K03W/serXdBaTKtrgOoEh8k4JAAlQ6TYv5uQ3cZ7gQOuZ7yHJ+ne9voFz+hOJbyaO9fzNPsuW/ql8pDfmBQ4idx6aIQ3VjV2vSUC1CJuZegMinjL4PKsA27k5xs7eCOpTzFUzn1cdntzh3Pududu31IB4Pcx3mOoUPYnUsuZSIDdWV3YO9enHDaITCWBwgJgnqpqKt63se3nv+xUNoLhIO3n8SvTseLdyTjX3XjHIG1GNU6kM9V1+KIttNZGboDuSuhnc96LA+QwUToZyBr+CE6l9Rg+DWCW+rDR8xBKxR/vrBQHpS4WX721l8+SxXWvNAKD6Dp67ZU/nNn1iLH1q1vv4/13IHrzkMXb1cPkIWenvqqw/5/IFq2bsSNNIQ1JrsOOru6Uul094rccecRjfUQFi06AxI6uzpQ6XQZkzINx2WerbOrA28A6JRiLjvHBxnKZfSccj/Xp/k5PuQHBuEDd0JPCRwdnhO4EzZkeEpgQ+Q+2GxHCEDOSXBaMKd6KmODWgwlpdaQCakPspsbmWebQegpGagKTMyn0ePYoNSODIGnBDZEqU8q44sOh5CHKLW57Bx/ZCiX0XuEgmNHk0jf1tl1PlQ6vfNDctw5mNMQlto6uzpQ6XT3itxx5xGN9RAWLbPvEr8D3XcG18hmWDdk2tUDZNZ00kScVgKVYaVfp6zWyRFrdQlCqAmHFVm+oHKkraGC9FFQRtPsTZOUhkuSrynieIgBRlIsNVd9+D4YD/2s3AdDsJH4iMTjYGVJ5BxzHQ7lMVx3G9zJbSnHNkvHhg+Uyq6DOTkGz8l94NicIzuBDVFqT+XcVzZljmWJ6y1dQuvVyeYlVasnHzQpMe/uLdwC5dztzt2OLrn9J/rRU5LN4oEhD3EwKLUjQ+ApgQ1R6pPK+KLDIeQhSm0uO8cfGcpl9B4pnSrKcDNtZblpJ8k8yXmUY40j54o2OIzhnDMmiDHF4WusUWCIRovOQ+k4LfKS3o2O7ZSP8QGSJuSEKUqbloCcS2VZQqjAALUwbBox2QWoVKLgL8m0EIsLFx1ZX3kINV0i8cQaJ2Pj6yMEGy5VoWa9mzU8TD5Yd624Ii2+r2hzmD5L24n1s5RYXmO11HrI+eicc2ai9JCGEOIdGOXR1WN9gFRNpiLX5mj0lrHZXMnNue5+M/lAo/H1wSBFKvYENK5ZMVCTVakM23I/Oaro3tROlaAS5dQPGZJRJcaVoBJ9JahEeZ6fHFU6X/yHSE4qw34yqESbhN680YnnHNmpw3i3Gtu7reFiFELCIbWCtdTTUXA2LpcJWQaV2JcElWFZBpVhWxpXTipxDcBzklGls0tRiXFTX4EqEZegMltO2+ayGqv02wtQ6cZBGwEqk34CVVo8CmrQFdLqGq4uw3MdbC4NNBp5H/EODMF5GNNLD5CtjmuosyFsTDkaz1jY/EaqVOIhlaASZQ2V09DqElSiTYJKlPGDBEz4g6W2VAeHwKBUTnVwCAxChpDn0Sy/aOs/BIgHDrkMT8lttf1jmzEHdfPgFJd5pUJTy58ElS6uok3oAswXWyrnemLjQpUa47qfcxksnnPHc+52525HX0TGbxoNtXfMOW2HZDAIO4QsGnUZ3eCG7s4hbGMD1wNEi7ex8EsHTiefyksHOpINLCNar97FManHC3YSxFHwZAAAEABJREFUjxfR/uN8ZbnWuXBRL71htpDHa1voY85eWmue5/RlX9xoyksvxdFvYCe/mWYqN9DumB4gu+u89LxkBnS4OIPzDvXEBcsFScNR0LXunf+2xjNv/ksuQ+u+rfF7P/Pm4X57y9vMFmFPMnA8HiCjemYfdmfoKZJeJMjQIpdG6ueyc2+PDpnOWLP+erjspjc+3m6Cyy/U8cFhovytnRTjrot7W3CXnc/CUp/UD9nfyeMDgaVcw1ipEKdHRGnm0IvfYO5rbg2W+7U+2OWY6kMybo7DPV4qG9bEMlmNcrvjKXcZXyfHnIMjQ8g5OZ7z3A8dHw3zyJUjdf/0V+d4PEB0XvrT3mONuUA+BWTI9SHuduf4uOwcDEKHkDnQ+sAAM7Wt5KBin4QcM71RkBFbLkEFKBDPBCoHkRtKIZed4+JyGgcMwu6U6+BgkMspR16GPE6vjUAVyxccG9wJHbLLUkKKp7JMMQYgiggxJUGxAEbJ6lR12bhVeoibV6waKPYVIZMRsUHIKTnmHBsyhJyT4znP/dDdB/ko0VGdl9Zorx4gi65D6pfKmu/csqh/6pfKczuQw6L+qV8nS+ICWhf5u/Np8bhRptlm4dPi5vGm+eWxcz/i5BhtFsXwbUmLskBR5lsvk9v20rYlM+9t9bWtfnzNmJsyrGyqnl9Sv1Se37L/HJ3ln8ZN5Vlt3Laof+qXyh5nLXxDQfbqAZJ/EpyW7NQvlcnhtDbYoEX9U79UJsYm++BM2zt/hHUQh3YdcfIYi8Y9jN9Q20WxdLwsWkLT1i9dZ5PTGEXWrazMrZKHZs1oyjJYbhEaUtRG6rPUL5XxmtYGG7Sof+qXysQYQx+MY5c08gdIt0RI7W8XNRmzPxi0XVfrTjUPsyAhwGXRxm40ANusQKbI4BxMRDxIFsqo+mBANn6NmTEWYsEOTXGPKKeW39D9qq9ybXtOPOjlHvC2TVmDQ+dfhzfGUJ4tt55T5ZwyqjPIADVOigbdFAM1VOcGa1rSmYsslJXnQeOR0qgfIHVddYtQazEq6Uokhxq11orIxVarCrLJBVv7W0jyZaE57LUcZTZf2qmpTLKA17I4jbwPDVpzSMbr495brkVaaOyL+q2QG0JDGodKYH9oWyjPQbuKfSVRht6+CnoJ0wbFuCXaRZ8r5HPlvGh+Qf2N/AzW2hwapdZcRReJika9ubuErIyVRv0A0fJY3myxkOpWCvY2EVVU65hr+YK/agmQHW7JsYBA0sRUmvAmaQMIp4y9D8bHkFuuQZsOl6Bik5nL5aAy31dOKvP96H8VUnCVLr4UlUldoEofF6ASMQkqUc7HIYPKsE2+aYm3ge2Net6+qtWwJQkqU/tobRJU5vulsZHVaHDNsUHY4fMo9ZsmD8VIfd2+KOb+s7mdYYXsndtl1kPhbeEsuVIUSyVCDWa6THvVB+MdKY38ATIja+1OwKenAKyHemF7ynriE6UXtqdg7ZPM8ZCZoIMBT0nudsmk2DR5Ud9F/ab1syye95frHg8cSnWXc5765TZ02b1IdVEJ7sRcwq+Xazn0dDkM6ov65e3ntZtn93ip3zTZfVOe+jq+KOb+87ji5UVNOqindPBhpV7YnnLYyF37Xtie0vnsobSNB0gvLVVPK8rSGWDvDV5MMhRcd/4KeVh6EZoGJd+r5Xta3ppPCU12C9uDDGz9AaLjPcq0jHVcg8madgALvtqFNpjkBcCS79XyPStvC6S9uIwnA1t/gIxn6v2R7M0no1mHr9hWu9BWeuertxz7kO+9GmP/TI5G01JrY41mOGMaSHmAjGk1FhhL9zMQ7eq9uhxGPN4F8p67aDa6U1SXNVhbHpTNPM3j0O3dpVXjGM8So9j0qPf2AbKNzTbKPhhUubSWvLR04mbmTPamkN5GnM9mxlSkYl9ynXh7pLwlme9riWGN4lHpYyglm57b/jxAskwMP1mjE9twKJlzsdi8datCKyZCdNpFH/Rs/Zqgqr2gNDyTnae2VHa7c2yp7LpjcMhxuBM45Po0jg/k9lR2DA4OIU+j3D5PnxYHvGsrTUosC+8rGlnOJUxwxWqxaTLtUhu6U467nnP3h2ODXIYPkftgS2V0KMdcd44PNE3PcXxTcrtzbFFmb+f5z3V5qqiN1ZFLXK5kzfa2j+VmvRHv0T9A2rWu2F56QzOYhuhVB98Kzof96yZGzvnbEjCocUlYROud9lHHCdnlpKFJta/vW12ASsRSu8syqtjvwBsHl6DStZHSi4c+zw/7NKI95PZUdgwODiFPo9w+T/c4uR94gqGKJot8BNYDay64WQtJdU4CVGJOJahMyrSRQSXa0J0EqnS4FJVu3aSodHbaCeitG9gQ4ed4Kk/D3Mf5sn7u79zjOAfvZEnttGTJClbS7ufbOVjmKjV6dzbXx3/ONfg9KaN+gHAeODT8dXmotVkAtAtMD3qgSEeudcAl2k5B79poFWRQEdT4q50U6sbffWrp4+6jN+g4KY2ZcRdiTVcmbQFya3tHAtxo1r6S38r9lbWb2LfkW6AyrsWw/ITgGNxIVkwx9XHPg6OzFtjQjQAFyIuwmMXjHRD27S5RSsZaRv0A0Yorb7rUVWvpQ6iQtSXEtDdC+zJFeIBkbAy0MU2fXhoohkQZaIP/uPvQwJkiYy+ktVQy1pEH2zeKpc1COGU5FlOEm13GiEoDk4K90FrWIf4zMTHUuM9gs/Zafm0E6mbQ4FDcJ2u/S2JPo6tH/gAhXywKXMRhFWsXDnmCEn/ZTLNKytSSOIy+D42VMRaKB3cteWg2hlLbSAMsM6KupW8F2rM4vMO3t/RrHrddumSeuMapppHylphMsyoBJcbrXIKVxGGNfVjottpGH21nOxf24AGy8xyNagC276kg//8oIOd0nPVl87LqCh/THMdPC7oo1z7/VRdiejuNcrqxWA6dgfIAOXQKtx1AR8IPLh/FXF720pzmn+LI0CJ9pH7u73yWzX2GuLdznvtMw3O/OboyutoiTuvfcTjk/aeyY3DHnYM5pVgqu30WT/1TedE2+KXtUhlbStigFJsnD/mvthKl1Y4yUB4gh0l8//PxYSIt3JYzaV8fcPgggJzAnXJbqrsP3PH0oYQMpbbU13Ew90N23Hluw8fJfVKODd3bOQdLKcfzdqkvMvachFfEWXgFoqM9dNQ2eDyX4cRz7rLr+CPnBO6+yNjhjqEjgyHnHCwl7Pg7lsqO5Txvgz1th4wPhA0OIWODO4E7OTbE3QceU3sU6mMzh/IAOcxS2y1ymADLtlWHHEIOGxxChnIZHcKWkmPwlPBBh8+iIZ8US2WP41jKkSH3gaM7oS9LtPU2LjsHR85JuLK67ELIX63SWIrTe7CjDxFtchwMctxl5+AuT+P4QLkdbFHytu6f6+BgUCqnOjgE5oSeEjg6PCH72YoyW8r+ZKA8QPZnrbqRJofOLq1l9Pzgpu8cc9u0uGmbKT52GbhtKO5QDPwgbwcf8gPPaZrfIvG6zC4n5WOYpefjy/VZbbEtMo8hP7Bl+/I2eZ/gQ7Son7fN/X18yr4ey6pL2ZcM7NEDZD1ba3aU2dZFF3V2lNnWWX1YSz+Es7gfyFk+2PDLDzP4PFqgzcwftM7pt30oLurHePMx5To+0CA+K+tTbHExFvtNsKF5DI5DQRnjNCKO25Zpv4zvKvG9TcrTsaZ4LuOXjG+VrxOHVkiZHIIbbLa1cZrLZkeZbZ0bvHFYT5Qm2AbYHj1A1vMDh9lRZlsXzf/sKLOt8/qwDUVlB1HeE1xYeyAlm10NVOLFDNbQtYa3PnJS4Uz3fQWqREyC+adtUzm3D9hsfOC5L7rj4oN+7iO7xMkxCVTp8NQPWUaVnl3wSmVwfIrUxm9k8xOo0vUrRSXqjd+gntjaOHJs1wA58ZHaxZRifinHFx0OuQxPKbWlMj7okMs5l60dq+R2DC7DG0r2oKLY1pPl0GX2KZttXbTz2VFmW9fTx6JRNue3Rw8QksAW05s+RG21qJnSVBGJNVBf6jRs0CTSRY/2SY+IxDr6UENgEHJHk8jKfRBq8DDKQOnZNALT4RAOzpFTAndyHD2XwZxyG7rb4OgpgaWEzXVkCH0az234QeBOrjsHR4ZcTnkji1HkJdb+NYJkL27p69qCWkrZVDpZSpv3VFbbFkeGsDtHhnIdzAlbSuDo8JQcg+eEHxgcchmeUmpzWbe9xPiAkqASZdpJUYm6BJUuJ9ghgSqdjxTLCTyxW0OlVhC1rCZ1VURiDdqXOg0bNIkQt7MsseZqRDRIYlImkfX3kXS3MXG5wKN+gNje0mbi+3SIqYEJUqkCX5Ogm02CinAWUhtCior2KnIIVeAlm0CVFjeZVhIsjtwk2trXajWmPjS0WBjgAFU1B7zW2AtpgZM8zMmLrb9SS9oWXHN5J/FpOIXad+JT7APr2B/7mNpp1nPHOyfXs9orvBfctCwq1bE758y9skQ0a2/yOKtRP0Aq/gkS5dBTR2J1aqUKlKLaZP6FE5PJOgL/1o0sXvhe1R4O2AxshbBPfcSha+ya+/AlI4+ptlntjrptdl40exwiKX+uz9pXeluirShP+Q+vRWPTFTjTPq/93tlJYzP3JcduZ7RpruQiiVmmTZ61HnIIR+WcT86D2e2SuFiH+x/1A4T9NzzsPtr6ad9GSyuYmmqpjLFtizKDWr82QCtYq1RLZYxtW5QZ1Pq1AVqhbRUR6kK6XZSXNeSBEIqUl1nrwXubgf4VgmCFVsuN0jejzFoPmpF1OJTKpucA4ACNvY+BIW8Bmp68UT9AtpCZ/evCdjgLWmi1S2oob8tvA6Ksr3+iFbJPassvxV63YNX3eQLlAbJXq+fbDV5ofRf4qpugrMH61kC5VFl1Jfa13fQvh4ZmtJz3UIR1Y6N6gKx7ckcvnr4dLZ9AtKzcNOsmhV26rHsMxzte/GkHOVh6IY5Jg/HlJj5A1vJgW0uQY7IRVpumHTDbQ1SF1vfud7X1WF//ZS1jLr1edT1Ku21nID5A2L+H7nktQQ49iqMe4LJNkFwXitfNYfNQhWth+Tc/12wdaHfY/sfSfvfjuMyna4ZhuS3VPmQgPkDGOtK1bSYP5DyZ8ACUWJcQPZDzpOkAhHUKjGmQruii+/LBSdloWWgdD5CLp86GSydPKKfLFdrQdh1jWD0GY970PthGH3EO7O0r/K4uXa5ExKGhc+SGBqDGsiTzQM6T5gNQYl1C9EDOl2i6ZddxP0D0Bm96CjuLSVb5UWwUkmmiAiHrAjaWVjKZS4q1cmcxyar19aGu1VMT1KVGhdlXVsKtCOBwfe7681JnLZsc5dEV1527Jddn4dN8vU3K8YVSDHkIA59GQ/5DWNp+nj31jfLv33ZjuHQifYB0MUyyanLNafP7t98Yg8ytmyBz/dxhmn+Op3oqEyfXwaAhfAjDF5plwz5EeRvXnXubVD8Inzt/fWCPuzXyzsckqybXgz+3Ce35jicrpC9BTdMUbeTOYpJVI+2jGRHa2oMAABAASURBVPFY2KybaPdj5COtdoatp2QVaSyskLoK/odHEoJUGcBr20ZmU4M6/sJ+axOkeelqrmGqDJAu1eIASTZEQS1OABSiTYgPFEXHa7VQIZZIBQW3tl8JRBFTHJpFD+k+D0DZYmDh9cQ8ar07++KF68MDetcsB4swyQVbT7UESMx052BQroNBQ/gQhu8Q4QvltiEs90n1If8hbF6b1D4pf/Spt9pXWNGiul5sPa5pnT56+60akNpYfmdxuc31SdtP85+G0za35To+0BA+hOG7KuXxXHfucTv9gdNnwxdvuD5mSWYVyaoXXI+jdM7Jil0eukhUTB1rNeoHiLZPcz/qYlUGdbQbHWZW5VlcF6sEbTidavnV2nRi0lVL5iEgr6jrgRLtMSa4GeqoD/ehOCPp4/Pnz4c/vP6cBsTIC7ETVqWHrrs+/Nrtt+lBrTyqsA/iLlBE9DlrTltiyLusB8k7BP3h+XOBvW1pJw6CaJn1OErnXFMnCyHovgojfo36AZLnjaTGw5pZdPlHJHr0fRyLHkEPlL69wRsWvWPdQJGNpI+Lp0+Fjzzv2aEO6dcucYilXiYDVfjHz35muHj6tHJJu+XXnLbECHoEhX16xfdZoxkxe/kjz3+21uKUjSmuRKwN8GraGTR75r/n59ymRGXzQBgn7dUDZD0pzDbaeoJmUTbXB5F/We+af+VpT8/6LOoyGfj9czeGf/GMO8JlPmUs0zDxpe2/eMbTArESePwim2hEo/yVO54efvm225oH+boGto1JHpU+Vs/5MXyArJ6ssbTkB7h/9+4XhU/fdNtYhrRX47gcDsI/fMkL9FUgv5BwuKH/4fXXWyxiHi7S8WzNHv6vv+5F2S8yHM9c7OOsywNkH1dNY77/uuvCT9zzdeH3z98k7TDleLW9rK+b/vYrXh7+5VNvD1cP8enDs0YMYhGT2I4XPj8D7N2fuOcl4T7t5fnexWOMGSgPkDGuyoJj+sL5c+EnX3l3+NjNTwtX1WYbH6jVzd6Wz153Q/jhV706/LOn37HWr0vI+z99+tMsNn3sbYK2NHD26sdufmr429q7Xzh/+E+BWxr24t2M7GdMiw98ec/yAFk+Z6NpUesd9KcvXAg/9YqvCz/9tS8N//b6m0cztjEN5IGDs+H/97wXhA+99mXhY09d93ftPtPKYtMHfdGnWw7Hj9Zt9G+0R9mrP/WKu8O/1d5lDx8uPyNszTuKBYe1727lAbLvK6jx33fmTPjHz7kz/PXXvyr8P175qvCRO58dvlSdD1dkO67lgXAq/Kvb7gg//XV3h//orW8MP/fC54c/uPCUwFdOm8oJsemDvuiTvv/VrXcExrJ6n/t9G7EH2Yu/pD3J3mSPslfZs6vnpLQcSwb25wGSnKNWTIT2N/zmZLZtMuSXGFsxEcbcB+/kLl53OvzaHU8LP/rSu8P/5VveHP7M294evuet3xT+jAgOpfIsve/31l4M2uWU+qcyfrkOtgqlcVKZWKn+3d/0tvD93/zW8J+/5hXhf73r2YHL6srBlK3erm/yy90tVvPnRUM7ZQJrm8hCX/froU7f//lrX2FjYUyME0rHmsq5DX1VSuOmMvFcdw42jdzHeeqXYqmMj+vsQfbij9xzt+1N9ug1fXIO015JIlsxEcZ8BntTase8vn3Viz8SZcqpGsnoWAQo6CDrk7yJkq2gVMLFVfSjUeqo+6kHYSZCG6hBxMBsaSUTD7k+Qn08eeJEeOjM6XDf2bPhXtH9585EWfz+s2eC6/eZfDbcd+6ssLPhXtnvk/99cDCTz8p+Jtwv2aix3YcdWfgyfdzXtLExEEPtwdAtvnTk+2SDTBY20YeN/YzN6z6Tz2qcZ8MDkh87ddL+wjzExTW2izVnTz126pRyd0b5PWNjXXQe99v8Y5v7yZl08nOfZHRkI+n3yQaB37dgru5Vm/tF99Febe6HSycmmOngIvT7ZIMcX2QeD565LlzWXiT38fLnwOlUioEF1kcyDJl8oSKDWZvjfs6VrrGWQz5AdONueGZsMttE7CoJKupRim0q9S9uG615hLDx2ITxiaHWNJC74XDp9s8eyEmiYpnF3aXQBljOil3Lz/4aVGpd+lCqm/zUylHdyELJUV1ypf1Txb1EepSX2vKEUnKl5MTcKCnlDGqfaFtYTnSNNYkR04ZRMRyuXJnbSKtDPkCY4eZmpiPXBo/pJtMNZF2rUomIBBVk3fs6uoE7LdgraaZnAGsjuG7EWnIspQ/loeRKSdCeUJGgIkFFgu0nRPYXum0gE1SRN4zaeVE0RYYgN2TQEF+o8qO0gGGh9GFJKbkK/kpS4dBIuA3jkA8Qi7GVKp6vWM/r0L2c2570Ri3YPEccF4+mWEudWdzLeeljero8R85LrkquPAPtnmiAqMe6gaYy93J+1PfV1ETs0LA3D5Ad5qh0XTJQMlAyUDIwkIHyABlIyv5C7Xux/Z3CMRl5mWbJwFHIQHmAHIVVbOcw8i9M23EWoWSgZOAoZKA8QI7CKpY5lAyUDJQM7CAD+/kA2Uiiytc/G0lrCVoyUDJwZDMw7geI3elWzVgA2VU6BykqnZ5LmdFUqllf/8iu0kWSotLpuZQZTbUqd0x02VU6QIpKp+dSZjTVqtwx0WVX6QApKp2eS5nRVKtyx0SXXaUDpKh0ei5lRlOtyh0TXXaVDpCi0um5lBlNtSp3THTZVTpAikqn51JmNNWq3DHRZVfpACkqnZ5LmdFUq3LHRJddpQOkqHR6LmVGU63KHRNddpUOkKLS6bmUGU21KndMdNlVOkCKSqfnUmY01arcMdFlV+kAKSqdnkuZ0VSrcsdEl12lA6SodHouzTTmzlvXR/0A4e/SQvNb9PyKXvp3IZ1chegXmlfUY9pjjSFKtNKDIir2e7yxrdo0TnggQp0su5qBRYp6DBNr8CjRSs5ROdJ92OSYuIhZi6nE3EhoStQtHckfRZkeaHU8csVMm4TYrKMccxNl6qh7bkAg12udBTUGstTvaO/G/lV3c4rjFtSUqNemxRoxSrQqa04+Ii2Qq+g4ynrUDxBOCdsNHkm1dmGti0hbMIiJ6lBJABPT+ZKuWgY5U2oq8wFmFSymnGWRiobkJHeJxCt9KBckbUqulKaYZtkXylWTbUKyZnBBYoqkGKqllvWISfXch7J3tTHsPLJHjGJudPVKwCimXUQ5ivuKsxVG+hr3A0R7g00BIcLZKuRS+0jM0AhLMxsQJN2YqvRKssPZ2OIGbBTza+Qm4j73cfrKtXDDpUvhlsceDzc/+rj4Y6LHw83SwW55TLrwaGtwdOH4QLc8Kh/5myz8FtmdDEMHxyeVpd9ipPbCt93HTY9dCmcuX9Zi2o5QVbfyttf8QF2fuXwlMKZbRpgr1vNmjetmrRd0y5rX/MKlJwJ78TiewXiNaANo9x3mLokRFGSEZdwPkBUTNjvh3fN8tt/szme3nd7H7Kh96zJ9HGiHXnjiyfDqL/5R+I8++vHw4////zX8zC98OPzsP/nFY0f/zS/+QvjJ//1/C//Zh/9F+ObP/L4empfCqWvXLLmzc2ouU6vZbbs1P1lfsz7p+69oDIyFMR3HtWAP/oT2Invy1V/8UrjwxBOBh6oneXZO3WuYz27brcdsv+HYjs5uu90+fExj4kfyATI7wbO3xOy2i1q328ct+qTxlt/9TPjghz8S/uJv/Kvw5q98KdypoZ4RHcdyQpO+TfSKJx4I3/+7nwg//E9+IXznb30y3PXgQ+GEHrQybaDUFps+vvM3P2l90jdjYCyMaQOdjj4ke/CZGiV78i/+xse1R38pvPV3Px3Ys4I3WLZ7Bjc3kW3MY/XRH8MHyOrJWnvL7g3MSqH5OuZ5Dz4Yvu+X/mX49z/7e+FF4VI4uVKkwzfaxjbP+8j1abPgAv+OL/xB+IFf/pXw8j/6Ej+Knua6Ms5SEps+6Is+Vw42peGi853SfOcwe5M9+r3aq+xZ9q79zCIdGYlM9bXKJdi6M1AeIOvO6DLxDnkjPPPiI+H7f/mj4VVPXAzXqV/CrUJqal/XrtLW26wjhseaxvM+cn1aO3Aur+eHq+H/pk9oX/+Hn1/rQ4Q7j5jEpg/6os910zLzndX3uuLM6mOWjb3KnmXvPvPhRxhORzTstCKNPAPlATLyBZo2vJsfvxR+4F/8y/C8cPnQl+FxOrPnlNDv+63fDK/8wh/ZV05SD1X4SoxYxCT2oYJtqfEY1puHLnuXPXzz449vaealm3VnoDxA1p3RLcQ7c+VK+O5f/Vh4wdWtHrwtzGw7XXDRv/df/0Z45gMXD93hnQ9eDMQi5qGDHcMA7OHv/tWPB/b0MZz+3k/5SD5AZr3DmmVbZjVnxZllW0cfr/38H4XXPPbgoT95LDOWo+Z7l760e90f/GE42fx21iLzy9eVtq/9/T8MxArltVIG+CTCXmZPLxsgX4+0/Sxb6jdPnhVnlm1e3NQ+K84sWxpjV/KoHyBp8vz3yLtEpdb2V/3NzKZEcA/nYO0P7RqwYZh0pdCLiU2VWqf00XSWeq69j2Q0/F79Gz7xqXBaGH1CEjV2ao1RLMWQIcHmg5xSjue6++Z4rrufc7c7d3wZPq/tovbUz2V+TvGWP/pceIq+CmRM4JEyLVGbpbY84ktbYhALt5SwR51fdejWJWKd3vl12DSfeb5ud57HcX3I7phzfJEh5Hnkfs6H/LFBuY29zJ5mb3MCseMXKdMSNV+PxBT/+JIADdgwEK0fvZjYVKlV65Coo+mjGenY2KgfIBw9/gI1/vGflrLWwotSPcpa8UqkrYGOi7aBSvQ3E5mXi/3zDzgIlKp38dGHdkEaPO8TTMFkpoVI7VWCYddie4WTroJZQ7U2AqUqavQxTBp8qT7UGf48mJ6pr0yeGZ5QR12hDzTnuTykg0FpmyEdDFrUD1/I/Z2DLUvz2i5qT/1S+VYN6NV/9CUt4+T6sEYyBN1EwbitgcR2j9WBtsQAzanrp5NyH/TZVjysdxPm+brduTUaqIbsjjmnGTKEPI/cz/mQPzZoyMaeZm9XHFDLtTzFQ3NeFlmPSk0CL3HCWBuBUhVlco05U+Yjq3HrT95qY1mXrqKIwiTgbyYhtg02ds7pQES39CFxrGXUDxCtmeVNedR6Wt3q2g6sYSRMIvzF5CNrFCSrqbxYfKEo0sTYYWqg0viIuYJoZC0afwPiPpOoCCabqArPTfehbsId9z4QbkYotJYMvOJTf8j1YbHYMraO0ky2SistrmKobxHONW0FlrKGDLCn2dvKdhuNnC+6HjQyXy0QnENr7ffwnDP+9C5hbmOlUT9A2pOdZY/DywZJYcNSYJrcOrK95NTqkpNicOPisGGuzOKtYxOg1fuNDG5c3GKYKxnnO/c7H74YTmV4UedlYLr92eHR9p89sdwvuB78Uym0nR65WJbJAHuavc0e93bLrIe3abk1RmsWdMpNZ26NC96QYQjzqHVsArR6v6HBjYtbDHNlFl+3G3XJAAAQAElEQVTYcVaQzdmmpHVzHS4VuU16K1jzvmZQ/jyJ4FCdN871ps0QPIQ17n2WO+Z64z0ED2GNezipd1e3XbnsauFryMBNisG/VSU2uIemrQdtaEu7QuvJwO3a2+xxjzaU+yHM/Xs8d7zWs7ZK7oZhCAOfoNwx15sGQ/AQ1rj32cKO/Wbb0sb9AGmzMPLHcDvOTQt1OHW1fxLYX1DeMxiU4qnuMhxaxi/3T9siz7PjkxL+kGMuO3ccDgYhz6JZPqmNf2KEny3NijVk498eoy2xoNzHMefYkSGX4XNpga1PTCfiIcOHCBuU24aw3Mf13BcdcrvzHEOHcjsYdDLb2+5X+HgzsMgDZLyjP3Yji7cJh83JU+C68yEcLLUjg0HITqnuMhzCxznyEM2z523whxx32bnjcDAIeRbN8kltyDGrSIsTfafe6ClhQ3fusuvOwWeSjCr26WgaJ5YTPsjwIcIG5bYhLPdxPfdFh9zuPMfQodwOFglLlEq9HxkoD5D9WKdmlDpg+hqrUQpbUwaU1TVFKmEOlQEWouzvQ6Vw243LA2TbGT9Mfxyww7QvbfcvA2XEJQMjzkB5gIx4cYaGxq/3DeEFKxnY9wyUvb1/K7g/D5AZ776nf+qd0WhorWa471UfQ3PbBbbKDxd2Mc4pfa5tzafEL/ByGVjbepRzvlziZ3iP/gHCprH11mXkcvxDmzgr5KpSLScV+zsk4zLXoWr+2A+7SBhAI9kPJhsoyqPvg9HOJ5//fM8Ne4xmIHPmqXGqaA9oZyDIXVKYta/kLK9SpmWgSeM080y8nHPtPiXBcig+M1k7No76AWIfafVw4NI3IlkkNGZWkAQKf23KiZZNqddDRLVkOQQ9QsT0ZGjayl12FQT57FUfzRyMqbIpNFzMCpgJTYUONWrLcgwdah0aIcfQnRqXqWxZP/wJBoeQnVJ9mowvNshlOOQYslOHSdJeYAtpZ2i/oEuasa9kje4eTFytVE+WFEd2ck90l3OODRrCwbBBLsMhx5AhdGhIBnPCJ6fU5jJ8WT/apET7VFfiO3XJ9ThS59z2nVKhHEzkSPCYyqgfIJaoJoORxdrwXjUN55jjOGRPsEaMLNa06tM0fHt9NI/BiYuLcTI6CBlC9n3Y6hIMF6e4DEeHkFPKMXSn1G9IXtYPf+LAIWSnVJ8m44sNchkOOYbs5Bh8mPActjiKhxOYyylPcWQn90F3OefYoCEcDBvkMhxyDBlCh4ZkMCd8ckptLsNn+WHDB0KGkFPKMdf9RKH3idZ9xLVoibVjkSdYI0YW6+iT1tNwH9WQPcEaMbJYp9GjPA2f1UdsObZ6/A+QsWVsh+OZvu2mDGrpBlPijAz2B+nIhlWGUzJw7DJQHiD7tuRH9KGwzDLsWwrKA2+J1d23xV1iakfR9Rg+QPbkOA/tNjtcVg1ZC7bFDCyzCsv4bnEK4+tK3/n7lzjjG1wZ0VAGjuEDZJ+P8z6PfWj7jQMrWR3HOpRR7F8GjuEDZP8WqTfictv10lGUkoENZKCEXDAD5QGyYKKKW8lAycCGM1DeHG04wesPvxcPkFX21bJtlvVnKZZts6z/UB/14C/x4llo5QxMXZjJn5e1rq2wcq+TDSe7m/Q5wsgqKV22zbL+pHvZNsv6r9IHbcZAo36A+EJwruzibABYrnd/hCSrCn9Y1GLSVRpVkhVVWoFYh7AXfQRejBQ+Xtq/kcVdQN3fV0LsB7vMCDlon8BFYQOvDYXdwEg3G7LJA6y/Hup21nqogcr+n3NNQqWbh6Y91jLqBwj/ox82EH8tXtV6JFRKKxtIjGtUkCU5+smud+cyhdr80JV2+ePXOAYZAzGDQHhsK0l+FVilCJKD2Nj60Gz2upDP0U5g2TVng4x2Mvs9sHh+dQBV2DM6ls3x1Tm1RzicoywHGVVLEWbO0uwMc/4lm70O+3TONWSbjwYtzqTGu56jfoDERMbkaXsomVYESKthVjVHWbKKKeLykEPjz+WAJrxBpEmhsD7iAtRUQixSFUGy7dxoMUxiDCGbPIRFNfpJFd4gUZG+tnkoIsMV28uiVCw+7i1PNI5NK4pg+0WyjVaAiq+7o2Yq1WYyoHyrKLayjbDAeuC2lTNoY7GheRW5BrC2cz7Yh7pZqGzXadQPEDu0TT7WdZ9onZuIDUuAsffBUHWkmoEfccZkj/gUy/Q2l4GJ7ZMAYz/naVaSYafwaOT4AFlXRjc4rW0kcvx9MMI9WKwN7oMS+mhnYBtvkDhFm87iNvrY9BwWiR8fIMdltotkZMw+tk5WjXmU+zy2vRz70XlLwd4+OrPZy8205KDjA2TJRsV9lxkoB2yX2d9k36uuLNfuJse17tgz5+nf/6+70xJvIxkoD5CNpHWTQfftuthkLtYTe5WMrtJm3mg3EXNen7uwH5d57iK32+5zrQ+QbQ++9FcyUDJwlDIw87PJUZrokZnLMXmAbOM9zzb6ODL7rkykZGADGdjGGTwqfawn/aN/gNhyWdVMuJVdmPy9DUM6sxqm72yigRqSMf62sCstkAoWEaAlQ7yN8W300XZfhHVnwNaQoC7YCgO0ZEhnbvFxCEdsFJ7neDo1Ocu+eFcMcT/j2ziDu+mjm/W4pFE/QPznafEPdGyHBGTbOP4XqQDk1JwbizD/a1aJWAOWSNoAhJK//a0qsjzMT5jEgIxvGGEfobzWnwHtgWXXXFtj/ePII2qr5tDR1rUQAQph2fXAn9xwbiMpeYTSmd7Hcx7nQK15MLGR0qgfICy8/XWpNkHcC6olB2NUZBVOorXpJOIfHx7SzSyb4VKMSycAqvR96kNDLmVTGVhhX21qKG1c7c9WPjaCTqSthSZPMZnJm2InF+gon/M4P81ZU2aekkZbRv0AIX8rZW6i4QTQhm0srb6wMNFwAmhDTbe0LsPCyg2HwxV0WgYWTPSCbtN6KfiaMzCxHhNA2+F0S+syLEw0nADadtMtrcuwMNFwAhhuNwJ01A+QEeRnVENo35mMalRlMCUD68sA/3Dq+qKVSJvOQHmAbDrD64zPvzI67q9E1znbEuu4ZCCdZ9nfaTZGL4/qAVL2zpz9sj+fbOdMZCzmsuPGshLtOMoeb1OxD8IKD5DNHbqyd/ZhyxylMZYdd5RWs8xl+xlY4QGy7UO3bH/L+pP0Zdss67/GPia6Jnahw2RgsZQu5nWYcRz7tkuleCnnJrXLtlnWn26WbbOsP32Mh1Z4gGx78JX96t7iva7yCWmP+lhleosnr3hOzUA/8ft97KdOcreGfornjGUp5ybWHp3zZsRjZ3vwAAlH5m+2VtnyobxKBo5LBrbwVF73GRxamnX2sYWUDE1hYWzUD5Bar/YPaWr+ADBIda45KruCTWhQs8tLGLVQc4ALMn+qaJNz/HRjPtjlZ8w5inzVRLV8EWQzf+QGbfSGKaxsVqjkrzACqdUg6jY1IV0bKdaD2sDdIJgW+EssZUMZIL+WeatsmdSTZT7ybD20RMJLWWsGmpvXlkD5jlw9SJBqAiui1dFxEtgsAhjrF3Fzi3a5YJMSPWMQuRkq2Lm3EZdng5pdzoARtfayKq6AaJcsRG5WG48Nos645CJfoRIshBo3VuECpcuqWqg5wIWYyQAp4yyjfoAoZVc9h7V9DqlDZOIx3YGXpViQcQFwFk4uoar0sVU2wcH+Qj1IN0VrrQ1byRkz/rVsQkNkdUDWUopLiqoW3FTjtAnCq0oxxbFssg/i05/xUq03A9oLtqhK8CJrbntkvSM4PtHI9dBsmzOk0xYsvzqbyIusR1Vt5wzakIJGxa/Ua5A2ZFX8UyqbuUvCVXU32jLuB0hVPdlljlWSJqY6KRNAYtNC+4rrYqAIkb1pI6Yi3Ys0lejnGBwQPkz2IDGT/FQ224d1dDSqscyCNYN645kAetbJPdI3F21GBuak1nI74TMB9DrY7hnUWFQ2e87VgYqeUckd2JvyKJRxP0Dq+tIoslQGUTIwkQFO9wRYgMNkYNonk17MY5b3Ooz6DhzbAyTfHY/29s4xV9oPU8c8D+uffr7t1t9DibhABrQM/nXVdO+FnjLTm++fJb8DlaW1TGItQcbwAJmWEPCH1zLLoxLk2J2do7JwZR4LZ4BTv7DzsXDkDpyWlWn41hKz7QfIohM2v2v1tYtby8Q+dFQ+guzDKpUxlgysLQPXrrV3oN2JCwRe1G+BUPNdtv0AmT+i1KMO5QGS5kPyVneH+itlOAMFLRnYUgZGfQeO+gGipy8f35p1Wv3qXLzl4p7NoFq2eMvFPdvgiVDZr6gkQBEPnYHDrcihuy8B1pSBxddxcc98aIu3XNxzVh/9OzD33L2+qwfIrOy2trquH+tStOoPAOpgv7LdBqpbaVIYSx9DYxzCJmdQkO1kYN5qrLqTtjP6o9hLvYfnfGgd+vOo62vJHTjz3WM9FG3T2G4eIAvOqm5+jdcyo8p/Q0OiMklNIOfIkfhRASgUgo6yCnIkKWodmhcYonFV4+iDMQb7uzYNqRltxALzCeW1iQzEXFMT3TlypP6+iti0erL1NM+Cewa6sxezR+2YToO7tby/HjofKrEN3lKak0MD8JZL8bgS5UXdWhFa2nkf5dd427WYJ/gqtn7XroUreohoN2ASqXCr8hefWnXDDbIWNSaRED5y2MqDSZdMG0iN5MMXQdisofTog83jmq9gGSNkrrGNjWkXfTRjMFaq9Wag2SNxsbXOis7ysydk0jaQlqy5zKWsOQNc+RZSqVbC9YlCggqyscY4tB52JmXg3EJx3fb0nCfzuBauXbFp9yvS0Ud2pI3lE4gnxDnpqKuqbv8K0w1wiM0G58CzYZRztTFEG09iUkCd8GdzdRxLdHYJDo2tD0ZZl08gpGHtVCsitMyaq8k+lhGPmezH4bEWEAic83pczjnzdapq+9c4UGNi7PIyMcUM2EU1lgdIPndLjt5V5H9E0/qZQ6OlMlCug61CaZxUJlaug61CaZxUJlaud3sHa6G1ZSBJdCJyZ/W6SG0Txp5nUdaVgTTnqUz8XAdbhdI4qUysXAdbhdI4qUysXAdzunq19jtwlpu7b53v+gEyMynXrl17aOsZGXWHvB9bYYArNluhp71oMpmOmdtwypxWaTMlVIEtAyWjloasmnsH7jRtu36AZMkytU3I1atXHzBkRNUuhxITE+ulxrFCk6Xi75nzZDomHyl7NqUjMlytTPwu+ojM5/DTyO5AJejwMdcZYZcPEE+G84l5Pfnkk/dPgCsDR+CSmJqplZNSGloGZiX2COwbm+N+VLNWYj9msN5RzrkDPV3O19v5AtF2+QCZOzwlb42fQHaW47nzXNzhKMxh8dmOw7PkfBzrwCiOH633Dlx//nbwAJn6ji4/qfUjjzyS/CX6+ic/zohT8zPO4W59VCU/W0/51josa5unurkDJ+7G3G9X+g4eIHkuelN3o/EnH33yUvrbLgaaeyeZmlWpNZXdzTHnjsM7rJPAc0qtqex+jjl3HN5ho7NVgwAAEABJREFUnQQeqcM6qfz+VcwNdZoV9MNTF7GThqKm1lQe8t0kdtSv2S63nTSUz9Sayu4LRq7gjjnvsE5yW8pTayq7j2POHYd3WCeB55RaUxm/R5/UHYjQXQG5S7TuqN7BA2RwpoNJuVJduVaH+rK3YDNEOUo0giI2XOOZ+iCD4Q3Pf2YHhi00f2+BPxRmvGiT+iCD0QS+rj6IdwgqTedmgNWKJ5U1nOUePWd5zLYdpv28sc3uedh6mPEMR1wFjTPrxhIlUGhWRDxTH2THjAMkAcCiGiXMUMSGazxTH2QwvOHrOufEJWZd15erK1euIQ+Quw2YtgeN5QGSzjhNTF1V1SMcaT1IghJqhE6DSp78cRG62ezjikCMkr0NfvgIkkV2K7KK81eHMOxCLD6x0OWMWYSHrNohqgWjiykgOv7b6IMe10bs+LUF2/9ArOFSa37IKfsOOmSYtTUf03hYC2ip9dDZ3MYZ3GYf8e7TJdOt8piWyUY1xgeIDYzq8uXL17SRHtTe8L0ErEteqkC7vHURShSOAB7swjesSbf5SYazHDW7QLoc1SCIZEGHpFJor77lLhuhzYZg7moqHAxSA2lxXGphZQN9qJv1lWbc6wu4/5GWXfP9n/G4Z7DsemzjDK7chyZjbblC7OwhzLlL6vpB7sAxr9I2HyCWtiWSwaeP+tq1a7N/E6uN2grc37O7cVfns721yu7QNegkt2XcHZxn5gm19WuFwXnUzVdrE+0LsFIG6mmtWkMrTKxHZ5kWpODLZKCetbdrj9QKE+vhHi13V+etYYrQ+rXCTvvg7tOnEAYDTRn0ILys/2CQRcBtPkCGxsNEIWxwyOXw5JNP8gmk/DU6GRHxZejjJ09IKmVdGXhCga4c6N2g+DLlSlUF2i7TpvjOzgB7mz0+2+v4WPUNyEPcgc2M07txSG7ctst28QBh8tAiM1UO68cXcTwOPlx0X7zuzHGYajbHzalfUejHT51SvVx5/PSpQNvlWhXvWRlgb1+udnElzRrV7my6/Lj7Fr4rNdJFfeW6njKW1Uon3spVxQ8Sgn6Ivp7J7nsU3vV+8SnXh0v7PpFtjH/BDxWfPnEhPHli+U91tKHtNqZyHPpgT7O3r67wafBI5ae9/WxWjzR3oCmqUmsqy7SbsrUHyMB5npeA+oknnuArrPJGr90bVfjirTeHP2n1IkzNwLzdpYb8jxZ++QV3Slqt0JYYq7UurdIMsKfZ2yl2LOXkotQnkK9wByoP83bzPLtCrF5mtVzwAZLMala0GbYlZ9i4V1f1+vKMsMfO9MUbrg//JpyZ/8O9Y5eZ5Sf8KTX55C23qF6t0JYYq7UurTwDHHb2NHvbscJDaO6+q00uSFMjjoct+ADZytjpxMkydOnS4/Xly5cfNCWrcOxDk0jfvrw2EbGeQJYPmrWYjDiJpE0unTwZ/reXvzjwkT/M+q2VcJRfh39DQ/5+4Y5nh4evO91L1GT2JxFvQFtiEMuxwpfPAPmzPa29nbeezP4kkrdZVp+MOIksGzP3TyNGOda5X6pz9126dCl1RHZKXXcmL/gA2ej4SMhQB+D11XCVHyQ9Ed9yA0XX/hUCDgLnt24jj56z6ugXa/mZYJWUkF3Pwqst9GG9qq8wfR6/d9ON4b+/7ZnhckyKPI9biflZdda0/o1wKnz8uXcqg92aEg8NHglPEPjketTaD8QgVvSIrXp1UWZm4LKs//1tzwjsaYkkWazLJtkX0BRwEDiukTfGGSz6xVpuJlglJdiJC+0LfLN9VNp1wXqlr6nzeCLEuw8nKAy8puEDrpuBdv0A8QQ491m2+tUnr17Ud4H6FMKf4VT2x3qkPDo2bjB9OqhZlBoLGwAvtZGuAhjJ/CTC3eBcC1srhkw4iCg1FcFEiie73ITtsA9dXD//tc8PHz44H7TLNJZSlsnAv5Xz//fld4f7zp6VFNd01TUnBrE+rUilLJeBJ+XOHv75F3+1jlQ8TzpkJq+6HgoZiwLYyYWbINi5eqh1jmVKwFqyCkyGWna5CYjjYpcIjpBQKwJqBLgJUpzLs1YMmRKwlqwCk6GWXW4CJvvgzntSd5+MXmoXGu668wY+PIujWSzOrh8g+SjzZPAV1sNK5sVgyY5m5T7YRpMqW+CdYG12Q1VpueVU1aSilq4iPfrSVHZdwkFtBAdZ9WCSn3QJ0oWgBvmJx3Z6eJldNuH4ge+qj0unToR/8Np7wi/qIcK7OBt0qWZmQEsZflceP/aKV4dP61Mc6xdsTbFoXY0tv+bE+hHFJLaFCOU1LwPs2V/Q3mUPXzpxUu7knezpzMZDyRFrcNZGdp3Z2tZL+gjOYLxe4riCxhWHLd2EQ8/jor7C4l8jr0P/let964KaRjfVc5kO2gfIrIBTe1qvwced8BAu15cf00F/TMui3hhlNNsaCbFiCjhkiFW0oQXbzQAqdxlog3/QRnB/cwnNyxQaQw0mRptd9XH/2TPh777pVeEf6isAvucrf4SlBZlS+KT2z6uz4Yde/4bwhzc+hevHPFm/cMg1Z0d8XjF/6A1vCP/84Gz5VBimv8gVe5U9y95lD/t5o9U61oM43QLTo5NZZELn1MLVe2SNEcUpQtSMixbyRo2EG9LA3YB/OMS+4s7TA+SxEF9tT1HVFBphVeYBV23v7fQAmUiL2zbBFx1363fpkUsPKpnNP2fSwguP7ai3uHTyRPi5u78m/JWXvyL8YjgTPqfM8ENJsWNfeJfLr4f+eqjCTz7r+eG//PpX62uroT/EXM8uue/MGfXxGuuLPv9YK8AYxI59YU+yN39Be5S9yp5l7w4nZj3rMRzb0XH3wZ2nH6Drq3sf78IPjeUn1naxvKAHyFb7S0foHcMhbHColf/4j/+Yn4E0DxDgQnkGSNjv6iuZv/Pm14QfuecV4SfufG74+zfdHv7puQvh105fHz56+nz46KkjQAvO45fPPCX8owu3hL99x7PDj77k7vBjb3xj+MWvfnbgN9jy3K1bv3TihPVFnz+mvhnDP3rKLYEx/ZqvwYLzWN+anVtp/ef2P2cevyY7e/Dv3/TU8CHtSfYme5S9yp5dd+6PUjweINx9mhOpgiTaQ2SajH3rpAfI1vukQ08CslOKtbKewpevXbvGHxP670O7f+FZBh4/eTJ85pYbwy+94KvCz73sJeG/evXLw4+8/pXhb73+VeGH3xDpbxkXZvxVAR1y+yzufjmnjWOdPKMPG88rszG9ynSPY1x+xn2s0okPRfyVNn7XI/aq8OOvfUX4e6+4O3z4Rc8Lv/PU28JD2a/qZmnbiEqf9M0Y/t4r77Yx/ciS82Bes8jnm3PaOBblVyu3w7nCbjSR24H10Ph7cSfa9Pv4YdnZgz/3sheHj2hPsjfZoxtJ+AaDxu9oNtjBZOirte487r7E1N6JwlJZqpUhzAybrHb1APE5zZo0NihcuXLls3oil28DPGtzOEm7WlWBd8OP6R3x4yI4FOWTIfITxl3GPovcL+e0cayTZ/Shr90e0w9O8YUm28ZxPSa/IVvXZrgP2lw+OAi1cjAnVRs3MwbGwpgYNzQpD88D31nkcXJOG8c6eU4fyjW+0GTbZj20j4ZsXZvJPtiD7EX25MaTvaEOtj12/Ujl8mXdec106B5q1Ak2yzbhvG5g1w8Qn48nAe6EzeRLly99Qcp+PUA04FJKBkoGSgaWz0B9+dKly9x5dv817V2GAzlH3hmN4QHiiXDuyWj1iw9c/IxAfm1crJSSgZKBkoEjnYEnL158gDvPJ9nehQ3guvMG3j4bwwMknTUJcQI3+dOf/jS/0HLRgRCAvQbNKJoN7MQoxdpMVvX1qE3W5tqvopNhnRilWJvJqr4etcnaXPtVdDKsE6MUazNZ1dejNlmba7+KToZ1YpRibSar+nrUJmtz7VfRybBOjFKszWRVX4/aZG2u/So6GdaJUYq1mazq61GbrM21X0UnwzoxSrE2k1V9PWqTtbn2q+hkWCdGKdZmsqqvR22yNtd+FZ0M68QoxdpMVvX1qE3W5tqvopNhnRilWJvJqr4etcnaXPtVdDKsE01qbggzWRVRE1VFbbKWKS/RydBOjFKszWRVX4/aZG2u/So6GdaIF5s7DxXCBndCHwXt4gFCEhaZvPvBr125evWj7Ir4Ay3VQisRjxF9Z4gJUXEFRrPpEoVRJGESYWhYEKq28be28ZJiWKCWU+mjyQ25CDFzEiWpSCB/oeQqtPsk6NXkhcxJFKAioeRKGSAPoriTuryUXHW5uMpdFwJ/1mWZihbV84v7z/dck8cuHiDp0H3CcAgbPCWw8MSlS/+STcYFHx8YaKJam5LTqxa1uFjQD9ztQMsapFBEaLLKnfYCgvlfE0YPgBLxCnBIAnp92D5qBSt9WDYt70oHa0Ru7dkj3XDWr+Rq8b1bcrWfuTrQhqew33UvcBYktufjku46wV7kKZNuMgHIYq3uMnxNpAtyiUi7fICkyfAhO5bqYPWXv/zlX7bLxnPXzlNmFcsvHFJru5yMq7I2cHn5oUPFlzhw6cakx7bSJAtWkayi1lY8XPSLkNdy1l1ozogd3EDGFDe2lSa5dZRqDeCQDNHPUNNUWWHTmUDV+HbjEqi4sa2MkoWoSFaxaHDI0Ch4LchK6YM0KCsqXW5RLIMyRllCWXNLhSqVkqtmf+jcDZ5BPluQpCm5srsuhkg82GVGYCaoctm5oMOW5UKt/ABRbg470ry9jxzuhI/Jn/3sZ79SXwvdD5ZAsR6W8omkcVP5MP2UPhbPXslVyVV67lJ58cxMeu7JvtKbts9w12kCzBySyNOmJdfhO6eVHyA+szXNwMOlHLlHV65c/uU19deFoYdO24xU+lg8ryVXJVeLZ2Bxzz3ZV1euXOGOY7RDxHzBU468M1r5AbLBEXuC6MJleK3vBn9JILJYKSUDJQMlA0cqA+kd5/eccyaayuhLU/5BbOkAWYNdPUDSRLgMn0kXL9rfg3wpm0NRSwZKBkoGjkIGvtTccTPvQU0Uu5h9rQWHHEOeSgs5TW09adjVA8RH4vNxnuJgPXr44YcfvHLlyu+4U+ElA1kGikoGODXwQnuVAe427jgNmhUcIpnagh3FOfLWadcPkHzCJANKcdfr++6776KS/FsyXhGVUjJQMjCUgXV/TzHUR8HWnQFdbVd+iztOgds7T3JawKEU26k8pgdImhjkCdLPQK48/vjjn6jr+v5Vs0bQrm1f6/DDSf2ofe1wkbvW/ah9rfM6nNSP2tcOF7lr3Y/a1zqvw0n9qH3tcJG71v2ofa3zOpzUj9rXLPIAZPgSVT9EX1sizEzXftS+NrPhEsZ+1L62RJiZrv2ofW1mwwEjdxp3G3eczAQbIpmsYDNh11XvAbLlwQwlAaxHejPV0x988MFPXLt27Y8A469KU0ctH7+j8Xexsdb8KQmCkWm1iQTpfaEIGk1eRw6ekqPb64Me6yMwD7JY5tHtG/LRUd2Inb2ev+Y6LE2zZi/XprpZ31QAABAASURBVHYxTG2raGXrd1ISQjGkdSbpbVMTosnryM2QVI52Y6jnz2OifW1IF8PUtorW/Z4Hdxp3mybFdOaR3HoF/x6wLWWXDxCfI5N3cgxumCoV27vG+R3pq1evfqwSVNtWrLVzuo0uzSyhrqNVPEhi84FErrpuUJqaTx0q4wpXixRlnH0wtjgyzYJpxtnt3TwYfZlH4F850H4LesHICouq5RQD8Rw5l4dg0+Skd67Wcj/2rsYed2tA4riVeXCe68Cdxt1miwk0STK1RTtAKYw+LbgLIXuAaEfuYhRdn3liUt3la3pS/89sPp0wilrbdpQsFzPEzMbDhRk85ZKVf1zbgydIXjGGbJRIio1BiqRop2HPH0VOKnJoOhdGG2GljyYlTd66HCk5KkqTkqXsSj6+udLkm/xIUoqoSYu4ioAmicKUMFxLrpqUkAxLixKlMitX5qYq3g1yVlE6FSjuPwlSkWVo4kpSSGpriItIuoqcAWUP3RvQIDNk7eWkYn7SVbBITfqQnTtNBv5GXZrMTQhh6GI9DH0UlD1AfKyjGBuDcfLEGv9tvbQB/vXUUdJqqrFvmOU6y2bL2Q81VZsVZ5at9NFPacnV4vkouRrO1VBehrC29Uxj62XCLNeZtrr+17rSfltBcLM7TrJzMEjQ+Er2ANn6AD0xcIgBwOfR1YuPPvrToapIMm0KlQyUDJQM7F0GKt1hFy/qLguB/2X3vHsPO3OEQy7Dd0K7foDkk06Tkss8LMCMf+qTn/zn165e/VQTYDrb+bdy04dWLCUDJQOegeN5UPWzj0996lOf/OfKQnu3SbY7ThxMzL6LSGWwUdDYHiAkxRPlMvoEPfLII5eefPLJ/0FO2MSmlNnWKY0KXDKw7xnYtwv5WB7UmjuMu0y7jQRMI5mtYDdhLNUYHiBpUlyGD5E/meHXLl68+Kv6WcjvjyWZZRwlA+PJAMdnS6Mp3ayUAe4u7jA1tvtMnEVDhg+RXOzTCBzCB354WvH9xhgeID55TwZ8FnmCr33pS1/6zOXL9i/08v2hxym8ZKBkYE4GVrwv5kSdY95Jp3PGtDvzVe4u7jANob3TJM+6+7DJpfcQQT88eeQlI43pAZIPnSlB4PCULOH33XffYw8//PD/oif5Qzitm+hw3THzeKWPPCPT9bHmatl7cQzzWMcYlo6xdIP4u6zTd8R6LCsMa+mO8z64s7i7uMMUDLPdaY2MDkm1h4XL6KOisTxAPEFwJ0+U6/A0ySb/3u/93r+6du3aR9KthqM3zvk02xCeXgzRHmtidhJan6bZhvAqdG2jPdagnYTWp2m2IbzMo58719aVK+JAHjflQ3hZjzRDnXyccsWdxd2l2TNtu8sGZGyCrSA7ASDDRemOkrrFMpYHyNCUSVBKnmQ4hO3aE088ceWLX/zih+o6PEwQwC6dtT2+qRopPmfkHDG1QBazNjSWAeb+mPVuwf5IqOavhuWL3fwlExBdzVRMAhJJjiXK8rU2wgTI12txYaUP5UE5sr/IEi+5anYge8N2i5Ii2fIjrqKEWR1KrvYrV1rDh7mzuLu0qu1dlsksbkoyTyu4TbNtFh/zA4SZk5lp1Cb+05/+9Oe0GD+jBte0OCraUDUkRK0l6bBVhkvQcZSsWgC1mDzwlyYmF2tkuBQFwV/M7NgafzmrmIsQcfk1QK1jHTGrLRYPCbToUstfJSoKrraqhZivKhV5y64CTO/i8muAuvRhOVKlUnIVt0WtPaISFe0o7RfVQixHqlRKrmJ66qBDZfkgP8HOU9Ar5kcGlShHf7zIr3LaALW1qWWQHy2Fzzrn/N0HdxV3ltzbO0yygjCaQZJ5nGVMDxASSJbgs4ikQ/jAofqP//iP/wd9LOSfeieGltWYKtzEbF3gkGPIi9Cwv73zs+Zudw6YyujzaNj/sH30o/Y1H9Fh+/A4kZc+Yh4WqUuuFslS9Dkaubp27epvcVdpTkyIuwvKZfRppKa9ywx9Z7TaA6S7cbYx8DSRnmww5JY++9nPfunxxx//OQ3ocdFWMswg6GuTdNg+Flmqw/axyPxLH4tkKfqUXMU8LFLvWa50RV36Oe4qza29uxqZqUDgcCeZx1tWe4Awtc3MySPDnejJZeck2QkMmZ+F/JOrV678Cg0KbSEDpYuSgZKBhTNw9erVX9HPPv6JGvA/xOPO8rsLGUJPSa72Xtgx1+GjoNUeINsduifPeZ5odKj+whe+8JWHLl78GTnaD9S3O8zSW8lAyUDJwNQMPPzQQw/9DHeUPHRFBe4sCNkp18HlPt4yxgeIJw3uRAZddk6yJ+j3fu/3Pv7EpUs/QYNCJQMlAyUDY8jAJd1J3E0ay8Sd1WB+rzkXPPPTB/ad0xgfIENJ8aQ6ZxGQ4T164oknrvzqr/7qf6uPix9WIGxipZQMlAyUDOwkA9e4i7iTuJs0Au6knPwug6ck93GXsT5ASCKZg08jFiG1oTtdvffee3/y2rVr/4YghUoGSgZKBnaRAe4g7iL1zT+35PcTPL+7Uj2X1dw+jcBHRWN9gExLUp5YFmKQPvOZz3zq8ccf/9kQrl1sU09rIjtHbo2mTFaJbyJmfrKoGJjzHmjKZOVtZElEaWmRRcWQnPdAUyYrbyNLIkpLiywqhuS8B5oyWXkbWRJRWlpkUTEk5z3QlMnK28iSiNLSIouKITlvQGPTKm8jeyJKS4ssKobkvAeaMll5G1kSUVpaZFExJOc90JTJytvIkojS0iKLiiE574GmTFbeRpZElJYWWVQMyXkPNGWy8jayJKK0tMiiYkjOe6Apk5W3kSURpaVFFhVDct4DTeGHHBe5g7iLhAzeUw1OtJQE70cZ8wOEhJJF+CwaXBh9XHziN3/zN3/+ySev/E/8iU+tCPwhOXKoUJrQBroOFklI4NmCOQq1/W1JjdmCIThVclVkGfGXFEofljVVJCUkr5IrbZbAPlFyVOqyr0jGxJlSatg1tbj9LjpCvVe5uvLkk/8TdxB3kaYyeE8Jr+eQzAEf+OhozA+QPFmeRHi6GLne2rRwlz/5yU/+LX0H+c+qijcEuFahZsOyKcVVQpARXstsl38IIZrryGWs5RP8JbmWA77xr05DqCoBPJhsrUsfwV/KS8mVLkHbFyFol4Ra+8S4ElMrP8FfkmsZyr6qLSNKxV7mSot87cqVK/+Mu4c7SJNp76RMZqKpDV0uwTnyqGm1B8j2puSJTDlySukCTMgPPPDAo5///Jf+mh4iH9Wy0E6jh+mYskOleXEVq54y2gc8CGSVQVLbHLsgs+vMy0FFoGHcAFK5MqBWNSyoTbCX3GWupStyLUiNJZU+lAovSomJpKesR5qNsnfZE2Sk4gRVtk10noI0UXvo8NpurvSGsuau4c7h7gmBN64zKQ4y6Oh3pGampxx5dDT2B0ieME82uMvO04cHP7Bq6Q/+4NNfuP/++z+kJflsexEpQsVHDvGIxdULbEHhtZ4MYkHMDYEXl7ziSKRbTNq9iHpXWdeSZYnxzFPfZGEUWNcBay0xIEmvFVwsiBEo+MtamqNV6k4tEUsfRy9XrKsWvqx5HbTLtdeVDCQdjH08H3qAfJa7hjtHM2nvoEZO76haWEpSbfpgyHtB+/AA8YQ6J7HITumiTJOv/M7v/M7HHn7k4R8NoXqIhiwVG1R3siBtXW1Y9m3Qiws94lJwxGwiQmVuuGuzgAb8iVmh0VAAOk1LH3o2KhklV8H2Cdsj2EZRUsRrUaASmSh4Tq6UUBXtsRhLrdiMYkEvwXrTgiAKCiZcNQ2MpPL+RmRowB8J3BoKQKdpLbn0obSRX6VT6SAtYVqulNSHHnnkkR/lrpG7/7X5tDvJcdLtpGZW0BGcI4+S9uEBQuI8kfCUWIRcBxukj3/84x9+5JGH/6a2xFeCtgHv+mrtBn3IDaHRpWofyKKTo1obppKFLuAhSAm0gYNUQdFkrgTw3XYtTrtK7UMj41/6IEMlV+wR9ofvk7hHQtBWKftKSSA3VWCfSNIZUh32IVe6NL6ih8ff5I7R8AfvnwSvJTvh67JzmTVt6pHTvjxA8jR6op2zCEOUf4S8+tu//ds//+ijj/6Ytui9LJH2qMXmkkcnoPaxYcFBNL0Liao8JFdyirqMTZAKMehRYQZT1E2wN3ZBL4NpLlnNqWWnlUA0xY0+0iVXcoq6jBvrIxnCxvrQNVBpDpqWJwNVqM4dkmww2ZshBJ+3oKA0BHs5iKL8RFUekis5RV3GJkiFGPZtPZQVBq5plVxpAdtFRdZaWm6UnDGteajv5U7hbtEoJ+4cYUN3E5gmog2qIygfZLH9Kvv0APEEO/dMo6fEwkyjq0888cSV3/zN3/wfH3/88f9XHapHa0WpdPlw57BX+blIJSwIs3eLAmtR0OdXbDVcDrUaorP2VdChF1Abl6ZgdV0FbEH+taQq6D8JwLSrhAVhu++j0j2lgWkfS9KFrkPKuDRQPkXtzzyUzbrMowq8tB+1ByutYS0K2oPsuRouh1ppQmd/VkG+Amrj0iqtf10pSB2C/FWHiv8kANOuCrzUTr6VwFoU5Iuthsuhlj/6MejjUe4S7hTuFmWGB8i0+wdcmdFhIzGR1KQt2FCcI4+a9ukBQiI9sfAhYoGGiEWFzPbkk08+8YlPfOIfPvHEpf+3joEeIgqlTW+HQZyOWGLEWpVKkF+oORxBB0yabl25CcUorKokKIzhtWQrspuNnSIjmGwqaqsSoYAuk6IqtoSmVbBYoMKIUFUS1MbwplGFPdQhmmq1UZFNJdgrQgG9EmCx5Ww8CKnkII792PahvFhRKpSRkisloWJPhDpoq6iuQ6hUtElUgr0iFNBlkpm9W0Wu2vaoOPYjvK8e5Q7hLuFOUV7sfhHnroFcz7myF4ZITQ2H7wXt2wMkTWq+ACxSiqFD6UIiG+n7yif0kfNnHnv88R/Tkt1rgf0yVRTefQcdAC5aMc6AzoQOCQpvr+Dmj6kKVkuvwBVQgCAFUolyZUxBxBVV+HAfakaMjfaxjXnsUR+6JUn38Hrs0Ty0b8Y9j1oj5BzUOgMqDLYRQ3zShPnnYxzrEepw72OPP/Zj3CHcJSEEu1cazr0DgcEhZuqU6+Bqun9lHx8gebLRU2JxhihdTOSrLPxv/MZv/EN9f/mjdV3bD9a1MWwVa211rnK4bKHWJRNEbH8xTKJK+70Sr9WmCtRGOHA4xKsKO2ZtfLDQ6IJqZLWClz6qUFWVcqnE6EFMPkJo9AAsueRKiahDUJ6qSvmQqA1oXzsKlC3Yqw6y7Xmu4gxizXzYD6M5g3X4CncGdwd3iJJu94m43zvoLue8ll9KUtsC3ir7IGzwAcLibywFnuiUIzvli+YLCoeww6/y0fO3fuu3/pE2wg9rkz7E2eNsMnq774koQHeaDipnVA8COcV3q9JlqCoeHjWoAM2ZhmB1lO3nHFjBdLAlBomh9BHzE5QMUkaCS67YNNpGx3xfBR0OFbaEkqF9oj2ilJjOCaxCKN6QAAAQAElEQVTlsKMzyK/q/jB3BneHRmb3iHh7pyQyWEq1bClJ5UKAtdyUfak2+AAhTxtNg3fgnM6QU0oXz+WJBX9CP1j/2Mc+9vMPP/zwX6qvXfuMHiTs0VBVVagUlccD7/SgSgh6LY4exHGu6irwolYzM7HBaylgiilzLZLGbWkUQlVVoQpBJFsVqZI20IdiVoEXtZpJD6H0UYWSK+0bZSHerpJVqoq8aH9wL5V9RXaUHiWGfKDZ+ZOuUlUL5EqH/JruhocvPvyXuCu4M0Jov7bibknvFfSU1It17FxNraAjOEfeK9rgA2SreWABcmIBHUNmgeFOrsON+B3ue++9969oo3xUe+ya9kyoq/gGKAiopBAw8JJQC8NawSskUctreVVYQq26qirjqoJUkfRK/gIUVnXQq9JDQbgkKzX2SmKtJuIqNVrL0SrZol9V0bZCCQaim6qZGA96VaUPJaeqSq7YKNoNQemw/ef7kE+BgFVoPI55rkKodCVc+yh3A3dECO2Dg3uD+8Q5MuQ6BxQCg+ekUPtdJh8g7Jr9mRML4qNFzomFgxxHhlhgp57+iU984uOf++IXP3jlypWPcKpiOirEECrChPhC1rsY7Iaq4tcWocCJNBKoEuyFUAutpdEqKJxklUYrfSgXwV4IdckVuaiD7ZOyr3Z3BrkLPve5L36QuyGEwYdHepdwn2jV7DgjQ66nXKGsgJmwj9XkA2T/ppOOGDknFnAa+cI7x+/K5z7zmc//9m//9g9evnz5v9Nbj4v67GuHuNZbNC77WldbBemdWbroMocAVovVqigVctCrCvwXrNYngqB3d1UIVVURXkpd+iAfddCrCvwXrC65KvsqbP18cCivXasvXn7y8n/HXfC5z33m8xqF//Mkfl84596YRuzonBTKCrgJ+1pNPkD2cyb5QqCnNG1xwdkEzpGNHnzwwUd+/dd//W88/vjjP6SfX3wqVNU13fDNRlaSeEDAQqVaxT6R/B/sncuPXMd1xk/l3xHgVTYGjHgpwPAqioEYXhleZGE7ykKWBENC4EBaKHY2SgABjoPIgOMEtmE40k5WzBlKpkQ9Rhw+RIEU6aEkkuCYbw7n0TPTle9Xt8+opni7Z6jpmelHtfu751Gnqu796pyq7h5LQte0CPkpfB0P6aOIX9QqlQBpCmCYQN9efJ1DXIoaES2euFauTHkCE0oRkaOMEiW6Wo8m+XqHbAqQV/E1r0SL+BAVXB+KK32m61Lz1D57AHuBRkv7Qia7PR3ZD1qMNHVMN6EO2Ttm+tiqk3KAsAC+ILlEd+SLnCcD/tze0judzvqJEydeWVxcfHpzc/P/grIxKrvSZCrilBrJUHkzi3xRmSJh6XfkSJkHo0sq8ajgIPBWG4LDI1owpDrp/FAfOqgxhUQpvCXZFCxoLl0kFI5T8dhy1DkgSoAWQbRY1EXUWF0P5UnNK4rHlBKWXqnAzKi9lCchqj0YtU7NU/udTmfdbNvPVlv7g/zl3oHt0GD2OdAs2eq2JdHHGpN0gLAQzTJtXyh8jnxxXfeEwHZ9S3Y6nbWzZ8+ePnr06PdXVlee01fbe2xGQcmXJLmgHSqEYAFdYDLa5dA7betmao8Cv2UH04tLSJEyiJFDbxnGOFF60GXa5uD5TTxFoXJloiIY+UBKp2yJQU7e5IyZiacoVK7MQgi2J66i3VtVjVPr1Dy1b9Z6eOR7BTpgeZAAPYeG0cbAlYVs5ERcJ+0AYVFYuFLic7DAbfBDgzbXc7kxNzf3Xzdv3vy7zY3NP6h8VyyGXjowNGpI3yB0yJgU4xUVQ3HTmuygaxMuRUaMCg1N4kdFBbm9T083+dWiBq4hxU/qHOm5mgc20cADp+c2MUQbh2owEcI7mNqD+JARGp0mOWVwDWoLUmgX5I0atK4HRMCLZEOYrmFqudLPVSvUNLVNjYsV/taR177r+d6A3gYSLYeGE71clYmNmJzrJB4grA4LWEp8DhYeHVnCkwW5LZH0iWT95MmT7128eOGZpaWl52PszlsIXZUecyWkbwz6JJQ2KnlC0DSypVrQBVOVmnTSSvuZAS4pTOG0mwwdUkYfdZN0TVmoQULQNqqOeOsc4sKiOIIpk4QVS6+6HsGUKkoa0aG8wah51XARzLqx252nli9evPgMtU2Nq5Xad2zbA9RW7hfYsedH5pBbicnVtmRjTcj10A8QLeJ+UclCMnYu0R0sfA5PmFzSntsk08bly1f+/N577/3m0qVL/7C6uvpijPFe1Kg8S7DAnM0Vpyw16dr4pTRvOSnsoEi2P5waxzgM1NTLtiC3LARaTw0WZFlzHdYczZB8yE/jhnStc9T1ML2CkL3JQ7mCcmRcc1dlo5+rVl+khqnly5cv/1lPmOpbMq/5cg/wNvw5xEoqW5caJtm5RJ8oHPoBAtv7yKgPn0v0HHkSlLonSylJtPWFhYXP3nrrrZc++eSTv97c3Hil2+3e1LNssgvzydd0QsTetwRSiUkt6KOIfKk96rNgz4mtcHVVgIKan1k0mpxRtkItbWZSotwKNPrIKTVYSD6NjZQR6xziRfzCR5T0T9/iRfQkohKPMqJ8icuouJ4TW9RrDAWI3boeIlJUxDHmSre/SY1ubG6+Qs1Su9SwnmxdoKbLOne73Bdym4wpoeEMXy7RdwXd567iRiHo0A+QAyChXEjsEnlCeNLsWurr76Xjx48/rd9Qv6+vwP/TjfGi0icySbMJ6SnJChxAetCmFNXYHApqlz/KF6Sy19Gm3SttdMknP+2mPlIt4tQlysDVTCYDB1B7MH0+VGOdA17EhYToSLSKmsStVa5EQTCDGBMlUm3C8kpPpV+quhepTWqUWqVm9bi7rvEsNt8ryJ4SCjV8uUQfhG1t3nmbc0SNaThAoN7XBJmjTIbcRt91gik5O6dOnXr3zJkzP168evWJ5eXlf1bWfqTJu2zgkqpRfcJNhapb0I5PrZoF/a+5ssUpAiP5jFidJvjSJ2J1C2bNn0jMDF3Fkd4PzKHx2SmbmJBiudY5xJs4Nb3gLMJx5arJD88vcZOSCnucuQrpbxwfUYtXF68+QW1So9SqHnHXta1Y9oIcYsZKG59DXbYOEfSJxbQcICwgi4sE6CDXPSHwo5NgSIDeBr72OlL77du3l86eO3f6nXfeeVm/rf7tnTt3Hu92bZ7N3GJgPgEZGpdmS24KVXoI8puODG1qzc8mTWww96u0g6BROEmCOnO4RMkUL0mTaRwz9dGYEagP8RraQpBfSvqbC42WGnV1v8aXS900RFQ3+QP3FKTHptH00jimXgyREMwUoHYJtamHnjHKFc0UB4Jk41dYEEwvjR1031PxHHrcypVICFF5sX95pV8B5qk9apBaPHf23GlqUzOnOpX0ukW6r5TUPsCPjOqHBOhALhVTL5UxBPdLnez3NB0grGS+sOhtIDlyePIgc5SJhw08Zv3+/fvLc3Nzr83OznxzcXHxG2udtf/Ut5J5YVH76Ib2WFMVSVX2pQ1UO6rxChYCxSWQm9pxuNEQghGvaDNTm/pIyIXfzNSOiy4pBregAENENUbFWHoFC0FjADpEtnVLPuJTf1N7DHLq3ZNGvFx0STHS5SLApOrAUJ/kML2ChdDYafR9miOEMZpDrMBvkIziNOrepeodKldBNJDoJJf0RA0HDe7YrLFUvcM2roLZhv62sagPRPMd1djitWvfmJ2Z/Sa1Rw2qA3/j8LqkRoHbyNLGxx7gEt3BHbZB06Q3bUmZhsu0HSCsab7AriMdeaK47omEbEOegOiAOJfrH3744cljx469cP78+e/qk9Ez+lr9b+vr66+rVq4q8aOpCoKMtNHqLqMgl9zBUiHJVrMFyaBiktCbKPXAKcvfbtKqHV19NDKGGqRpGIy0/avNhGB1DhMh0cQElJkUvcWt2DK9ohASglWuRESMJiYOjysVjSa/urGx+Tq1RE1RW9QYtaY79EPDaxAJqEuQ69g5qHtsJIgaDwnQHXL3EgRNGdSI6blO4wHC6pYJ4HYuSZY2kFj9kCel67ncuHLlyuKJEydmP/jgg39Xwj+7sLDwbSX/dztrnV90u+mP7ypM3Ybeno9RnpSmQRuaHx5ewHqa9NOVpAqKyBRqaIqJ2u0kTMKHM14cJE1gxJQamvY6R+XKUnboi1KTG6OSV+RxVI2sr639gpqhds6fO/cstURNUVtKZuoNUKOlzH3oBQJ2W83jg4w2aEqVT1M96FOFv7CpetwHHpaEcCd6Gzx5kA5PNGQbysTFBsQiN/hD3rVr126oCP6kAvjDsWN/fH52dvbrFy5c+Kt795ae2thY/5UOlIUu/9fgGJeUn6u6UfqbKltoipzU5ZDQvp98FLvq33hxaDR+LD1a74ywiBJSWCpKLgohXlHJX+cQ4+KkciUSUmIoM4J0vTH3I6/4UqGxN5XD5PpSVO7Lt6Bv6r9aWrr3FLVBjfzx2LHnqRlqhxqilnRbqa4kqZFSdx+yDdS1/BHp0AOnP5Qj26Cp0pu2pEzjZVq/geRrnSeA60hAMrlEz6GESwmGzEHyYudykE7bFj799NNr+sPf/7755pv/qGL52ieXLj1269b1x/Vb7vOra52fr693XtXX9qPdzc1TMab/euKi6notnQnGrQYdAFHQBignf5jmqMGDNLUE00sXNZtMvYNAPKaitDt4PP9PpZ7XiNd3IDNFK0pX+khTvK7mfZp2MwLog2SGYMSbTEWrj8fXOcxEik0LV8oC00GxFmNY1CFxYbO7eWpjY+Po+vr6q2traz8n12/duvX4JeX+7OzM16gFaoLaMLOtWil0rzna23T3IXNQ09jIElFz4EMCmeay1LHHDxTlHu66HiANeSQFwEK2gUQqQeIB/MgSnsz40UGuYw/EnxYWrszPn37z3Xff/fVbx479WPKHFy9efPry5ctPXbty5cnr16//4ObNm0/cvXPnyZXlledW11Z/2ums/7bT6by2ublxNHbjBzHagj7V3ZJcl7S0UclADxZ6tln61mEmD9BRkQLNkkOMaM83XsktW29LbaaXO6UybmMqQvPUOdgyRUwQeDfkoKlBPOMXT/AWROhWc4/woEitkprRkqF+5su1tX5iW05rXluDyNTYjakI6WG/5khTRXLslinnNmP3g+Zg6LzW6XR+u7a69tOV5eXn7t65+yQ5e/364g+uXbvyJLlMTpPb+hsGOf7r+fn5NxeU+xpyYH0U7XltoQP6I0vkNYteQmTpKRLT26Sm3LLRxxs85R6eoB4g28nL6XQdWaJMtjw5acvtMoGxHXmc696WS9qSrUJcVcFd19f5Cx+dP3/6zJkzx1Vsv5+bm3tVX+t/+f777/+rfg/+kfCkfI+r7Tvy/430R0+dOvWVkydPfvnCxx9/9bPLl79+48aNb+m35O/dX1p6dnll+SerK6svrays/GxlZfXltbXOf+tntN9tbGy+rm87x7sxntVW96k2n5vBbFkb0oZ2NLkgUNubOqkx2gAACQBJREFUNrsgZxRMHy/5u0xEKjiKPWxqMZhi5YhJygoaIgYNEs0Ur6sF/icFN/2C8VI/xQY5o2CKpS0iFRAVj13neDiutBVGvZRbYdks3BR/n3a7dpY139jcfH19Y/13HeVCZ23l5ZXV1Z+trqy8pEPgJ/eX7j975+6d7924fuNbn312mZ9ev3ry5PyXybG5ublHybmT8/Pfkf44uSj8iNyU/5fyvaq8/D25+9FH50+Ty+Q0uW1mupeErZzPfLThL4Hfkbfhy+2yNrFzKIvEiEjQnK5LTT4kwI+sEAP1ABEJxZsEAbiRJUg496GXyBPW9TKRcz9tOQa1EUc78gGoANeFVf0EsCIsC/dv3759X4fEvbt3797RgXFbn/xu8VOA/oD/sYr9fRXz6/rk95vjx4//x9tvv/2i8C/CC/ok+E/66eCHb7zxxt8fPXr027Ozs4/NzMw8euTIka8IfzlzZOZLsh+ZmTnyyMwRMPPIEXQg+8jMTPIfOSIpH3aC2lK/JI884u0aT7rGIVZtaSz13eojX4pRu89JG3P7GNgJxPbmJ9bbU//UxrwCY035HGktZma+xJoKX5H96OzszGOsOWtPDpALx469/YLygtx4kVwhZ8gdcohcIqfILXKMXCPnyD1yUCAXV8hNYV2F9UDu9nx9c1vttIG2vvhLEFf6sMt6xc7r2fVcavp0iOBDr+gxMNYHSO8Z9kvkyYJeokw87EEgedtAoreB2Nxf2nlbrudxuU5MaffzDfJ7G2MB7IrPPzmPGxesoaPfvdPe1tbmL325nett47mvjCttj0PS1oZBtehtXtPYrufS9xZ8rleZMbD7A0Q/E2T9pkUlcYA/L3qJPPnQHW1JnftIfpD70PE5Stv9Lndq9zhkW2ybr1+s+/v1ob1ifA8S1o61BeglHsbfL7YcE3un2LIdOwdjgNzXpntdIr2Gc919yLLe3a6yYGD3B0hOazHIFJg8PfBHRS/hyYgEtCMdZVLjL31lIeS267lEB4yDzNHm2017v379/PmY46OH9Dv7+NzvwR5M/dY682/jr5/f+W1rL31u57LU22x8bbWEz5HXouvIEmV9u11lHwZ2f4D0GWDK3J5w/thut0mSFz+yBEkP8CPbQPG53/VBMm9Dz8E4g2xvK+N28nv7+Mm4bQMcv/vf/wPlYXOhjC9t5zj3uz5I5m3oJfIaQi/hNYjsh7Ke3a5yBwbqAbIDQX2aPRG92W2XJDF6m8TnoBhKHd9uQEES53InnTjgcegOfMBtl/iA26WkrcJa/7vZ48RLua5u+zO47XKQ32OQedwgPY/1uH6SeqENCXIdG/SrPfw5yvp1u8pdMjCcA2Q6/z4CxZ6M6CC3XW9LaNrwO7wI2iS+nZAXYKnnNuOUtvsG+dva8n60V9jYfqthLUvk69mvrc2f+3wM92G36e7rJ6kT2tokPuA11SbxlfXZZuOreAgGhnOA+PI8xMQTFgoDwB8L3YHP9TLR5Q+5D71EW+HkvlLH3gl5Ieex+EHucx2/w31V2iF8+wj7NqevL7JtbfGDfm1t/n4+8tzb2nT3Idug2kn/JggkICaX6HntuZ370Cv2wMBwDpA93MCEdSVJHf5obiPxIUEv4flH4PoWAjE5KDi3S303NjGAMZBtGNTWFv+5b/82ts/nOIwNe9TmjPt2gOzE86DcaGvDB3xcdNBm4we0IUtkNZP+mQza8YFcz2uMNmyA3gCrYigM1ANkKDS2DtKWrO5rk3kRoAOPQwfYyH4oiw8blPH4cuTtuT/Xd445vI0tv8+qf/EDb+c1tvRhx+NKrt3v0tvdRuJD9kOe4+jAY9EBNrIf8oL0mNxX9SExUA+QIRE5YBhPYJd5qPv6ybJQsIHHo+fAn9uu9yna9PMZMX3aH2qzYJyK7RvsOPFBDuTY6d6JHRTTr70tR/EBHw/dgc/1fnJQTeVtVR8yA/UAGTKhuxguL4IyPG8bpFNUoIzB5xjU1otJ//pqj+v5th0aLb7arkWrvFj6GYnc6ccFbTnyuNyP7m3ou4GWYNs777OtoRr7y0A9QPaX351GzxPf9bKP+0tJXOnLbS9KZO4vddr7oYzN7X59qt/G8pDN17bUB61pGZvbeb/cX+qDcpm2HGVf7Ly96gfIQD1ADpDsXU5FQZRo61rG9LPp269tJ3++AaDvFF/bbeuT+ThzwVrn+KLPspV7YWdeiC3RNm8ZM1X2qD1sPUBGbUXa76etkNzX3uNzr8ftVTLiXseo/XfeSEeBo2GuNWOlUzUpD14GPe+D0dUjBnQc6zoK73qAjMIq7O0eBhVg3ra3WcZj48uft+p7W7ODype9zjOF/Unt0XjseoCMxjocxF2QdcPGQdz38OaoI/VjYNh5wXj95qr+CWKgHiATtJiH8ChsFBV7+6Q/CvwdQurUKSeBgZE7QPb8696eB5iEZa3PUBmoDFQG9p+BhzhA9v9mmIGPY8gvjF0OUM+ZL8xw7VgZqAxUBhIDI3eApLs6gMsuz5kDuJM6RWWgMlAZGE8GpvYAGc/lqnc9rQzU564MjCID9QAZxVWp9zT6DNTfQEd/jeod7jsD9QDZd4rrBBPJQP0NdCKXtT7UwzEwHQfIw3FSoysDlYHKQGVgFwzUA2QXJNWQykBloDJQGXiQgXqAPMhJ9YwAA/VPDCOwCMO5hekcZUoSuB4gw0rvKUmYYdG10zj1Tww7MVTbR5qBKUngeoAMKwunJGGGRVcdpzKwKwbqB7Nd0XRYQfUAOSzmdzlvDasMTDUD9YPZSC9/PUBGennqzVUGKgP9GKhfTvoxc3D+eoAcHNd1pspAZWCIDOz/l5Mh3uyEDlUPkAld2PpYlYHKwHQxcBjfyIZ3gBzG3U9XftSnrQxUBioDfRk4jG9kwztADuPu+1JZG0aAgXoLlYHKwAAGms/czXVA2Eg3De8AGenHrDe3NwbGO8n39uy1d2VgfxhoPnM31/2ZYf9HrQfI/nM8ATOMd5JPwALUR6gMPBwDij6Ij31TcYAcBJFar/quDAyXgZq4w+VzykY7iI99B36AHEZNHASRU5ab9XEPgoGauAfBcp1jDwz8PwAAAP///71iBQAAAAZJREFUAwD8UK3KdnYFywAAAABJRU5ErkJggg==",
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fillMode": {
+									"value": "fit",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "z8Ts8lIyoLGMEDyM2hWtJ",
+										"definitionId": "set_page",
+										"connectionId": "internal",
+										"options": {
+											"surfaceId": {
+												"isExpression": false,
+												"value": "self"
+											},
+											"page": {
+												"value": "startup",
+												"isExpression": false
+											}
+										},
+										"type": "action",
+										"children": {}
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				},
+				"3": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Save Project",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 35,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "MVoDstFRQ3837maHSb_6T",
+										"definitionId": "send_blank",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/project/save",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				},
+				"4": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Hide UI",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 35,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [
+						{
+							"id": "iRRIgWewqgv_QH6H6a64_",
+							"definitionId": "osc_feedback_int",
+							"connectionId": "l8QH0V_kX4COhLjShYYsG",
+							"options": {
+								"path": {
+									"value": "/ui/visible",
+									"isExpression": false
+								},
+								"arguments": {
+									"value": 0,
+									"isExpression": false
+								},
+								"comparison": {
+									"isExpression": false,
+									"value": "equal"
+								}
+							},
+							"upgradeIndex": 3,
+							"type": "feedback",
+							"isInverted": {
+								"value": false,
+								"isExpression": false
+							},
+							"styleOverrides": [
+								{
+									"overrideId": "u2L8hnKwolL7HNtIrml4h",
+									"elementId": "text0",
+									"elementProperty": "text",
+									"override": {
+										"value": "Show UI",
+										"isExpression": false
+									}
+								}
+							]
+						}
+					],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "V5hJ9ZXEABSOjmVCeyqGI",
+										"definitionId": "send_blank",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/ui/toggle",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				},
+				"6": {
+					"type": "button-layered",
+					"style": {
+						"layers": [
+							{
+								"id": "canvas",
+								"name": "Canvas",
+								"usage": "auto",
+								"type": "canvas",
+								"decoration": {
+									"value": "border",
+									"isExpression": false
+								},
+								"showStatusIcons": {
+									"value": "default",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "box0",
+								"name": "Background",
+								"usage": "auto",
+								"type": "box",
+								"pinnedProperties": [
+									"color"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"color": {
+									"value": 0,
+									"isExpression": false
+								},
+								"cornerRadius": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderWidth": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderColor": {
+									"value": 0,
+									"isExpression": false
+								},
+								"borderPosition": {
+									"value": "inside",
+									"isExpression": false
+								}
+							},
+							{
+								"id": "text0",
+								"name": "Text",
+								"usage": "auto",
+								"type": "text",
+								"pinnedProperties": [
+									"text",
+									"fontsize",
+									"fontsizeAllowShrink",
+									"color",
+									"halign",
+									"valign"
+								],
+								"enabled": {
+									"value": true,
+									"isExpression": false
+								},
+								"opacity": {
+									"value": 100,
+									"isExpression": false
+								},
+								"x": {
+									"value": 0,
+									"isExpression": false
+								},
+								"y": {
+									"value": 0,
+									"isExpression": false
+								},
+								"width": {
+									"value": 100,
+									"isExpression": false
+								},
+								"height": {
+									"value": 100,
+									"isExpression": false
+								},
+								"rotation": {
+									"value": 0,
+									"isExpression": false
+								},
+								"text": {
+									"value": "Nudge ⬇️",
+									"isExpression": false
+								},
+								"color": {
+									"value": 16777215,
+									"isExpression": false
+								},
+								"halign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"valign": {
+									"value": "center",
+									"isExpression": false
+								},
+								"fontsize": {
+									"value": 100,
+									"isExpression": false
+								},
+								"fontsizeAllowShrink": {
+									"value": true,
+									"isExpression": false
+								},
+								"font": {
+									"value": "companion-sans",
+									"isExpression": false
+								},
+								"weight": {
+									"value": "normal",
+									"isExpression": false
+								},
+								"styles": {
+									"value": [],
+									"isExpression": false
+								},
+								"outlineColor": {
+									"value": 4278190080,
+									"isExpression": false
+								}
+							}
+						]
+					},
+					"options": {
+						"stepProgression": "auto",
+						"stepExpression": "",
+						"rotaryActions": false,
+						"canModifyStyleInApis": false,
+						"notes": ""
+					},
+					"feedbacks": [],
+					"steps": {
+						"0": {
+							"action_sets": {
+								"down": [
+									{
+										"id": "tABR0wBpGXBDyhXgyRocw",
+										"definitionId": "send_multiple",
+										"connectionId": "l8QH0V_kX4COhLjShYYsG",
+										"options": {
+											"path": {
+												"value": "/nudge",
+												"isExpression": false
+											},
+											"arguments": {
+												"value": "0 10",
+												"isExpression": false
+											}
+										},
+										"upgradeIndex": 3,
+										"type": "action"
+									}
+								],
+								"up": []
+							},
+							"options": {
+								"runWhileHeld": []
+							}
+						}
+					},
+					"localVariables": []
+				}
+			}
+		},
+		"gridSize": {
+			"minColumn": 0,
+			"maxColumn": 7,
+			"minRow": 0,
+			"maxRow": 3
+		},
+		"pageVariables": [
+			{
+				"id": "FVAFVG8tNwFEAfMyaBVgn",
+				"definitionId": "osc_feedback_value",
+				"connectionId": "l8QH0V_kX4COhLjShYYsG",
+				"options": {
+					"path": {
+						"value": "/selected/index",
+						"isExpression": false
+					},
+					"index": {
+						"value": "0",
+						"isExpression": false
+					}
+				},
+				"upgradeIndex": 3,
+				"type": "feedback",
+				"isInverted": {
+					"value": false,
+					"isExpression": false
+				},
+				"styleOverrides": [],
+				"variableName": "selected_index"
+			}
+		]
+	},
+	"instances": {
+		"l8QH0V_kX4COhLjShYYsG": {
+			"moduleInstanceType": "connection",
+			"moduleId": "generic-osc",
+			"moduleVersionId": "3.0.0",
+			"updatePolicy": "stable",
+			"sortOrder": 3,
+			"label": "multiviewer",
+			"isFirstInit": false,
+			"config": {
+				"targetPort": 9000,
+				"protocol": "udp",
+				"listen": true,
+				"host": "localhost",
+				"feedbackPort": "9001"
+			},
+			"secrets": {},
+			"lastUpgradeIndex": 3,
+			"enabled": true
+		}
+	},
+	"connectionCollections": [],
+	"oldPageNumber": 2,
+	"imageLibrary": [],
+	"imageLibraryCollections": []
+}

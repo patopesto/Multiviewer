@@ -92,16 +92,25 @@ current position.
 
 ## Bitfocus Companion
 
-Use Companion's generic OSC connection:
+<a href="/downloads/Multiviewer-companion.companionconfig" download>Download the sample Companion page</a>
 
-1. In Companion, set the target to the machine running Multiviewer on UDP
-   `9000`, and choose a listen port for feedback, for example `9001`.
-2. In **Control → OSC Settings...**, choose **Configured target** or
-   **Senders + configured target**, set **Host** and **Port** to the Companion
-   address and listen port, then click **Apply**.
-3. Add a button press for `/source/3/expand` and a feedback for
-   `/source/3/expanded`.
-4. For button text, bind a Companion variable to `/source/3/name`.
+The sample is a Companion 5.1 page export named **Multiviewer**. It contains a
+Generic OSC connection targeting `localhost:9000` and listening for feedback on
+`9001`; remap the connection to your Multiviewer host and port after importing.
+
+1. In Companion, open the **Import / Export** tab, choose **Import Page**, and
+   select the downloaded file.
+2. In the imported Generic OSC connection, set the target host to the machine
+   running Multiviewer, the target port to `9000`, and the feedback port to a
+   free UDP port, for example `9001`.
+3. In **Control → OSC Settings...**, choose **Configured target** or
+   **Senders + configured target**, set **Host** and **Port** to Companion's
+   feedback address, then click **Apply**.
+4. Press a button such as Source 1 and check that its feedback lights.
+
+To build the page yourself instead, add a button press for `/source/3/expand`
+and a feedback for `/source/3/expanded`, and bind a Companion variable to
+`/source/3/name` for button text.
 
 Alternatively choose **Reply to senders** and leave the host and port empty;
 Companion starts receiving feedback after its first command.

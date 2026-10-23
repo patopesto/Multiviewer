@@ -1,0 +1,48 @@
+---
+import { templateDownloads } from '../data/templates.js';
+
+interface Props {
+  title?: string;
+  lead?: string;
+}
+const { title, lead } = Astro.props;
+---
+
+<section class="section">
+  <div class="container">
+    {title && <h2>{title}</h2>}
+    {lead && <p class="section__lead">{lead}</p>}
+    <div class="template-downloads">
+      {templateDownloads.map((item) => (
+        <div class="dl-card">
+          <div class="dl-card__os">
+            <span>{item.title}</span>
+          </div>
+          <p class="dl-card__note">{item.description}</p>
+          <a class="btn btn--primary" href={item.href} download>{item.action}</a>
+          {item.docHref && (
+            <a class="template-downloads__doc" href={item.docHref}>
+              Setup guide →
+            </a>
+          )}
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .template-downloads {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 340px));
+    gap: 1rem;
+    margin-top: 1.5rem;
+  }
+  .template-downloads__doc {
+    display: block;
+    margin-top: 0.75rem;
+    font-size: 0.82rem;
+    text-align: center;
+    color: var(--text-dim);
+  }
+</style>
