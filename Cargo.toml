@@ -67,7 +67,10 @@ embed-resource = "3"
 [target.'cfg(target_os = "macos")'.dependencies]
 syphon-wgpu = "0.4"
 syphon-core = "0.4"
+syphon-metal = { version = "0.4", features = ["wgpu"] }
 objc = "0.2"
+objc2 = "0.6"
+objc2-metal = "0.3"
 core-foundation = "0.10"
 av-foundation = "0.8.1"
 screen-capture-kit = "0.7.1"
@@ -75,7 +78,6 @@ core-graphics2 = { version = "0.6.1", default-features = false, features = ["dis
 core-video = "0.6.1"
 core-media = "0.8.1"
 dispatch2 = "0.3"
-objc2 = "0.6"
 objc2-foundation = "0.3"
 
 [target.'cfg(target_os = "windows")'.dependencies]

@@ -243,7 +243,16 @@ pub fn setup_app() {
     }
 }
 
-pub fn configure_wgpu(_options: &mut eframe::NativeOptions) {}
+pub fn configure_wgpu(_options: &mut eframe::NativeOptions) {
+    // Syphon's zero-copy receiver orders its Metal blit against wgpu with an
+    // MTLSharedEvent instead of a CPU drain only when this is set; the crate
+    // reads it once, on the first Syphon source. The output path stages the
+    // matching signal itself, so both ends use one scheme. An explicit value
+    // from the environment wins.
+    if std::env::var_os("SYPHON_WGPU_SYNC").is_none() {
+        unsafe { std::env::set_var("SYPHON_WGPU_SYNC", "event") };
+    }
+}
 
 pub fn on_window_created(_ctx: &egui::Context) {
     unsafe {
