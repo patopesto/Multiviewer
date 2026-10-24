@@ -118,6 +118,7 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 input->FlushStreams();
                 if (input->StartStreams() == S_OK) {
                     last_mode_ = newMode;
+                    frame_logged_ = false;
                 } else {
                     fprintf(stderr, "[decklink] StartStreams failed after format change\n");
                 }
@@ -197,6 +198,13 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 CFRelease(pixel_buffer);
                 return S_OK;
             }
+            if (!frame_logged_) {
+                frame_logged_ = true;
+                fprintf(stderr, "[decklink] input frame %ldx%ld fmt=0x%08X rowBytes=%ld iosurface=%d cvfmt=0x%08X\n",
+                        w, h, static_cast<unsigned int>(fmt), row_bytes,
+                        CVPixelBufferGetIOSurface(pixel_buffer) != nullptr ? 1 : 0,
+                        static_cast<unsigned int>(CVPixelBufferGetPixelFormatType(pixel_buffer)));
+            }
     #else
             // GetBytes returns E_ACCESSDENIED unless StartAccess was called first.
             IDeckLinkVideoBuffer* vbuf = nullptr;
@@ -226,6 +234,11 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 vbuf->EndAccess(bmdBufferAccessRead);
                 vbuf->Release();
                 return S_OK;
+            }
+            if (!frame_logged_) {
+                frame_logged_ = true;
+                fprintf(stderr, "[decklink] input frame %ldx%ld fmt=0x%08X rowBytes=%ld\n",
+                        w, h, static_cast<unsigned int>(fmt), row_bytes);
             }
     #endif
 
@@ -295,6 +308,7 @@ class CaptureCallback : public IDeckLinkInputCallback {
         DecklinkSource* source_ = nullptr;
         BMDDisplayMode last_mode_ = bmdModeUnknown;
         bool had_signal_ = false;
+        bool frame_logged_ = false;
 
     public:
         void stop() { stopping_.store(true); }
@@ -328,6 +342,13 @@ void decklink_source_set_connection(DecklinkSource* s, uint32_t connection) {
 bool decklink_source_start(DecklinkSource* s) {
     DecklinkComScope com_scope;
     if (!s || s->target_name.empty()) return false;
+
+    {
+        char api[64] = {0};
+        if (decklink_api_version(api, sizeof(api)) > 0) {
+            fprintf(stderr, "[decklink] input using API %s\n", api);
+        }
+    }
 
     IDeckLinkIterator* iterator = nullptr;
     if (FAILED(DecklinkCreateIterator(&iterator))) {

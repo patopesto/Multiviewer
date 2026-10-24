@@ -1,4 +1,5 @@
-#include <vector>
+#include <deque>
+#include <memory>
 #include <string>
 #include <mutex>
 #include <atomic>
@@ -30,6 +31,8 @@ static std::string get_model_name(IDeckLink* decklink) {
 
 /* ── forward declarations ──────────────────────────────────────────────────── */
 
+struct OutputCompletionState;
+
 struct DecklinkOutput {
     std::string target_name;
     IDeckLinkOutput* output = nullptr;
@@ -39,14 +42,36 @@ struct DecklinkOutput {
     BMDTimeValue frame_duration = 0;
     BMDTimeValue time_scale = 0;
     BMDTimeValue scheduled_time = 0;
+    std::shared_ptr<OutputCompletionState> completion;
+    bool first_release_logged = false;
+    bool caps_logged = false;
+};
+
+
+/* Frames scheduled with a borrowed buffer are released when the device drops
+** the video frame, which drops this buffer's last reference. Publishing the
+** token there, rather than in a scheduled-frame callback, also covers frames
+** cancelled by stop. */
+struct OutputCompletionState {
+    std::mutex mutex;
+    std::deque<uint64_t> completed;
 };
 
 
 class DecklinkOutputBuffer : public IDeckLinkVideoBuffer {
 
     public:
-        DecklinkOutputBuffer(const uint8_t* data, size_t size)
-            : ref_count_(1), data_(data, data + size) {}
+        DecklinkOutputBuffer(const uint8_t* data, size_t size, uint64_t token,
+                             std::shared_ptr<OutputCompletionState> completion)
+            : ref_count_(1), data_(data), size_(size), token_(token),
+              completion_(completion) {}
+
+        ~DecklinkOutputBuffer() override {
+            if (completion_) {
+                std::lock_guard<std::mutex> lock(completion_->mutex);
+                completion_->completed.push_back(token_);
+            }
+        }
 
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, LPVOID* ppv) override {
             if (!ppv) return E_INVALIDARG;
@@ -74,13 +99,13 @@ class DecklinkOutputBuffer : public IDeckLinkVideoBuffer {
 
         HRESULT GetBytes(void** buffer) override {
             if (!buffer) return E_INVALIDARG;
-            *buffer = data_.data();
+            *buffer = const_cast<uint8_t*>(data_);
             return S_OK;
         }
 
         HRESULT GetSize(uint64_t* size) override {
             if (!size) return E_INVALIDARG;
-            *size = static_cast<uint64_t>(data_.size());
+            *size = static_cast<uint64_t>(size_);
             return S_OK;
         }
 
@@ -89,7 +114,10 @@ class DecklinkOutputBuffer : public IDeckLinkVideoBuffer {
 
     private:
         std::atomic<ULONG> ref_count_;
-        std::vector<uint8_t> data_;
+        const uint8_t* data_;
+        size_t size_;
+        uint64_t token_;
+        std::shared_ptr<OutputCompletionState> completion_;
 };
 
 
@@ -98,6 +126,7 @@ class DecklinkOutputBuffer : public IDeckLinkVideoBuffer {
 DecklinkOutput* decklink_output_new(const char* display_name) {
     auto* o = new DecklinkOutput();
     o->target_name = display_name ? display_name : "";
+    o->completion = std::make_shared<OutputCompletionState>();
     return o;
 }
 
@@ -162,6 +191,20 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
         return false;
     }
 
+    if (!o->caps_logged) {
+        o->caps_logged = true;
+        char api[64] = {0};
+        if (decklink_api_version(api, sizeof(api)) > 0) {
+            fprintf(stderr, "[decklink] output using API %s\n", api);
+        }
+#ifdef __APPLE__
+        IDeckLinkMacOutput* mac_output = nullptr;
+        bool available = o->output->QueryInterface(IID_IDeckLinkMacOutput, (void**)&mac_output) == S_OK;
+        if (mac_output) mac_output->Release();
+        fprintf(stderr, "[decklink] IDeckLinkMacOutput %s\n", available ? "available" : "unavailable");
+#endif
+    }
+
     BMDDisplayMode mode = static_cast<BMDDisplayMode>(mode_id);
     HRESULT hr = o->output->EnableVideoOutput(mode, bmdVideoOutputFlagDefault);
     if (hr != S_OK) {
@@ -197,8 +240,9 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
         return false;
     }
 
-    fprintf(stderr, "[decklink] output started '%s' mode=%d %ldx%ld\n",
-            o->target_name.c_str(), static_cast<int>(mode), o->width, o->height);
+    fprintf(stderr, "[decklink] output started '%s' mode=%d %ldx%ld frame=%lld/%lld\n",
+            o->target_name.c_str(), static_cast<int>(mode), o->width, o->height,
+            static_cast<long long>(o->frame_duration), static_cast<long long>(o->time_scale));
     return true;
 }
 
@@ -213,15 +257,15 @@ void decklink_output_stop(DecklinkOutput* o) {
 }
 
 
-bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int width, int height, int row_bytes) {
+bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int width, int height, int row_bytes, uint64_t token) {
     if (!o || !o->output) return false;
     if (width <= 0 || height <= 0 || !bgra) return false;
 
     size_t src_pitch = static_cast<size_t>(width) * 4;
-    size_t expected = src_pitch * static_cast<size_t>(height);
     if (row_bytes < 0 || static_cast<size_t>(row_bytes) < src_pitch) return false;
+    size_t size = static_cast<size_t>(row_bytes) * static_cast<size_t>(height);
 
-    auto* buffer = new DecklinkOutputBuffer(bgra, expected);
+    auto* buffer = new DecklinkOutputBuffer(bgra, size, token, o->completion);
 
     IDeckLinkMutableVideoFrame* frame = nullptr;
     HRESULT hr = o->output->CreateVideoFrameWithBuffer(width, height, row_bytes, bmdFormat8BitBGRA, bmdFrameFlagDefault, buffer, &frame);
@@ -239,5 +283,19 @@ bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int w
     }
 
     o->scheduled_time += o->frame_duration;
+    return true;
+}
+
+
+bool decklink_output_take_completed(DecklinkOutput* o, uint64_t* token) {
+    if (!o || !o->completion || !token) return false;
+    std::lock_guard<std::mutex> lock(o->completion->mutex);
+    if (o->completion->completed.empty()) return false;
+    *token = o->completion->completed.front();
+    o->completion->completed.pop_front();
+    if (!o->first_release_logged) {
+        o->first_release_logged = true;
+        fprintf(stderr, "[decklink] first borrowed frame released\n");
+    }
     return true;
 }

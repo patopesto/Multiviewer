@@ -66,5 +66,10 @@ unsafe extern "C" {
         width: i32,
         height: i32,
         row_bytes: i32,
+        token: u64,
+    ) -> bool;
+    pub fn decklink_output_take_completed(
+        o: *mut DecklinkOutputHandle,
+        token: *mut u64,
     ) -> bool;
 }

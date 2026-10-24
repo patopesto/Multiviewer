@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
@@ -7,7 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use multiviewer_decklink::{
     decklink_output_free, decklink_output_new, decklink_output_present_frame,
-    decklink_output_start, decklink_output_stop, DisplayMode,
+    decklink_output_start, decklink_output_stop, decklink_output_take_completed,
+    DecklinkOutputHandle, DisplayMode,
 };
 
 use super::super::{OutputStats, Protocol};
@@ -51,6 +53,27 @@ const START_RETRY: Duration = Duration::from_secs(10);
 
 /// How long `Drop` waits for the worker to release the device before detaching.
 const SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
+
+/// How many borrowed frames the device may hold before the worker drops new
+/// ones. The shim returns a token when a frame is released, so this is only a
+/// safety valve for a stalled device.
+const MAX_IN_FLIGHT: usize = 8;
+
+/// Reclaim every frame the device has released. The token comes back when the
+/// worker's buffer is safe to reuse or drop.
+fn drain_completed(output: *mut DecklinkOutputHandle, in_flight: &mut VecDeque<(u64, Vec<u8>)>) {
+    loop {
+        let mut token = 0u64;
+        // SAFETY: `output` outlives the worker loop that calls this.
+        let got = unsafe { decklink_output_take_completed(output, &mut token) };
+        if !got {
+            return;
+        }
+        if let Some(index) = in_flight.iter().position(|(queued, _)| *queued == token) {
+            in_flight.remove(index);
+        }
+    }
+}
 
 // @docs protocol="DeckLink" direction=output
 #[derive(Serialize, Deserialize, Clone)]
@@ -143,8 +166,11 @@ impl DecklinkOutput {
 
                 let mut started = false;
                 let mut start_logged = false;
+                let mut in_flight: VecDeque<(u64, Vec<u8>)> = VecDeque::new();
+                let mut next_token = 0u64;
                 while let Ok(buffer) = frame_rx.recv() {
                     pending_t.store(false, Ordering::Release);
+                    drain_completed(output, &mut in_flight);
                     if buffer.len() < 16 {
                         continue;
                     }
@@ -200,6 +226,14 @@ impl DecklinkOutput {
                         };
                     }
 
+                    if in_flight.len() >= MAX_IN_FLIGHT {
+                        // The device is not releasing frames; drop this one
+                        // rather than reuse a buffer it may still read.
+                        stats_clone.lock().unwrap().frames_dropped += 1;
+                        continue;
+                    }
+                    let token = next_token;
+                    next_token = next_token.wrapping_add(1);
                     let send_span = tracing::debug_span!("decklink_send");
                     let _send_guard = send_span.entered();
                     let start = Instant::now();
@@ -210,6 +244,7 @@ impl DecklinkOutput {
                             frame_w as i32,
                             frame_h as i32,
                             (frame_w * 4) as i32,
+                            token,
                         )
                     };
 
@@ -224,10 +259,34 @@ impl DecklinkOutput {
                             s.frames_dropped += 1;
                         }
                     }
+                    if ok {
+                        in_flight.push_back((token, buffer));
+                    }
                 }
 
                 if started {
                     unsafe { decklink_output_stop(output) };
+                }
+                // Stop cancels scheduled frames; releasing them returns their
+                // tokens. Wait briefly, then leak whatever the device still
+                // holds rather than free memory it may still be reading.
+                let deadline = Instant::now() + SHUTDOWN_GRACE;
+                while !in_flight.is_empty() && Instant::now() < deadline {
+                    drain_completed(output, &mut in_flight);
+                    if in_flight.is_empty() {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(2));
+                }
+                if !in_flight.is_empty() {
+                    tracing::warn!(
+                        output=thread_name,
+                        "DeckLink output still holds {} frames at shutdown; leaking their buffers",
+                        in_flight.len()
+                    );
+                    for (_, frame) in in_flight.drain(..) {
+                        std::mem::forget(frame);
+                    }
                 }
                 unsafe { decklink_output_free(output) };
             })
