@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use grafton_ndi::{NDI, Sender, SenderOptions, BorrowedVideoFrame};
 
 use super::super::{OutputStats, Protocol};
-use super::super::output::{OutputId, OutputLiveness, VideoOutput};
+use super::super::output::{OutputId, OutputLiveness, ReadbackPool, VideoOutput};
 
 // @docs protocol="NDI" direction=output
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -19,14 +19,11 @@ pub struct NdiOutputConfig {
 pub struct NdiOutput {
     name: String,
     enabled: AtomicBool,
-    width: AtomicU32,
-    height: AtomicU32,
     stats: Arc<Mutex<OutputStats>>,
     frame_tx: Option<mpsc::SyncSender<Vec<u8>>>,
     pending: Arc<AtomicBool>,
     liveness: OutputLiveness,
-    readback: Mutex<Option<wgpu::Buffer>>,
-    pending_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
+    readback: Mutex<ReadbackPool>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -112,14 +109,11 @@ impl NdiOutput {
         Self {
             name,
             enabled: AtomicBool::new(enabled),
-            width: AtomicU32::new(0),
-            height: AtomicU32::new(0),
             stats,
             frame_tx: Some(frame_tx),
             pending,
             liveness,
-            readback: Mutex::new(None),
-            pending_readback: Mutex::new(None),
+            readback: Mutex::new(ReadbackPool::new()),
             thread: Some(thread),
         }
     }
@@ -135,21 +129,13 @@ impl VideoOutput for NdiOutput {
             return false;
         }
 
-        self.width.store(width, Ordering::Relaxed);
-        self.height.store(height, Ordering::Relaxed);
-
         let aligned_bytes_per_row = (width * 4 + 255) & !255;
-        let buffer_size = (aligned_bytes_per_row * height) as u64;
-        let mut readback_slot = self.readback.lock().unwrap();
-        if readback_slot.as_ref().is_none_or(|b| b.size() != buffer_size + 8) {
-            *readback_slot = Some(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("ndi-output-readback"),
-                size: buffer_size + 8,
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            }));
-        }
-        let readback_buffer = readback_slot.as_ref().unwrap();
+        let buffer_size = (aligned_bytes_per_row * height) as u64 + 8;
+        let mut readback = self.readback.lock().unwrap();
+        readback.ensure(device, "ndi-output-readback", buffer_size);
+        let Some(slot) = readback.free() else {
+            return false;
+        };
 
         {
             let readback_span = tracing::debug_span!("readback");
@@ -165,7 +151,7 @@ impl VideoOutput for NdiOutput {
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::TexelCopyBufferInfo {
-                    buffer: readback_buffer,
+                    buffer: readback.buffer(slot),
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: 8,
                         bytes_per_row: Some(aligned_bytes_per_row),
@@ -181,63 +167,49 @@ impl VideoOutput for NdiOutput {
             queue.submit(Some(encoder.finish()));
         }
 
-        let (tx, rx) = mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
-        readback_buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
-        });
-        *self.pending_readback.lock().unwrap() = Some(rx);
+        readback.map(slot, width, height);
         return true;
     }
 
     fn finish(&self) {
-        let Some(rx) = self.pending_readback.lock().unwrap().take() else {
-            return;
-        };
-        let mapped = match rx.try_recv() {
-            Ok(result) => result,
-            Err(_) => {
-                // The map never completed (poll error / device lost). Drop the
-                // buffer so the next frame recreates it instead of re-mapping a
-                // buffer that is still pending.
-                *self.readback.lock().unwrap() = None;
-                tracing::error!(output=self.name, "NDI output readback did not complete");
-                return;
-            }
-        };
-        if mapped.is_err() {
-            tracing::error!(output=self.name, "NDI output readback map failed");
-            return;
-        }
-
-        let readback_slot = self.readback.lock().unwrap();
-        let Some(readback_buffer) = readback_slot.as_ref() else {
+        let mut readback = self.readback.lock().unwrap();
+        let Some(slot) = readback.take_ready() else {
             return;
         };
         // The readback stride is padded to `COPY_BYTES_PER_ROW_ALIGNMENT`, so strip the padding.
-        let width = self.width.load(Ordering::Relaxed);
-        let height = self.height.load(Ordering::Relaxed);
+        let (width, height) = readback.dims(slot);
         let row = (width * 4) as usize;
         let aligned = (row + 255) & !255;
-        let view = match readback_buffer.slice(..).get_mapped_range() {
-            Ok(view) => view,
-            Err(e) => {
-                tracing::error!(output = self.name, "NDI output mapped range unavailable: {e:?}");
-                return;
-            }
-        };
         // The first 8 bytes carry width/height so the thread does not need to wait on atomics.
         let mut buffer = Vec::with_capacity(8 + row * height as usize);
-        buffer.extend_from_slice(&[0u8; 8]);
-        if aligned == row {
-            buffer.extend_from_slice(&view[8..8 + row * height as usize]);
-        } else {
-            for y in 0..height as usize {
-                let src_start = 8 + y * aligned;
-                buffer.extend_from_slice(&view[src_start..src_start + row]);
+        let copied = {
+            let readback_buffer = readback.buffer(slot);
+            match readback_buffer.slice(..).get_mapped_range() {
+                Ok(view) => {
+                    buffer.extend_from_slice(&[0u8; 8]);
+                    if aligned == row {
+                        buffer.extend_from_slice(&view[8..8 + row * height as usize]);
+                    } else {
+                        for y in 0..height as usize {
+                            let src_start = 8 + y * aligned;
+                            buffer.extend_from_slice(&view[src_start..src_start + row]);
+                        }
+                    }
+                    drop(view);
+                    readback_buffer.unmap();
+                    true
+                }
+                Err(e) => {
+                    tracing::error!(output = self.name, "NDI output mapped range unavailable: {e:?}");
+                    readback_buffer.unmap();
+                    false
+                }
             }
+        };
+        readback.release(slot);
+        if !copied {
+            return;
         }
-        drop(view);
-        readback_buffer.unmap();
 
         buffer[0..4].copy_from_slice(&width.to_le_bytes());
         buffer[4..8].copy_from_slice(&height.to_le_bytes());

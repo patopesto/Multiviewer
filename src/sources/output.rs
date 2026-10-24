@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 use tracing::instrument;
@@ -282,18 +282,14 @@ impl OutputRegistry {
 
     #[instrument(level = "debug", skip_all)]
     pub fn present_all(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let mut awaiting = false;
         for output in self.outputs.values() {
-            if output.enabled() && output.present(texture, width, height, device, queue) {
-                awaiting = true;
+            if output.enabled() {
+                output.present(texture, width, height, device, queue);
             }
         }
-        if awaiting {
-            let wait_span = tracing::debug_span!("readback_wait");
-            let _wait_guard = wait_span.entered();
-            if device.poll(wgpu::PollType::wait_indefinitely()).is_err() {
-                tracing::error!("output device poll failed");
-            }
+        // Drive the readback map callbacks without waiting.
+        if device.poll(wgpu::PollType::Poll).is_err() {
+            tracing::error!("output device poll failed");
         }
         for output in self.outputs.values() {
             output.finish();
@@ -302,6 +298,117 @@ impl OutputRegistry {
 
     pub fn clear(&mut self) {
         self.outputs.clear();
+    }
+}
+
+
+/// Ring of GPU->CPU readback buffers for one output.
+pub struct ReadbackPool {
+    size: u64,
+    slots: Vec<ReadbackSlot>,
+}
+
+struct ReadbackSlot {
+    buffer: wgpu::Buffer,
+    pending: Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>,
+    mapped: bool,
+    width: u32,
+    height: u32,
+}
+
+const READBACK_SLOTS: usize = 3;
+
+impl ReadbackPool {
+    pub fn new() -> Self {
+        return Self {
+            size: 0,
+            slots: Vec::new(),
+        };
+    }
+
+    /// (Re)create the ring when the readback size changes.
+    pub fn ensure(&mut self, device: &wgpu::Device, label: &str, size: u64) {
+        if self.size == size && !self.slots.is_empty() {
+            return;
+        }
+        self.size = size;
+        self.slots = (0..READBACK_SLOTS)
+            .map(|_| {
+                let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some(label),
+                    size,
+                    usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                    mapped_at_creation: false,
+                });
+                ReadbackSlot {
+                    buffer,
+                    pending: None,
+                    mapped: false,
+                    width: 0,
+                    height: 0,
+                }
+            })
+            .collect();
+    }
+
+    /// A slot that is neither in flight nor mapped.
+    pub fn free(&self) -> Option<usize> {
+        return self
+            .slots
+            .iter()
+            .position(|s| s.pending.is_none() && !s.mapped);
+    }
+
+    pub fn buffer(&self, slot: usize) -> &wgpu::Buffer {
+        return &self.slots[slot].buffer;
+    }
+
+    /// Start mapping `slot`. Its readback copy must already be submitted.
+    /// The dimensions travel with the slot: a canvas resize can land between
+    /// the copy and the finish.
+    pub fn map(&mut self, slot: usize, width: u32, height: u32) {
+        let (tx, rx) = mpsc::channel();
+        self.slots[slot].width = width;
+        self.slots[slot].height = height;
+        self.slots[slot]
+            .buffer
+            .slice(..)
+            .map_async(wgpu::MapMode::Read, move |result| {
+                let _ = tx.send(result);
+            });
+        self.slots[slot].pending = Some(rx);
+    }
+
+    /// Dimensions the slot's copy was recorded at.
+    pub fn dims(&self, slot: usize) -> (u32, u32) {
+        return (self.slots[slot].width, self.slots[slot].height);
+    }
+
+    /// The first slot whose map completed, left mapped for the caller to read.
+    pub fn take_ready(&mut self) -> Option<usize> {
+        for i in 0..self.slots.len() {
+            let result = match self.slots[i].pending.as_ref() {
+                Some(rx) => rx.try_recv(),
+                None => continue,
+            };
+            match result {
+                Ok(Ok(())) => {
+                    self.slots[i].pending = None;
+                    self.slots[i].mapped = true;
+                    return Some(i);
+                }
+                Ok(Err(_)) | Err(mpsc::TryRecvError::Disconnected) => {
+                    self.slots[i].pending = None;
+                }
+                Err(mpsc::TryRecvError::Empty) => {}
+            }
+        }
+        return None;
+    }
+
+    /// Return a slot after its mapped range was dropped and unmapped.
+    pub fn release(&mut self, slot: usize) {
+        self.slots[slot].mapped = false;
     }
 }
 

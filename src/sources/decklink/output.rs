@@ -1,5 +1,5 @@
 use std::ffi::CString;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -11,7 +11,7 @@ use multiviewer_decklink::{
 };
 
 use super::super::{OutputStats, Protocol};
-use super::super::output::{OutputId, OutputLiveness, VideoOutput};
+use super::super::output::{OutputId, OutputLiveness, ReadbackPool, VideoOutput};
 
 const SCALE_SHADER: &str = r#"
 struct VertexOutput {
@@ -88,14 +88,11 @@ pub struct DecklinkOutput {
     name: String,
     config: DecklinkOutputConfig,
     enabled: AtomicBool,
-    width: AtomicU32,
-    height: AtomicU32,
     stats: Arc<Mutex<OutputStats>>,
     frame_tx: Option<mpsc::SyncSender<Vec<u8>>>,
     pending: Arc<AtomicBool>,
     liveness: OutputLiveness,
-    readback: Mutex<Option<wgpu::Buffer>>,
-    pending_readback: Mutex<Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>>,
+    readback: Mutex<ReadbackPool>,
     thread: Option<thread::JoinHandle<()>>,
     scale_bind_layout: OnceLock<wgpu::BindGroupLayout>,
     scale_sampler: OnceLock<wgpu::Sampler>,
@@ -240,14 +237,11 @@ impl DecklinkOutput {
             name,
             config,
             enabled: AtomicBool::new(enabled),
-            width: AtomicU32::new(0),
-            height: AtomicU32::new(0),
             stats,
             frame_tx: Some(frame_tx),
             pending,
             liveness,
-            readback: Mutex::new(None),
-            pending_readback: Mutex::new(None),
+            readback: Mutex::new(ReadbackPool::new()),
             thread: Some(thread),
             scale_bind_layout: OnceLock::new(),
             scale_sampler: OnceLock::new(),
@@ -528,8 +522,14 @@ impl VideoOutput for DecklinkOutput {
             return false;
         }
 
-        self.width.store(out_w, Ordering::Relaxed);
-        self.height.store(out_h, Ordering::Relaxed);
+        let bytes_per_row = out_w * 4;
+        let aligned_bytes_per_row = (bytes_per_row + 255) & !255;
+        let buffer_size = (aligned_bytes_per_row * out_h) as u64 + 16;
+        let mut readback = self.readback.lock().unwrap();
+        readback.ensure(device, "decklink-output-readback", buffer_size);
+        let Some(slot) = readback.free() else {
+            return false;
+        };
 
         {
             let scale_span = tracing::debug_span!("scale");
@@ -538,20 +538,6 @@ impl VideoOutput for DecklinkOutput {
             self.ensure_scaled_texture(device, out_w, out_h, texture);
             self.render_scale(device, queue, out_w, out_h, width, height);
         }
-
-        let bytes_per_row = out_w * 4;
-        let aligned_bytes_per_row = (bytes_per_row + 255) & !255;
-        let buffer_size = (aligned_bytes_per_row * out_h) as u64;
-        let mut readback_slot = self.readback.lock().unwrap();
-        if readback_slot.as_ref().is_none_or(|b| b.size() != buffer_size + 16) {
-            *readback_slot = Some(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("decklink-output-readback"),
-                size: buffer_size + 16,
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            }));
-        }
-        let readback_buffer = readback_slot.as_ref().unwrap();
 
         {
             let readback_span = tracing::debug_span!("readback");
@@ -567,7 +553,7 @@ impl VideoOutput for DecklinkOutput {
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::TexelCopyBufferInfo {
-                    buffer: readback_buffer,
+                    buffer: readback.buffer(slot),
                     layout: wgpu::TexelCopyBufferLayout {
                         offset: 16,
                         bytes_per_row: Some(aligned_bytes_per_row),
@@ -583,61 +569,48 @@ impl VideoOutput for DecklinkOutput {
             queue.submit(Some(encoder.finish()));
         }
 
-        let (tx, rx) = mpsc::channel::<Result<(), wgpu::BufferAsyncError>>();
-        readback_buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
-            let _ = tx.send(result);
-        });
-        *self.pending_readback.lock().unwrap() = Some(rx);
+        readback.map(slot, out_w, out_h);
         return true;
     }
 
     fn finish(&self) {
-        let Some(rx) = self.pending_readback.lock().unwrap().take() else {
+        let mut readback = self.readback.lock().unwrap();
+        let Some(slot) = readback.take_ready() else {
             return;
         };
-        let mapped = match rx.try_recv() {
-            Ok(result) => result,
-            Err(_) => {
-                // The map never completed (poll error / device lost). Drop the
-                // buffer so the next frame recreates it instead of re-mapping a
-                // buffer that is still pending.
-                *self.readback.lock().unwrap() = None;
-                tracing::error!(output=self.name, "DeckLink output readback did not complete");
-                return;
-            }
-        };
-        if mapped.is_err() {
-            tracing::error!(output=self.name, "DeckLink output readback map failed");
-            return;
-        }
 
-        let out_w = self.config.width;
-        let out_h = self.config.height;
-        let readback_slot = self.readback.lock().unwrap();
-        let Some(readback_buffer) = readback_slot.as_ref() else {
-            return;
-        };
-        let view = match readback_buffer.slice(..).get_mapped_range() {
-            Ok(view) => view,
-            Err(e) => {
-                tracing::error!(output = self.name, "DeckLink output mapped range unavailable: {e:?}");
-                return;
-            }
-        };
+        let (out_w, out_h) = readback.dims(slot);
         let row = (out_w * 4) as usize;
         let aligned = (row + 255) & !255;
         let mut buffer = Vec::with_capacity(16 + row * out_h as usize);
-        buffer.extend_from_slice(&[0u8; 16]);
-        if aligned == row {
-            buffer.extend_from_slice(&view[16..16 + row * out_h as usize]);
-        } else {
-            for y in 0..out_h as usize {
-                let src_start = 16 + y * aligned;
-                buffer.extend_from_slice(&view[src_start..src_start + row]);
+        let copied = {
+            let readback_buffer = readback.buffer(slot);
+            match readback_buffer.slice(..).get_mapped_range() {
+                Ok(view) => {
+                    buffer.extend_from_slice(&[0u8; 16]);
+                    if aligned == row {
+                        buffer.extend_from_slice(&view[16..16 + row * out_h as usize]);
+                    } else {
+                        for y in 0..out_h as usize {
+                            let src_start = 16 + y * aligned;
+                            buffer.extend_from_slice(&view[src_start..src_start + row]);
+                        }
+                    }
+                    drop(view);
+                    readback_buffer.unmap();
+                    true
+                }
+                Err(e) => {
+                    tracing::error!(output = self.name, "DeckLink output mapped range unavailable: {e:?}");
+                    readback_buffer.unmap();
+                    false
+                }
             }
+        };
+        readback.release(slot);
+        if !copied {
+            return;
         }
-        drop(view);
-        readback_buffer.unmap();
 
         buffer[0..4].copy_from_slice(&out_w.to_le_bytes());
         buffer[4..8].copy_from_slice(&out_h.to_le_bytes());
