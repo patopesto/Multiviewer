@@ -5,6 +5,8 @@ mod windows;
 
 #[cfg(target_os = "macos")]
 pub use macos::{init_console, setup_app, configure_wgpu, on_window_created, poll_open_file};
+#[cfg(target_os = "macos")]
+pub use macos::{CvFrame, CvFramePipeline, texture_from_iosurface};
 
 #[cfg(target_os = "windows")]
 pub use windows::{init_console, setup_app, configure_wgpu, on_window_created, poll_open_file};

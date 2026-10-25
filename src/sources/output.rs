@@ -410,6 +410,12 @@ impl ReadbackPool {
     pub fn release(&mut self, slot: usize) {
         self.slots[slot].mapped = false;
     }
+
+    /// Unmap and return a slot whose mapping was handed to another consumer.
+    pub fn unmap_and_release(&mut self, slot: usize) {
+        self.slots[slot].buffer.unmap();
+        self.slots[slot].mapped = false;
+    }
 }
 
 

@@ -40,6 +40,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <cstring>
 #include <string>
 
@@ -99,7 +100,40 @@ extern "C" {
 // NUL-terminated UTF-8 string into `buf`. Returns bytes written excluding the
 // NUL, or 0 when the version is unavailable (driver not installed).
 int decklink_api_version(char* buf, int buf_len);
+/* IOSurface-backed CVPixelBuffer helpers (macOS; null/no-op elsewhere). */
+void* decklink_cv_buffer_new(int width, int height);
+void* decklink_cv_buffer_iosurface(void* cv);
+void decklink_cv_buffer_release(void* cv);
 }
+
+/* ── Capture platform ────────────────────────────────────────────────── */
+
+struct CapturePlatform;
+
+struct PlatformFrame {
+    const uint8_t* data = nullptr;
+    long row_bytes = 0;
+    void* cv = nullptr;
+    void* handle = nullptr;
+    int index = -1;
+    bool gpu = false;
+};
+
+CapturePlatform* capture_platform_new();
+void capture_platform_free(CapturePlatform* platform);
+HRESULT capture_platform_enable(CapturePlatform* platform, IDeckLinkInput* input, BMDDisplayMode mode, BMDPixelFormat format, BMDVideoInputFlags flags);
+bool capture_platform_open(CapturePlatform* platform, IDeckLinkVideoInputFrame* frame, bool gpu, PlatformFrame* out);
+void capture_platform_close(CapturePlatform* platform, PlatformFrame* frame);
+void capture_platform_release_cv(void* cv);
+bool capture_platform_set_buffers(CapturePlatform* platform, void** pointers, const uint32_t* sizes, uint32_t count);
+bool capture_platform_pinned_available(CapturePlatform* platform);
+void capture_platform_return_buffer(CapturePlatform* platform, int index);
+void capture_platform_clear_buffers(CapturePlatform* platform);
+
+/* ── Playback platform ───────────────────────────────────────────────── */
+
+void playback_platform_log_caps(IDeckLinkOutput* output);
+IDeckLinkMutableVideoFrame* playback_platform_create_cv_frame(IDeckLinkOutput* output, void* cv);
 
 #ifdef _WIN32
 // RAII COM initializer for threads that call into the DeckLink API.

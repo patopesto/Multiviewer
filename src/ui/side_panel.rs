@@ -5,7 +5,10 @@ use crate::ui::source_settings;
 use crate::config::{BorderVisibility, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
 use crate::engine::Engine;
 use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRef, SourceRegistry, SourceKind, SourceStats, OutputConfig};
-use crate::sources::{DecklinkOutputConfig, NdiOutputConfig, OmtOutputConfig, DecklinkMode};
+use crate::sources::{
+    DecklinkMode, DecklinkOutputConfig, DecklinkOutputMode, DecklinkOutputPort, NdiOutputConfig,
+    OmtOutputConfig,
+};
 use crate::sources::VncSourceConfig;
 use crate::sources::RdpSourceConfig;
 #[cfg(target_os = "macos")]
@@ -237,11 +240,13 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                                         &mut engine.cfg.canvas.outputs[idx].config
                                     {
                                         config.device_name = port.name.clone();
-                                        if let Some(first) = port.modes.first() {
-                                            config.display_mode = first.mode;
-                                            config.width = first.width;
-                                            config.height = first.height;
-                                            config.fps = first.fps;
+                                        if let Some(mode) =
+                                            preferred_output_mode(port, config.display_mode)
+                                        {
+                                            config.display_mode = mode.mode;
+                                            config.width = mode.width;
+                                            config.height = mode.height;
+                                            config.fps = mode.fps;
                                         }
                                     }
                                     decklink_restart_idx = Some(idx);
@@ -261,33 +266,39 @@ fn draw_global_section(ui: &mut egui::Ui, engine: &mut Engine) {
                     .find(|p| p.name == current_device)
                     .map(|p| p.modes.clone())
                     .unwrap_or_default();
-                let selected_label = modes
-                    .iter()
-                    .find(|m| m.mode == current_mode)
-                    .map(|m| m.name.to_string())
-                    .unwrap_or_else(|| "Unknown".to_string());
+                let selected_label = if current_device.is_empty() {
+                    "Select device".to_string()
+                } else {
+                    modes
+                        .iter()
+                        .find(|m| m.mode == current_mode)
+                        .map(|m| m.name.to_string())
+                        .unwrap_or_else(|| "Unknown".to_string())
+                };
 
                 settings_row(ui, "Decklink Mode", |ui| {
-                    egui::ComboBox::from_id_salt("decklink_output_mode")
-                        .width(ui.available_width())
-                        .selected_text(selected_label)
-                        .show_ui(ui, |ui| {
-                            for m in &modes {
-                                let label = m.name.to_string();
-                                if ui.selectable_label(current_mode == m.mode, label).clicked() {
-                                    if let OutputConfig::Decklink(config) =
-                                        &mut engine.cfg.canvas.outputs[idx].config
-                                    {
-                                        config.display_mode = m.mode;
-                                        config.width = m.width;
-                                        config.height = m.height;
-                                        config.fps = m.fps;
+                    ui.add_enabled_ui(!current_device.is_empty(), |ui| {
+                        egui::ComboBox::from_id_salt("decklink_output_mode")
+                            .width(ui.available_width())
+                            .selected_text(selected_label)
+                            .show_ui(ui, |ui| {
+                                for m in &modes {
+                                    let label = m.name.to_string();
+                                    if ui.selectable_label(current_mode == m.mode, label).clicked() {
+                                        if let OutputConfig::Decklink(config) =
+                                            &mut engine.cfg.canvas.outputs[idx].config
+                                        {
+                                            config.display_mode = m.mode;
+                                            config.width = m.width;
+                                            config.height = m.height;
+                                            config.fps = m.fps;
+                                        }
+                                        decklink_restart_idx = Some(idx);
+                                        engine.dirty = true;
                                     }
-                                    decklink_restart_idx = Some(idx);
-                                    engine.dirty = true;
                                 }
-                            }
-                        });
+                            });
+                    });
                 });
             }
         });
@@ -1040,6 +1051,25 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
     }
 }
 
+fn preferred_output_mode<'a>(
+    port: &'a DecklinkOutputPort,
+    current: DecklinkMode,
+) -> Option<&'a DecklinkOutputMode> {
+    if let Some(mode) = port.modes.iter().find(|mode| mode.mode == current) {
+        return Some(mode);
+    }
+    for preferred in [DecklinkMode::Hd1080p6000, DecklinkMode::Hd1080p5994] {
+        if let Some(mode) = port.modes.iter().find(|mode| mode.mode == preferred) {
+            return Some(mode);
+        }
+    }
+    if let Some(mode) = port.modes.iter().find(|mode| mode.mode.is_progressive()) {
+        return Some(mode);
+    }
+    return port.modes.first();
+}
+
+
 /// Global output toggle for one protocol. Enabling it with no output yet
 /// creates one from `make_config`.
 fn output_enable_row(
@@ -1426,5 +1456,53 @@ mod tests {
             });
             output.textures_delta.clear();
         }
+    }
+
+    #[test]
+    fn preferred_output_mode_keeps_current_and_avoids_interlaced() {
+        let mode = |name: &str, mode, width, height| DecklinkOutputMode {
+            name: name.to_string(),
+            mode,
+            width,
+            height,
+            fps: 60.0,
+        };
+        let full = DecklinkOutputPort {
+            name: "device".to_string(),
+            modes: vec![
+                mode("1080i60", DecklinkMode::Hd1080i6000, 1920, 1080),
+                mode("720p60", DecklinkMode::Hd720p60, 1280, 720),
+                mode("1080p60", DecklinkMode::Hd1080p6000, 1920, 1080),
+            ],
+        };
+        assert_eq!(
+            preferred_output_mode(&full, DecklinkMode::Hd1080p5994).map(|m| m.mode),
+            Some(DecklinkMode::Hd1080p6000)
+        );
+        assert_eq!(
+            preferred_output_mode(&full, DecklinkMode::Hd1080p50).map(|m| m.mode),
+            Some(DecklinkMode::Hd1080p6000)
+        );
+
+        let progressive = DecklinkOutputPort {
+            name: "device".to_string(),
+            modes: vec![
+                mode("1080i60", DecklinkMode::Hd1080i6000, 1920, 1080),
+                mode("720p60", DecklinkMode::Hd720p60, 1280, 720),
+            ],
+        };
+        assert_eq!(
+            preferred_output_mode(&progressive, DecklinkMode::Hd1080p50).map(|m| m.mode),
+            Some(DecklinkMode::Hd720p60)
+        );
+
+        let interlaced = DecklinkOutputPort {
+            name: "device".to_string(),
+            modes: vec![mode("1080i60", DecklinkMode::Hd1080i6000, 1920, 1080)],
+        };
+        assert_eq!(
+            preferred_output_mode(&interlaced, DecklinkMode::Hd1080p50).map(|m| m.mode),
+            Some(DecklinkMode::Hd1080i6000)
+        );
     }
 }

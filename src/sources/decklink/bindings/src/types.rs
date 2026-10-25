@@ -436,6 +436,20 @@ impl From<DisplayMode> for u32 {
     }
 }
 
+impl DisplayMode {
+    pub fn is_progressive(self) -> bool {
+        return !matches!(
+            self,
+            Self::Ntsc
+                | Self::Ntsc2398
+                | Self::Pal
+                | Self::Hd1080i50
+                | Self::Hd1080i5994
+                | Self::Hd1080i6000
+        );
+    }
+}
+
 impl serde::Serialize for DisplayMode {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_u32(*self as u32)

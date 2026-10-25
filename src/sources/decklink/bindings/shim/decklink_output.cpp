@@ -5,13 +5,8 @@
 #include <atomic>
 #include <cstring>
 #include <algorithm>
+#include <unordered_map>
 
-#ifdef __APPLE__
-#include <CoreFoundation/CoreFoundation.h>
-#include <CoreVideo/CoreVideo.h>
-#endif
-
-#include <DeckLinkAPI.h>
 #include "decklink_output.h"
 #include "platform.h"
 
@@ -32,6 +27,7 @@ static std::string get_model_name(IDeckLink* decklink) {
 /* ── forward declarations ──────────────────────────────────────────────────── */
 
 struct OutputCompletionState;
+class OutputCallback;
 
 struct DecklinkOutput {
     std::string target_name;
@@ -43,18 +39,68 @@ struct DecklinkOutput {
     BMDTimeValue time_scale = 0;
     BMDTimeValue scheduled_time = 0;
     std::shared_ptr<OutputCompletionState> completion;
+    OutputCallback* callback = nullptr;
     bool first_release_logged = false;
     bool caps_logged = false;
 };
 
 
-/* Frames scheduled with a borrowed buffer are released when the device drops
-** the video frame, which drops this buffer's last reference. Publishing the
-** token there, rather than in a scheduled-frame callback, also covers frames
-** cancelled by stop. */
+/* Borrowed frames publish their token when the device drops the video frame,
+** which drops the buffer's last reference; that also covers frames cancelled
+** by stop. CV frames get theirs from ScheduledFrameCompleted instead, so the
+** two token sources are disjoint. */
 struct OutputCompletionState {
     std::mutex mutex;
     std::deque<uint64_t> completed;
+    std::unordered_map<IDeckLinkVideoFrame*, uint64_t> scheduled;
+};
+
+
+class OutputCallback : public IDeckLinkVideoOutputCallback {
+    public:
+        explicit OutputCallback(std::shared_ptr<OutputCompletionState> state)
+            : ref_count_(1), state_(state) {}
+
+        HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, LPVOID* ppv) override {
+            if (!ppv) return E_INVALIDARG;
+            if (DecklinkIsIUnknownIID(iid) ||
+                DecklinkIIDEqual(iid, IID_IDeckLinkVideoOutputCallback)) {
+                *ppv = static_cast<IDeckLinkVideoOutputCallback*>(this);
+                AddRef();
+                return S_OK;
+            }
+            *ppv = nullptr;
+            return E_NOINTERFACE;
+        }
+
+        ULONG STDMETHODCALLTYPE AddRef(void) override {
+            return ++ref_count_;
+        }
+
+        ULONG STDMETHODCALLTYPE Release(void) override {
+            ULONG count = --ref_count_;
+            if (count == 0) delete this;
+            return count;
+        }
+
+        HRESULT STDMETHODCALLTYPE ScheduledFrameCompleted(IDeckLinkVideoFrame* completedFrame, BMDOutputFrameCompletionResult /*result*/) override {
+            if (!completedFrame || !state_) return S_OK;
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            auto it = state_->scheduled.find(completedFrame);
+            if (it != state_->scheduled.end()) {
+                state_->completed.push_back(it->second);
+                state_->scheduled.erase(it);
+            }
+            return S_OK;
+        }
+
+        HRESULT STDMETHODCALLTYPE ScheduledPlaybackHasStopped(void) override {
+            return S_OK;
+        }
+
+    private:
+        std::atomic<ULONG> ref_count_;
+        std::shared_ptr<OutputCompletionState> state_;
 };
 
 
@@ -141,6 +187,10 @@ void decklink_output_free(DecklinkOutput* o) {
 bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
     DecklinkComScope com_scope;
     if (!o) return false;
+    if (o->target_name.empty()) {
+        fprintf(stderr, "[decklink] no output device selected\n");
+        return false;
+    }
     if (o->output) return true;
 
     IDeckLinkIterator* iterator = nullptr;
@@ -148,8 +198,6 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
         return false;
     }
 
-    // An empty target name means the first device that can play back.
-    const bool first_available = o->target_name.empty();
     IDeckLink* decklink = nullptr;
     bool found = false;
     while (iterator->Next(&decklink) == S_OK) {
@@ -168,7 +216,7 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
             ? model + " - Output " + std::to_string(static_cast<int>(sub_index) + 1)
             : model;
 
-        if (first_available || name == o->target_name) {
+        if (name == o->target_name) {
             HRESULT hr = decklink->QueryInterface(IID_IDeckLinkOutput, (void**)&o->output);
             decklink->Release();
             if (hr == S_OK) {
@@ -183,11 +231,7 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
     iterator->Release();
 
     if (!found) {
-        if (first_available) {
-            fprintf(stderr, "[decklink] no output device available\n");
-        } else {
-            fprintf(stderr, "[decklink] output device '%s' not found\n", o->target_name.c_str());
-        }
+        fprintf(stderr, "[decklink] output device '%s' not found\n", o->target_name.c_str());
         return false;
     }
 
@@ -197,12 +241,7 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
         if (decklink_api_version(api, sizeof(api)) > 0) {
             fprintf(stderr, "[decklink] output using API %s\n", api);
         }
-#ifdef __APPLE__
-        IDeckLinkMacOutput* mac_output = nullptr;
-        bool available = o->output->QueryInterface(IID_IDeckLinkMacOutput, (void**)&mac_output) == S_OK;
-        if (mac_output) mac_output->Release();
-        fprintf(stderr, "[decklink] IDeckLinkMacOutput %s\n", available ? "available" : "unavailable");
-#endif
+        playback_platform_log_caps(o->output);
     }
 
     BMDDisplayMode mode = static_cast<BMDDisplayMode>(mode_id);
@@ -212,6 +251,13 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
         o->output->Release();
         o->output = nullptr;
         return false;
+    }
+
+    o->callback = new OutputCallback(o->completion);
+    if (o->output->SetScheduledFrameCompletionCallback(o->callback) != S_OK) {
+        fprintf(stderr, "[decklink] SetScheduledFrameCompletionCallback failed; CV output disabled\n");
+        o->callback->Release();
+        o->callback = nullptr;
     }
 
     IDeckLinkDisplayMode* display_mode = nullptr;
@@ -250,14 +296,24 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
 void decklink_output_stop(DecklinkOutput* o) {
     if (!o || !o->output) return;
     o->output->StopScheduledPlayback(0, nullptr, o->time_scale);
+    o->output->SetScheduledFrameCompletionCallback(nullptr);
     o->output->DisableVideoOutput();
     o->output->Release();
     o->output = nullptr;
     o->scheduled_time = 0;
+    if (o->callback) {
+        o->callback->Release();
+        o->callback = nullptr;
+    }
+    if (o->completion) {
+        std::lock_guard<std::mutex> lock(o->completion->mutex);
+        o->completion->scheduled.clear();
+    }
 }
 
 
-bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int width, int height, int row_bytes, uint64_t token) {
+bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int width, int height, int row_bytes, uint64_t token, bool* token_queued) {
+    if (token_queued) *token_queued = false;
     if (!o || !o->output) return false;
     if (width <= 0 || height <= 0 || !bgra) return false;
 
@@ -266,6 +322,7 @@ bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int w
     size_t size = static_cast<size_t>(row_bytes) * static_cast<size_t>(height);
 
     auto* buffer = new DecklinkOutputBuffer(bgra, size, token, o->completion);
+    if (token_queued) *token_queued = true;
 
     IDeckLinkMutableVideoFrame* frame = nullptr;
     HRESULT hr = o->output->CreateVideoFrameWithBuffer(width, height, row_bytes, bmdFormat8BitBGRA, bmdFrameFlagDefault, buffer, &frame);
@@ -276,14 +333,49 @@ bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int w
     }
 
     hr = o->output->ScheduleVideoFrame(frame, o->scheduled_time, o->frame_duration, o->time_scale);
-    frame->Release();
     if (hr != S_OK) {
+        frame->Release();
         fprintf(stderr, "[decklink] ScheduleVideoFrame failed (0x%08X)\n", static_cast<unsigned int>(hr));
         return false;
     }
+    frame->Release();
 
     o->scheduled_time += o->frame_duration;
     return true;
+}
+
+
+bool decklink_output_present_cv(DecklinkOutput* o, void* cv, uint64_t token) {
+    if (!o || !o->output || !cv) return false;
+    if (!o->callback) return false;
+
+    IDeckLinkMutableVideoFrame* frame = playback_platform_create_cv_frame(o->output, cv);
+    if (!frame) return false;
+
+    {
+        std::lock_guard<std::mutex> lock(o->completion->mutex);
+        o->completion->scheduled[frame] = token;
+    }
+
+    HRESULT hr = o->output->ScheduleVideoFrame(frame, o->scheduled_time, o->frame_duration, o->time_scale);
+    if (hr != S_OK) {
+        {
+            std::lock_guard<std::mutex> lock(o->completion->mutex);
+            o->completion->scheduled.erase(frame);
+        }
+        frame->Release();
+        fprintf(stderr, "[decklink] ScheduleVideoFrame(CV) failed (0x%08X)\n", static_cast<unsigned int>(hr));
+        return false;
+    }
+    frame->Release();
+
+    o->scheduled_time += o->frame_duration;
+    return true;
+}
+
+
+bool decklink_output_completion_available(DecklinkOutput* o) {
+    return o && o->callback != nullptr;
 }
 
 
@@ -295,7 +387,7 @@ bool decklink_output_take_completed(DecklinkOutput* o, uint64_t* token) {
     o->completion->completed.pop_front();
     if (!o->first_release_logged) {
         o->first_release_logged = true;
-        fprintf(stderr, "[decklink] first borrowed frame released\n");
+        fprintf(stderr, "[decklink] first output frame released\n");
     }
     return true;
 }

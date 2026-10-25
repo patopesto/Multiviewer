@@ -6,6 +6,9 @@ use std::sync::Mutex;
 use objc::runtime::{Class, Object, Sel};
 use objc::{msg_send, sel, sel_impl};
 
+mod cv;
+pub use cv::{CvFrame, CvFramePipeline, texture_from_iosurface};
+
 // macOS app-lifecycle hooks: Finder file-open events and URL handling.
 static QUEUE: Mutex<Option<PathBuf>> = Mutex::new(None);
 

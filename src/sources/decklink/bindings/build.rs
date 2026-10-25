@@ -2,21 +2,33 @@ use std::path::PathBuf;
 
 fn main() {
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let platform_impl = match target_os.as_str() {
+        "macos" => "shim/platform_macos.cpp",
+        "linux" | "windows" => "shim/platform_cpu.cpp",
+        _ => "",
+    };
 
-    println!("cargo:rerun-if-changed=shim/platform.h");
-    println!("cargo:rerun-if-changed=shim/platform.cpp");
-    println!("cargo:rerun-if-changed=shim/decklink_discovery.cpp");
-    println!("cargo:rerun-if-changed=shim/decklink_discovery.h");
-    println!("cargo:rerun-if-changed=shim/decklink_input.cpp");
-    println!("cargo:rerun-if-changed=shim/decklink_input.h");
-    println!("cargo:rerun-if-changed=shim/decklink_output.cpp");
-    println!("cargo:rerun-if-changed=shim/decklink_output.h");
+    for file in [
+        "shim/platform.h",
+        "shim/platform.cpp",
+        "shim/platform_cpu.cpp",
+        "shim/platform_macos.cpp",
+        "shim/decklink_discovery.cpp",
+        "shim/decklink_discovery.h",
+        "shim/decklink_input.cpp",
+        "shim/decklink_input.h",
+        "shim/decklink_output.cpp",
+        "shim/decklink_output.h",
+    ] {
+        println!("cargo:rerun-if-changed={file}");
+    }
 
     let mut build = cc::Build::new();
     build.cpp(true);
     build.include("shim/");
 
-    let ok = match std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default().as_str() {
+    let ok = match target_os.as_str() {
         "macos" => setup_macos(&mut build, &manifest_dir),
         "linux" => setup_linux(&mut build, &manifest_dir),
         "windows" => setup_windows(&mut build, &manifest_dir),
@@ -26,11 +38,13 @@ fn main() {
         return;
     }
 
-    // Common shim files — compiled on all platforms
     build.file("shim/platform.cpp");
     build.file("shim/decklink_discovery.cpp");
     build.file("shim/decklink_input.cpp");
     build.file("shim/decklink_output.cpp");
+    if !platform_impl.is_empty() {
+        build.file(platform_impl);
+    }
 
     build.compile("decklink_shim");
 }

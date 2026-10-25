@@ -44,8 +44,9 @@ pub use omt::{
     OmtQuality, OmtSourceInfo, 
 };
 pub use decklink::{
-    DecklinkDiscovery, DecklinkSourceConfig, DecklinkOutputConfig, decklink_version,
-    DecklinkVideoConnection, DecklinkVideoConnections, DecklinkMode,
+    DecklinkDiscovery, DecklinkSourceConfig, DecklinkOutputConfig, DecklinkOutputMode,
+    DecklinkOutputPort, decklink_version, DecklinkVideoConnection, DecklinkVideoConnections,
+    DecklinkMode,
 };
 pub use vnc::VncSourceConfig;
 pub use rdp::{RdpColorDepth, RdpSourceConfig};

@@ -1,16 +1,12 @@
 #include <vector>
 #include <string>
 #include <mutex>
+#include <condition_variable>
+#include <chrono>
 #include <atomic>
 #include <cstring>
 #include <algorithm>
 
-#ifdef __APPLE__
-#include <CoreFoundation/CoreFoundation.h>
-#include <CoreVideo/CoreVideo.h>
-#endif
-
-#include <DeckLinkAPI.h>
 #include "decklink_input.h"
 #include "platform.h"
 
@@ -40,6 +36,10 @@ struct DecklinkSource {
     IDeckLinkInput* input = nullptr;
     IDeckLinkConfiguration* config = nullptr;
     CaptureCallback* callback = nullptr;
+    CapturePlatform* platform = nullptr;
+    std::atomic<bool> gpu_mode{false};
+    uint32_t pixel_format = 0;
+    BMDDisplayMode display_mode = bmdModeUnknown;
 };
 
 /* ── COM callback ────────────────────────────────────────────────────── */
@@ -47,10 +47,12 @@ struct DecklinkSource {
 class CaptureCallback : public IDeckLinkInputCallback {
     public:
         explicit CaptureCallback(DecklinkSource* source)
-            : ref_count_(1), stopping_(false), source_(source) {
-            constexpr size_t max_rgba = 3840ULL * 2160ULL * 4ULL;
-            buffer_[0].resize(max_rgba);
-            buffer_[1].resize(max_rgba);
+            : ref_count_(1), stopping_(false), source_(source) {}
+
+        ~CaptureCallback() override {
+            if (cv_frame_) {
+                capture_platform_release_cv(cv_frame_);
+            }
         }
 
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, LPVOID* ppv) override {
@@ -103,7 +105,23 @@ class CaptureCallback : public IDeckLinkInputCallback {
             }
 
             BMDPixelFormat pixelFormat = bmdFormat8BitYUV;
-            if (notificationEvents & bmdVideoInputColorspaceChanged) {
+            if (source_->gpu_mode.load()) {
+                BMDDisplayMode actual_mode = bmdModeUnknown;
+                bool supported = false;
+                HRESULT probe = input->DoesSupportVideoMode(
+                    static_cast<BMDVideoConnection>(source_->connection),
+                    newMode,
+                    bmdFormat8BitBGRA,
+                    bmdNoVideoInputConversion,
+                    bmdSupportedVideoModeDefault,
+                    &actual_mode,
+                    &supported);
+                if (probe == S_OK && supported) {
+                    pixelFormat = bmdFormat8BitBGRA;
+                }
+            }
+            if (pixelFormat != bmdFormat8BitBGRA &&
+                (notificationEvents & bmdVideoInputColorspaceChanged)) {
                 if (detectedSignalFlags & bmdDetectedVideoInputRGB444) {
                     pixelFormat = bmdFormat8BitBGRA;
                 } else if (detectedSignalFlags & bmdDetectedVideoInputYCbCr422) {
@@ -111,19 +129,38 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 }
             }
 
-            input->PauseStreams();
-
-            HRESULT hr = input->EnableVideoInput(newMode, pixelFormat, bmdVideoInputEnableFormatDetection);
-            if (hr == S_OK) {
-                input->FlushStreams();
-                if (input->StartStreams() == S_OK) {
-                    last_mode_ = newMode;
-                    frame_logged_ = false;
-                } else {
-                    fprintf(stderr, "[decklink] StartStreams failed after format change\n");
+            auto enable_and_start = [&](BMDPixelFormat fmt) -> bool {
+                input->PauseStreams();
+                HRESULT r = capture_platform_enable(source_->platform, input, newMode, fmt, bmdVideoInputEnableFormatDetection);
+                if (r != S_OK) {
+                    fprintf(stderr, "[decklink] EnableVideoInput(0x%08X) failed after format change (0x%08X)\n",
+                            static_cast<unsigned int>(fmt), static_cast<unsigned int>(r));
+                    return false;
                 }
+                input->FlushStreams();
+                if (input->StartStreams() != S_OK) {
+                    fprintf(stderr, "[decklink] StartStreams failed after format change (fmt=0x%08X)\n",
+                            static_cast<unsigned int>(fmt));
+                    return false;
+                }
+                return true;
+            };
+
+            bool started = enable_and_start(pixelFormat);
+            if (!started && pixelFormat != bmdFormat8BitYUV) {
+                pixelFormat = bmdFormat8BitYUV;
+                started = enable_and_start(pixelFormat);
+            }
+            if (started) {
+                last_mode_ = newMode;
+                if (source_) {
+                    source_->display_mode = newMode;
+                    source_->pixel_format = static_cast<uint32_t>(pixelFormat);
+                }
+                fprintf(stderr, "[decklink] format change locked %ldx%ld fmt=%s\n", w, h,
+                        pixelFormat == bmdFormat8BitBGRA ? "BGRA" : "YUV");
             } else {
-                fprintf(stderr, "[decklink] EnableVideoInput failed after format change (0x%08X)\n", static_cast<unsigned int>(hr));
+                fprintf(stderr, "[decklink] format change could not restart streams\n");
             }
             return S_OK;
         }
@@ -131,6 +168,7 @@ class CaptureCallback : public IDeckLinkInputCallback {
         HRESULT STDMETHODCALLTYPE VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame,IDeckLinkAudioInputPacket* /*audioPacket*/) override {
             if (!videoFrame) return S_OK;
             if (stopping_.load()) return S_OK;
+            if (!source_) return S_OK;
 
             long w = videoFrame->GetWidth();
             long h = videoFrame->GetHeight();
@@ -154,7 +192,6 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 fprintf(stderr, "[decklink] signal acquired %ldx%ld fmt=0x%08X flags=0x%08X\n", w, h, fmt, flags);
             }
 
-            // Validate before touching the buffer so no path can skip its release.
             size_t frame_size = 0;
             if (fmt == bmdFormat8BitBGRA) {
                 frame_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 4;
@@ -165,82 +202,53 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 return S_OK;
             }
 
-            int back = back_idx_.load(std::memory_order_relaxed);
-            if (frame_size > buffer_[back].size()) {
-                fprintf(stderr, "[decklink] frame %ldx%ld exceeds pre-allocated buffer\n", w, h);
+            bool gpu = source_ && source_->gpu_mode.load();
+            PlatformFrame frame;
+            if (!capture_platform_open(source_->platform, videoFrame, gpu, &frame)) {
                 return S_OK;
+            }
+
+            if (frame.index >= 0) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                pinned_index_ = frame.index;
+                width_ = w;
+                height_ = h;
+                format_ = fmt;
+                frame_size_ = frame_size;
+                seq_++;
+                generation_++;
+                frame_cv_.notify_all();
+                return S_OK;
+            }
+
+            if (frame.gpu) {
+                std::lock_guard<std::mutex> lock(mutex_);
+                if (cv_frame_) {
+                    capture_platform_release_cv(cv_frame_);
+                }
+                cv_frame_ = frame.cv;
+                width_ = w;
+                height_ = h;
+                format_ = fmt;
+                frame_size_ = frame_size;
+                seq_++;
+                generation_++;
+                frame_cv_.notify_all();
+                if (!cv_logged_) {
+                    cv_logged_ = true;
+                    fprintf(stderr, "[decklink] first CV frame %ldx%ld seq=%llu\n",
+                            w, h, static_cast<unsigned long long>(seq_));
+                }
+                return S_OK;
+            }
+
+            int back = back_idx_.load(std::memory_order_relaxed);
+            if (buffer_[back].size() < frame_size) {
+                buffer_[back].resize(frame_size);
             }
             uint8_t* dst = buffer_[back].data();
-
-            long row_bytes = 0;
-            const uint8_t* src = nullptr;
-
-    #ifdef __APPLE__
-            IDeckLinkMacVideoBuffer* mac_buffer = nullptr;
-            if (videoFrame->QueryInterface(IID_IDeckLinkMacVideoBuffer, (void**)&mac_buffer) != S_OK) {
-                fprintf(stderr, "[decklink] QueryInterface IID_IDeckLinkMacVideoBuffer failed\n");
-                return S_OK;
-            }
-            void* cv_pixel_buffer = nullptr;
-            HRESULT hr = mac_buffer->CreateCVPixelBufferRef(&cv_pixel_buffer);
-            mac_buffer->Release();
-            if (hr != S_OK || !cv_pixel_buffer) {
-                fprintf(stderr, "[decklink] CreateCVPixelBufferRef failed\n");
-                return S_OK;
-            }
-            CVPixelBufferRef pixel_buffer = static_cast<CVPixelBufferRef>(cv_pixel_buffer);
-            CVPixelBufferLockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
-            src = static_cast<const uint8_t*>(CVPixelBufferGetBaseAddress(pixel_buffer));
-            row_bytes = static_cast<long>(CVPixelBufferGetBytesPerRow(pixel_buffer));
-            if (!src || row_bytes <= 0) {
-                fprintf(stderr, "[decklink] empty CVPixelBuffer (%ld row bytes)\n", row_bytes);
-                CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
-                CFRelease(pixel_buffer);
-                return S_OK;
-            }
-            if (!frame_logged_) {
-                frame_logged_ = true;
-                fprintf(stderr, "[decklink] input frame %ldx%ld fmt=0x%08X rowBytes=%ld iosurface=%d cvfmt=0x%08X\n",
-                        w, h, static_cast<unsigned int>(fmt), row_bytes,
-                        CVPixelBufferGetIOSurface(pixel_buffer) != nullptr ? 1 : 0,
-                        static_cast<unsigned int>(CVPixelBufferGetPixelFormatType(pixel_buffer)));
-            }
-    #else
-            // GetBytes returns E_ACCESSDENIED unless StartAccess was called first.
-            IDeckLinkVideoBuffer* vbuf = nullptr;
-            HRESULT hr = videoFrame->QueryInterface(IID_IDeckLinkVideoBuffer, (void**)&vbuf);
-            if (hr != S_OK || !vbuf) {
-                fprintf(stderr, "[decklink] QueryInterface IID_IDeckLinkVideoBuffer failed (0x%08X)\n", static_cast<unsigned int>(hr));
-                return S_OK;
-            }
-            hr = vbuf->StartAccess(bmdBufferAccessRead);
-            if (hr != S_OK) {
-                fprintf(stderr, "[decklink] StartAccess failed (0x%08X)\n", static_cast<unsigned int>(hr));
-                vbuf->Release();
-                return S_OK;
-            }
-            void* bytes = nullptr;
-            hr = vbuf->GetBytes(&bytes);
-            if (hr != S_OK || !bytes) {
-                fprintf(stderr, "[decklink] GetBytes failed (0x%08X)\n", static_cast<unsigned int>(hr));
-                vbuf->EndAccess(bmdBufferAccessRead);
-                vbuf->Release();
-                return S_OK;
-            }
-            src = static_cast<const uint8_t*>(bytes);
-            row_bytes = videoFrame->GetRowBytes();
-            if (row_bytes <= 0) {
-                fprintf(stderr, "[decklink] invalid row bytes %ld\n", row_bytes);
-                vbuf->EndAccess(bmdBufferAccessRead);
-                vbuf->Release();
-                return S_OK;
-            }
-            if (!frame_logged_) {
-                frame_logged_ = true;
-                fprintf(stderr, "[decklink] input frame %ldx%ld fmt=0x%08X rowBytes=%ld\n",
-                        w, h, static_cast<unsigned int>(fmt), row_bytes);
-            }
-    #endif
+            const uint8_t* src = frame.data;
+            long row_bytes = frame.row_bytes;
 
             if (fmt == bmdFormat8BitBGRA) {
                 if (row_bytes == w * 4) {
@@ -260,13 +268,7 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 }
             }
 
-    #ifdef __APPLE__
-            CVPixelBufferUnlockBaseAddress(pixel_buffer, kCVPixelBufferLock_ReadOnly);
-            CFRelease(pixel_buffer);
-    #else
-            vbuf->EndAccess(bmdBufferAccessRead);
-            vbuf->Release();
-    #endif
+            capture_platform_close(source_->platform, &frame);
 
             std::lock_guard<std::mutex> lock(mutex_);
             width_ = w;
@@ -275,6 +277,11 @@ class CaptureCallback : public IDeckLinkInputCallback {
             frame_size_ = frame_size;
             back_idx_.store(1 - back, std::memory_order_relaxed);
             seq_++;
+            generation_++;
+            frame_cv_.notify_all();
+            if (gpu) {
+                cpu_fallback_.store(true);
+            }
             return S_OK;
         }
 
@@ -308,12 +315,75 @@ class CaptureCallback : public IDeckLinkInputCallback {
         DecklinkSource* source_ = nullptr;
         BMDDisplayMode last_mode_ = bmdModeUnknown;
         bool had_signal_ = false;
-        bool frame_logged_ = false;
+        bool cv_logged_ = false;
+        void* cv_frame_ = nullptr;
+        std::atomic<bool> cpu_fallback_{false};
+        std::condition_variable frame_cv_;
+        uint64_t generation_ = 0;
+        int pinned_index_ = -1;
 
     public:
         void stop() { stopping_.store(true); }
         void detach() { source_ = nullptr; }
         void set_nominal_fps(double fps) { nominal_fps_ = fps; }
+
+        bool poll_cv(void** out, int* w, int* h, uint64_t* seq, uint32_t* fmt, double* fps) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (!cv_frame_) return false;
+            *out = cv_frame_;
+            cv_frame_ = nullptr;
+            *w = width_;
+            *h = height_;
+            *seq = seq_;
+            *fmt = static_cast<uint32_t>(format_);
+            *fps = nominal_fps_;
+            return true;
+        }
+
+        bool take_fallback() { return cpu_fallback_.exchange(false); }
+
+        uint64_t generation() {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return generation_;
+        }
+
+        void wait_frame(uint64_t seen, int timeout_ms) {
+            std::unique_lock<std::mutex> lock(mutex_);
+            frame_cv_.wait_for(lock, std::chrono::milliseconds(timeout_ms), [&] {
+                return generation_ != seen || stopping_.load();
+            });
+        }
+
+        bool poll_pinned(int* index, int* w, int* h, uint64_t* seq, uint32_t* fmt, double* fps) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (pinned_index_ < 0) return false;
+            *index = pinned_index_;
+            pinned_index_ = -1;
+            *w = width_;
+            *h = height_;
+            *seq = seq_;
+            *fmt = static_cast<uint32_t>(format_);
+            *fps = nominal_fps_;
+            return true;
+        }
+
+        void frame_info(uint32_t* w, uint32_t* h, uint32_t* fmt) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            *w = static_cast<uint32_t>(width_);
+            *h = static_cast<uint32_t>(height_);
+            *fmt = static_cast<uint32_t>(format_);
+        }
+
+        void drop_cv() {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (cv_frame_) {
+                capture_platform_release_cv(cv_frame_);
+                cv_frame_ = nullptr;
+            }
+            // The next CPU frame must republish; the buffer still holds an
+            // older sequence and would otherwise be served as the current one.
+            frame_size_ = 0;
+        }
 };
 
 
@@ -322,6 +392,7 @@ class CaptureCallback : public IDeckLinkInputCallback {
 DecklinkSource* decklink_source_new(const char* display_name) {
     auto* s = new DecklinkSource();
     s->target_name = display_name ? display_name : "";
+    s->platform = capture_platform_new();
     return s;
 }
 
@@ -329,6 +400,7 @@ DecklinkSource* decklink_source_new(const char* display_name) {
 void decklink_source_free(DecklinkSource* s) {
     if (!s) return;
     decklink_source_stop(s);
+    capture_platform_free(s->platform);
     delete s;
 }
 
@@ -428,30 +500,40 @@ bool decklink_source_start(DecklinkSource* s) {
         return false;
     }
 
+    const BMDPixelFormat first_format = bmdFormat8BitYUV;
+    const BMDPixelFormat second_format = bmdFormat8BitBGRA;
+    const char* first_name = "YUV";
+    const char* second_name = "BGRA";
+
     BMDDisplayMode mode = bmdModeUnknown;
-    BMDPixelFormat pixelFormat = bmdFormat8BitYUV;
+    BMDPixelFormat pixelFormat = first_format;
     HRESULT hr = E_FAIL;
+
+    auto try_enable = [&](BMDDisplayMode m) -> HRESULT {
+        HRESULT r = capture_platform_enable(s->platform, s->input, m, first_format, bmdVideoInputEnableFormatDetection);
+        fprintf(stderr, "[decklink] trying mode=%d %s detection => 0x%08X\n",
+                static_cast<int>(m), first_name, static_cast<unsigned int>(r));
+        if (r == S_OK) {
+            pixelFormat = first_format;
+            return r;
+        }
+        r = capture_platform_enable(s->platform, s->input, m, second_format, bmdVideoInputEnableFormatDetection);
+        fprintf(stderr, "[decklink] trying mode=%d %s detection => 0x%08X\n",
+                static_cast<int>(m), second_name, static_cast<unsigned int>(r));
+        if (r == S_OK) {
+            pixelFormat = second_format;
+        }
+        return r;
+    };
 
     if (supports_fmt_detection) {
         mode = bmdModeUnknown;
-        hr = s->input->EnableVideoInput(mode, bmdFormat8BitYUV, bmdVideoInputEnableFormatDetection);
-        fprintf(stderr, "[decklink] trying bmdModeUnknown YUV detection => 0x%08X\n", static_cast<unsigned int>(hr));
-        if (hr != S_OK) {
-            hr = s->input->EnableVideoInput(mode, bmdFormat8BitBGRA, bmdVideoInputEnableFormatDetection);
-            fprintf(stderr, "[decklink] trying bmdModeUnknown BGRA detection => 0x%08X\n", static_cast<unsigned int>(hr));
-            if (hr == S_OK) pixelFormat = bmdFormat8BitBGRA;
-        }
+        hr = try_enable(mode);
     }
 
     if (hr != S_OK) {
         mode = bmdModeHD1080p30;
-        hr = s->input->EnableVideoInput(mode, bmdFormat8BitYUV, bmdVideoInputEnableFormatDetection);
-        fprintf(stderr, "[decklink] trying bmdModeHD1080p30 YUV detection => 0x%08X\n", static_cast<unsigned int>(hr));
-        if (hr != S_OK) {
-            hr = s->input->EnableVideoInput(mode, bmdFormat8BitBGRA, bmdVideoInputEnableFormatDetection);
-            fprintf(stderr, "[decklink] trying bmdModeHD1080p30 BGRA detection => 0x%08X\n", static_cast<unsigned int>(hr));
-            if (hr == S_OK) pixelFormat = bmdFormat8BitBGRA;
-        }
+        hr = try_enable(mode);
     }
 
     if (hr != S_OK) {
@@ -463,6 +545,9 @@ bool decklink_source_start(DecklinkSource* s) {
         s->input = nullptr;
         return false;
     }
+
+    s->pixel_format = static_cast<uint32_t>(pixelFormat);
+    s->display_mode = mode;
 
     if (mode != bmdModeUnknown) {
         IDeckLinkDisplayMode* display_mode = nullptr;
@@ -510,6 +595,7 @@ void decklink_source_stop(DecklinkSource* s) {
         DecklinkSleepMs(500);
     }
     if (s->callback) {
+        s->callback->drop_cv();
         s->callback->detach();
         s->callback->Release();
         s->callback = nullptr;
@@ -528,4 +614,118 @@ void decklink_source_stop(DecklinkSource* s) {
 bool decklink_source_poll_frame(DecklinkSource* s, uint8_t* out_rgba, size_t out_size, int* w, int* h, uint64_t* seq, uint32_t* fmt_out, double* nominal_fps_out) {
     if (!s || !s->callback) return false;
     return s->callback->poll(out_rgba, out_size, w, h, seq, fmt_out, nominal_fps_out);
+}
+
+
+void decklink_source_set_gpu_mode(DecklinkSource* s, bool enable) {
+    if (!s) return;
+    s->gpu_mode.store(enable);
+    if (!enable && s->callback) {
+        s->callback->drop_cv();
+    }
+}
+
+
+bool decklink_source_is_bgra(DecklinkSource* s) {
+    return s && s->pixel_format == static_cast<uint32_t>(bmdFormat8BitBGRA);
+}
+
+
+bool decklink_source_poll_cv_frame(DecklinkSource* s, void** cv_out, int* w, int* h, uint64_t* seq, uint32_t* fmt_out, double* nominal_fps_out) {
+    if (!s || !s->callback) return false;
+    return s->callback->poll_cv(cv_out, w, h, seq, fmt_out, nominal_fps_out);
+}
+
+
+bool decklink_source_take_cpu_fallback(DecklinkSource* s) {
+    if (!s || !s->callback) return false;
+    return s->callback->take_fallback();
+}
+
+
+uint64_t decklink_source_frame_generation(DecklinkSource* s) {
+    if (!s || !s->callback) return 0;
+    return s->callback->generation();
+}
+
+
+void decklink_source_wait_frame(DecklinkSource* s, uint64_t seen, int timeout_ms) {
+    if (!s || !s->callback) return;
+    s->callback->wait_frame(seen, timeout_ms);
+}
+
+
+bool decklink_source_set_capture_buffers(DecklinkSource* s, void** pointers, const uint32_t* sizes, uint32_t count) {
+    if (!s || !s->platform) return false;
+    return capture_platform_set_buffers(s->platform, pointers, sizes, count);
+}
+
+
+bool decklink_source_pinned_available(DecklinkSource* s) {
+    if (!s || !s->platform) return false;
+    return capture_platform_pinned_available(s->platform);
+}
+
+
+bool decklink_source_enable_pinned(DecklinkSource* s) {
+    if (!s || !s->input || !s->callback) return false;
+    if (!capture_platform_pinned_available(s->platform)) return false;
+    if (s->display_mode == bmdModeUnknown || s->pixel_format == 0) return false;
+
+    const BMDPixelFormat fmt = static_cast<BMDPixelFormat>(s->pixel_format);
+    s->input->PauseStreams();
+    HRESULT hr = capture_platform_enable(s->platform, s->input, s->display_mode, fmt, bmdVideoInputEnableFormatDetection);
+    if (hr == S_OK) {
+        s->input->FlushStreams();
+        if (s->input->StartStreams() == S_OK) {
+            fprintf(stderr, "[decklink] capture switched to caller buffers\n");
+            return true;
+        }
+    }
+
+    fprintf(stderr, "[decklink] caller-buffer capture failed (0x%08X); reverting\n", static_cast<unsigned int>(hr));
+    capture_platform_clear_buffers(s->platform);
+    s->input->PauseStreams();
+    s->input->EnableVideoInput(s->display_mode, fmt, bmdVideoInputEnableFormatDetection);
+    s->input->FlushStreams();
+    s->input->StartStreams();
+    return false;
+}
+
+
+bool decklink_source_disable_pinned(DecklinkSource* s) {
+    if (!s || !s->input) return false;
+    capture_platform_clear_buffers(s->platform);
+    if (s->display_mode == bmdModeUnknown || s->pixel_format == 0) return false;
+    const BMDPixelFormat fmt = static_cast<BMDPixelFormat>(s->pixel_format);
+    s->input->PauseStreams();
+    HRESULT hr = s->input->EnableVideoInput(s->display_mode, fmt, bmdVideoInputEnableFormatDetection);
+    s->input->FlushStreams();
+    if (hr == S_OK && s->input->StartStreams() == S_OK) {
+        return true;
+    }
+    return false;
+}
+
+
+bool decklink_source_poll_pinned_frame(DecklinkSource* s, int* index, int* w, int* h, uint64_t* seq, uint32_t* fmt_out, double* nominal_fps_out) {
+    if (!s || !s->callback) return false;
+    return s->callback->poll_pinned(index, w, h, seq, fmt_out, nominal_fps_out);
+}
+
+
+void decklink_source_return_buffer(DecklinkSource* s, int index) {
+    if (!s || !s->platform) return;
+    capture_platform_return_buffer(s->platform, index);
+}
+
+
+void decklink_source_frame_info(DecklinkSource* s, uint32_t* w, uint32_t* h, uint32_t* fmt_out) {
+    if (!s || !s->callback) return;
+    s->callback->frame_info(w, h, fmt_out);
+}
+
+
+void decklink_cv_frame_release(void* cv) {
+    capture_platform_release_cv(cv);
 }

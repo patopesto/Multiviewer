@@ -6,7 +6,10 @@ use std::ffi::c_char;
 
 use multiviewer_decklink::decklink_api_version;
 
-pub use discovery::Discovery as DecklinkDiscovery;
+pub use discovery::{
+    Discovery as DecklinkDiscovery, OutputMode as DecklinkOutputMode,
+    OutputPort as DecklinkOutputPort,
+};
 pub use source::{DecklinkSource, DecklinkSourceConfig};
 pub use output::{DecklinkOutput, DecklinkOutputConfig};
 
