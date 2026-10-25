@@ -51,7 +51,8 @@ bool capture_platform_open(CapturePlatform* platform, IDeckLinkVideoInputFrame* 
                 static_cast<unsigned int>(CVPixelBufferGetPixelFormatType(pixel_buffer)));
     }
 
-    if (gpu && fmt == bmdFormat8BitBGRA && CVPixelBufferGetIOSurface(pixel_buffer) != nullptr) {
+    if (gpu && (fmt == bmdFormat8BitBGRA || fmt == bmdFormat8BitYUV) &&
+        CVPixelBufferGetIOSurface(pixel_buffer) != nullptr) {
         out->cv = pixel_buffer;
         out->gpu = true;
         return true;

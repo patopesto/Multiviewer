@@ -33,6 +33,8 @@ pub trait VideoOutput: Send {
     fn set_enabled(&self, enabled: bool);
     fn stats(&self) -> Arc<Mutex<OutputStats>>;
     fn protocol(&self) -> Protocol;
+    /// Stop the runtime before a replacement is constructed.
+    fn shutdown(&mut self) {}
     fn busy(&self) -> bool { // overriden by VideoOutputs. true if consumer hasn't taken previous frame
         return false;
     }
@@ -222,6 +224,10 @@ impl OutputKind {
         self.output.set_enabled(enabled);
     }
 
+    pub fn shutdown(&mut self) {
+        self.output.shutdown();
+    }
+
     pub fn stats(&self) -> Arc<Mutex<OutputStats>> {
         return self.output.stats();
     }
@@ -248,6 +254,9 @@ impl OutputRegistry {
 
     /// Replace the runtime output for `id` with one built from `config`
     pub fn restart(&mut self, protocol: &Protocol, id: OutputId, name: String, config: &OutputConfig, enabled: bool) {
+        if let Some(mut old) = self.outputs.remove(&id) {
+            old.shutdown();
+        }
         self.insert(protocol, id, name, config, enabled);
     }
 

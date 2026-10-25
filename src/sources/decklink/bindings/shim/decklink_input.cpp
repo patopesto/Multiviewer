@@ -80,9 +80,9 @@ class CaptureCallback : public IDeckLinkInputCallback {
         }
 
         HRESULT STDMETHODCALLTYPE VideoInputFormatChanged(
-            BMDVideoInputFormatChangedEvents notificationEvents,
+            BMDVideoInputFormatChangedEvents /*notificationEvents*/,
             IDeckLinkDisplayMode* newDisplayMode,
-            BMDDetectedVideoInputFormatFlags detectedSignalFlags) override
+            BMDDetectedVideoInputFormatFlags /*detectedSignalFlags*/) override
         {
             if (!source_ || !newDisplayMode) return S_OK;
             if (stopping_.load()) return S_OK;
@@ -104,30 +104,10 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 nominal_fps_ = static_cast<double>(time_scale) / static_cast<double>(frame_duration);
             }
 
-            BMDPixelFormat pixelFormat = bmdFormat8BitYUV;
-            if (source_->gpu_mode.load()) {
-                BMDDisplayMode actual_mode = bmdModeUnknown;
-                bool supported = false;
-                HRESULT probe = input->DoesSupportVideoMode(
-                    static_cast<BMDVideoConnection>(source_->connection),
-                    newMode,
-                    bmdFormat8BitBGRA,
-                    bmdNoVideoInputConversion,
-                    bmdSupportedVideoModeDefault,
-                    &actual_mode,
-                    &supported);
-                if (probe == S_OK && supported) {
-                    pixelFormat = bmdFormat8BitBGRA;
-                }
-            }
-            if (pixelFormat != bmdFormat8BitBGRA &&
-                (notificationEvents & bmdVideoInputColorspaceChanged)) {
-                if (detectedSignalFlags & bmdDetectedVideoInputRGB444) {
-                    pixelFormat = bmdFormat8BitBGRA;
-                } else if (detectedSignalFlags & bmdDetectedVideoInputYCbCr422) {
-                    pixelFormat = bmdFormat8BitYUV;
-                }
-            }
+            // YUV is the card's reliable native capture format. Requesting
+            // BGRA can return S_OK from StartStreams yet never deliver frames
+            // (notably on the Recorder 3G after an Hp60 -> Hp30 change).
+            const BMDPixelFormat pixelFormat = bmdFormat8BitYUV;
 
             auto enable_and_start = [&](BMDPixelFormat fmt) -> bool {
                 input->PauseStreams();
@@ -147,18 +127,13 @@ class CaptureCallback : public IDeckLinkInputCallback {
             };
 
             bool started = enable_and_start(pixelFormat);
-            if (!started && pixelFormat != bmdFormat8BitYUV) {
-                pixelFormat = bmdFormat8BitYUV;
-                started = enable_and_start(pixelFormat);
-            }
             if (started) {
                 last_mode_ = newMode;
                 if (source_) {
                     source_->display_mode = newMode;
                     source_->pixel_format = static_cast<uint32_t>(pixelFormat);
                 }
-                fprintf(stderr, "[decklink] format change locked %ldx%ld fmt=%s\n", w, h,
-                        pixelFormat == bmdFormat8BitBGRA ? "BGRA" : "YUV");
+                fprintf(stderr, "[decklink] format change locked %ldx%ld fmt=YUV\n", w, h);
             } else {
                 fprintf(stderr, "[decklink] format change could not restart streams\n");
             }

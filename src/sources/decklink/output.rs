@@ -66,6 +66,10 @@ const START_RETRY: Duration = Duration::from_secs(10);
 /// How long `Drop` waits for the worker to release the device before detaching.
 const SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
+/// Longer grace used when a mode/device restart replaces the output: the old
+/// worker must release the device before the new one opens it.
+const RESTART_GRACE: Duration = Duration::from_secs(2);
+
 /// How often the worker wakes without a frame to reclaim completion tokens.
 /// The CV ring and the pinned readback pool can only be refilled after those
 /// tokens reach the main thread, so a blocking recv deadlocks once every slot
@@ -145,7 +149,15 @@ impl CvSurface {
             return None;
         }
         let iosurface = unsafe { decklink_cv_buffer_iosurface(cv) };
-        let Some(texture) = texture_from_iosurface(device, iosurface, width, height) else {
+        let Some(texture) = texture_from_iosurface(
+            device,
+            iosurface,
+            width,
+            height,
+            wgpu::TextureFormat::Bgra8Unorm,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+            wgpu::TextureUses::COLOR_TARGET,
+        ) else {
             unsafe { decklink_cv_buffer_release(cv) };
             return None;
         };
@@ -411,6 +423,7 @@ impl DecklinkOutput {
 
                 let mut started = false;
                 let mut start_logged = false;
+                let mut start_failures = 0u32;
                 let mut in_flight: VecDeque<(u64, Vec<u8>)> = VecDeque::new();
                 let mut next_token = 0u64;
                 #[cfg(target_os = "macos")]
@@ -433,6 +446,7 @@ impl DecklinkOutput {
                         if unsafe { decklink_output_start(output, mode_id) } {
                             started = true;
                             start_logged = false;
+                            start_failures = 0;
                             stats_clone.lock().unwrap().error = None;
                             completion_ok_worker.store(
                                 unsafe { decklink_output_completion_available(output) },
@@ -445,11 +459,11 @@ impl DecklinkOutput {
                                 s.error = Some("device busy or unavailable".to_string());
                                 s.frames_dropped += 1;
                             }
+                            start_failures = start_failures.saturating_add(1);
                             if !start_logged {
                                 tracing::error!(
                                     output=thread_name,
-                                    "DeckLink output start failed; retrying every {}s",
-                                    START_RETRY.as_secs()
+                                    "DeckLink output start failed; retrying"
                                 );
                                 start_logged = true;
                             }
@@ -467,7 +481,12 @@ impl DecklinkOutput {
                                 }
                                 OutputFrame::Cpu(_) => {}
                             }
-                            thread::sleep(START_RETRY);
+                            let retry = if start_failures <= 5 {
+                                Duration::from_millis(100 * u64::from(start_failures))
+                            } else {
+                                START_RETRY
+                            };
+                            thread::sleep(retry);
                             continue;
                         }
                     }
@@ -1257,10 +1276,14 @@ impl VideoOutput for DecklinkOutput {
     fn protocol(&self) -> Protocol {
         return Protocol::Decklink;
     }
+
+    fn shutdown(&mut self) {
+        self.stop_worker(RESTART_GRACE);
+    }
 }
 
-impl Drop for DecklinkOutput {
-    fn drop(&mut self) {
+impl DecklinkOutput {
+    fn stop_worker(&mut self, grace: Duration) {
         drop(self.frame_tx.take());
         let Some(thread) = self.thread.take() else {
             return;
@@ -1272,7 +1295,7 @@ impl Drop for DecklinkOutput {
         // The grace covers the normal path, which keeps the device released
         // before a restart opens it again; past it the worker finishes alone and
         // releases its own handle.
-        let deadline = Instant::now() + SHUTDOWN_GRACE;
+        let deadline = Instant::now() + grace;
         while self.liveness.is_alive() && Instant::now() < deadline {
             thread::sleep(Duration::from_millis(5));
         }
@@ -1290,6 +1313,12 @@ impl Drop for DecklinkOutput {
             return;
         }
         let _ = thread.join();
+    }
+}
+
+impl Drop for DecklinkOutput {
+    fn drop(&mut self) {
+        self.stop_worker(SHUTDOWN_GRACE);
     }
 }
 

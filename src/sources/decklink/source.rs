@@ -19,8 +19,9 @@ use std::ffi::c_void;
 use std::ptr::null_mut;
 #[cfg(target_os = "macos")]
 use multiviewer_decklink::{
-    decklink_cv_frame_release, decklink_source_is_bgra, decklink_source_poll_cv_frame,
-    decklink_source_set_gpu_mode, decklink_source_take_cpu_fallback,
+    decklink_cv_buffer_iosurface, decklink_cv_frame_release, decklink_source_is_bgra,
+    decklink_source_poll_cv_frame, decklink_source_set_gpu_mode,
+    decklink_source_take_cpu_fallback,
 };
 
 #[cfg(target_os = "macos")]
@@ -490,10 +491,21 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
                     source = source_ref,
                     gpu = shared.gpu.load(Ordering::Relaxed),
                     bgra = decklink_source_is_bgra(src),
-                    "DeckLink produced no frames for 3s"
+                    "DeckLink produced no frames for 3s; restarting the input"
                 );
                 #[cfg(not(target_os = "macos"))]
-                tracing::warn!(source = source_ref, "DeckLink produced no frames for 3s");
+                tracing::warn!(
+                    source = source_ref,
+                    "DeckLink produced no frames for 3s; restarting the input"
+                );
+                decklink_source_stop(src);
+                if decklink_source_start(src) {
+                    last_published = Instant::now();
+                    no_frames_warned = false;
+                    tracing::info!(source = source_ref, "DeckLink input restarted after no frames");
+                } else {
+                    tracing::warn!(source = source_ref, "DeckLink input restart failed");
+                }
             }
             if cfg!(any(target_os = "windows", target_os = "linux")) {
                 let returns = std::mem::take(&mut *shared.return_queue.lock().unwrap());
@@ -601,17 +613,30 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
                     ) {
                         let frame_span = tracing::debug_span!("decklink_frame");
                         let _frame_guard = frame_span.entered();
+                        let pixel_format = match DecklinkPixelFormat::try_from(fmt) {
+                            Ok(DecklinkPixelFormat::Bgra8) => PixelFormat::Bgra8,
+                            Ok(DecklinkPixelFormat::Uyvy422) => PixelFormat::Uyvy422,
+                            _ => PixelFormat::Rgba8,
+                        };
                         {
                             let mut s = shared.stats.lock().unwrap();
-                            s.record_frame(w as u32, h as u32, PixelFormat::Bgra8.label(), nominal_fps);
+                            s.record_frame(
+                                w as u32,
+                                h as u32,
+                                pixel_format.label(),
+                                nominal_fps,
+                            );
                             s.record_copy_time(0.0);
                             s.set_gpu_direct();
                         }
+                        let iosurface = decklink_cv_buffer_iosurface(cv);
                         let frame = CvFrame::new(
                             cv,
+                            iosurface,
                             w as u32,
                             h as u32,
                             seq,
+                            pixel_format,
                             decklink_cv_frame_release,
                         );
                         let old = shared.cv_slot.lock().unwrap().replace(frame);

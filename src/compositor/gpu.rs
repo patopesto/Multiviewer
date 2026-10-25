@@ -58,6 +58,15 @@ fn fetch_422(x: i32, y: i32, yuy2: bool) -> vec3<f32> {
     return vec3<f32>(select(s.a, s.g, even), s.r, s.b);
 }
 
+// 2vuy IOSurface imported as a full-width Rg8 texture: each texel is two
+// bytes, so (U,Y0), (V,Y1), ... U/V are shared by the even/odd pixel pair.
+fn fetch_uyvy_rg8(x: i32, y: i32) -> vec3<f32> {
+    let yv = textureLoad(tex, vec2<i32>(x, y), 0);
+    let u = textureLoad(tex, vec2<i32>(x & ~1, y), 0).r;
+    let v = textureLoad(tex, vec2<i32>((x & ~1) + 1, y), 0).r;
+    return vec3<f32>(yv.g, u, v);
+}
+
 // NV12: one R8 texture, height 1.5h, Y plane then interleaved UV plane.
 // The UV row for image row y lives at `plane + y/2`.
 fn fetch_nv12_packed(x: i32, y: i32, plane: i32) -> vec3<f32> {
@@ -79,7 +88,10 @@ fn fetch_nv12_packed(x: i32, y: i32, plane: i32) -> vec3<f32> {
 
     var yuv: vec3<f32>;
     var bt709: bool;
-    if (conv.mode <= 4u) {
+    if (conv.mode >= 7u) {
+        yuv = fetch_uyvy_rg8(x, y);
+        bt709 = conv.mode == 8u;
+    } else if (conv.mode <= 4u) {
         yuv = fetch_422(x, y, conv.mode >= 3u);
         bt709 = (conv.mode == 2u) || (conv.mode == 4u);
     } else {
