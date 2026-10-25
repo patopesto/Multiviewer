@@ -21,6 +21,7 @@ tasks:
   setup:
     desc: Setup the development environment
     cmds:
+      - git submodule update --init --recursive
       - task: "{{OS}}:setup"
 
   run:

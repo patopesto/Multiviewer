@@ -246,7 +246,8 @@ pub fn setup_app() {
     }
 }
 
-pub fn configure_wgpu(_options: &mut eframe::NativeOptions) {
+pub fn configure_wgpu(options: &mut eframe::NativeOptions) {
+    super::install_device_descriptor(options);
     // Syphon's zero-copy receiver orders its Metal blit against wgpu with an
     // MTLSharedEvent instead of a CPU drain only when this is set; the crate
     // reads it once, on the first Syphon source. The output path stages the

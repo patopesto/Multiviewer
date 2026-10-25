@@ -114,6 +114,9 @@ fn run_sender(
         env!("CARGO_PKG_AUTHORS"),
         env!("CARGO_PKG_VERSION"),
     ));
+    // Hold one frame in the GPU encoder so this frame's FDCT overlaps the
+    // previous frame's entropy coding; the last frame is flushed on disconnect.
+    sender.set_gpu_encode_pipeline(true);
 
     let mut discovery = match Discovery::new() {
         Ok(d) => d,
@@ -176,7 +179,12 @@ fn run_sender(
                 pending.store(false, Ordering::Release);
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                if let Err(e) = sender.flush_gpu_encode(&ctx) {
+                    tracing::error!(output=name, "OMT flush failed: {}", e);
+                }
+                break;
+            }
         }
     }
 

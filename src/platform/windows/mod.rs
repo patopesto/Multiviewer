@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use eframe::egui_wgpu::WgpuSetup;
+
 /// Windows app-lifecycle hooks: optional console attachment.
 pub fn init_console(show_console: bool) {
     if show_console {
@@ -31,7 +33,7 @@ pub fn setup_app() {}
 
 /// Force wgpu to the D3D12 backend for Spout to work
 pub fn configure_wgpu(options: &mut eframe::NativeOptions) {
-    use eframe::egui_wgpu::WgpuSetup;
+    super::install_device_descriptor(options);
     if let WgpuSetup::CreateNew(create_new) = &mut options.wgpu_options.wgpu_setup {
         create_new.instance_descriptor.backends = eframe::wgpu::Backends::DX12;
     }

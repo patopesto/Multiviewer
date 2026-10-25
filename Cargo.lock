@@ -6633,8 +6633,6 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 [[package]]
 name = "vmx"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05347c70521d66bb4ffb091d8875409a400ffb8f86f28240e1b044e8b0d84909"
 dependencies = [
  "bytemuck",
  "pollster 0.4.0",

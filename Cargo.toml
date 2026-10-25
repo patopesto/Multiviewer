@@ -10,6 +10,7 @@ repository = "https://gitlab.com/patopest/multiviewer"
 
 [workspace]
 members = [".", "src/sources/decklink/bindings"]
+exclude = ["vendor/vmx"]
 
 [workspace.package]
 version = "1.1.0-dev"
@@ -100,3 +101,6 @@ windows = { version = "0.62", default-features = false, features = [
 eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
 winit = { version = "0.30", default-features = false, features = ["wayland-dlopen"] }
 
+# Patched fork waiting for upstream PR
+[patch.crates-io]
+vmx = { path = "vendor/vmx" }
