@@ -32,8 +32,9 @@ static std::string get_mode_name(IDeckLinkDisplayMode* mode) {
 
 static void copy_name(char* out, size_t out_len, const std::string& name) {
     if (out_len == 0) return;
-    strncpy(out, name.c_str(), out_len - 1);
-    out[out_len - 1] = '\0';
+    const size_t n = name.size() < out_len - 1 ? name.size() : out_len - 1;
+    memcpy(out, name.data(), n);
+    out[n] = '\0';
 }
 
 

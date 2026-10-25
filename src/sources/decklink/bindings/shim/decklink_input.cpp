@@ -49,7 +49,7 @@ class CaptureCallback : public IDeckLinkInputCallback {
         explicit CaptureCallback(DecklinkSource* source)
             : ref_count_(1), stopping_(false), source_(source) {}
 
-        ~CaptureCallback() override {
+        ~CaptureCallback() {
             if (cv_frame_) {
                 capture_platform_release_cv(cv_frame_);
             }

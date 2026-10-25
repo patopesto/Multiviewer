@@ -112,7 +112,7 @@ class DecklinkOutputBuffer : public IDeckLinkVideoBuffer {
             : ref_count_(1), data_(data), size_(size), token_(token),
               completion_(completion) {}
 
-        ~DecklinkOutputBuffer() override {
+        ~DecklinkOutputBuffer() {
             if (completion_) {
                 std::lock_guard<std::mutex> lock(completion_->mutex);
                 completion_->completed.push_back(token_);

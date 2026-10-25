@@ -1,6 +1,8 @@
 use std::collections::VecDeque;
 use std::ffi::CString;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "macos")]
+use std::sync::atomic::AtomicU32;
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -1168,8 +1170,9 @@ impl VideoOutput for DecklinkOutput {
             let readback_buffer = readback.buffer(slot);
             let ptr = match readback_buffer.slice(..).get_mapped_range() {
                 Ok(view) => {
+                    // The mapping stays active until unmap_and_release; the
+                    // view only owns the map-context range, so it must drop.
                     let ptr = unsafe { view.as_ptr().add(16) } as *mut u8;
-                    std::mem::forget(view);
                     ptr
                 }
                 Err(e) => {
