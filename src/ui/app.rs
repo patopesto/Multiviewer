@@ -46,12 +46,14 @@ pub struct App {
 // Moving-window FPS tracker over logic() calls.
 struct RenderStats {
     recent_frames: VecDeque<Instant>,
+    work_ms: VecDeque<f32>,
 }
 
 impl RenderStats {
     fn new() -> Self {
         Self {
             recent_frames: VecDeque::new(),
+            work_ms: VecDeque::new(),
         }
     }
 
@@ -68,6 +70,22 @@ impl RenderStats {
         if self.recent_frames.len() > MAX_RENDER_TIMESTAMPS {
             self.recent_frames.pop_front();
         }
+    }
+
+    fn record_work(&mut self, elapsed: Duration) {
+        self.work_ms.push_back(elapsed.as_secs_f32() * 1000.0);
+        if self.work_ms.len() > MAX_RENDER_TIMESTAMPS {
+            self.work_ms.pop_front();
+        }
+    }
+
+    /// Average engine and output work per frame. The frame rate alone cannot show
+    /// this: a frame over the display deadline reads the same as one twice over.
+    fn work_ms(&self) -> f32 {
+        if self.work_ms.is_empty() {
+            return 0.0;
+        }
+        return self.work_ms.iter().sum::<f32>() / self.work_ms.len() as f32;
     }
 
     fn fps(&self) -> f64 {
@@ -228,23 +246,24 @@ impl eframe::App for App {
 impl App {
     /// One frame of engine work: discovery, auto-save, compositing and outputs.
     fn run_frame(&mut self, frame: &mut eframe::Frame) {
+        let started = Instant::now();
         self.render_stats.record_frame();
         self.engine.update();
         self.engine.auto_save();
 
-        let Some(rs) = frame.wgpu_render_state() else {
-            return;
-        };
-        self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
-        self.engine.begin_frame(&rs.device, &rs.queue);
+        if let Some(rs) = frame.wgpu_render_state() {
+            self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
+            self.engine.begin_frame(&rs.device, &rs.queue);
 
-        // Outputs run at their own fixed rate
-        let now = Instant::now();
-        if now + FRAME_TOLERANCE >= self.next_output_frame {
-            let interval = Duration::from_secs_f64(1.0 / ACTIVE_FPS);
-            self.next_output_frame = advance_deadline(self.next_output_frame, now, interval);
-            self.engine.render_outputs(&rs.device, &rs.queue);
+            // Outputs run at their own fixed rate
+            let now = Instant::now();
+            if now + FRAME_TOLERANCE >= self.next_output_frame {
+                let interval = Duration::from_secs_f64(1.0 / ACTIVE_FPS);
+                self.next_output_frame = advance_deadline(self.next_output_frame, now, interval);
+                self.engine.render_outputs(&rs.device, &rs.queue);
+            }
         }
+        self.render_stats.record_work(started.elapsed());
     }
 
     /// Promote warnings collected while loading the current project to the status bar.
@@ -485,7 +504,14 @@ impl App {
             ui.horizontal(|ui| {
                 ui.label(self.status_text());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(format!("{:.0} FPS", self.render_stats.fps()));
+                    ui.label(format!(
+                        "{:.0} FPS · {:.1} ms",
+                        self.render_stats.fps(),
+                        self.render_stats.work_ms()
+                    ))
+                    .on_hover_text(
+                        "Frame rate over the last 2 s · average engine, compositor and output work per frame",
+                    );
                 });
             });
         });
