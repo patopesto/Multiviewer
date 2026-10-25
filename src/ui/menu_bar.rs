@@ -8,11 +8,22 @@ use crate::ui::shortcuts::Shortcut;
 pub enum MenuAction {
     Shortcut(Shortcut),
     OpenRecent(PathBuf),
+    SetAutoSaveInterval(u64),
     ShowShortcuts,
     ShowOSCControl,
     ShowAbout,
     ShowLicenses,
 }
+
+const AUTO_SAVE_INTERVALS: &[(u64, &str)] = &[
+    (0, "Off"),
+    (30, "30 seconds"),
+    (60, "1 minute"),
+    (300, "5 minutes"),
+    (900, "15 minutes"),
+    (1800, "30 minutes"),
+    (3600, "1 hour"),
+];
 
 /// Draw the top menu bar (File / Edit / View / About).
 pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuAction> {
@@ -26,6 +37,16 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
                 ui.separator();
                 menu_item(ui, &mut actions, Shortcut::SaveProject, true);
                 menu_item(ui, &mut actions, Shortcut::SaveProjectAs, true);
+                ui.separator();
+                ui.menu_button("Auto-save", |ui| {
+                    let mut selected = engine.cfg.auto_save_interval;
+                    for &(secs, label) in AUTO_SAVE_INTERVALS {
+                        if ui.radio_value(&mut selected, secs, label).changed() {
+                            actions.push(MenuAction::SetAutoSaveInterval(secs));
+                            ui.close();
+                        }
+                    }
+                });
             });
 
             menu_button(ui, "Edit", |ui| {
@@ -109,4 +130,16 @@ fn open_recent_menu(ui: &mut egui::Ui, actions: &mut Vec<MenuAction>, recent: &[
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AUTO_SAVE_INTERVALS;
+    use crate::config::Config;
+
+    #[test]
+    fn default_auto_save_interval_is_selectable() {
+        let default = Config::default().auto_save_interval;
+        assert!(AUTO_SAVE_INTERVALS.iter().any(|&(secs, _)| secs == default));
+    }
 }

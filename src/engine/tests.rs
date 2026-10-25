@@ -2,7 +2,6 @@ use super::*;
 use crate::compositor::{self, Rect};
 use crate::config::{Canvas, Output, Source, TextureMode, CONFIG_VERSION};
 use crate::control::{Command, Selector};
-use crate::engine::project::AUTO_SAVE_INTERVAL;
 use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::VncSourceConfig;
 use std::time::{Duration, Instant};
@@ -558,19 +557,14 @@ fn nudge_selected_source_ignores_when_expanded() {
     assert_eq!(source.y, 20.0);
 }
 
-fn should_auto_save(engine: &Engine, now: Instant) -> bool {
-    engine.dirty
-        && engine.project_path.is_some()
-        && now.duration_since(engine.last_saved_at) >= AUTO_SAVE_INTERVAL
-}
-
 #[test]
 fn auto_save_triggers_after_interval_when_dirty() {
     let mut engine = test_engine(Canvas::default());
     engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
     engine.dirty = true;
-    engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
-    assert!(should_auto_save(&engine, Instant::now()));
+    let interval = Duration::from_secs(engine.cfg.auto_save_interval);
+    engine.last_saved_at = Instant::now() - interval - Duration::from_secs(1);
+    assert!(engine.should_auto_save(Instant::now()));
 }
 
 #[test]
@@ -578,8 +572,9 @@ fn auto_save_does_not_trigger_when_clean() {
     let mut engine = test_engine(Canvas::default());
     engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
     engine.dirty = false;
-    engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
-    assert!(!should_auto_save(&engine, Instant::now()));
+    let interval = Duration::from_secs(engine.cfg.auto_save_interval);
+    engine.last_saved_at = Instant::now() - interval - Duration::from_secs(1);
+    assert!(!engine.should_auto_save(Instant::now()));
 }
 
 #[test]
@@ -587,8 +582,39 @@ fn auto_save_does_not_trigger_without_project_path() {
     let mut engine = test_engine(Canvas::default());
     engine.project_path = None;
     engine.dirty = true;
-    engine.last_saved_at = Instant::now() - AUTO_SAVE_INTERVAL - Duration::from_secs(1);
-    assert!(!should_auto_save(&engine, Instant::now()));
+    let interval = Duration::from_secs(engine.cfg.auto_save_interval);
+    engine.last_saved_at = Instant::now() - interval - Duration::from_secs(1);
+    assert!(!engine.should_auto_save(Instant::now()));
+}
+
+#[test]
+fn auto_save_does_not_trigger_when_disabled() {
+    let mut engine = test_engine(Canvas::default());
+    engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
+    engine.dirty = true;
+    engine.cfg.auto_save_interval = 0;
+    engine.last_saved_at = Instant::now() - Duration::from_secs(3600);
+    assert!(!engine.should_auto_save(Instant::now()));
+}
+
+#[test]
+fn auto_save_uses_the_configured_interval() {
+    let mut engine = test_engine(Canvas::default());
+    engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
+    engine.dirty = true;
+    engine.cfg.auto_save_interval = 300;
+    engine.last_saved_at = Instant::now() - Duration::from_secs(60);
+    assert!(!engine.should_auto_save(Instant::now()));
+    engine.last_saved_at = Instant::now() - Duration::from_secs(301);
+    assert!(engine.should_auto_save(Instant::now()));
+}
+
+#[test]
+fn control_sets_auto_save_interval() {
+    let mut engine = test_engine(Canvas::default());
+    engine.apply_command(Command::SetAutoSaveInterval(300)).unwrap();
+    assert_eq!(engine.cfg.auto_save_interval, 300);
+    assert!(engine.dirty);
 }
 
 /// A cfg output entry without its runtime object (project saved before the

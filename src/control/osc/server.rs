@@ -18,7 +18,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// Bump when adding or removing an OSC route; the docs route table and the
 /// `documented_routes_parse` test are checked against this value.
 #[cfg(test)]
-const OSC_ROUTE_COUNT: usize = 57;
+const OSC_ROUTE_COUNT: usize = 59;
 
 /// A UDP OSC listener. Bind happens on the caller's thread so a bad address or
 /// a taken port is reported immediately; the receive loop runs on its own.
@@ -186,6 +186,10 @@ fn parse_message(addr: &str, args: &[OscType]) -> Option<Command> {
         "output" => parse_output(&parts[1..], args),
         // @osc path="/project/save" group="Project" desc="Save the project in place."
         "project" if parts.get(1) == Some(&"save") => Some(Command::SaveProject),
+        // @osc path="/project/auto_save_interval" args="seconds:uint" group="Project" desc="Seconds between auto-saves; 0 disables auto-save."
+        "project" if parts.get(1) == Some(&"auto_save_interval") => {
+            Some(Command::SetAutoSaveInterval(arg_u32(args.first()?)? as u64))
+        }
         _ => None,
     };
 }
@@ -453,6 +457,14 @@ mod tests {
         assert_eq!(
             parse_message("/view/recenter", &[]),
             Some(Command::RecenterView)
+        );
+        assert_eq!(
+            parse_message("/project/auto_save_interval", &[OscType::Int(300)]),
+            Some(Command::SetAutoSaveInterval(300))
+        );
+        assert_eq!(
+            parse_message("/project/auto_save_interval", &[OscType::Int(-1)]),
+            None
         );
     }
 

@@ -28,8 +28,8 @@ export const protocols: Protocol[] = [
     output: true,
     platforms: ['macos', 'windows', 'linux'],
     note: 'Open Media Transport',
-    inputNote: 'Open Media Transport, open-source network video protocol',
-    outputNote: 'Open Media Transport, open-source network video protocol',
+    inputNote: 'Open Media Transport, open-source network video protocol similar to NDI',
+    outputNote: 'Open Media Transport, open-source network video protocol similar to NDI',
   },
   {
     name: 'DeckLink',

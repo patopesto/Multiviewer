@@ -30,8 +30,6 @@ use super::{SnapGuides, ViewState};
 use crate::compositor::Rect;
 use crate::control::ControlRegistry;
 
-pub const AUTO_SAVE_INTERVAL: Duration = Duration::from_secs(30);
-
 #[derive(Debug)]
 pub enum ProjectError {
     Config(ConfigError),
@@ -284,11 +282,17 @@ impl Engine {
         Ok(())
     }
 
-    pub fn auto_save(&mut self) {
-        if self.dirty
+    /// Whether the project is due for an auto-save at `now`.
+    pub fn should_auto_save(&self, now: Instant) -> bool {
+        return self.cfg.auto_save_interval > 0
+            && self.dirty
             && self.project_path.is_some()
-            && self.last_saved_at.elapsed() >= AUTO_SAVE_INTERVAL
-        {
+            && now.duration_since(self.last_saved_at)
+                >= Duration::from_secs(self.cfg.auto_save_interval);
+    }
+
+    pub fn auto_save(&mut self) {
+        if self.should_auto_save(Instant::now()) {
             tracing::debug!("Auto-saving project");
             if let Err(e) = self.save_project() {
                 tracing::error!("Auto-save failed: {e}");

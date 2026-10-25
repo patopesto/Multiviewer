@@ -77,6 +77,11 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
         "/view/pan_y",
         FeedbackValue::Float(engine.view.pan.y),
     );
+    // @osc path="/project/auto_save_interval" kind="feedback" args="value:int" group="Global" desc="Seconds between auto-saves; 0 when auto-save is off."
+    push(
+        "/project/auto_save_interval",
+        FeedbackValue::Int(engine.cfg.auto_save_interval as i32),
+    );
 
     let selected_index = engine
         .selected_source_id
@@ -224,6 +229,7 @@ mod tests {
         let uuid = engine.add_source();
         engine.selected_source_id = Some(uuid.clone());
         engine.expanded_source_id = Some(uuid);
+        engine.cfg.auto_save_interval = 300;
         engine.cfg.canvas.outputs.push(Output::new(
             "Program".to_string(),
             Protocol::Ndi,
@@ -254,6 +260,10 @@ mod tests {
         );
         assert_eq!(get("/output/1/enabled"), Some(FeedbackValue::Int(1)));
         assert_eq!(get("/selected/index"), Some(FeedbackValue::Int(1)));
+        assert_eq!(
+            get("/project/auto_save_interval"),
+            Some(FeedbackValue::Int(300))
+        );
     }
 
     #[test]

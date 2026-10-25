@@ -125,6 +125,10 @@ impl Engine {
                 self.restart_output(&uuid);
             }
             Command::SaveProject => self.save_project()?,
+            Command::SetAutoSaveInterval(seconds) => {
+                self.cfg.auto_save_interval = seconds;
+                self.dirty = true;
+            }
         }
         return Ok(());
     }

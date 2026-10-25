@@ -37,4 +37,5 @@ pub enum Command {
     SetOutputEnabled { output: Selector, enabled: bool },
     RestartOutput(Selector),
     SaveProject,
+    SetAutoSaveInterval(u64),
 }

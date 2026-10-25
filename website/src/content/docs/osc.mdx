@@ -139,4 +139,7 @@ oscsend localhost 9000 '/my control/source/2/x' 100
 # Enable output 1 and save the project
 oscsend localhost 9000 /output/1/enabled 1
 oscsend localhost 9000 /project/save
+
+# Auto-save every 5 minutes (0 turns auto-save off)
+oscsend localhost 9000 /project/auto_save_interval 300
 ```

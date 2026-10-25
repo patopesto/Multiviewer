@@ -323,6 +323,7 @@ impl App {
             match action {
                 MenuAction::Shortcut(shortcut) => self.apply_shortcut(*shortcut, ui),
                 MenuAction::OpenRecent(path) => self.confirm_or(Confirm::OpenPath(path.clone())),
+                MenuAction::SetAutoSaveInterval(secs) => self.run_command(Command::SetAutoSaveInterval(*secs)),
                 MenuAction::ShowAbout => self.show_about = true,
                 MenuAction::ShowShortcuts => self.show_shortcuts = true,
                 MenuAction::ShowOSCControl => self.show_control = true,
@@ -388,6 +389,10 @@ impl App {
         let Some(command) = shortcut_command(shortcut, &self.engine, nudge_amount) else {
             return;
         };
+        self.run_command(command);
+    }
+
+    fn run_command(&mut self, command: Command) {
         if let Err(e) = self.engine.apply_command(command) {
             self.last_error = Some(e.to_string());
         }

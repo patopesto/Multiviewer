@@ -17,10 +17,16 @@ fn config_version() -> u32 {
     return LEGACY_VERSION;
 }
 
+fn default_auto_save_interval() -> u64 {
+    return 30;
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     #[serde(default = "config_version")]
     pub version: u32,
+    #[serde(default = "default_auto_save_interval")]
+    pub auto_save_interval: u64, // in seconds, 0 = disabled
     pub canvas: Canvas,
     #[serde(default)]
     pub control: ControlConfig,
@@ -30,6 +36,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             version: CONFIG_VERSION,
+            auto_save_interval: default_auto_save_interval(),
             canvas: Canvas::default(),
             control: ControlConfig::default(),
         }

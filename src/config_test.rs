@@ -815,6 +815,27 @@ fn config_version_round_trips() {
 }
 
 #[test]
+fn auto_save_interval_round_trips() {
+    let mut cfg = Config::default();
+    cfg.auto_save_interval = 300;
+
+    let reloaded: Config = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+
+    assert_eq!(reloaded.auto_save_interval, 300);
+}
+
+/// A project from before the setting existed auto-saves every 30 seconds.
+#[test]
+fn config_without_auto_save_interval_defaults_to_30_seconds() {
+    let mut v = serde_json::to_value(Config::default()).unwrap();
+    v.as_object_mut().unwrap().remove("auto_save_interval");
+
+    let cfg: Config = serde_json::from_value(v).unwrap();
+
+    assert_eq!(cfg.auto_save_interval, 30);
+}
+
+#[test]
 fn control_config_round_trips() {
     let mut cfg = Config::default();
     cfg.control.osc.enabled = true;
