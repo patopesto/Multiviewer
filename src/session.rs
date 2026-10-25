@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::{Path, PathBuf, absolute};
 
 use serde::{Deserialize, Serialize};
 
@@ -99,7 +99,7 @@ impl Session {
     }
 
     pub fn record_recent(&mut self, path: impl AsRef<Path>) {
-        let path = path.as_ref().to_path_buf();
+        let path = absolute(path.as_ref()).unwrap_or_else(|_| path.as_ref().to_path_buf());
         self.recent_projects.retain(|p| *p != path);
         self.recent_projects.insert(0, path.clone());
         self.recent_projects.truncate(RECENT_MAX);
@@ -160,6 +160,16 @@ mod tests {
     fn session_version_defaults_to_legacy_when_absent() {
         let s: Session = serde_json::from_str(r#"{"last_project":"/tmp/a"}"#).unwrap();
         assert_eq!(s.version, LEGACY_VERSION);
+    }
+
+    #[test]
+    fn record_recent_stores_absolute_paths() {
+        let mut s = Session::default();
+        s.record_recent("shows/a.multiviewer");
+        let last = s.last_project.clone().unwrap();
+        assert!(last.is_absolute());
+        assert!(last.ends_with("shows/a.multiviewer"));
+        assert_eq!(s.recent_projects[0], last);
     }
 
     #[test]
