@@ -325,7 +325,7 @@ struct ReadbackSlot {
     height: u32,
 }
 
-const READBACK_SLOTS: usize = 3;
+const READBACK_SLOTS: usize = 3; // default number of slots
 
 impl ReadbackPool {
     pub fn new() -> Self {
@@ -335,13 +335,24 @@ impl ReadbackPool {
         };
     }
 
-    /// (Re)create the ring when the readback size changes.
+    /// (Re)create the ring when the readback size or slot count changes.
     pub fn ensure(&mut self, device: &wgpu::Device, label: &str, size: u64) {
-        if self.size == size && !self.slots.is_empty() {
+        self.ensure_with_slots(device, label, size, READBACK_SLOTS);
+    }
+
+    /// (Re)create the ring with a protocol-specific in-flight depth.
+    pub fn ensure_with_slots(
+        &mut self,
+        device: &wgpu::Device,
+        label: &str,
+        size: u64,
+        slots: usize,
+    ) {
+        if self.size == size && self.slots.len() == slots && !self.slots.is_empty() {
             return;
         }
         self.size = size;
-        self.slots = (0..READBACK_SLOTS)
+        self.slots = (0..slots)
             .map(|_| {
                 let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                     label: Some(label),

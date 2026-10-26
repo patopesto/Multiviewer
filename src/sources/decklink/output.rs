@@ -87,12 +87,18 @@ const CV_STARVE_WARN_FRAMES: u32 = 60;
 /// safety valve for a stalled device.
 const MAX_IN_FLIGHT: usize = 8;
 
+/// Bounded handoff to the output worker. The channel itself is the
+/// backpressure; the engine keeps presenting at its own rate.
+const OUTPUT_QUEUE_DEPTH: usize = 2;
+
 /// Tokens at or above this bit are IOSurface indices, not borrowed-frame ids.
 const CV_TOKEN_BIT: u64 = 1 << 63;
 const PINNED_TOKEN_BIT: u64 = 1 << 62;
 
+/// CV surfaces stay unavailable until the card signals completed playback, so
+/// the ring must match the output's in-flight window to sustain 60 fps.
 #[cfg(target_os = "macos")]
-const CV_SURFACES: usize = 3;
+const CV_SURFACES: usize = MAX_IN_FLIGHT;
 
 enum OutputFrame {
     Cpu(Vec<u8>),
@@ -218,7 +224,7 @@ impl CvRing {
                     submission_index: Some(submission.clone()),
                     timeout: Some(Duration::ZERO),
                 })
-                .is_ok()
+                .is_ok_and(|status| status.wait_finished())
             {
                 surface.state = CvState::Ready;
             }
@@ -343,7 +349,6 @@ pub struct DecklinkOutput {
     enabled: AtomicBool,
     stats: Arc<Mutex<OutputStats>>,
     frame_tx: Option<mpsc::SyncSender<OutputFrame>>,
-    pending: Arc<AtomicBool>,
     liveness: OutputLiveness,
     readback: Mutex<ReadbackPool>,
     thread: Option<thread::JoinHandle<()>>,
@@ -373,14 +378,12 @@ pub struct DecklinkOutput {
 
 impl DecklinkOutput {
     pub fn new(id: OutputId, name: String, config: DecklinkOutputConfig, enabled: bool) -> Self {
-        let (frame_tx, frame_rx) = mpsc::sync_channel::<OutputFrame>(2);
+        let (frame_tx, frame_rx) = mpsc::sync_channel::<OutputFrame>(OUTPUT_QUEUE_DEPTH);
         let stats = Arc::new(Mutex::new(OutputStats::default()));
         if config.device_name.is_empty() {
             stats.lock().unwrap().error = Some("Select a DeckLink output device".to_string());
         }
         let stats_clone = Arc::clone(&stats);
-        let pending = Arc::new(AtomicBool::new(false));
-        let pending_t = Arc::clone(&pending);
         let liveness = OutputLiveness::default();
         let worker_flag = liveness.exit_flag();
         #[cfg(target_os = "macos")]
@@ -435,7 +438,6 @@ impl DecklinkOutput {
                 loop {
                     let frame = match frame_rx.recv_timeout(DRAIN_INTERVAL) {
                         Ok(frame) => {
-                            pending_t.store(false, Ordering::Release);
                             Some(frame)
                         }
                         Err(mpsc::RecvTimeoutError::Timeout) => None,
@@ -677,7 +679,6 @@ impl DecklinkOutput {
             enabled: AtomicBool::new(enabled),
             stats,
             frame_tx: Some(frame_tx),
-            pending,
             liveness,
             readback: Mutex::new(ReadbackPool::new()),
             thread: Some(thread),
@@ -1002,21 +1003,8 @@ impl DecklinkOutput {
 
         if let Some(index) = ring.ready() {
             self.cv_starved.store(0, Ordering::Relaxed);
-            let cv = ring.cv(index);
             drop(ring);
-            let Some(tx) = self.frame_tx.as_ref() else {
-                self.cv_ring.lock().unwrap().release(index);
-                return Some(false);
-            };
-            self.pending.store(true, Ordering::Release);
-            self.liveness.mark_sent();
-            if tx.try_send(OutputFrame::Cv { cv, index }).is_err() {
-                self.pending.store(false, Ordering::Release);
-                self.liveness.clear_sent();
-                return Some(false);
-            }
-            self.cv_ring.lock().unwrap().mark_queued(index);
-            return Some(true);
+            return self.queue_cv(index);
         }
 
         let Some(index) = ring.acquire() else {
@@ -1043,7 +1031,37 @@ impl DecklinkOutput {
             ring.release(index);
             return Some(false);
         };
-        ring.mark_rendering(index, submission);
+        ring.mark_rendering(index, submission.clone());
+        // The card may only read the surface after the scale submission
+        // completes, so finish that submission and queue the surface in the
+        // same present instead of deferring it to the next one.
+        let _ = device.poll(wgpu::PollType::Wait {
+            submission_index: Some(submission),
+            timeout: Some(Duration::from_millis(2)),
+        });
+        ring.poll_ready(device);
+        if let Some(ready) = ring.ready() {
+            drop(ring);
+            return self.queue_cv(ready);
+        }
+        drop(ring);
+        return Some(false);
+    }
+
+    #[cfg(target_os = "macos")]
+    fn queue_cv(&self, index: usize) -> Option<bool> {
+        let cv = self.cv_ring.lock().unwrap().cv(index);
+        let Some(tx) = self.frame_tx.as_ref() else {
+            self.cv_ring.lock().unwrap().release(index);
+            return Some(false);
+        };
+        self.liveness.mark_sent();
+        if tx.try_send(OutputFrame::Cv { cv, index }).is_err() {
+            self.liveness.clear_sent();
+            self.cv_ring.lock().unwrap().release(index);
+            return Some(false);
+        }
+        self.cv_ring.lock().unwrap().mark_queued(index);
         return Some(true);
     }
 }
@@ -1084,10 +1102,7 @@ impl VideoOutput for DecklinkOutput {
         if self.config.device_name.is_empty() {
             return false;
         }
-        if self.busy() {
-            self.liveness.check_stall(&self.name);
-            return false;
-        }
+        self.liveness.check_stall(&self.name);
 
         let out_w = self.config.width;
         let out_h = self.config.height;
@@ -1097,17 +1112,25 @@ impl VideoOutput for DecklinkOutput {
 
         #[cfg(target_os = "macos")]
         if self.use_cv.load(Ordering::Relaxed) {
-            if let Some(result) = self.present_cv(texture, width, height, device, queue) {
-                return result;
+            match self.present_cv(texture, width, height, device, queue) {
+                Some(true) => return true,
+                // CV ring starved or its queue was full; use the readback path
+                // for this frame instead of dropping it.
+                Some(false) => {}
+                None => self.use_cv.store(false, Ordering::Relaxed),
             }
-            self.use_cv.store(false, Ordering::Relaxed);
         }
 
         let bytes_per_row = out_w * 4;
         let aligned_bytes_per_row = (bytes_per_row + 255) & !255;
         let buffer_size = (aligned_bytes_per_row * out_h) as u64 + 16;
         let mut readback = self.readback.lock().unwrap();
-        readback.ensure(device, "decklink-output-readback", buffer_size);
+        readback.ensure_with_slots(
+            device,
+            "decklink-output-readback",
+            buffer_size,
+            MAX_IN_FLIGHT,
+        );
         let Some(slot) = readback.free() else {
             return false;
         };
@@ -1188,7 +1211,6 @@ impl VideoOutput for DecklinkOutput {
                 readback.release(slot);
                 return;
             };
-            self.pending.store(true, Ordering::Release);
             self.liveness.mark_sent();
             let message = OutputFrame::Pinned {
                 ptr: PinnedPtr(ptr),
@@ -1197,7 +1219,6 @@ impl VideoOutput for DecklinkOutput {
                 height: out_h,
             };
             if tx.try_send(message).is_err() {
-                self.pending.store(false, Ordering::Release);
                 self.liveness.clear_sent();
                 readback_buffer.unmap();
                 readback.release(slot);
@@ -1244,13 +1265,8 @@ impl VideoOutput for DecklinkOutput {
         let Some(tx) = self.frame_tx.as_ref() else {
             return;
         };
-        // Publish in-flight before the handoff: the worker clears `pending` right
-        // after recv(), so storing it after try_send can be overwritten and wedge
-        // busy() true forever.
-        self.pending.store(true, Ordering::Release);
         self.liveness.mark_sent();
         if tx.try_send(OutputFrame::Cpu(buffer)).is_err() {
-            self.pending.store(false, Ordering::Release);
             self.liveness.clear_sent();
             self.stats.lock().unwrap().frames_dropped += 1;
         }
@@ -1262,10 +1278,6 @@ impl VideoOutput for DecklinkOutput {
 
     fn enabled(&self) -> bool {
         return self.enabled.load(Ordering::Relaxed);
-    }
-
-    fn busy(&self) -> bool {
-        return self.pending.load(Ordering::Acquire) && self.liveness.is_alive();
     }
 
     fn set_enabled(&self, enabled: bool) {
