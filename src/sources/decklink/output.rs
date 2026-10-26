@@ -454,7 +454,7 @@ impl DecklinkOutput {
                                 unsafe { decklink_output_completion_available(output) },
                                 Ordering::Relaxed,
                             );
-                            tracing::info!(output=thread_name, "DeckLink output started on {}", mode_id);
+                            tracing::info!(output=thread_name, "DeckLink output started on {}", thread_config.display_mode.name());
                         } else {
                             {
                                 let mut s = stats_clone.lock().unwrap();
@@ -1328,6 +1328,7 @@ impl Drop for DecklinkOutput {
 #[cfg(test)]
 mod tests {
     use super::{CV_TOKEN_BIT, PINNED_TOKEN_BIT, TokenKind, classify_token};
+    use super::DisplayMode;
 
     #[test]
     fn classifies_completion_tokens() {
@@ -1335,5 +1336,11 @@ mod tests {
         assert_eq!(classify_token(7), TokenKind::Vec);
         assert_eq!(classify_token(CV_TOKEN_BIT | 2), TokenKind::Cv(2));
         assert_eq!(classify_token(PINNED_TOKEN_BIT | 1), TokenKind::Pinned(1));
+    }
+
+    #[test]
+    fn display_mode_name_uses_fourcc() {
+        assert_eq!(DisplayMode::Hd1080p6000.name(), "Hp60");
+        assert_eq!(DisplayMode::Pal.name(), "pal");
     }
 }

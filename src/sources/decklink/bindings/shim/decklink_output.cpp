@@ -247,7 +247,7 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
     BMDDisplayMode mode = static_cast<BMDDisplayMode>(mode_id);
     HRESULT hr = o->output->EnableVideoOutput(mode, bmdVideoOutputFlagDefault);
     if (hr != S_OK) {
-        fprintf(stderr, "[decklink] EnableVideoOutput failed (0x%08X)\n", static_cast<unsigned int>(hr));
+        fprintf(stderr, "[decklink] EnableVideoOutput failed mode=%s (0x%08X)\n", DecklinkDisplayModeName(mode), static_cast<unsigned int>(hr));
         o->output->Release();
         o->output = nullptr;
         return false;
@@ -279,15 +279,16 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
 
     hr = o->output->StartScheduledPlayback(0, o->time_scale, 1.0);
     if (hr != S_OK) {
-        fprintf(stderr, "[decklink] StartScheduledPlayback failed (0x%08X)\n", static_cast<unsigned int>(hr));
+        fprintf(stderr, "[decklink] StartScheduledPlayback failed mode=%s (0x%08X)\n", DecklinkDisplayModeName(mode), static_cast<unsigned int>(hr));
         o->output->DisableVideoOutput();
         o->output->Release();
         o->output = nullptr;
         return false;
     }
 
-    fprintf(stderr, "[decklink] output started '%s' mode=%d %ldx%ld frame=%lld/%lld\n",
-            o->target_name.c_str(), static_cast<int>(mode), o->width, o->height,
+    fprintf(stderr, "[decklink] output started '%s' mode=%s fmt=%s %ldx%ld frame=%lld/%lld\n",
+            o->target_name.c_str(), DecklinkDisplayModeName(mode), DecklinkPixelFormatName(bmdFormat8BitBGRA),
+            o->width, o->height,
             static_cast<long long>(o->frame_duration), static_cast<long long>(o->time_scale));
     return true;
 }
@@ -328,14 +329,14 @@ bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int w
     HRESULT hr = o->output->CreateVideoFrameWithBuffer(width, height, row_bytes, bmdFormat8BitBGRA, bmdFrameFlagDefault, buffer, &frame);
     buffer->Release();
     if (hr != S_OK || !frame) {
-        fprintf(stderr, "[decklink] CreateVideoFrameWithBuffer failed (0x%08X)\n", static_cast<unsigned int>(hr));
+        fprintf(stderr, "[decklink] CreateVideoFrameWithBuffer failed fmt=%s (0x%08X)\n", DecklinkPixelFormatName(bmdFormat8BitBGRA), static_cast<unsigned int>(hr));
         return false;
     }
 
     hr = o->output->ScheduleVideoFrame(frame, o->scheduled_time, o->frame_duration, o->time_scale);
     if (hr != S_OK) {
         frame->Release();
-        fprintf(stderr, "[decklink] ScheduleVideoFrame failed (0x%08X)\n", static_cast<unsigned int>(hr));
+        fprintf(stderr, "[decklink] ScheduleVideoFrame failed fmt=%s (0x%08X)\n", DecklinkPixelFormatName(bmdFormat8BitBGRA), static_cast<unsigned int>(hr));
         return false;
     }
     frame->Release();
@@ -364,7 +365,7 @@ bool decklink_output_present_cv(DecklinkOutput* o, void* cv, uint64_t token) {
             o->completion->scheduled.erase(frame);
         }
         frame->Release();
-        fprintf(stderr, "[decklink] ScheduleVideoFrame(CV) failed (0x%08X)\n", static_cast<unsigned int>(hr));
+        fprintf(stderr, "[decklink] ScheduleVideoFrame(CV) failed fmt=%s (0x%08X)\n", DecklinkPixelFormatName(bmdFormat8BitBGRA), static_cast<unsigned int>(hr));
         return false;
     }
     frame->Release();

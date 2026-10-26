@@ -82,6 +82,10 @@ void DecklinkStringFree(DECKLINK_DLSTRING_T str);
 // Sleep for the given number of milliseconds.
 void DecklinkSleepMs(uint32_t ms);
 
+// Printable fourcc names for DeckLink pixel formats and display modes.
+const char* DecklinkPixelFormatName(BMDPixelFormat format);
+const char* DecklinkDisplayModeName(BMDDisplayMode mode);
+
 // Cross-platform boolean type for DeckLink API (Windows uses BOOL=int, others use bool).
 #ifdef _WIN32
 using DecklinkBool = BOOL;

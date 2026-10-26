@@ -96,7 +96,7 @@ class CaptureCallback : public IDeckLinkInputCallback {
 
             long w = newDisplayMode->GetWidth();
             long h = newDisplayMode->GetHeight();
-            fprintf(stderr, "[decklink] VideoInputFormatChanged %ldx%ld mode=%d\n", w, h, static_cast<int>(newMode));
+            fprintf(stderr, "[decklink] VideoInputFormatChanged %ldx%ld mode=%s\n", w, h, DecklinkDisplayModeName(newMode));
 
             BMDTimeValue frame_duration = 0;
             BMDTimeValue time_scale = 0;
@@ -113,14 +113,14 @@ class CaptureCallback : public IDeckLinkInputCallback {
                 input->PauseStreams();
                 HRESULT r = capture_platform_enable(source_->platform, input, newMode, fmt, bmdVideoInputEnableFormatDetection);
                 if (r != S_OK) {
-                    fprintf(stderr, "[decklink] EnableVideoInput(0x%08X) failed after format change (0x%08X)\n",
-                            static_cast<unsigned int>(fmt), static_cast<unsigned int>(r));
+                    fprintf(stderr, "[decklink] EnableVideoInput(%s) failed after format change (0x%08X)\n",
+                            DecklinkPixelFormatName(fmt), static_cast<unsigned int>(r));
                     return false;
                 }
                 input->FlushStreams();
                 if (input->StartStreams() != S_OK) {
-                    fprintf(stderr, "[decklink] StartStreams failed after format change (fmt=0x%08X)\n",
-                            static_cast<unsigned int>(fmt));
+                    fprintf(stderr, "[decklink] StartStreams failed after format change (fmt=%s)\n",
+                            DecklinkPixelFormatName(fmt));
                     return false;
                 }
                 return true;
@@ -133,7 +133,7 @@ class CaptureCallback : public IDeckLinkInputCallback {
                     source_->display_mode = newMode;
                     source_->pixel_format = static_cast<uint32_t>(pixelFormat);
                 }
-                fprintf(stderr, "[decklink] format change locked %ldx%ld fmt=YUV\n", w, h);
+                fprintf(stderr, "[decklink] format change locked %ldx%ld fmt=%s\n", w, h, DecklinkPixelFormatName(pixelFormat));
             } else {
                 fprintf(stderr, "[decklink] format change could not restart streams\n");
             }
@@ -157,14 +157,14 @@ class CaptureCallback : public IDeckLinkInputCallback {
             if (!has_signal) {
                 if (had_signal_) {
                     had_signal_ = false;
-                    fprintf(stderr, "[decklink] signal lost (%ldx%ld fmt=0x%08X)\n", w, h, fmt);
+                    fprintf(stderr, "[decklink] signal lost (%ldx%ld fmt=%s)\n", w, h, DecklinkPixelFormatName(fmt));
                 }
                 return S_OK;
             }
 
             if (!had_signal_) {
                 had_signal_ = true;
-                fprintf(stderr, "[decklink] signal acquired %ldx%ld fmt=0x%08X flags=0x%08X\n", w, h, fmt, flags);
+                fprintf(stderr, "[decklink] signal acquired %ldx%ld fmt=%s flags=0x%08X\n", w, h, DecklinkPixelFormatName(fmt), flags);
             }
 
             size_t frame_size = 0;
@@ -173,7 +173,7 @@ class CaptureCallback : public IDeckLinkInputCallback {
             } else if (fmt == bmdFormat8BitYUV) {
                 frame_size = static_cast<size_t>(w) * static_cast<size_t>(h) * 2;
             } else {
-                fprintf(stderr, "[decklink] unsupported pixel format 0x%08X\n", fmt);
+                fprintf(stderr, "[decklink] unsupported pixel format %s\n", DecklinkPixelFormatName(fmt));
                 return S_OK;
             }
 
@@ -477,8 +477,6 @@ bool decklink_source_start(DecklinkSource* s) {
 
     const BMDPixelFormat first_format = bmdFormat8BitYUV;
     const BMDPixelFormat second_format = bmdFormat8BitBGRA;
-    const char* first_name = "YUV";
-    const char* second_name = "BGRA";
 
     BMDDisplayMode mode = bmdModeUnknown;
     BMDPixelFormat pixelFormat = first_format;
@@ -486,15 +484,15 @@ bool decklink_source_start(DecklinkSource* s) {
 
     auto try_enable = [&](BMDDisplayMode m) -> HRESULT {
         HRESULT r = capture_platform_enable(s->platform, s->input, m, first_format, bmdVideoInputEnableFormatDetection);
-        fprintf(stderr, "[decklink] trying mode=%d %s detection => 0x%08X\n",
-                static_cast<int>(m), first_name, static_cast<unsigned int>(r));
+        fprintf(stderr, "[decklink] trying mode=%s %s detection => 0x%08X\n",
+                DecklinkDisplayModeName(m), DecklinkPixelFormatName(first_format), static_cast<unsigned int>(r));
         if (r == S_OK) {
             pixelFormat = first_format;
             return r;
         }
         r = capture_platform_enable(s->platform, s->input, m, second_format, bmdVideoInputEnableFormatDetection);
-        fprintf(stderr, "[decklink] trying mode=%d %s detection => 0x%08X\n",
-                static_cast<int>(m), second_name, static_cast<unsigned int>(r));
+        fprintf(stderr, "[decklink] trying mode=%s %s detection => 0x%08X\n",
+                DecklinkDisplayModeName(m), DecklinkPixelFormatName(second_format), static_cast<unsigned int>(r));
         if (r == S_OK) {
             pixelFormat = second_format;
         }
@@ -548,9 +546,9 @@ bool decklink_source_start(DecklinkSource* s) {
         return false;
     }
 
-    fprintf(stderr, "[decklink] started '%s' mode=%d fmt=%s detection=%s\n",
-            s->target_name.c_str(), static_cast<int>(mode),
-            pixelFormat == bmdFormat8BitBGRA ? "BGRA" : "YUV",
+    fprintf(stderr, "[decklink] started '%s' mode=%s fmt=%s detection=%s\n",
+            s->target_name.c_str(), DecklinkDisplayModeName(mode),
+            DecklinkPixelFormatName(pixelFormat),
             supports_fmt_detection ? "on" : "off");
     return true;
 }

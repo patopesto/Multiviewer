@@ -448,6 +448,16 @@ impl DisplayMode {
                 | Self::Hd1080i6000
         );
     }
+
+    /// Fourcc name used by the DeckLink logs, e.g. `Hp60` or `4k60`.
+    pub fn name(self) -> String {
+        let bytes = (self as u32).to_be_bytes();
+        let end = bytes.iter().position(|&byte| byte == 0).unwrap_or(bytes.len());
+        if end == 0 {
+            return "none".to_string();
+        }
+        return String::from_utf8_lossy(&bytes[..end]).into_owned();
+    }
 }
 
 impl serde::Serialize for DisplayMode {

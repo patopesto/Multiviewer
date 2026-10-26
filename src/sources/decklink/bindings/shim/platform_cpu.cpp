@@ -294,9 +294,9 @@ bool capture_platform_open(CapturePlatform* platform, IDeckLinkVideoInputFrame* 
 
     if (!platform->frame_logged) {
         platform->frame_logged = true;
-        fprintf(stderr, "[decklink] input frame %ldx%ld fmt=0x%08X rowBytes=%ld\n",
+        fprintf(stderr, "[decklink] input frame %ldx%ld fmt=%s rowBytes=%ld\n",
                 videoFrame->GetWidth(), videoFrame->GetHeight(),
-                static_cast<unsigned int>(videoFrame->GetPixelFormat()), row_bytes);
+                DecklinkPixelFormatName(videoFrame->GetPixelFormat()), row_bytes);
     }
 
     out->data = static_cast<const uint8_t*>(bytes);

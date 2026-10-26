@@ -130,6 +130,31 @@ void DecklinkSleepMs(uint32_t ms) {
 #endif
 }
 
+static const char* DecklinkFourCCName(uint32_t value) {
+    // A ring keeps two names in one log call from overwriting each other.
+    static thread_local char names[4][5];
+    static thread_local unsigned next = 0;
+    char* name = names[next];
+    next = (next + 1) % 4;
+    if (value == 0) {
+        return "none";
+    }
+    name[0] = static_cast<char>((value >> 24) & 0xFF);
+    name[1] = static_cast<char>((value >> 16) & 0xFF);
+    name[2] = static_cast<char>((value >> 8) & 0xFF);
+    name[3] = static_cast<char>(value & 0xFF);
+    name[4] = '\0';
+    return name;
+}
+
+const char* DecklinkPixelFormatName(BMDPixelFormat format) {
+    return DecklinkFourCCName(static_cast<uint32_t>(format));
+}
+
+const char* DecklinkDisplayModeName(BMDDisplayMode mode) {
+    return DecklinkFourCCName(static_cast<uint32_t>(mode));
+}
+
 bool DecklinkIIDEqual(REFIID a, REFIID b) {
     return std::memcmp(&a, &b, sizeof(REFIID)) == 0;
 }

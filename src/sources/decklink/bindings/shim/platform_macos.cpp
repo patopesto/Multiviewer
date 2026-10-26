@@ -44,11 +44,11 @@ bool capture_platform_open(CapturePlatform* platform, IDeckLinkVideoInputFrame* 
 
     if (!platform->frame_logged) {
         platform->frame_logged = true;
-        fprintf(stderr, "[decklink] input frame %ldx%ld fmt=0x%08X rowBytes=%ld iosurface=%d cvfmt=0x%08X\n",
-                w, h, static_cast<unsigned int>(fmt),
+        fprintf(stderr, "[decklink] input frame %ldx%ld fmt=%s rowBytes=%ld iosurface=%d cvfmt=%s\n",
+                w, h, DecklinkPixelFormatName(fmt),
                 static_cast<long>(CVPixelBufferGetBytesPerRow(pixel_buffer)),
                 CVPixelBufferGetIOSurface(pixel_buffer) != nullptr ? 1 : 0,
-                static_cast<unsigned int>(CVPixelBufferGetPixelFormatType(pixel_buffer)));
+                DecklinkPixelFormatName(static_cast<BMDPixelFormat>(CVPixelBufferGetPixelFormatType(pixel_buffer))));
     }
 
     if (gpu && (fmt == bmdFormat8BitBGRA || fmt == bmdFormat8BitYUV) &&
@@ -60,8 +60,8 @@ bool capture_platform_open(CapturePlatform* platform, IDeckLinkVideoInputFrame* 
 
     if (gpu && !platform->fallback_logged) {
         platform->fallback_logged = true;
-        fprintf(stderr, "[decklink] GPU import unavailable (fmt=0x%08X iosurface=%d); using the CPU path\n",
-                static_cast<unsigned int>(fmt),
+        fprintf(stderr, "[decklink] GPU import unavailable (fmt=%s iosurface=%d); using the CPU path\n",
+                DecklinkPixelFormatName(fmt),
                 CVPixelBufferGetIOSurface(pixel_buffer) != nullptr ? 1 : 0);
     }
 
