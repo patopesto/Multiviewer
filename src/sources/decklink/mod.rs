@@ -4,7 +4,9 @@ mod source;
 
 use std::ffi::c_char;
 
-use multiviewer_decklink::decklink_api_version;
+use multiviewer_decklink::{decklink_api_version, DecklinkPixelFormat};
+
+use crate::sources::PixelFormat;
 
 pub use discovery::{
     Discovery as DecklinkDiscovery, OutputMode as DecklinkOutputMode,
@@ -19,6 +21,15 @@ pub use multiviewer_decklink::{
     VideoConnections as DecklinkVideoConnections,
     DisplayMode as DecklinkMode,
 };
+
+/// Map a DeckLink capture pixel format to the app's format.
+pub(crate) fn pixel_format(fmt: DecklinkPixelFormat) -> PixelFormat {
+    return match fmt {
+        DecklinkPixelFormat::Bgra8 => PixelFormat::Bgra8,
+        DecklinkPixelFormat::Uyvy422 => PixelFormat::Uyvy422,
+        _ => PixelFormat::Rgba8,
+    };
+}
 
 /// Supported DeckLink API version reported by the installed driver, if any.
 pub fn decklink_version() -> Option<String> {

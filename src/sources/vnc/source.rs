@@ -8,7 +8,7 @@ use vnc::{PixelFormat as VncPixelFormat, VncClient, VncConnector, VncEncoding, V
 
 use crate::secret;
 use super::super::{
-    CpuFrame, Frame, FramePool, Framebuffer, PixelFormat, SourceRef, SourceStats, VideoSource,
+    CpuFrame, Frame, FramePool, Framebuffer, SourceRef, SourceStats, VideoSource,
     PUBLISH_INTERVAL, publish_due, sleep_while_running,
 };
 
@@ -326,16 +326,17 @@ async fn run_session(
                 fb.snapshot_into(&mut data);
                 let copy_ms = started.elapsed().as_secs_f32() * 1000.0;
                 let (w, h) = (fb.width(), fb.height());
+                let format = fb.format();
                 {
                     let mut s = stats.lock().unwrap();
-                    s.record_frame(w, h, PixelFormat::Bgra8.label(), 0.0);
+                    s.record_frame(w, h, format.label(), 0.0);
                     s.record_copy_time(copy_ms);
                 }
                 let old = slot.lock().unwrap().replace(Frame::Cpu(CpuFrame {
                     data: Arc::new(data),
                     w,
                     h,
-                    fmt: PixelFormat::Bgra8,
+                    fmt: format,
                     pitch: 0,
                     seq,
                 }));
@@ -545,6 +546,7 @@ impl VideoSource for VncSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sources::PixelFormat;
     use std::io::{Read, Write};
 
     #[test]

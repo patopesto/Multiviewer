@@ -28,7 +28,7 @@ const DEFAULT_DESKTOP_HEIGHT: u16 = 720;
 const MIN_DESKTOP_SIDE: u16 = 16;
 const MAX_DESKTOP_SIDE: u16 = 8192;
 /// RDP pixels are 32-bit; the compositor samples them as BGRA.
-const BGRA_BYTES: usize = 4;
+const BGRA_BYTES: usize = PixelFormat::Bgra8.bpp() as usize;
 /// Client identity reported to the host. It is informational, but the engine
 /// refuses to build a connection while any of the four fields is unset.
 const CLIENT_NAME: &str = APP_NAME;

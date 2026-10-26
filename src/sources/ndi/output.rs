@@ -76,7 +76,7 @@ impl NdiOutput {
                         &buffer[8..],
                         frame_w as i32,
                         frame_h as i32,
-                        grafton_ndi::PixelFormat::BGRA,
+                        grafton_ndi::PixelFormat::BGRX,
                         60,
                         1,
                     ) {

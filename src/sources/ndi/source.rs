@@ -157,13 +157,13 @@ fn run_capture(
             Ok(Some(frame)) => {
                 let w = frame.width() as u32;
                 let h = frame.height() as u32;
-                let (fmt, bpp) = match frame.pixel_format() {
-                    grafton_ndi::PixelFormat::UYVY => (PixelFormat::Uyvy422, 2usize),
+                let fmt = match frame.pixel_format() {
+                    grafton_ndi::PixelFormat::UYVY => PixelFormat::Uyvy422,
                     grafton_ndi::PixelFormat::RGBA | grafton_ndi::PixelFormat::RGBX => {
-                        (PixelFormat::Rgba8, 4usize)
+                        PixelFormat::Rgba8
                     }
                     grafton_ndi::PixelFormat::BGRA | grafton_ndi::PixelFormat::BGRX => {
-                        (PixelFormat::Bgra8, 4usize)
+                        PixelFormat::Bgra8
                     }
                     pf => {
                         if warned_formats.insert(pf as u32) {
@@ -172,6 +172,7 @@ fn run_capture(
                         continue;
                     }
                 };
+                let bpp = fmt.bpp() as usize;
                 let stride = match frame.line_stride_or_size() {
                     LineStrideOrSize::LineStrideBytes(s) => s as usize,
                     _ => (w as usize) * bpp,

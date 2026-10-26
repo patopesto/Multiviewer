@@ -207,7 +207,8 @@ fn run_capture(
     *modes.lock().unwrap() = unsafe { enumerate_modes(&reader) };
     // The negotiated subtype decides how the compositor reads the bytes; see
     // `pixel_format_for_subtype` for the (surprising) RGB32 mapping.
-    let (pixel_format, bpp) = negotiated_pixel_format(&reader).unwrap_or((PixelFormat::Bgra8, 4));
+    let pixel_format = negotiated_pixel_format(&reader).unwrap_or(PixelFormat::Bgra8);
+    let bpp = pixel_format.bpp();
 
     // A synchronous ReadSample blocks when the device never streams the
     // negotiated type, so a loop-side timeout can't fire; this watchdog reports
@@ -459,7 +460,7 @@ unsafe fn build_output_type(
 }
 
 /// The output subtypes we can feed the compositor, in Auto preference order:
-/// `(subtype, internal format, bytes per pixel for the tight-pitch fallback)`.
+/// `(subtype, internal format)`.
 ///
 /// NOTE: `MFVideoFormat_RGB32` is **not** RGBA byte order despite the name. It
 /// is `D3DFMT_X8R8G8B8` (GUID `...00000016...`), stored little-endian as bytes
@@ -467,19 +468,19 @@ unsafe fn build_output_type(
 /// `Bgra8Unorm`) and **never** `Rgba8`, which would swap red and blue.
 /// `MFVideoFormat_ARGB32` (`D3DFMT_A8R8G8B8`) is likewise BGRA in memory; only
 /// `D3DFMT_A8B8G8R8` / `MFVideoFormat_ABGR32` is true RGBA.
-const MF_FORMATS: &[(GUID, PixelFormat, u32)] = &[
-    (MFVideoFormat_UYVY, PixelFormat::Uyvy422, 2),
-    (MFVideoFormat_RGB32, PixelFormat::Bgra8, 4),
-    (MFVideoFormat_YUY2, PixelFormat::Yuy2, 2),
-    (MFVideoFormat_NV12, PixelFormat::Nv12, 1),
+const MF_FORMATS: &[(GUID, PixelFormat)] = &[
+    (MFVideoFormat_UYVY, PixelFormat::Uyvy422),
+    (MFVideoFormat_RGB32, PixelFormat::Bgra8),
+    (MFVideoFormat_YUY2, PixelFormat::Yuy2),
+    (MFVideoFormat_NV12, PixelFormat::Nv12),
 ];
 
-/// Internal pixel format and bytes-per-pixel for a negotiated MF subtype.
-fn pixel_format_for_subtype(subtype: &GUID) -> Option<(PixelFormat, u32)> {
+/// Internal pixel format for a negotiated MF subtype.
+fn pixel_format_for_subtype(subtype: &GUID) -> Option<PixelFormat> {
     return MF_FORMATS
         .iter()
-        .find(|(guid, _, _)| guid == subtype)
-        .map(|(_, format, bpp)| (*format, *bpp));
+        .find(|(guid, _)| guid == subtype)
+        .map(|(_, format)| *format);
 }
 
 /// Subtypes to request for `choice`, in preference order. `None` (Auto) tries
@@ -487,16 +488,16 @@ fn pixel_format_for_subtype(subtype: &GUID) -> Option<(PixelFormat, u32)> {
 /// unsupported request errors rather than silently falling back).
 fn candidates_for(choice: Option<PixelFormat>) -> Vec<&'static GUID> {
     return match choice {
-        None => MF_FORMATS.iter().map(|(guid, _, _)| guid).collect(),
+        None => MF_FORMATS.iter().map(|(guid, _)| guid).collect(),
         Some(format) => MF_FORMATS
             .iter()
-            .filter(|(_, candidate, _)| *candidate == format)
-            .map(|(guid, _, _)| guid)
+            .filter(|(_, candidate)| *candidate == format)
+            .map(|(guid, _)| guid)
             .collect(),
     };
 }
 
-fn negotiated_pixel_format(reader: &IMFSourceReader) -> Option<(PixelFormat, u32)> {
+fn negotiated_pixel_format(reader: &IMFSourceReader) -> Option<PixelFormat> {
     let media_type =
         unsafe { reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32) }.ok()?;
     let subtype = unsafe { media_type.GetGUID(&MF_MT_SUBTYPE) }.ok()?;
@@ -607,11 +608,11 @@ fn capture_frames(
         // compositor decodes strictly by `pixel_format`.
         if !format_checked || flags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED.0 as u32 != 0 {
             format_checked = true;
-            if let Some((format, new_bpp)) = negotiated_pixel_format(reader)
-                && (format != pixel_format || new_bpp != bpp)
+            if let Some(format) = negotiated_pixel_format(reader)
+                && (format != pixel_format || format.bpp() != bpp)
             {
                 pixel_format = format;
-                bpp = new_bpp;
+                bpp = format.bpp();
                 tracing::info!(source = source_ref, "MediaFoundation: output format is now {} ({bpp} bytes/px)", pixel_format.label());
             }
         }
@@ -642,9 +643,9 @@ fn capture_frames(
             continue;
         }
         let nominal_fps = if fps_den == 0 { 0.0 } else { fps_num as f64 / fps_den as f64 };
-        let tight = w.saturating_mul(bpp);
-        // NV12 stores the half-height interleaved UV plane after Y.
-        let rows = if pixel_format == PixelFormat::Nv12 { h + h / 2 } else { h };
+        let layout = pixel_format.texture_layout(w, h);
+        let tight = w.saturating_mul(layout.bpp);
+        let rows = layout.tex_h;
         let pitch = effective_pitch(media_stride, current_len, tight, rows);
         let copy_len = (pitch as usize * rows as usize).min(current_len as usize);
 
@@ -816,7 +817,7 @@ mod tests {
     fn rgb32_maps_to_bgra_not_rgba() {
         assert_eq!(
             pixel_format_for_subtype(&MFVideoFormat_RGB32),
-            Some((PixelFormat::Bgra8, 4))
+            Some(PixelFormat::Bgra8)
         );
     }
 
@@ -824,15 +825,15 @@ mod tests {
     fn yuv_subtypes_map() {
         assert_eq!(
             pixel_format_for_subtype(&MFVideoFormat_UYVY),
-            Some((PixelFormat::Uyvy422, 2))
+            Some(PixelFormat::Uyvy422)
         );
         assert_eq!(
             pixel_format_for_subtype(&MFVideoFormat_YUY2),
-            Some((PixelFormat::Yuy2, 2))
+            Some(PixelFormat::Yuy2)
         );
         assert_eq!(
             pixel_format_for_subtype(&MFVideoFormat_NV12),
-            Some((PixelFormat::Nv12, 1))
+            Some(PixelFormat::Nv12)
         );
     }
 

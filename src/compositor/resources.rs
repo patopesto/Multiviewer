@@ -3,21 +3,15 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::gpu::{conv_uniform, create_cell_layout, create_sampler, create_vertex_index_buffers, placeholder, render_pipeline, solid_bind_group, texture_bind_group, MAX_LAYERS, QUADS_PER_SOURCE, SHADER};
-use super::layout::source_layout;
-use super::{Compositor, ConvMode, Shared, Vert};
-use crate::sources::{CpuFrame, PixelFormat, SourceKey, SourceStats};
+use super::{Compositor, Shared, Vert};
+use crate::sources::{CpuFrame, PixelFormat, SourceKey, SourceStats, TextureLayout};
 
 pub(super) struct SourceTex {
     _tex: wgpu::Texture,
     _uniform: wgpu::Buffer,
     pub(super) bg: Arc<wgpu::BindGroup>,
-    w: u32,
-    h: u32,
-    tex_w: u32,
-    tex_h: u32,
+    layout: TextureLayout,
     seq: u64,
-    format: wgpu::TextureFormat,
-    mode: ConvMode,
 }
 
 impl Compositor {
@@ -134,7 +128,7 @@ impl Compositor {
         f: &CpuFrame,
         stats: Option<Arc<Mutex<SourceStats>>>,
     ) -> &SourceTex {
-        let (format, tex_w, tex_h, bpp, mode) = source_layout(f.fmt, f.w, f.h);
+        let layout = f.fmt.texture_layout(f.w, f.h);
         if matches!(f.fmt, PixelFormat::Uyvy422 | PixelFormat::Yuy2 | PixelFormat::Nv12)
             && !f.w.is_multiple_of(2)
         {
@@ -147,14 +141,7 @@ impl Compositor {
         let stale = self
             .textures
             .get(key)
-            .map(|t| {
-                t.w != f.w
-                    || t.h != f.h
-                    || t.format != format
-                    || t.tex_w != tex_w
-                    || t.tex_h != tex_h
-                    || t.mode != mode
-            })
+            .map(|t| t.layout != layout)
             .unwrap_or(false);
         if stale {
             self.textures.remove(key);
@@ -163,19 +150,19 @@ impl Compositor {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(key.source_ref.as_str()),
                 size: wgpu::Extent3d {
-                    width: tex_w,
-                    height: tex_h,
+                    width: layout.tex_w,
+                    height: layout.tex_h,
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format,
+                format: layout.texture_format,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                 view_formats: &[],
             });
             let view = tex.create_view(&Default::default());
-            let uniform = conv_uniform(device, queue, mode, f.w as f32, f.h as f32);
+            let uniform = conv_uniform(device, queue, layout.conv_mode, f.w as f32, f.h as f32);
             let bg = Arc::new(texture_bind_group(
                 device,
                 &self.bind_layout,
@@ -187,13 +174,8 @@ impl Compositor {
                 _tex: tex,
                 _uniform: uniform,
                 bg,
-                w: f.w,
-                h: f.h,
-                tex_w,
-                tex_h,
+                layout,
                 seq: u64::MAX,
-                format,
-                mode,
             }
         });
         if st.seq != f.seq {
@@ -201,7 +183,7 @@ impl Compositor {
             let _upload_guard = upload_span.entered();
             let t0 = Instant::now();
             // Padded frames carry their native stride; 0 = tightly packed.
-            let pitch = if f.pitch != 0 { f.pitch } else { f.w * bpp };
+            let pitch = if f.pitch != 0 { f.pitch } else { f.w * layout.bpp };
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &st._tex,
@@ -213,18 +195,18 @@ impl Compositor {
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(pitch),
-                    rows_per_image: Some(tex_h),
+                    rows_per_image: Some(layout.tex_h),
                 },
                 wgpu::Extent3d {
-                    width: tex_w,
-                    height: tex_h,
+                    width: layout.tex_w,
+                    height: layout.tex_h,
                     depth_or_array_layers: 1,
                 },
             );
             let upload_ms = t0.elapsed().as_secs_f32() * 1000.0;
             if let Some(stats) = stats {
                 let mut s = stats.lock().unwrap();
-                s.record_upload_time(upload_ms, pitch as u64 * tex_h as u64);
+                s.record_upload_time(upload_ms, pitch as u64 * layout.tex_h as u64);
             }
             st.seq = f.seq;
         }

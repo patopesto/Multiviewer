@@ -4,8 +4,6 @@ use std::thread;
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 
-pub use crate::compositor::ConvUniform;
-
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Protocol {
     Test,
@@ -149,6 +147,121 @@ impl PixelFormat {
             PixelFormat::Nv12 => "NV12",
         }
     }
+
+    pub const fn bpp(self) -> u32 {
+        return match self {
+            PixelFormat::Rgba8 | PixelFormat::Bgra8 => 4,
+            PixelFormat::Uyvy422 | PixelFormat::Yuy2 => 2,
+            PixelFormat::Nv12 => 1,
+        };
+    }
+
+    pub fn conv_mode(self, color: ColorSpace) -> ConvMode {
+        return match self {
+            PixelFormat::Rgba8 | PixelFormat::Bgra8 => ConvMode::Passthrough,
+            PixelFormat::Uyvy422 => {
+                if color.is_bt709() { ConvMode::UyvyBt709 } else { ConvMode::UyvyBt601 }
+            }
+            PixelFormat::Yuy2 => {
+                if color.is_bt709() { ConvMode::Yuy2Bt709 } else { ConvMode::Yuy2Bt601 }
+            }
+            PixelFormat::Nv12 => {
+                if color.is_bt709() { ConvMode::Nv12Bt709 } else { ConvMode::Nv12Bt601 }
+            }
+        };
+    }
+
+    pub fn texture_layout(self, width: u32, height: u32) -> TextureLayout {
+        let bpp = self.bpp();
+        let color = colorspace_for_height(height);
+        let (texture_format, tex_w, tex_h) = match self {
+            PixelFormat::Rgba8 => (wgpu::TextureFormat::Rgba8Unorm, width, height),
+            PixelFormat::Bgra8 => (wgpu::TextureFormat::Bgra8Unorm, width, height),
+            PixelFormat::Uyvy422 | PixelFormat::Yuy2 => {
+                (wgpu::TextureFormat::Rgba8Unorm, width / 2, height)
+            }
+            PixelFormat::Nv12 => {
+                (wgpu::TextureFormat::R8Unorm, width, height + height / 2)
+            }
+        };
+        return TextureLayout {
+            width,
+            height,
+            texture_format,
+            tex_w,
+            tex_h,
+            bpp,
+            conv_mode: self.conv_mode(color),
+        };
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ColorSpace {
+    Bt601,
+    Bt709,
+}
+
+impl ColorSpace {
+    pub fn is_bt709(self) -> bool {
+        return self == Self::Bt709;
+    }
+}
+
+pub fn colorspace_for_height(height: u32) -> ColorSpace {
+    return if height > 576 { ColorSpace::Bt709 } else { ColorSpace::Bt601 };
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConvMode {
+    Passthrough = 0,
+    UyvyBt601 = 1,
+    UyvyBt709 = 2,
+    Yuy2Bt601 = 3,
+    Yuy2Bt709 = 4,
+    Nv12Bt601 = 5,
+    Nv12Bt709 = 6,
+}
+
+impl From<ConvMode> for u32 {
+    fn from(mode: ConvMode) -> Self {
+        return mode as u32;
+    }
+}
+
+/// Uniform block consumed by the compositor's fragment shader.
+/// Must stay in sync with the `ConvUniform` struct inside `SHADER`.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ConvUniform {
+    pub mode: u32, // ConvMode
+    pub width: f32,
+    pub height: f32,
+    pub _pad: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextureLayout {
+    pub width: u32,
+    pub height: u32,
+    pub texture_format: wgpu::TextureFormat,
+    /// 4:2:2 packs two pixels per texel, so this is half the frame width.
+    pub tex_w: u32,
+    /// NV12 stores its interleaved UV plane after Y, so this is 1.5x the frame height.
+    pub tex_h: u32,
+    pub bpp: u32,
+    pub conv_mode: ConvMode,
+}
+
+impl TextureLayout {
+    pub fn row_bytes(&self) -> u32 {
+        return self.width * self.bpp;
+    }
+
+    pub fn buffer_bytes(&self) -> u64 {
+        return u64::from(self.row_bytes()) * u64::from(self.tex_h);
+    }
 }
 
 #[derive(Clone)]
@@ -240,9 +353,6 @@ impl FramePool {
     }
 }
 
-/// Bytes per pixel of a [`Framebuffer`]. VNC and RDP both feed BGRA.
-const FRAMEBUFFER_BPP: usize = 4;
-
 /// A software framebuffer that protocol producers blit incremental updates
 /// into. VNC feeds RFB rectangles; RDP will feed desktop updates once its
 /// client exposes them.
@@ -250,14 +360,17 @@ pub struct Framebuffer {
     data: Vec<u8>,
     width: u32,
     height: u32,
+    format: PixelFormat, // only BGRA for now
 }
 
 impl Framebuffer {
     pub fn new(width: u32, height: u32) -> Self {
+        let format = PixelFormat::Bgra8;
         return Self {
-            data: vec![0; buffer_size(width, height)],
+            data: vec![0; buffer_size(width, height, format.bpp() as usize)],
             width,
             height,
+            format,
         };
     }
 
@@ -269,6 +382,14 @@ impl Framebuffer {
         return self.height;
     }
 
+    pub fn format(&self) -> PixelFormat {
+        return self.format;
+    }
+
+    fn bpp(&self) -> usize {
+        return self.format.bpp() as usize;
+    }
+
     /// Reallocate for a new resolution, keeping the pixels that still fit. A size
     /// change must not wipe a desktop already painted: the server has to repaint
     /// the whole screen after a real resize, so the stale overlap is overwritten
@@ -277,10 +398,11 @@ impl Framebuffer {
         if self.width == width && self.height == height {
             return;
         }
-        let mut data = vec![0; buffer_size(width, height)];
-        let copy_bytes = self.width.min(width) as usize * FRAMEBUFFER_BPP;
-        let src_stride = self.width as usize * FRAMEBUFFER_BPP;
-        let dst_stride = width as usize * FRAMEBUFFER_BPP;
+        let bpp = self.bpp();
+        let mut data = vec![0; buffer_size(width, height, bpp)];
+        let copy_bytes = self.width.min(width) as usize * bpp;
+        let src_stride = self.width as usize * bpp;
+        let dst_stride = width as usize * bpp;
         for row in 0..self.height.min(height) as usize {
             let src = row * src_stride;
             let dst = row * dst_stride;
@@ -297,10 +419,10 @@ impl Framebuffer {
     }
 
     /// Copy a tightly packed `width`x`height` pixel rectangle to (`x`, `y`),
-    /// clipped to the framebuffer. `pixels` must hold `width * height *
-    /// FRAMEBUFFER_BPP`.
+    /// clipped to the framebuffer. `pixels` must hold `width * height * bpp`.
     pub fn blit(&mut self, x: u32, y: u32, width: u32, height: u32, pixels: &[u8]) {
-        let src_stride = width as usize * FRAMEBUFFER_BPP;
+        let bpp = self.bpp();
+        let src_stride = width as usize * bpp;
         if src_stride * height as usize > pixels.len() {
             return;
         }
@@ -309,11 +431,11 @@ impl Framebuffer {
         if x >= x_end || y >= y_end {
             return;
         }
-        let row_bytes = (x_end - x) as usize * FRAMEBUFFER_BPP;
-        let dst_stride = self.width as usize * FRAMEBUFFER_BPP;
+        let row_bytes = (x_end - x) as usize * bpp;
+        let dst_stride = self.width as usize * bpp;
         for row in y..y_end {
             let src = (row - y) as usize * src_stride;
-            let dst = row as usize * dst_stride + x as usize * FRAMEBUFFER_BPP;
+            let dst = row as usize * dst_stride + x as usize * bpp;
             self.data[dst..dst + row_bytes].copy_from_slice(&pixels[src..src + row_bytes]);
         }
     }
@@ -340,12 +462,13 @@ impl Framebuffer {
         if width == 0 || height == 0 {
             return;
         }
-        let stride = self.width as usize * FRAMEBUFFER_BPP;
-        let row_bytes = width as usize * FRAMEBUFFER_BPP;
+        let bpp = self.bpp();
+        let stride = self.width as usize * bpp;
+        let row_bytes = width as usize * bpp;
         for i in 0..height {
             let row = if dst_y <= src_y { i } else { height - 1 - i };
-            let src = (src_y + row) as usize * stride + src_x as usize * FRAMEBUFFER_BPP;
-            let dst = (dst_y + row) as usize * stride + dst_x as usize * FRAMEBUFFER_BPP;
+            let src = (src_y + row) as usize * stride + src_x as usize * bpp;
+            let dst = (dst_y + row) as usize * stride + dst_x as usize * bpp;
             self.data.copy_within(src..src + row_bytes, dst);
         }
     }
@@ -356,8 +479,8 @@ impl Framebuffer {
     }
 }
 
-fn buffer_size(width: u32, height: u32) -> usize {
-    return width as usize * height as usize * FRAMEBUFFER_BPP;
+fn buffer_size(width: u32, height: u32, bpp: usize) -> usize {
+    return width as usize * height as usize * bpp;
 }
 
 /// Granularity of the retry sleep in [`sleep_while_running`].
@@ -435,6 +558,23 @@ impl Default for PollGate {
 mod tests {
     use super::*;
 
+    #[test]
+    fn colorspace_switches_above_sd_height() {
+        assert_eq!(colorspace_for_height(576), ColorSpace::Bt601);
+        assert_eq!(colorspace_for_height(577), ColorSpace::Bt709);
+    }
+
+    #[test]
+    fn texture_layout_row_and_buffer_bytes() {
+        let uyvy = PixelFormat::Uyvy422.texture_layout(1280, 720);
+        assert_eq!(uyvy.row_bytes(), 1280 * 2);
+        assert_eq!(uyvy.buffer_bytes(), 1280 * 2 * 720);
+
+        let nv12 = PixelFormat::Nv12.texture_layout(1920, 1080);
+        assert_eq!(nv12.row_bytes(), 1920);
+        assert_eq!(nv12.buffer_bytes(), 1920 * 1620);
+    }
+
     /// A held Arc defers reclaim; once released the same buffer is reused
     /// instead of allocating.
     #[test]
@@ -465,7 +605,12 @@ mod tests {
         assert!(pool.pending.is_none());
     }
 
-    const BPP: usize = FRAMEBUFFER_BPP;
+    #[test]
+    fn framebuffer_reports_bgra() {
+        let fb = Framebuffer::new(1, 1);
+        assert_eq!(fb.format(), PixelFormat::Bgra8);
+        assert_eq!(fb.format().bpp() as usize, 4);
+    }
 
     /// A 4x4 framebuffer whose pixel value encodes its position.
     fn grid() -> Framebuffer {
@@ -479,8 +624,9 @@ mod tests {
     }
 
     fn pixel(fb: &Framebuffer, x: u32, y: u32) -> [u8; 4] {
-        let offset = (y as usize * fb.width as usize + x as usize) * BPP;
-        return fb.data[offset..offset + BPP].try_into().unwrap();
+        let bpp = fb.format().bpp() as usize;
+        let offset = (y as usize * fb.width as usize + x as usize) * bpp;
+        return fb.data[offset..offset + bpp].try_into().unwrap();
     }
 
     #[test]
@@ -537,11 +683,11 @@ mod tests {
     fn resize_changes_the_buffer_size() {
         let mut fb = grid();
         fb.resize(2, 2);
-        assert_eq!(fb.byte_len(), 2 * 2 * BPP);
+        assert_eq!(fb.byte_len(), 2 * 2 * fb.format().bpp() as usize);
         assert_eq!(pixel(&fb, 1, 1), [1, 1, 0, 0]);
 
         fb.resize(8, 4);
-        assert_eq!(fb.byte_len(), 8 * 4 * BPP);
+        assert_eq!(fb.byte_len(), 8 * 4 * fb.format().bpp() as usize);
         assert_eq!(pixel(&fb, 7, 3), [0, 0, 0, 0]);
     }
 

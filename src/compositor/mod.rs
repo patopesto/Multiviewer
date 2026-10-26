@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::sources::SourceKey;
 
+pub use crate::sources::{ConvMode, ConvUniform};
 pub use layout::canvas_transform;
 
 mod build;
@@ -39,30 +40,6 @@ pub struct Vert {
     pos: [f32; 2],
     uv: [f32; 2],
 }
-
-#[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ConvMode {
-    Passthrough = 0,
-    UyvyBt601 = 1,
-    UyvyBt709 = 2,
-    Yuy2Bt601 = 3,
-    Yuy2Bt709 = 4,
-    Nv12Bt601 = 5,
-    Nv12Bt709 = 6,
-}
-
-/// Uniform block consumed by the compositor's fragment shader.
-/// Must stay in sync with the `ConvUniform` struct inside `SHADER`.
-#[repr(C)]
-#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ConvUniform {
-    pub mode: u32, // ConvMode
-    pub width: f32,
-    pub height: f32,
-    pub _pad: f32,
-}
-
 
 /// Shared with the paint callback; immutable after creation.
 pub struct Shared {

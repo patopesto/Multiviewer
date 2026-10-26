@@ -63,28 +63,30 @@ fn uyvy_to_rgb_matches_cpu_reference() {
 }
 
 #[test]
-fn source_layout_matches_each_format() {
-    use super::layout::source_layout;
-    use super::ConvMode;
-    use crate::sources::PixelFormat;
+fn texture_layout_matches_each_format() {
+    use crate::sources::{ConvMode, PixelFormat};
     use wgpu::TextureFormat;
 
+    let layout = PixelFormat::Bgra8.texture_layout(1280, 720);
     assert_eq!(
-        source_layout(PixelFormat::Bgra8, 1280, 720),
+        (layout.texture_format, layout.tex_w, layout.tex_h, layout.bpp, layout.conv_mode),
         (TextureFormat::Bgra8Unorm, 1280, 720, 4, ConvMode::Passthrough)
     );
     // 4:2:2 packs two pixels per texel: half width, so Rgba8 rows are w*2 bytes.
+    let layout = PixelFormat::Uyvy422.texture_layout(1280, 720);
     assert_eq!(
-        source_layout(PixelFormat::Uyvy422, 1280, 720),
+        (layout.texture_format, layout.tex_w, layout.tex_h, layout.bpp, layout.conv_mode),
         (TextureFormat::Rgba8Unorm, 640, 720, 2, ConvMode::UyvyBt709)
     );
+    let layout = PixelFormat::Yuy2.texture_layout(640, 480);
     assert_eq!(
-        source_layout(PixelFormat::Yuy2, 640, 480),
+        (layout.texture_format, layout.tex_w, layout.tex_h, layout.bpp, layout.conv_mode),
         (TextureFormat::Rgba8Unorm, 320, 480, 2, ConvMode::Yuy2Bt601)
     );
     // NV12 keeps full width; the texture is 1.5x tall (Y + interleaved UV).
+    let layout = PixelFormat::Nv12.texture_layout(1920, 1080);
     assert_eq!(
-        source_layout(PixelFormat::Nv12, 1920, 1080),
+        (layout.texture_format, layout.tex_w, layout.tex_h, layout.bpp, layout.conv_mode),
         (TextureFormat::R8Unorm, 1920, 1620, 1, ConvMode::Nv12Bt709)
     );
 }
@@ -110,13 +112,15 @@ fn shader_parses_and_validates() {
 /// green/pink artefact).
 #[test]
 fn uyvy_and_yuy2_share_layout_but_differ_in_mode() {
-    use super::layout::source_layout;
     use crate::sources::PixelFormat;
 
-    let (f1, w1, h1, _, m1) = source_layout(PixelFormat::Uyvy422, 1280, 720);
-    let (f2, w2, h2, _, m2) = source_layout(PixelFormat::Yuy2, 1280, 720);
-    assert_eq!((f1, w1, h1), (f2, w2, h2));
-    assert_ne!(m1, m2);
+    let uyvy = PixelFormat::Uyvy422.texture_layout(1280, 720);
+    let yuy2 = PixelFormat::Yuy2.texture_layout(1280, 720);
+    assert_eq!(
+        (uyvy.texture_format, uyvy.tex_w, uyvy.tex_h),
+        (yuy2.texture_format, yuy2.tex_w, yuy2.tex_h)
+    );
+    assert_ne!(uyvy.conv_mode, yuy2.conv_mode);
 }
 
 #[test]

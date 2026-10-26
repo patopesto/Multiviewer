@@ -26,7 +26,8 @@ use multiviewer_decklink::{
 
 #[cfg(target_os = "macos")]
 use crate::platform::{CvFrame, CvFramePipeline};
-use crate::sources::{ConvUniform, CpuFrame, Frame, FramePool, GpuFrame, PixelFormat, SourceRef, SourceStats, VideoSource};
+use crate::sources::{ConvUniform, CpuFrame, Frame, FramePool, GpuFrame, PixelFormat, SourceRef, SourceStats, TextureLayout, VideoSource};
+use super::pixel_format;
 
 // @docs protocol="DeckLink" direction=input
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -55,11 +56,8 @@ struct PinnedState {
     buffers: Vec<wgpu::Buffer>,
     texture: wgpu::Texture,
     bind_group: Arc<wgpu::BindGroup>,
-    dims: (u32, u32),
+    layout: TextureLayout,
     fmt: u32,
-    bpp: u32,
-    tex_w: u32,
-    tex_h: u32,
     pending: VecDeque<(usize, wgpu::SubmissionIndex)>,
 }
 
@@ -71,23 +69,17 @@ impl PinnedState {
         height: u32,
         fmt: u32,
     ) -> Option<(Self, PinnedRequest)> {
-        let (texture_format, tex_w, bpp, mode) = match DecklinkPixelFormat::try_from(fmt) {
-            Ok(DecklinkPixelFormat::Bgra8) => (wgpu::TextureFormat::Bgra8Unorm, width, 4u32, 0u32),
-            Ok(DecklinkPixelFormat::Uyvy422) => (
-                wgpu::TextureFormat::Rgba8Unorm,
-                width / 2,
-                2u32,
-                if height > 576 { 2 } else { 1 },
-            ),
-            _ => return None,
-        };
-        if width == 0 || height == 0 || (width * bpp) % 256 != 0 {
+        let pixel_format = DecklinkPixelFormat::try_from(fmt).map(pixel_format).unwrap_or(PixelFormat::Rgba8);
+        if !matches!(pixel_format, PixelFormat::Bgra8 | PixelFormat::Uyvy422) {
             return None;
         }
-        let tex_h = height;
+        let layout = pixel_format.texture_layout(width, height);
+        if width == 0 || height == 0 || !(width * layout.bpp).is_multiple_of(256) {
+            return None;
+        }
 
         const RING: usize = 4;
-        let size = (width * height * bpp) as u64;
+        let size = layout.buffer_bytes();
         let mut buffers = Vec::with_capacity(RING);
         let mut pointers = Vec::with_capacity(RING);
         for _ in 0..RING {
@@ -138,20 +130,20 @@ impl PinnedState {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("decklink-pinned"),
             size: wgpu::Extent3d {
-                width: tex_w,
-                height,
+                width: layout.tex_w,
+                height: layout.tex_h,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: texture_format,
+            format: layout.texture_format,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
         let view = texture.create_view(&Default::default());
 
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("decklink-pinned"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -200,15 +192,15 @@ impl PinnedState {
             &uniform,
             0,
             bytemuck::cast_slice(&[ConvUniform {
-                mode,
-                width: width as f32,
-                height: height as f32,
+                mode: u32::from(layout.conv_mode),
+                width: layout.width as f32,
+                height: layout.height as f32,
                 _pad: 0.0,
             }]),
         );
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("decklink-pinned"),
-            layout: &layout,
+            layout: &bind_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
@@ -233,11 +225,8 @@ impl PinnedState {
             buffers,
             texture,
             bind_group: Arc::new(bind_group),
-            dims: (width, height),
+            layout,
             fmt,
-            bpp,
-            tex_w,
-            tex_h,
             pending: VecDeque::new(),
         };
         let request = PinnedRequest {
@@ -404,7 +393,7 @@ impl DecklinkSource {
     ) -> Option<Frame> {
         let mut pinned = self.pinned.lock().unwrap();
         let state = pinned.as_mut()?;
-        if state.dims != (pending.w, pending.h) || state.fmt != pending.fmt {
+        if (state.layout.width, state.layout.height) != (pending.w, pending.h) || state.fmt != pending.fmt {
             self.desired_pinned.store(false, Ordering::Relaxed);
             return None;
         }
@@ -421,7 +410,7 @@ impl DecklinkSource {
                 buffer: &state.buffers[pending.index],
                 layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(pending.w * state.bpp),
+                    bytes_per_row: Some(pending.w * state.layout.bpp),
                     rows_per_image: Some(pending.h),
                 },
             },
@@ -432,8 +421,8 @@ impl DecklinkSource {
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::Extent3d {
-                width: state.tex_w,
-                height: state.tex_h,
+                width: state.layout.tex_w,
+                height: state.layout.tex_h,
                 depth_or_array_layers: 1,
             },
         );
@@ -558,12 +547,13 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
                         let _frame_guard = frame_span.entered();
                         {
                             let mut s = shared.stats.lock().unwrap();
-                            let label = if fmt == DecklinkPixelFormat::Bgra8 as u32 {
-                                PixelFormat::Bgra8.label()
-                            } else {
-                                PixelFormat::Uyvy422.label()
-                            };
-                            s.record_frame(w as u32, h as u32, label, nominal_fps);
+                            let pixel_format = DecklinkPixelFormat::try_from(fmt).map(pixel_format).unwrap_or(PixelFormat::Rgba8);
+                            s.record_frame(
+                                w as u32,
+                                h as u32,
+                                pixel_format.label(),
+                                nominal_fps,
+                            );
                             s.record_copy_time(0.0);
                             s.set_gpu_direct();
                         }
@@ -613,11 +603,7 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
                     ) {
                         let frame_span = tracing::debug_span!("decklink_frame");
                         let _frame_guard = frame_span.entered();
-                        let pixel_format = match DecklinkPixelFormat::try_from(fmt) {
-                            Ok(DecklinkPixelFormat::Bgra8) => PixelFormat::Bgra8,
-                            Ok(DecklinkPixelFormat::Uyvy422) => PixelFormat::Uyvy422,
-                            _ => PixelFormat::Rgba8,
-                        };
+                        let pixel_format = DecklinkPixelFormat::try_from(fmt).map(pixel_format).unwrap_or(PixelFormat::Rgba8);
                         {
                             let mut s = shared.stats.lock().unwrap();
                             s.record_frame(
@@ -674,16 +660,8 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
                 let frame_span = tracing::debug_span!("decklink_frame");
                 let _frame_guard = frame_span.entered();
                 let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
-                let pixel_format = match DecklinkPixelFormat::try_from(fmt) {
-                    Ok(DecklinkPixelFormat::Bgra8) => PixelFormat::Bgra8,
-                    Ok(DecklinkPixelFormat::Uyvy422) => PixelFormat::Uyvy422,
-                    _ => PixelFormat::Rgba8,
-                };
-                let bpp = match pixel_format {
-                    PixelFormat::Uyvy422 => 2,
-                    _ => 4,
-                };
-                let data_size = (w * h * bpp) as usize;
+                let pixel_format = DecklinkPixelFormat::try_from(fmt).map(pixel_format).unwrap_or(PixelFormat::Rgba8);
+                let data_size = (w * h) as usize * pixel_format.bpp() as usize;
                 buf.truncate(data_size);
 
                 {

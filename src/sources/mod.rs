@@ -24,7 +24,8 @@ mod directshow;
 #[cfg(target_os = "windows")]
 mod windowscapture;
 
-pub use common::{Protocol, PixelFormat, Frame, CpuFrame, GpuFrame, ConvUniform};
+pub use common::{Protocol, Frame, CpuFrame, GpuFrame};
+pub use common::{PixelFormat, ConvMode, ConvUniform, TextureLayout};
 pub use common::{FramePool, Framebuffer};
 pub use common::{PUBLISH_INTERVAL, PollGate, publish_due, sleep_while_running};
 pub use source::{
