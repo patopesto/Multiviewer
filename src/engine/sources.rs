@@ -83,7 +83,6 @@ impl Engine {
                 _ => NdiSourceConfig::default(),
             };
             self.registry.add_ndi(key, config, src.clone());
-            self.dirty = true;
         }
     }
 
@@ -105,7 +104,6 @@ impl Engine {
                 _ => OmtSourceConfig::default(),
             };
             self.registry.add_omt(key, config, src.clone());
-            self.dirty = true;
         }
     }
 
@@ -124,7 +122,6 @@ impl Engine {
                 _ => DecklinkSourceConfig::default(),
             };
             self.registry.add_decklink(key, config, port.connections);
-            self.dirty = true;
         }
     }
 
@@ -147,7 +144,6 @@ impl Engine {
                 _ => SyphonSourceConfig::default(),
             };
             self.registry.add_syphon(key, config, info.clone());
-            self.dirty = true;
         }
     }
 
@@ -167,7 +163,6 @@ impl Engine {
             };
             config.device_unique_id = device.unique_id.clone();
             self.registry.add_avfoundation(key, config);
-            self.dirty = true;
         }
     }
 
@@ -203,7 +198,6 @@ impl Engine {
                 target.to_config(),
                 target.label.clone(),
             );
-            self.dirty = true;
         }
     }
 
@@ -223,7 +217,6 @@ impl Engine {
                 _ => SpoutSourceConfig::default(),
             };
             self.registry.add_spout(key, config);
-            self.dirty = true;
         }
     }
 
@@ -244,7 +237,6 @@ impl Engine {
             };
             config.device_id = device.id.clone();
             self.registry.add_mediafoundation(key, config, device.name.clone());
-            self.dirty = true;
         }
     }
 
@@ -265,7 +257,6 @@ impl Engine {
             };
             config.device_id = device.id.clone();
             self.registry.add_directshow(key, config, device.name.clone());
-            self.dirty = true;
         }
     }
 
@@ -289,7 +280,6 @@ impl Engine {
             // Discovery only supplies target identity; keep the settings already chosen for this source.
             *config.settings_mut() = candidate.settings().clone();
             self.registry.add_windows_capture(key, config, target.label.clone());
-            self.dirty = true;
         }
     }
 
@@ -305,11 +295,9 @@ impl Engine {
             match &placement.config {
                 SourceConfig::Vnc(config) => {
                     self.registry.add_vnc_at(key, config.clone());
-                    self.dirty = true;
                 }
                 SourceConfig::Rdp(config) => {
                     self.registry.add_rdp_at(key, config.clone());
-                    self.dirty = true;
                 }
                 _ => {}
             }

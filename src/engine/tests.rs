@@ -664,6 +664,8 @@ fn an_unconfigured_manual_source_is_registered() {
 
     let key = SourceKey::new(Protocol::Vnc, "VNC 1".to_string());
     assert!(engine.registry.get(&key).is_some());
+    // Auto-connect only builds a runtime source; the project itself is unchanged.
+    assert!(!engine.dirty);
 }
 
 /// An edit on one placement persists to every placement bound to the same
