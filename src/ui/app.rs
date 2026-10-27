@@ -1,5 +1,8 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
@@ -22,9 +25,14 @@ const IDLE_FPS: f64 = 10.0;
 const FRAME_TOLERANCE: Duration = Duration::from_millis(2);
 const RENDER_FPS_WINDOW: Duration = Duration::from_secs(2);
 const MAX_RENDER_TIMESTAMPS: usize = 256;
+const TICK_PARK: Duration = Duration::from_millis(20);
+const UI_STALL: Duration = Duration::from_millis(250);
+const SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
 pub struct App {
-    engine: Engine,
+    engine: Arc<Mutex<Engine>>,
+    render_stats: Arc<Mutex<RenderStats>>,
+    tick: Option<Tick>,
     recent_projects: Vec<PathBuf>,
     last_error: Option<String>,
     last_warning: Option<String>,
@@ -39,7 +47,6 @@ pub struct App {
     gpu_name: Option<String>,
     next_frame: Instant,
     next_output_frame: Instant,
-    render_stats: RenderStats,
     trace_guard: Option<tracing_chrome::FlushGuard>,
 }
 
@@ -108,6 +115,66 @@ enum Confirm {
     OpenPath(PathBuf),
 }
 
+/// Ticks the engine at a fixed rate while the window is unfocused.
+///
+/// `App::logic` is only called from the window paint loop, and on Windows and
+/// Wayland that loop stalls when the window is not foreground, which would drag
+/// every output down with it. This thread owns the engine tick instead.
+struct Tick {
+    state: Arc<Mutex<TickState>>,
+    stop: Arc<AtomicBool>,
+    done: Receiver<()>,
+}
+
+struct TickState {
+    unfocused: bool,
+    last_ui_tick: Instant,
+}
+
+impl Tick {
+    fn start(
+        engine: Arc<Mutex<Engine>>,
+        render_stats: Arc<Mutex<RenderStats>>,
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        format: wgpu::TextureFormat,
+    ) -> Option<Self> {
+        let state = Arc::new(Mutex::new(TickState {
+            unfocused: false,
+            last_ui_tick: Instant::now(),
+        }));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (done_tx, done) = mpsc::channel();
+        let thread_state = state.clone();
+        let thread_stop = stop.clone();
+        std::thread::Builder::new()
+            .name("engine-tick".into())
+            .spawn(move || {
+                run_tick(engine, render_stats, device, queue, format, thread_state, thread_stop);
+                let _ = done_tx.send(());
+            })
+            .ok()?;
+        return Some(Self { state, stop, done });
+    }
+
+    /// Called from the paint loop: record where the UI is at, so the tick thread
+    /// can tell whether it should be the one running the engine.
+    fn mark_ui_tick(&self, focused: bool) {
+        let mut state = self.state.lock().unwrap();
+        state.unfocused = !focused;
+        state.last_ui_tick = Instant::now();
+    }
+}
+
+impl Drop for Tick {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        // Bounded: the thread can sit inside a blocking output present, in which
+        // case it detaches and the process exit takes the engine down with it.
+        let _ = self.done.recv_timeout(SHUTDOWN_GRACE);
+    }
+}
+
 // Init stuff
 impl App {
     pub fn new(
@@ -123,7 +190,9 @@ impl App {
             None => (None, None),
         };
         let mut app = Self {
-            engine: Engine::new_project(),
+            engine: Arc::new(Mutex::new(Engine::new_project())),
+            render_stats: Arc::new(Mutex::new(RenderStats::new())),
+            tick: None,
             recent_projects: Vec::new(),
             last_error: None,
             last_warning: None,
@@ -138,15 +207,25 @@ impl App {
             gpu_name,
             next_frame: Instant::now(),
             next_output_frame: Instant::now(),
-            render_stats: RenderStats::new(),
             trace_guard,
         };
+
+        if let Some(rs) = &cc.wgpu_render_state {
+            app.tick = Tick::start(
+                app.engine.clone(),
+                app.render_stats.clone(),
+                rs.device.clone(),
+                rs.queue.clone(),
+                rs.target_format,
+            );
+        }
 
         Self::configure_egui(&cc.egui_ctx);
 
         if let Some(path) = startup_path {
             if path.exists() {
-                if let Err(e) = app.engine.open_project(&path) {
+                let result = app.engine().open_project(&path);
+                if let Err(e) = result {
                     app.last_error = Some(e.to_string());
                 } else {
                     app.refresh_warning();
@@ -157,6 +236,10 @@ impl App {
         }
         app.refresh_recent();
         return app;
+    }
+
+    fn engine(&self) -> MutexGuard<'_, Engine> {
+        return self.engine.lock().unwrap();
     }
 
     fn configure_egui(ctx: &egui::Context) {
@@ -186,6 +269,9 @@ impl eframe::App for App {
 
         // App focused: run at display refresh rate.
         let focused = ctx.input(|i| i.viewport().focused).unwrap_or(false);
+        if let Some(tick) = &self.tick {
+            tick.mark_ui_tick(focused);
+        }
         if focused {
             self.run_frame(frame);
             ctx.request_repaint();
@@ -193,8 +279,8 @@ impl eframe::App for App {
         }
 
         // App not focused: cap whether any output is enabled
-        let target_fps = if self.engine.output_registry.any_enabled()
-            || self.engine.control.is_enabled()
+        let target_fps = if self.engine().output_registry.any_enabled()
+            || self.engine().control.is_enabled()
         {
             ACTIVE_FPS
         } else {
@@ -209,7 +295,11 @@ impl eframe::App for App {
         }
         self.next_frame = advance_deadline(self.next_frame, now, interval);
 
-        self.run_frame(frame);
+        // Without a tick thread the paint loop is the only tick; with one, the
+        // engine is already running on it and this pass only refreshes the window.
+        if self.tick.is_none() {
+            self.run_frame(frame);
+        }
         ctx.request_repaint();
     }
 
@@ -217,9 +307,9 @@ impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
 
-        if self.engine.ui_visible {
-            let actions = menu_bar::draw(ui, &self.engine, &self.recent_projects);
-            side_panel::draw(ui, &mut self.engine);
+        if self.engine().ui_visible {
+            let actions = menu_bar::draw(ui, &self.engine(), &self.recent_projects);
+            side_panel::draw(ui, &mut self.engine());
             self.handle_menu_actions(&actions, ui);
         }
         self.handle_global_shortcuts(ui);
@@ -228,16 +318,17 @@ impl eframe::App for App {
         self.draw_shortcuts_modal(&ctx);
         self.draw_control_window(&ctx);
         self.draw_licenses_modal(&ctx);
-        if self.engine.ui_visible {
+        if self.engine().ui_visible {
             self.draw_status_bar(ui);
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
-            canvas::update(ui, &mut self.engine, &ctx, frame);
+            canvas::update(ui, &mut self.engine(), &ctx, frame);
         });
     }
 
     fn on_exit(&mut self) {
+        drop(self.tick.take());
         drop(self.trace_guard.take());
     }
 }
@@ -246,37 +337,37 @@ impl eframe::App for App {
 impl App {
     /// One frame of engine work: discovery, auto-save, compositing and outputs.
     fn run_frame(&mut self, frame: &mut eframe::Frame) {
-        let started = Instant::now();
-        self.render_stats.record_frame();
-        self.engine.update();
-        self.engine.auto_save();
-
-        if let Some(rs) = frame.wgpu_render_state() {
-            self.engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
-            self.engine.begin_frame(&rs.device, &rs.queue);
-
-            // Outputs run at their own fixed rate
-            let now = Instant::now();
-            if now + FRAME_TOLERANCE >= self.next_output_frame {
-                let interval = Duration::from_secs_f64(1.0 / ACTIVE_FPS);
-                self.next_output_frame = advance_deadline(self.next_output_frame, now, interval);
-                self.engine.render_outputs(&rs.device, &rs.queue);
-            }
-        }
-        self.render_stats.record_work(started.elapsed());
+        let Some(rs) = frame.wgpu_render_state() else {
+            return;
+        };
+        let mut next_output = self.next_output_frame;
+        tick_engine(
+            &mut self.engine(),
+            &self.render_stats,
+            &rs.device,
+            &rs.queue,
+            rs.target_format,
+            &mut next_output,
+        );
+        self.next_output_frame = next_output;
     }
 
     /// Promote warnings collected while loading the current project to the status bar.
     fn refresh_warning(&mut self) {
-        self.last_warning = if self.engine.load_warnings.is_empty() {
-            None
-        } else {
-            Some(self.engine.load_warnings.join(" "))
+        let warning = {
+            let engine = self.engine();
+            if engine.load_warnings.is_empty() {
+                None
+            } else {
+                Some(engine.load_warnings.join(" "))
+            }
         };
+        self.last_warning = warning;
     }
 
     fn open_path(&mut self, path: &std::path::Path) {
-        if let Err(e) = self.engine.open_project(path) {
+        let result = self.engine().open_project(path);
+        if let Err(e) = result {
             self.last_error = Some(e.to_string());
         } else {
             self.last_error = None;
@@ -290,7 +381,8 @@ impl App {
     }
 
     fn confirm_or(&mut self, action: Confirm) {
-        if self.engine.dirty {
+        let dirty = self.engine().dirty;
+        if dirty {
             self.pending_confirm = Some(action);
         } else {
             self.execute_confirm(action);
@@ -300,7 +392,7 @@ impl App {
     fn execute_confirm(&mut self, action: Confirm) {
         match action {
             Confirm::New => {
-                self.engine = Engine::new_project();
+                *self.engine() = Engine::new_project();
                 self.last_error = None;
                 self.last_warning = None;
             }
@@ -325,7 +417,8 @@ impl App {
             .save_file()
         {
             let path = ensure_extension(path, PROJECT_FILE_EXTENSION);
-            if let Err(e) = self.engine.save_project_as(&path) {
+            let result = self.engine().save_project_as(&path);
+            if let Err(e) = result {
                 self.last_error = Some(e.to_string());
             } else {
                 self.last_error = None;
@@ -362,7 +455,7 @@ impl App {
         };
 
         // In hidden UI mode only allow toggling back and exiting expanded view.
-        if !self.engine.ui_visible {
+        if !self.engine().ui_visible {
             match shortcut {
                 Shortcut::ToggleUi | Shortcut::ExitExpanded => {}
                 _ => return,
@@ -390,8 +483,9 @@ impl App {
                 return;
             }
             Shortcut::SaveProject => {
-                if self.engine.project_path.is_some() {
-                    if let Err(e) = self.engine.apply_command(Command::SaveProject) {
+                if self.engine().project_path.is_some() {
+                    let result = self.engine().apply_command(Command::SaveProject);
+                    if let Err(e) = result {
                         self.last_error = Some(e.to_string());
                     } else {
                         self.last_error = None;
@@ -405,14 +499,15 @@ impl App {
         }
 
         let nudge_amount = if ui.ctx().input(|i| i.modifiers.alt) { 10.0 } else { 1.0 };
-        let Some(command) = shortcut_command(shortcut, &self.engine, nudge_amount) else {
+        let Some(command) = shortcut_command(shortcut, &self.engine(), nudge_amount) else {
             return;
         };
         self.run_command(command);
     }
 
     fn run_command(&mut self, command: Command) {
-        if let Err(e) = self.engine.apply_command(command) {
+        let result = self.engine().apply_command(command);
+        if let Err(e) = result {
             self.last_error = Some(e.to_string());
         }
     }
@@ -437,14 +532,14 @@ impl App {
     }
 
     fn update_title(&self, ctx: &egui::Context) {
-        let filename = self
-            .engine
+        let engine = self.engine();
+        let filename = engine
             .project_path
             .as_ref()
             .and_then(|p| p.file_stem())
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| DEFAULT_PROJECT_NAME.to_string());
-        let prefix = if self.engine.dirty { "* " } else { "" };
+        let prefix = if engine.dirty { "* " } else { "" };
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{}{} — {}", prefix, filename, APP_NAME)));
     }
 
@@ -490,8 +585,9 @@ impl App {
         if let Some(warn) = &self.last_warning {
             return format!("Warning: {warn}");
         }
-        if self.engine.dirty {
-            if self.engine.project_path.is_some() {
+        let engine = self.engine();
+        if engine.dirty {
+            if engine.project_path.is_some() {
                 return "Unsaved changes".to_string();
             }
             return "Untitled — use Save As".to_string();
@@ -500,18 +596,18 @@ impl App {
     }
 
     fn draw_status_bar(&self, ui: &mut egui::Ui) {
+        let (fps, work_ms) = {
+            let stats = self.render_stats.lock().unwrap();
+            (stats.fps(), stats.work_ms())
+        };
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(self.status_text());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(format!(
-                        "{:.0} FPS · {:.1} ms",
-                        self.render_stats.fps(),
-                        self.render_stats.work_ms()
-                    ))
-                    .on_hover_text(
-                        "Frame rate over the last 2 s · average engine, compositor and output work per frame",
-                    );
+                    ui.label(format!("{fps:.0} FPS · {work_ms:.1} ms"))
+                        .on_hover_text(
+                            "Frame rate over the last 2 s · average engine, compositor and output work per frame",
+                        );
                 });
             });
         });
@@ -623,10 +719,11 @@ impl App {
         }
         let mut dirty = false;
         let mut apply = false;
-        let status = control_status_label(&self.engine);
+        let status = control_status_label(&self.engine());
+        let mut engine = self.engine();
 
         let open = centered_window(ctx, "OSC Control", false, Some([440.0, 420.0]), |ui| {
-            let osc = &mut self.engine.cfg.control.osc;
+            let osc = &mut engine.cfg.control.osc;
 
             ui.heading("OSC input");
             if ui.checkbox(&mut osc.enabled, "Enabled").changed() {
@@ -721,11 +818,12 @@ impl App {
         });
 
         if dirty {
-            self.engine.dirty = true;
+            engine.dirty = true;
         }
         if apply {
-            self.engine.restart_control();
+            engine.restart_control();
         }
+        drop(engine);
         if !open {
             self.show_control = false;
         }
@@ -864,6 +962,77 @@ fn advance_deadline(prev: Instant, now: Instant, interval: Duration) -> Instant 
     };
 }
 
+fn tick_engine(
+    engine: &mut Engine,
+    stats: &Mutex<RenderStats>,
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    format: wgpu::TextureFormat,
+    next_output: &mut Instant,
+) {
+    let started = Instant::now();
+    stats.lock().unwrap().record_frame();
+    engine.update();
+    engine.auto_save();
+    engine.ensure_compositor(device, queue, format);
+    engine.begin_frame(device, queue);
+
+    // Outputs run at their own fixed rate
+    let now = Instant::now();
+    if now + FRAME_TOLERANCE >= *next_output {
+        let interval = Duration::from_secs_f64(1.0 / ACTIVE_FPS);
+        *next_output = advance_deadline(*next_output, now, interval);
+        engine.render_outputs(device, queue);
+    }
+    stats.lock().unwrap().record_work(started.elapsed());
+}
+
+/// Whether the tick thread has to run the engine: the window is unfocused, or the
+/// paint loop that would otherwise tick it has stalled.
+fn owns_tick(state: &TickState, now: Instant) -> bool {
+    return state.unfocused || now.duration_since(state.last_ui_tick) > UI_STALL;
+}
+
+fn run_tick(
+    engine: Arc<Mutex<Engine>>,
+    stats: Arc<Mutex<RenderStats>>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    format: wgpu::TextureFormat,
+    state: Arc<Mutex<TickState>>,
+    stop: Arc<AtomicBool>,
+) {
+    let mut next_frame = Instant::now();
+    let mut next_output = Instant::now();
+    while !stop.load(Ordering::Relaxed) {
+        let run = {
+            let state = state.lock().unwrap();
+            owns_tick(&state, Instant::now())
+        };
+        if !run {
+            std::thread::sleep(TICK_PARK);
+            continue;
+        }
+
+        let mut engine = engine.lock().unwrap();
+        let target_fps = if engine.output_registry.any_enabled() || engine.control.is_enabled() {
+            ACTIVE_FPS
+        } else {
+            IDLE_FPS
+        };
+        let interval = Duration::from_secs_f64(1.0 / target_fps);
+
+        let now = Instant::now();
+        if now + FRAME_TOLERANCE < next_frame {
+            drop(engine);
+            std::thread::sleep(next_frame - now);
+            continue;
+        }
+        next_frame = advance_deadline(next_frame, now, interval);
+        tick_engine(&mut engine, &stats, &device, &queue, format, &mut next_output);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -911,6 +1080,28 @@ mod tests {
         let deadline = Instant::now();
         let now = deadline + Duration::from_millis(100);
         assert_eq!(advance_deadline(deadline, now, interval), now + interval);
+    }
+
+    #[test]
+    fn tick_thread_takes_over_only_when_the_paint_loop_cannot() {
+        let now = Instant::now();
+        let alive = TickState {
+            unfocused: false,
+            last_ui_tick: now,
+        };
+        assert!(!owns_tick(&alive, now));
+
+        let stalled = TickState {
+            unfocused: false,
+            last_ui_tick: now - UI_STALL - Duration::from_millis(1),
+        };
+        assert!(owns_tick(&stalled, now));
+
+        let unfocused = TickState {
+            unfocused: true,
+            last_ui_tick: now,
+        };
+        assert!(owns_tick(&unfocused, now));
     }
 
     #[test]
