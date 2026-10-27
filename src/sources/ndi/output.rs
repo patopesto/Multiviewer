@@ -21,7 +21,6 @@ pub struct NdiOutput {
     enabled: AtomicBool,
     stats: Arc<Mutex<OutputStats>>,
     frame_tx: Option<mpsc::SyncSender<Vec<u8>>>,
-    pending: Arc<AtomicBool>,
     liveness: OutputLiveness,
     readback: Mutex<ReadbackPool>,
     thread: Option<thread::JoinHandle<()>>,
@@ -32,8 +31,6 @@ impl NdiOutput {
         let (frame_tx, frame_rx) = mpsc::sync_channel::<Vec<u8>>(2);
         let stats = Arc::new(Mutex::new(OutputStats::default()));
         let stats_clone = Arc::clone(&stats);
-        let pending = Arc::new(AtomicBool::new(false));
-        let pending_t = Arc::clone(&pending);
         let liveness = OutputLiveness::default();
         let worker_flag = liveness.exit_flag();
 
@@ -61,7 +58,6 @@ impl NdiOutput {
                 };
 
                 while let Ok(buffer) = frame_rx.recv() {
-                    pending_t.store(false, Ordering::Release);
                     if buffer.len() < 16 {
                         continue;
                     }
@@ -111,7 +107,6 @@ impl NdiOutput {
             enabled: AtomicBool::new(enabled),
             stats,
             frame_tx: Some(frame_tx),
-            pending,
             liveness,
             readback: Mutex::new(ReadbackPool::new()),
             thread: Some(thread),
@@ -124,10 +119,7 @@ impl VideoOutput for NdiOutput {
         if !self.enabled.load(Ordering::Relaxed) {
             return false;
         }
-        if self.busy() {
-            self.liveness.check_stall(&self.name);
-            return false;
-        }
+        self.liveness.check_stall(&self.name);
 
         let aligned_bytes_per_row = (width * 4 + 255) & !255;
         let buffer_size = (aligned_bytes_per_row * height) as u64 + 8;
@@ -217,13 +209,8 @@ impl VideoOutput for NdiOutput {
         let Some(tx) = self.frame_tx.as_ref() else {
             return;
         };
-        // Publish in-flight before the handoff: the worker clears `pending` right
-        // after recv(), so storing it after try_send can be overwritten and wedge
-        // busy() true forever.
-        self.pending.store(true, Ordering::Release);
         self.liveness.mark_sent();
         if tx.try_send(buffer).is_err() {
-            self.pending.store(false, Ordering::Release);
             self.liveness.clear_sent();
             self.stats.lock().unwrap().frames_dropped += 1;
         }
@@ -235,10 +222,6 @@ impl VideoOutput for NdiOutput {
 
     fn enabled(&self) -> bool {
         return self.enabled.load(Ordering::Relaxed);
-    }
-
-    fn busy(&self) -> bool {
-        return self.pending.load(Ordering::Acquire) && self.liveness.is_alive();
     }
 
     fn set_enabled(&self, enabled: bool) {

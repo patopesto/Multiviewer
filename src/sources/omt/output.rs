@@ -3,13 +3,16 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use openmediatransport::{
-    ColorSpace, Discovery, FrameType, GpuVideoContext, Sender, SenderInfo, VideoFlags,
-    VideoTextureMeta,
+    ColorSpace as OmtColorSpace, Discovery, FrameType, GpuVideoContext, Sender, SenderInfo,
+    VideoFlags, VideoTextureMeta,
 };
 use serde::{Deserialize, Serialize};
 
 use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, OutputLiveness, VideoOutput};
+use crate::sources::{
+    ColorSpace as AppColorSpace, PixelFormat, TextureTarget, UPLOAD_TARGET_USAGE,
+};
 
 // @docs protocol="OMT" direction=output
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -22,6 +25,13 @@ pub struct OmtOutputConfig {
 /// How long the sender thread waits for a frame before polling the socket again.
 const POLL_TIMEOUT: Duration = Duration::from_millis(2);
 
+/// Frames that may be queued for the sender.
+const OMT_QUEUE_DEPTH: usize = 2;
+
+/// Reusable GPU textures so the encoder never reads a texture the main thread
+/// is already overwriting.
+const OMT_TEXTURE_POOL: usize = 3;
+
 /// Zero-copy OMT sender: the canvas is GPU-copied into a dedicated texture
 /// (isolating the sender from the canvas the compositor re-renders every frame),
 /// then encoded and advertised by a worker thread that owns the `Sender`.
@@ -30,11 +40,12 @@ pub struct OmtOutput {
     config: OmtOutputConfig,
     enabled: AtomicBool,
     stats: Arc<Mutex<OutputStats>>,
-    pending: Arc<AtomicBool>,
     liveness: OutputLiveness,
     subscribers: Arc<AtomicUsize>,
-    texture: Mutex<Option<Arc<wgpu::Texture>>>,
-    frame_tx: Mutex<Option<mpsc::SyncSender<Arc<wgpu::Texture>>>>,
+    free: Mutex<Vec<Arc<TextureTarget>>>,
+    free_rx: Mutex<Option<mpsc::Receiver<Arc<TextureTarget>>>>,
+    in_flight: AtomicUsize,
+    frame_tx: Mutex<Option<mpsc::SyncSender<Arc<TextureTarget>>>>,
     thread: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
@@ -45,10 +56,11 @@ impl OmtOutput {
             config,
             enabled: AtomicBool::new(enabled),
             stats: Arc::new(Mutex::new(OutputStats::default())),
-            pending: Arc::new(AtomicBool::new(false)),
             liveness: OutputLiveness::default(),
             subscribers: Arc::new(AtomicUsize::new(0)),
-            texture: Mutex::new(None),
+            free: Mutex::new(Vec::new()),
+            free_rx: Mutex::new(None),
+            in_flight: AtomicUsize::new(0),
             frame_tx: Mutex::new(None),
             thread: Mutex::new(None),
         };
@@ -60,8 +72,10 @@ impl OmtOutput {
         if thread.is_some() {
             return;
         }
-        let (frame_tx, frame_rx) = mpsc::sync_channel::<Arc<wgpu::Texture>>(1);
+        let (frame_tx, frame_rx) = mpsc::sync_channel::<Arc<TextureTarget>>(OMT_QUEUE_DEPTH);
         *self.frame_tx.lock().unwrap() = Some(frame_tx);
+        let (free_tx, free_rx) = mpsc::channel::<Arc<TextureTarget>>();
+        *self.free_rx.lock().unwrap() = Some(free_rx);
 
         let ctx = GpuVideoContext {
             device: Arc::new(device.clone()),
@@ -69,7 +83,6 @@ impl OmtOutput {
             gpu_lock: None,
         };
         let worker_flag = self.liveness.exit_flag();
-        let pending = self.pending.clone();
         let stats = self.stats.clone();
         let subscribers = self.subscribers.clone();
         let sender_name = if self.config.sender_name.is_empty() {
@@ -83,7 +96,7 @@ impl OmtOutput {
                 .name(format!("omt-out-{sender_name}"))
                 .spawn(move || {
                     let _alive_guard = worker_flag;
-                    run_sender(ctx, sender_name, frame_rx, pending, stats, subscribers, trace_name);
+                    run_sender(ctx, sender_name, frame_rx, free_tx, stats, subscribers, trace_name);
                 })
                 .expect("spawn omt sender"),
         );
@@ -95,8 +108,8 @@ impl OmtOutput {
 fn run_sender(
     ctx: GpuVideoContext,
     sender_name: String,
-    frame_rx: mpsc::Receiver<Arc<wgpu::Texture>>,
-    pending: Arc<AtomicBool>,
+    frame_rx: mpsc::Receiver<Arc<TextureTarget>>,
+    free_tx: mpsc::Sender<Arc<TextureTarget>>,
     stats: Arc<Mutex<OutputStats>>,
     subscribers: Arc<AtomicUsize>,
     name: String,
@@ -144,23 +157,27 @@ fn run_sender(
         subscribers.store(sender.video_subscriber_count(), Ordering::Relaxed);
 
         match frame_rx.recv_timeout(POLL_TIMEOUT) {
-            Ok(texture) => {
+            Ok(target) => {
+                let size = &target.layout;
                 if sender.video_subscribed() {
-                    let size = texture.size();
+                    let color_space = match AppColorSpace::for_output_height(size.height) {
+                        AppColorSpace::Bt601 => OmtColorSpace::Bt601,
+                        AppColorSpace::Bt709 => OmtColorSpace::Bt709,
+                    };
                     let meta = VideoTextureMeta {
                         width: size.width,
                         height: size.height,
                         timestamp: -1,
                         frame_rate_n: 60,
                         frame_rate_d: 1,
-                        color_space: ColorSpace::Undefined,
+                        color_space,
                         flags: VideoFlags::NONE,
                         frame_metadata: None,
                     };
                     let send_span = tracing::debug_span!("send");
                     let _send_guard = send_span.entered();
                     let start = Instant::now();
-                    let result = sender.send_video_texture(&ctx, &texture, meta);
+                    let result = sender.send_video_texture(&ctx, &target.texture, meta);
                     {
                         let mut s = stats.lock().unwrap();
                         s.width = size.width;
@@ -176,7 +193,9 @@ fn run_sender(
                         tracing::error!(output=name, "OMT send failed: {}", e);
                     }
                 }
-                pending.store(false, Ordering::Release);
+                // The encoder submission is now on the queue; the texture can be
+                // reused by the main thread for a later frame.
+                let _ = free_tx.send(target);
             }
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => {
@@ -203,10 +222,7 @@ impl VideoOutput for OmtOutput {
         if !self.enabled.load(Ordering::Relaxed) {
             return false;
         }
-        if self.busy() {
-            self.liveness.check_stall(&self.name);
-            return false;
-        }
+        self.liveness.check_stall(&self.name);
         self.ensure_started(device, queue);
         // No consumer: skip the GPU copy. The worker keeps polling the socket,
         // so a receiver can still discover and connect.
@@ -214,31 +230,27 @@ impl VideoOutput for OmtOutput {
             return false;
         }
 
-        let mut slot = self.texture.lock().unwrap();
-        let recreate = slot.as_ref().is_none_or(|t| {
-            let size = t.size();
-            size.width != width || size.height != height
-        });
-        if recreate {
-            *slot = Some(Arc::new(device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("omt-output"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Bgra8Unorm,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            })));
+        let layout = PixelFormat::Bgra8.texture_layout(width, height);
+        let mut free = self.free.lock().unwrap();
+        if let Some(rx) = self.free_rx.lock().unwrap().as_ref() {
+            while let Ok(target) = rx.try_recv() {
+                self.in_flight.fetch_sub(1, Ordering::AcqRel);
+                free.push(target);
+            }
         }
-        let target = slot.as_ref().unwrap().clone();
+        free.retain(|target| target.layout == layout);
+        let target = if let Some(index) = free.iter().position(|target| target.layout == layout) {
+            free.swap_remove(index)
+        } else if free.len() + self.in_flight.load(Ordering::Acquire) < OMT_TEXTURE_POOL {
+            let mut slot = None;
+            TextureTarget::ensure(&mut slot, device, layout, UPLOAD_TARGET_USAGE, "omt-output");
+            Arc::new(slot.unwrap())
+        } else {
+            return false;
+        };
 
-        // GPU copy into the intermediate texture; the worker's encode reads it
-        // later on the same queue, so the send is ordered after this copy.
+        // GPU copy into the pooled texture; the worker's encode reads it later
+        // on the same queue, so the send is ordered after this copy.
         {
             let copy_span = tracing::debug_span!("copy");
             let _copy_guard = copy_span.entered();
@@ -253,7 +265,7 @@ impl VideoOutput for OmtOutput {
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::TexelCopyTextureInfo {
-                    texture: &target,
+                    texture: &target.texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
@@ -268,19 +280,22 @@ impl VideoOutput for OmtOutput {
         }
 
         let Some(tx) = self.frame_tx.lock().unwrap().clone() else {
+            free.push(target);
             return false;
         };
-        // Publish in-flight before the handoff: the worker clears `pending` right
-        // after recv(), so storing it after try_send can be overwritten and wedge
-        // busy() true forever.
-        self.pending.store(true, Ordering::Release);
-        self.liveness.mark_sent();
-        if tx.try_send(target).is_err() {
-            self.pending.store(false, Ordering::Release);
-            self.liveness.clear_sent();
-            self.stats.lock().unwrap().frames_dropped += 1;
+        match tx.try_send(target) {
+            Ok(()) => {
+                self.in_flight.fetch_add(1, Ordering::AcqRel);
+                self.liveness.mark_sent();
+                return true;
+            }
+            Err(mpsc::TrySendError::Full(target)) | Err(mpsc::TrySendError::Disconnected(target)) => {
+                free.push(target);
+                self.liveness.clear_sent();
+                self.stats.lock().unwrap().frames_dropped += 1;
+                return false;
+            }
         }
-        return false;
     }
 
     fn name(&self) -> &str {
@@ -289,10 +304,6 @@ impl VideoOutput for OmtOutput {
 
     fn enabled(&self) -> bool {
         return self.enabled.load(Ordering::Relaxed);
-    }
-
-    fn busy(&self) -> bool {
-        return self.pending.load(Ordering::Acquire) && self.liveness.is_alive();
     }
 
     fn set_enabled(&self, enabled: bool) {
