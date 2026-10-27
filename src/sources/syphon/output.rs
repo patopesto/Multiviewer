@@ -12,6 +12,7 @@ use syphon_metal::{IOSurfacePool, MetalContext};
 
 use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, VideoOutput};
+use crate::sources::{PixelFormat, RENDER_TARGET_USAGE, TextureTarget};
 
 const FLIP_SHADER: &str = r#"
 struct VertexOutput {
@@ -222,8 +223,7 @@ pub struct SyphonOutput {
     flip_pipeline: OnceLock<wgpu::RenderPipeline>,
     flip_vb: OnceLock<wgpu::Buffer>,
     flip_ib: OnceLock<wgpu::Buffer>,
-    flipped_texture: Mutex<Option<wgpu::Texture>>,
-    flipped_view: Mutex<Option<wgpu::TextureView>>,
+    flipped: Mutex<Option<TextureTarget>>,
     flipped_bind_group: Mutex<Option<wgpu::BindGroup>>,
 }
 
@@ -240,8 +240,7 @@ impl SyphonOutput {
             flip_pipeline: OnceLock::new(),
             flip_vb: OnceLock::new(),
             flip_ib: OnceLock::new(),
-            flipped_texture: Mutex::new(None),
-            flipped_view: Mutex::new(None),
+            flipped: Mutex::new(None),
             flipped_bind_group: Mutex::new(None),
         }
     }
@@ -351,48 +350,40 @@ impl SyphonOutput {
         height: u32,
         texture: &wgpu::Texture,
     ) {
-        let mut flipped_texture = self.flipped_texture.lock().unwrap();
-        let recreate = flipped_texture
+        let mut flipped = self.flipped.lock().unwrap();
+        let recreate = flipped
             .as_ref()
-            .map(|t| t.width() != width || t.height() != height)
+            .map(|target| target.layout.width != width || target.layout.height != height)
             .unwrap_or(true);
 
-        if recreate {
-            let new_texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("syphon-flipped"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Bgra8Unorm,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::COPY_SRC,
-                view_formats: &[],
-            });
-            let view = new_texture.create_view(&Default::default());
+        TextureTarget::ensure(
+            &mut flipped,
+            device,
+            PixelFormat::Bgra8.texture_layout(width, height),
+            RENDER_TARGET_USAGE,
+            "syphon-flipped",
+        );
 
+        if recreate {
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("syphon-flip"),
                 layout: self.flip_bind_layout.get().unwrap(),
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&texture.create_view(&Default::default())),
+                        resource: wgpu::BindingResource::TextureView(
+                            &texture.create_view(&Default::default()),
+                        ),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(self.flip_sampler.get().unwrap()),
+                        resource: wgpu::BindingResource::Sampler(
+                            self.flip_sampler.get().unwrap(),
+                        ),
                     },
                 ],
             });
 
-            *flipped_texture = Some(new_texture);
-            *self.flipped_view.lock().unwrap() = Some(view);
             *self.flipped_bind_group.lock().unwrap() = Some(bind_group);
         }
     }
@@ -411,8 +402,11 @@ impl SyphonOutput {
         let vb = self.flip_vb.get().unwrap();
         queue.write_buffer(vb, 0, bytemuck::cast_slice(&FLIP_VERTICES));
 
-        let view = self.flipped_view.lock().unwrap();
-        let Some(ref view) = *view else { return None };
+        let flipped = self.flipped.lock().unwrap();
+        let Some(flipped) = flipped.as_ref() else {
+            return None;
+        };
+        let view = &flipped.view;
         let bind_group = self.flipped_bind_group.lock().unwrap();
         let Some(ref bind_group) = *bind_group else {
             return None;
@@ -521,14 +515,14 @@ impl VideoOutput for SyphonOutput {
         let publish_span = tracing::debug_span!("publish");
         let _publish_guard = publish_span.entered();
 
-        let flipped_texture = self.flipped_texture.lock().unwrap();
-        let Some(ref flipped) = *flipped_texture else {
+        let flipped = self.flipped.lock().unwrap();
+        let Some(flipped) = flipped.as_ref() else {
             return false;
         };
 
         let start = std::time::Instant::now();
         let outcome = publisher.publish(
-            flipped,
+            &flipped.texture,
             device,
             if signalled { Some(value) } else { None },
         );

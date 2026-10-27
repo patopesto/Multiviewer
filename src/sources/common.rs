@@ -290,6 +290,77 @@ impl TextureLayout {
     }
 }
 
+/// GPU texture paired with its view, layout and creation usage.
+pub struct TextureTarget {
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub layout: TextureLayout,
+    pub usage: wgpu::TextureUsages,
+}
+
+/// Render target that is also readable and copyable to a readback buffer.
+pub const RENDER_TARGET_USAGE: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT
+    .union(wgpu::TextureUsages::TEXTURE_BINDING)
+    .union(wgpu::TextureUsages::COPY_SRC);
+
+/// Upload target sampled by a bind group.
+pub const UPLOAD_TARGET_USAGE: wgpu::TextureUsages =
+    wgpu::TextureUsages::TEXTURE_BINDING.union(wgpu::TextureUsages::COPY_DST);
+
+impl TextureTarget {
+    /// Recreate the target when its layout or usage changes.
+    pub fn ensure(
+        slot: &mut Option<Self>,
+        device: &wgpu::Device,
+        layout: TextureLayout,
+        usage: wgpu::TextureUsages,
+        label: &str,
+    ) {
+        if slot
+            .as_ref()
+            .is_some_and(|target| target.layout == layout && target.usage == usage)
+        {
+            return;
+        }
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: layout.tex_w,
+                height: layout.tex_h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: layout.texture_format,
+            usage,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&Default::default());
+        *slot = Some(Self {
+            texture,
+            view,
+            layout,
+            usage,
+        });
+    }
+
+    /// Wrap an externally-created texture, such as a CV IOSurface.
+    pub fn from_parts(
+        texture: wgpu::Texture,
+        view: wgpu::TextureView,
+        layout: TextureLayout,
+        usage: wgpu::TextureUsages,
+    ) -> Self {
+        return Self {
+            texture,
+            view,
+            layout,
+            usage,
+        };
+    }
+}
+
 #[derive(Clone)]
 pub struct CpuFrame {
     pub data: Arc<Vec<u8>>,

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use crate::sources::SourceKey;
+use crate::sources::{SourceKey, TextureTarget};
 
 pub use crate::sources::{ConvMode, ConvUniform};
 pub use layout::canvas_transform;
@@ -74,12 +74,9 @@ pub struct Compositor {
     sampler: wgpu::Sampler,
     textures: HashMap<SourceKey, resources::SourceTex>,
     pulls: HashMap<SourceKey, ResolvedSource>, // Resolved sources for the current frame
-    canvas_texture: Option<wgpu::Texture>,
-    canvas_view: Option<wgpu::TextureView>,
+    canvas: Option<TextureTarget>,
     canvas_vb: wgpu::Buffer,
     canvas_pipeline: wgpu::RenderPipeline,
-    canvas_w: u32,
-    canvas_h: u32,
     border_bg: Arc<wgpu::BindGroup>,
     border_color: [u8; 4],
     font: fontdue::Font,

@@ -2,7 +2,7 @@ use tracing::instrument;
 
 use super::{Compositor, Pipeline, Rect};
 use crate::config::Canvas;
-use crate::sources::SourceRegistry;
+use crate::sources::{PixelFormat, RENDER_TARGET_USAGE, SourceRegistry, TextureTarget};
 
 impl Compositor {
     #[instrument(level = "debug", skip_all)]
@@ -40,7 +40,7 @@ impl Compositor {
         });
 
         {
-            let view = self.canvas_view.as_ref().unwrap();
+            let view = &self.canvas.as_ref().unwrap().view;
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("canvas-output"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -80,37 +80,19 @@ impl Compositor {
     }
 
     fn ensure_canvas_texture(&mut self, device: &wgpu::Device, canvas_w: u32, canvas_h: u32) {
-        if self.canvas_texture.is_none()
-            || self.canvas_w != canvas_w
-            || self.canvas_h != canvas_h
-        {
-            let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("canvas-output"),
-                size: wgpu::Extent3d {
-                    width: canvas_w,
-                    height: canvas_h,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Bgra8Unorm,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING
-                    | wgpu::TextureUsages::COPY_SRC,
-                view_formats: &[],
-            });
-            let view = texture.create_view(&Default::default());
-            self.canvas_texture = Some(texture);
-            self.canvas_view = Some(view);
-            self.canvas_w = canvas_w;
-            self.canvas_h = canvas_h;
-        }
+        TextureTarget::ensure(
+            &mut self.canvas,
+            device,
+            PixelFormat::Bgra8.texture_layout(canvas_w, canvas_h),
+            RENDER_TARGET_USAGE,
+            "canvas-output",
+        );
     }
 
     pub fn canvas_texture(&self) -> Option<(&wgpu::Texture, u32, u32)> {
-        self.canvas_texture
+        return self
+            .canvas
             .as_ref()
-            .map(|t| (t, self.canvas_w, self.canvas_h))
+            .map(|target| (&target.texture, target.layout.width, target.layout.height));
     }
 }

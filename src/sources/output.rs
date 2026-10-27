@@ -311,50 +311,6 @@ impl OutputRegistry {
 }
 
 
-/// GPU render target paired with its texture layout.
-pub struct TextureTarget {
-    pub texture: wgpu::Texture,
-    pub view: wgpu::TextureView,
-    pub layout: TextureLayout,
-}
-
-impl TextureTarget {
-    /// Recreate the target when its layout changes.
-    pub fn ensure(
-        slot: &mut Option<Self>,
-        device: &wgpu::Device,
-        layout: TextureLayout,
-        label: &str,
-    ) {
-        if slot.as_ref().is_some_and(|target| target.layout == layout) {
-            return;
-        }
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: wgpu::Extent3d {
-                width: layout.tex_w,
-                height: layout.tex_h,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: layout.texture_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&Default::default());
-        *slot = Some(Self {
-            texture,
-            view,
-            layout,
-        });
-    }
-}
-
-
 /// Ring of GPU->CPU readback buffers for one output.
 pub struct ReadbackPool {
     size: u64,

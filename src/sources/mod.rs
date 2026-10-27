@@ -26,7 +26,8 @@ mod directshow;
 mod windowscapture;
 
 pub use common::{Protocol, Frame, CpuFrame, GpuFrame};
-pub use common::{PixelFormat, ConvMode, ConvUniform, TextureLayout};
+pub use common::{PixelFormat, ConvMode, ConvUniform, TextureLayout, TextureTarget};
+pub use common::{RENDER_TARGET_USAGE, UPLOAD_TARGET_USAGE};
 pub use common::{FramePool, Framebuffer};
 pub use common::{ColorRange, ColorSpace};
 pub use common::{PUBLISH_INTERVAL, PollGate, publish_due, sleep_while_running};
@@ -34,7 +35,7 @@ pub use source::{
     SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
     SourceRegistry, VideoSource,
 };
-pub use output::{OutputConfig, OutputRegistry, TextureTarget};
+pub use output::{OutputConfig, OutputRegistry};
 pub use output_convert::YuvConverter;
 pub use stats::{OutputStats, SourceStats};
 

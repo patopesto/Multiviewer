@@ -4,13 +4,14 @@ use std::time::Instant;
 
 use super::gpu::{conv_uniform, create_cell_layout, create_sampler, create_vertex_index_buffers, placeholder, render_pipeline, solid_bind_group, texture_bind_group, MAX_LAYERS, QUADS_PER_SOURCE, SHADER};
 use super::{Compositor, Shared, Vert};
-use crate::sources::{CpuFrame, PixelFormat, SourceKey, SourceStats, TextureLayout};
+use crate::sources::{
+    CpuFrame, PixelFormat, SourceKey, SourceStats, TextureTarget, UPLOAD_TARGET_USAGE,
+};
 
 pub(super) struct SourceTex {
-    _tex: wgpu::Texture,
+    target: TextureTarget,
     _uniform: wgpu::Buffer,
     pub(super) bg: Arc<wgpu::BindGroup>,
-    layout: TextureLayout,
     seq: u64,
 }
 
@@ -104,12 +105,9 @@ impl Compositor {
             sampler,
             textures: HashMap::new(),
             pulls: HashMap::new(),
-            canvas_texture: None,
-            canvas_view: None,
+            canvas: None,
             canvas_vb,
             canvas_pipeline,
-            canvas_w: 0,
-            canvas_h: 0,
             border_bg,
             border_color,
             font,
@@ -141,40 +139,33 @@ impl Compositor {
         let stale = self
             .textures
             .get(key)
-            .map(|t| t.layout != layout)
+            .map(|t| t.target.layout != layout)
             .unwrap_or(false);
         if stale {
             self.textures.remove(key);
         }
         let st = self.textures.entry(key.clone()).or_insert_with(|| {
-            let tex = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some(key.source_ref.as_str()),
-                size: wgpu::Extent3d {
-                    width: layout.tex_w,
-                    height: layout.tex_h,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: layout.texture_format,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            let view = tex.create_view(&Default::default());
+            let mut target = None;
+            TextureTarget::ensure(
+                &mut target,
+                device,
+                layout,
+                UPLOAD_TARGET_USAGE,
+                key.source_ref.as_str(),
+            );
+            let target = target.unwrap();
             let uniform = conv_uniform(device, queue, layout.conv_mode, f.w as f32, f.h as f32);
             let bg = Arc::new(texture_bind_group(
                 device,
                 &self.bind_layout,
                 &self.sampler,
-                &view,
+                &target.view,
                 &uniform,
             ));
             SourceTex {
-                _tex: tex,
+                target,
                 _uniform: uniform,
                 bg,
-                layout,
                 seq: u64::MAX,
             }
         });
@@ -186,7 +177,7 @@ impl Compositor {
             let pitch = if f.pitch != 0 { f.pitch } else { f.w * layout.bpp };
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
-                    texture: &st._tex,
+                    texture: &st.target.texture,
                     mip_level: 0,
                     origin: wgpu::Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,

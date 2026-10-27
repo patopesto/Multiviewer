@@ -27,7 +27,9 @@ use crate::platform::texture_from_iosurface;
 use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, OutputLiveness, ReadbackPool, VideoOutput};
 use super::pixel_format_from_raw;
-use crate::sources::{ColorRange, ColorSpace, PixelFormat, TextureTarget, YuvConverter};
+use crate::sources::{
+    ColorRange, ColorSpace, PixelFormat, RENDER_TARGET_USAGE, TextureTarget, YuvConverter,
+};
 
 const SCALE_SHADER: &str = r#"
 struct VertexOutput {
@@ -137,8 +139,7 @@ enum CvState {
 #[cfg(target_os = "macos")]
 struct CvSurface {
     cv: CvPtr,
-    _texture: wgpu::Texture,
-    view: wgpu::TextureView,
+    target: TextureTarget,
     state: CvState,
 }
 
@@ -170,10 +171,16 @@ impl CvSurface {
             return None;
         };
         let view = texture.create_view(&Default::default());
+        let layout = PixelFormat::Bgra8.texture_layout(width, height);
+        let target = TextureTarget::from_parts(
+            texture,
+            view,
+            layout,
+            wgpu::TextureUsages::RENDER_ATTACHMENT,
+        );
         return Some(Self {
             cv: CvPtr(cv),
-            _texture: texture,
-            view,
+            target,
             state: CvState::Free,
         });
     }
@@ -251,7 +258,7 @@ impl CvRing {
     }
 
     fn view(&self, index: usize) -> &wgpu::TextureView {
-        return &self.surfaces[index].view;
+        return &self.surfaces[index].target.view;
     }
 
     fn cv(&self, index: usize) -> CvPtr {
@@ -888,6 +895,7 @@ impl DecklinkOutput {
             &mut scaled,
             device,
             PixelFormat::Bgra8.texture_layout(out_w, out_h),
+            RENDER_TARGET_USAGE,
             "decklink-scaled",
         );
         self.ensure_scale_bind_group(device, src_w, src_h, texture);
@@ -1167,7 +1175,13 @@ impl VideoOutput for DecklinkOutput {
         // The CV surface is BGRA-only; YUV uses the readback path.
         let mut converted = self.converted.lock().unwrap();
         let readback_target = if pixel_format == PixelFormat::Uyvy422 {
-            TextureTarget::ensure(&mut converted, device, target_layout, "decklink-uyvy");
+            TextureTarget::ensure(
+                &mut converted,
+                device,
+                target_layout,
+                RENDER_TARGET_USAGE,
+                "decklink-uyvy",
+            );
             let target = converted.as_ref().unwrap();
             let converter = self.converter.get_or_init(|| YuvConverter::new(device, queue));
             converter.convert(

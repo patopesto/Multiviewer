@@ -1,5 +1,4 @@
-use super::common::{ColorRange, ColorSpace, ConvUniform, TextureLayout};
-use super::output::TextureTarget;
+use super::common::{ColorRange, ColorSpace, ConvUniform, TextureLayout, TextureTarget};
 
 const SHADER: &str = r#"
 struct VertIn {

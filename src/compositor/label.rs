@@ -8,9 +8,10 @@ use super::build::{clip, Frame, Placement};
 use super::gpu::{conv_uniform, placeholder, solid_bind_group, solid_texture, texture_bind_group};
 use super::{Compositor, ConvMode, LabelKey, Pipeline};
 use crate::config::{Canvas, LabelPosition, LabelVisibility, Source, SourceLabelVisibility};
+use crate::sources::{PixelFormat, TextureTarget, UPLOAD_TARGET_USAGE};
 
 pub(super) struct LabelTex {
-    _tex: wgpu::Texture,
+    _target: TextureTarget,
     bg: Arc<wgpu::BindGroup>,
     w: u32,
     h: u32,
@@ -121,11 +122,11 @@ impl Compositor {
         if let Some(t) = self.label_textures.get(&uuid).filter(|t| t.key_hash == key_hash) {
             return (t.w, t.h, t.bg.clone());
         }
-        let (tex, bg, w, h) = self.rasterize_label(device, queue, key);
+        let (target, bg, w, h) = self.rasterize_label(device, queue, key);
         self.label_textures.insert(
             uuid,
             LabelTex {
-                _tex: tex,
+                _target: target,
                 bg: bg.clone(),
                 w,
                 h,
@@ -140,31 +141,29 @@ impl Compositor {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         key: &LabelKey,
-    ) -> (wgpu::Texture, Arc<wgpu::BindGroup>, u32, u32) {
+    ) -> (TextureTarget, Arc<wgpu::BindGroup>, u32, u32) {
         let Some((width, height, pixels)) = label_pixels(&self.font, key) else {
             let bg = Arc::new(placeholder(device, queue, &self.bind_layout, &self.sampler));
-            let tex = solid_texture(device, "label-empty");
-            return (tex, bg, 0, 0);
+            let texture = solid_texture(device, "label-empty");
+            let view = texture.create_view(&Default::default());
+            let layout = PixelFormat::Rgba8.texture_layout(1, 1);
+            let target = TextureTarget::from_parts(texture, view, layout, UPLOAD_TARGET_USAGE);
+            return (target, bg, 0, 0);
         };
 
-        let tex = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("label"),
-            size: wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let view = tex.create_view(&Default::default());
+        let layout = PixelFormat::Rgba8.texture_layout(width, height);
+        let mut target = None;
+        TextureTarget::ensure(
+            &mut target,
+            device,
+            layout,
+            UPLOAD_TARGET_USAGE,
+            "label",
+        );
+        let target = target.unwrap();
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
-                texture: &tex,
+                texture: &target.texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
@@ -193,10 +192,10 @@ impl Compositor {
             device,
             &self.bind_layout,
             &self.sampler,
-            &view,
+            &target.view,
             &uniform,
         ));
-        return (tex, bg, width, height);
+        return (target, bg, width, height);
     }
 }
 
