@@ -187,9 +187,9 @@ fn run_capture(
     generate_base(&mut base, w, h, &pattern);
     let base = Arc::new(base);
     let mut pool = FramePool::new();
+    let mut next_frame = Instant::now();
 
     while running.load(Ordering::Relaxed) {
-        let frame_start = Instant::now();
         {
             let frame_span = tracing::debug_span!("test_frame");
             let _frame_guard = frame_span.entered();
@@ -225,8 +225,24 @@ fn run_capture(
             pool.give(previous);
         }
         seq += 1;
-        std::thread::sleep(frame_interval.saturating_sub(frame_start.elapsed()));
+
+        let now = Instant::now();
+        if now < next_frame {
+            std::thread::sleep(next_frame - now);
+        }
+        let now = Instant::now();
+        next_frame = advance_deadline(next_frame, now, frame_interval);
     }
+}
+
+/// Next fixed-grid deadline: advance from the previous deadline, not the actual
+/// wake, so `thread::sleep` overshoot does not stretch every frame period.
+fn advance_deadline(prev: Instant, now: Instant, interval: Duration) -> Instant {
+    return if now >= prev + interval {
+        now + interval
+    } else {
+        prev + interval
+    };
 }
 
 impl Drop for TestSource {
@@ -624,6 +640,23 @@ fn lerp_u8(a: u8, b: u8, t: f32) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    /// A sleep that wakes early costs a full interval; one that wakes late
+    /// resyncs to now, so overshoot does not stretch the following period.
+    #[test]
+    fn deadline_advances_on_a_fixed_grid() {
+        let interval = Duration::from_millis(16);
+        let deadline = Instant::now() + interval;
+        assert_eq!(
+            advance_deadline(deadline, deadline - Duration::from_millis(2), interval),
+            deadline + interval
+        );
+        assert_eq!(
+            advance_deadline(deadline, deadline + Duration::from_millis(100), interval),
+            deadline + Duration::from_millis(116)
+        );
+    }
 
     fn pixel(buf: &[u8], w: u32, x: u32, y: u32) -> [u8; 4] {
         let i = ((y * w + x) * 4) as usize;
