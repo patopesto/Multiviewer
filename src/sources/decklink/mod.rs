@@ -31,6 +31,11 @@ pub(crate) fn pixel_format(fmt: DecklinkPixelFormat) -> PixelFormat {
     };
 }
 
+/// Map a raw `BMDPixelFormat` value to the app's format.
+pub(crate) fn pixel_format_from_raw(fmt: u32) -> Option<PixelFormat> {
+    return DecklinkPixelFormat::try_from(fmt).ok().map(pixel_format);
+}
+
 /// Supported DeckLink API version reported by the installed driver, if any.
 pub fn decklink_version() -> Option<String> {
     let mut buf = [0u8; 64];

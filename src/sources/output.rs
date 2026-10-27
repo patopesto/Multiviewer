@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 use tracing::instrument;
 
-use super::{OutputStats, Protocol};
+use super::{OutputStats, Protocol, TextureLayout};
 use super::decklink;
 use super::ndi;
 use super::omt;
@@ -311,6 +311,50 @@ impl OutputRegistry {
 }
 
 
+/// GPU render target paired with its texture layout.
+pub struct TextureTarget {
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub layout: TextureLayout,
+}
+
+impl TextureTarget {
+    /// Recreate the target when its layout changes.
+    pub fn ensure(
+        slot: &mut Option<Self>,
+        device: &wgpu::Device,
+        layout: TextureLayout,
+        label: &str,
+    ) {
+        if slot.as_ref().is_some_and(|target| target.layout == layout) {
+            return;
+        }
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: layout.tex_w,
+                height: layout.tex_h,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: layout.texture_format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&Default::default());
+        *slot = Some(Self {
+            texture,
+            view,
+            layout,
+        });
+    }
+}
+
+
 /// Ring of GPU->CPU readback buffers for one output.
 pub struct ReadbackPool {
     size: u64,
@@ -323,6 +367,7 @@ struct ReadbackSlot {
     mapped: bool,
     width: u32,
     height: u32,
+    layout: Option<TextureLayout>,
 }
 
 const READBACK_SLOTS: usize = 3; // default number of slots
@@ -366,6 +411,7 @@ impl ReadbackPool {
                     mapped: false,
                     width: 0,
                     height: 0,
+                    layout: None,
                 }
             })
             .collect();
@@ -387,6 +433,17 @@ impl ReadbackPool {
     /// The dimensions travel with the slot: a canvas resize can land between
     /// the copy and the finish.
     pub fn map(&mut self, slot: usize, width: u32, height: u32) {
+        self.slots[slot].layout = None;
+        self.start_map(slot, width, height);
+    }
+
+    /// Start mapping `slot` and remember the full layout of the copied texture.
+    pub fn map_layout(&mut self, slot: usize, layout: TextureLayout) {
+        self.slots[slot].layout = Some(layout);
+        self.start_map(slot, layout.width, layout.height);
+    }
+
+    fn start_map(&mut self, slot: usize, width: u32, height: u32) {
         let (tx, rx) = mpsc::channel();
         self.slots[slot].width = width;
         self.slots[slot].height = height;
@@ -397,6 +454,11 @@ impl ReadbackPool {
                 let _ = tx.send(result);
             });
         self.slots[slot].pending = Some(rx);
+    }
+
+    /// Layout the slot's readback was recorded with.
+    pub fn layout(&self, slot: usize) -> Option<TextureLayout> {
+        return self.slots[slot].layout;
     }
 
     /// Dimensions the slot's copy was recorded at.

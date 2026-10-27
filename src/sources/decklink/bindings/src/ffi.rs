@@ -122,4 +122,5 @@ unsafe extern "C" {
         token: *mut u64,
     ) -> bool;
     pub fn decklink_output_completion_available(o: *mut DecklinkOutputHandle) -> bool;
+    pub fn decklink_output_pixel_format(o: *mut DecklinkOutputHandle) -> u32;
 }

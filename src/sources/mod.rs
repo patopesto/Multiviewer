@@ -1,6 +1,7 @@
 mod common;
 mod source;
 mod output;
+mod output_convert;
 mod stats;
 
 mod test;
@@ -27,12 +28,14 @@ mod windowscapture;
 pub use common::{Protocol, Frame, CpuFrame, GpuFrame};
 pub use common::{PixelFormat, ConvMode, ConvUniform, TextureLayout};
 pub use common::{FramePool, Framebuffer};
+pub use common::{ColorRange, ColorSpace};
 pub use common::{PUBLISH_INTERVAL, PollGate, publish_due, sleep_while_running};
 pub use source::{
     SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
     SourceRegistry, VideoSource,
 };
-pub use output::{OutputConfig, OutputRegistry};
+pub use output::{OutputConfig, OutputRegistry, TextureTarget};
+pub use output_convert::YuvConverter;
 pub use stats::{OutputStats, SourceStats};
 
 pub use test::{TestSourceConfig, TestPattern, RadarDirection};

@@ -23,6 +23,7 @@ bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int w
 bool decklink_output_present_cv(DecklinkOutput* o, void* cv, uint64_t token);
 bool decklink_output_take_completed(DecklinkOutput* o, uint64_t* token);
 bool decklink_output_completion_available(DecklinkOutput* o);
+uint32_t decklink_output_pixel_format(DecklinkOutput* o);
 
 #ifdef __cplusplus
 }

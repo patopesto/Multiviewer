@@ -196,15 +196,41 @@ impl PixelFormat {
     }
 }
 
+#[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ColorSpace {
-    Bt601,
-    Bt709,
+    Bt601 = 0,
+    Bt709 = 1,
 }
 
 impl ColorSpace {
     pub fn is_bt709(self) -> bool {
         return self == Self::Bt709;
+    }
+
+    pub const fn code(self) -> u32 {
+        return self as u32;
+    }
+
+    /// Output colorimetry for SDI/NDI raster height.
+    pub fn for_output_height(height: u32) -> Self {
+        return colorspace_for_height(height);
+    }
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ColorRange {
+    #[default]
+    Limited = 0,
+    // Full range is available for protocols that negotiate it.
+    #[allow(dead_code)]
+    Full = 1,
+}
+
+impl ColorRange {
+    pub const fn code(self) -> u32 {
+        return self as u32;
     }
 }
 
@@ -562,6 +588,8 @@ mod tests {
     fn colorspace_switches_above_sd_height() {
         assert_eq!(colorspace_for_height(576), ColorSpace::Bt601);
         assert_eq!(colorspace_for_height(577), ColorSpace::Bt709);
+        assert_eq!(ColorSpace::for_output_height(1080), ColorSpace::Bt709);
+        assert_eq!(ColorSpace::for_output_height(2160), ColorSpace::Bt709);
     }
 
     #[test]

@@ -33,6 +33,7 @@ struct DecklinkOutput {
     std::string target_name;
     IDeckLinkOutput* output = nullptr;
     BMDDisplayMode display_mode = bmdModeUnknown;
+    BMDPixelFormat pixel_format = bmdFormat8BitBGRA;
     long width = 0;
     long height = 0;
     BMDTimeValue frame_duration = 0;
@@ -184,6 +185,32 @@ void decklink_output_free(DecklinkOutput* o) {
 }
 
 
+static BMDPixelFormat choose_output_format(IDeckLinkOutput* output, BMDDisplayMode mode) {
+    const BMDPixelFormat candidates[] = { bmdFormat8BitBGRA, bmdFormat8BitYUV };
+    for (BMDPixelFormat candidate : candidates) {
+        BMDDisplayMode actual = bmdModeUnknown;
+        DecklinkBool supported = 0;
+        HRESULT hr = output->DoesSupportVideoMode(
+            bmdVideoConnectionUnspecified,
+            mode,
+            candidate,
+            bmdNoVideoOutputConversion,
+            bmdSupportedVideoModeDefault,
+            &actual,
+            &supported);
+        if (hr == S_OK && supported) {
+            fprintf(stderr, "[decklink] output mode=%s supports fmt=%s\n",
+                    DecklinkDisplayModeName(mode), DecklinkPixelFormatName(candidate));
+            return candidate;
+        }
+        fprintf(stderr, "[decklink] output mode=%s unsupported fmt=%s (hr=0x%08X supported=%d)\n",
+                DecklinkDisplayModeName(mode), DecklinkPixelFormatName(candidate),
+                static_cast<unsigned int>(hr), supported ? 1 : 0);
+    }
+    return static_cast<BMDPixelFormat>(0);
+}
+
+
 bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
     DecklinkComScope com_scope;
     if (!o) return false;
@@ -245,6 +272,14 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
     }
 
     BMDDisplayMode mode = static_cast<BMDDisplayMode>(mode_id);
+    o->pixel_format = choose_output_format(o->output, mode);
+    if (o->pixel_format == 0) {
+        fprintf(stderr, "[decklink] no supported 8-bit output format for mode=%s\n", DecklinkDisplayModeName(mode));
+        o->output->Release();
+        o->output = nullptr;
+        return false;
+    }
+
     HRESULT hr = o->output->EnableVideoOutput(mode, bmdVideoOutputFlagDefault);
     if (hr != S_OK) {
         fprintf(stderr, "[decklink] EnableVideoOutput failed mode=%s (0x%08X)\n", DecklinkDisplayModeName(mode), static_cast<unsigned int>(hr));
@@ -287,7 +322,7 @@ bool decklink_output_start(DecklinkOutput* o, uint32_t mode_id) {
     }
 
     fprintf(stderr, "[decklink] output started '%s' mode=%s fmt=%s %ldx%ld frame=%lld/%lld\n",
-            o->target_name.c_str(), DecklinkDisplayModeName(mode), DecklinkPixelFormatName(bmdFormat8BitBGRA),
+            o->target_name.c_str(), DecklinkDisplayModeName(mode), DecklinkPixelFormatName(o->pixel_format),
             o->width, o->height,
             static_cast<long long>(o->frame_duration), static_cast<long long>(o->time_scale));
     return true;
@@ -318,7 +353,8 @@ bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int w
     if (!o || !o->output) return false;
     if (width <= 0 || height <= 0 || !bgra) return false;
 
-    size_t src_pitch = static_cast<size_t>(width) * 4;
+    size_t bpp = o->pixel_format == bmdFormat8BitYUV ? 2 : 4;
+    size_t src_pitch = static_cast<size_t>(width) * bpp;
     if (row_bytes < 0 || static_cast<size_t>(row_bytes) < src_pitch) return false;
     size_t size = static_cast<size_t>(row_bytes) * static_cast<size_t>(height);
 
@@ -326,17 +362,17 @@ bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int w
     if (token_queued) *token_queued = true;
 
     IDeckLinkMutableVideoFrame* frame = nullptr;
-    HRESULT hr = o->output->CreateVideoFrameWithBuffer(width, height, row_bytes, bmdFormat8BitBGRA, bmdFrameFlagDefault, buffer, &frame);
+    HRESULT hr = o->output->CreateVideoFrameWithBuffer(width, height, row_bytes, o->pixel_format, bmdFrameFlagDefault, buffer, &frame);
     buffer->Release();
     if (hr != S_OK || !frame) {
-        fprintf(stderr, "[decklink] CreateVideoFrameWithBuffer failed fmt=%s (0x%08X)\n", DecklinkPixelFormatName(bmdFormat8BitBGRA), static_cast<unsigned int>(hr));
+        fprintf(stderr, "[decklink] CreateVideoFrameWithBuffer failed fmt=%s (0x%08X)\n", DecklinkPixelFormatName(o->pixel_format), static_cast<unsigned int>(hr));
         return false;
     }
 
     hr = o->output->ScheduleVideoFrame(frame, o->scheduled_time, o->frame_duration, o->time_scale);
     if (hr != S_OK) {
         frame->Release();
-        fprintf(stderr, "[decklink] ScheduleVideoFrame failed fmt=%s (0x%08X)\n", DecklinkPixelFormatName(bmdFormat8BitBGRA), static_cast<unsigned int>(hr));
+        fprintf(stderr, "[decklink] ScheduleVideoFrame failed fmt=%s (0x%08X)\n", DecklinkPixelFormatName(o->pixel_format), static_cast<unsigned int>(hr));
         return false;
     }
     frame->Release();
@@ -348,6 +384,7 @@ bool decklink_output_present_frame(DecklinkOutput* o, const uint8_t* bgra, int w
 
 bool decklink_output_present_cv(DecklinkOutput* o, void* cv, uint64_t token) {
     if (!o || !o->output || !cv) return false;
+    if (o->pixel_format != bmdFormat8BitBGRA) return false;
     if (!o->callback) return false;
 
     IDeckLinkMutableVideoFrame* frame = playback_platform_create_cv_frame(o->output, cv);
@@ -377,6 +414,11 @@ bool decklink_output_present_cv(DecklinkOutput* o, void* cv, uint64_t token) {
 
 bool decklink_output_completion_available(DecklinkOutput* o) {
     return o && o->callback != nullptr;
+}
+
+
+uint32_t decklink_output_pixel_format(DecklinkOutput* o) {
+    return o ? static_cast<uint32_t>(o->pixel_format) : 0;
 }
 
 
