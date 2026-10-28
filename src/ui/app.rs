@@ -128,6 +128,8 @@ struct Tick {
 
 struct TickState {
     unfocused: bool,
+    /// Nothing is showing the preview: minimised, hidden or fully occluded.
+    idle: bool,
     last_ui_tick: Instant,
 }
 
@@ -141,6 +143,7 @@ impl Tick {
     ) -> Option<Self> {
         let state = Arc::new(Mutex::new(TickState {
             unfocused: false,
+            idle: false,
             last_ui_tick: Instant::now(),
         }));
         let stop = Arc::new(AtomicBool::new(false));
@@ -159,9 +162,10 @@ impl Tick {
 
     /// Called from the paint loop: record where the UI is at, so the tick thread
     /// can tell whether it should be the one running the engine.
-    fn mark_ui_tick(&self, focused: bool) {
+    fn mark_ui_tick(&self, focused: bool, on_screen: bool) {
         let mut state = self.state.lock().unwrap();
         state.unfocused = !focused;
+        state.idle = !on_screen;
         state.last_ui_tick = Instant::now();
     }
 }
@@ -268,9 +272,18 @@ impl eframe::App for App {
         self.update_title(ctx);
 
         // App focused: run at display refresh rate.
-        let focused = ctx.input(|i| i.viewport().focused).unwrap_or(false);
+        let (focused, minimized, occluded) = ctx.input(|i| {
+            let viewport = i.viewport();
+            (
+                viewport.focused.unwrap_or(false),
+                viewport.minimized.unwrap_or(false),
+                viewport.occluded,
+            )
+        });
+        // Minimised, hidden or fully occluded means nothing is showing the preview.
+        let on_screen = !minimized && occluded != Some(true);
         if let Some(tick) = &self.tick {
-            tick.mark_ui_tick(focused);
+            tick.mark_ui_tick(focused, on_screen);
         }
         if focused {
             self.run_frame(frame);
@@ -278,15 +291,8 @@ impl eframe::App for App {
             return;
         }
 
-        // App not focused: cap whether any output is enabled
-        let target_fps = if self.engine().output_registry.any_enabled()
-            || self.engine().control.is_enabled()
-        {
-            ACTIVE_FPS
-        } else {
-            IDLE_FPS
-        };
-        let interval = Duration::from_secs_f64(1.0 / target_fps);
+        // App not focused: still a live preview unless the window is out of sight.
+        let interval = Duration::from_secs_f64(1.0 / target_fps(on_screen, &self.engine()));
 
         let now = Instant::now();
         if now + FRAME_TOLERANCE < self.next_frame {
@@ -987,6 +993,15 @@ fn tick_engine(
     stats.lock().unwrap().record_work(started.elapsed());
 }
 
+/// Tick rate: a live preview whenever something is on screen, or whenever an
+/// output or the control listener depends on the engine; otherwise idle.
+fn target_fps(on_screen: bool, engine: &Engine) -> f64 {
+    if on_screen || engine.output_registry.any_enabled() || engine.control.is_enabled() {
+        return ACTIVE_FPS;
+    }
+    return IDLE_FPS;
+}
+
 /// Whether the tick thread has to run the engine: the window is unfocused, or the
 /// paint loop that would otherwise tick it has stalled.
 fn owns_tick(state: &TickState, now: Instant) -> bool {
@@ -1005,9 +1020,9 @@ fn run_tick(
     let mut next_frame = Instant::now();
     let mut next_output = Instant::now();
     while !stop.load(Ordering::Relaxed) {
-        let run = {
+        let (run, on_screen) = {
             let state = state.lock().unwrap();
-            owns_tick(&state, Instant::now())
+            (owns_tick(&state, Instant::now()), !state.idle)
         };
         if !run {
             std::thread::sleep(TICK_PARK);
@@ -1015,12 +1030,7 @@ fn run_tick(
         }
 
         let mut engine = engine.lock().unwrap();
-        let target_fps = if engine.output_registry.any_enabled() || engine.control.is_enabled() {
-            ACTIVE_FPS
-        } else {
-            IDLE_FPS
-        };
-        let interval = Duration::from_secs_f64(1.0 / target_fps);
+        let interval = Duration::from_secs_f64(1.0 / target_fps(on_screen, &engine));
 
         let now = Instant::now();
         if now + FRAME_TOLERANCE < next_frame {
@@ -1087,21 +1097,32 @@ mod tests {
         let now = Instant::now();
         let alive = TickState {
             unfocused: false,
+            idle: false,
             last_ui_tick: now,
         };
         assert!(!owns_tick(&alive, now));
 
         let stalled = TickState {
             unfocused: false,
+            idle: false,
             last_ui_tick: now - UI_STALL - Duration::from_millis(1),
         };
         assert!(owns_tick(&stalled, now));
 
         let unfocused = TickState {
             unfocused: true,
+            idle: false,
             last_ui_tick: now,
         };
         assert!(owns_tick(&unfocused, now));
+    }
+
+    #[test]
+    fn tick_rate_follows_what_is_on_screen() {
+        let mut engine = Engine::test_instance(Canvas::default());
+
+        assert_eq!(target_fps(true, &engine), ACTIVE_FPS);
+        assert_eq!(target_fps(false, &engine), IDLE_FPS);
     }
 
     #[test]
