@@ -309,8 +309,8 @@ mod tests {
     fn decode(yuv: (f32, f32, f32), rec601: bool) -> (f32, f32, f32) {
         let (y8, u8, v8) = yuv;
         let y = y8 - 16.0 / 255.0;
-        let u = u8 - 0.5;
-        let v = v8 - 0.5;
+        let u = u8 - 128.0 / 255.0;
+        let v = v8 - 128.0 / 255.0;
         let (r, g, b) = if rec601 {
             (
                 1.164 * y + 1.596 * v,

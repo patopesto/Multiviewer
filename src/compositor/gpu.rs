@@ -27,9 +27,9 @@ struct ConvUniform {
 
 // YUV -> RGB (limited range, 8-bit). Shared by every 4:2:2/4:2:0 path;
 fn yuv_to_rgb(yuv: vec3<f32>, bt709: bool) -> vec3<f32> {
-    let y = yuv.x - 0.062745098; // 16/255
-    let u = yuv.y - 0.5;
-    let v = yuv.z - 0.5;
+    let y = yuv.x - 16.0 / 255.0;
+    let u = yuv.y - 128.0 / 255.0;
+    let v = yuv.z - 128.0 / 255.0;
 
     var r: f32;
     var g: f32;

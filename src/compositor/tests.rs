@@ -63,6 +63,16 @@ fn uyvy_to_rgb_matches_cpu_reference() {
 }
 
 #[test]
+fn neutral_chroma_decodes_to_grey() {
+    for &hd in &[false, true] {
+        for y in [16u8, 128, 235] {
+            let [r, g, b] = shader_uyvy_to_rgb(128, y, 128, hd);
+            assert!(r == g && g == b, "U=V=128 Y={y} hd={hd} decoded to {r}/{g}/{b}");
+        }
+    }
+}
+
+#[test]
 fn texture_layout_matches_each_format() {
     use crate::sources::{ConvMode, PixelFormat};
     use wgpu::TextureFormat;
