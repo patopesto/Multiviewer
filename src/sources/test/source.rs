@@ -264,6 +264,10 @@ impl VideoSource for TestSource {
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
         return self.stats.clone();
     }
+
+    fn alive(&self) -> bool {
+        return self.thread.as_ref().is_none_or(|thread| !thread.is_finished());
+    }
 }
 
 fn generate_base(buf: &mut [u8], w: u32, h: u32, pattern: &TestPattern) {

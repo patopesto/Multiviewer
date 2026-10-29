@@ -92,6 +92,9 @@ impl Engine {
             dirty: false,
             last_saved_at: Instant::now(),
             last_discovery: Instant::now(),
+            last_tick: Instant::now(),
+            last_heartbeat: Instant::now(),
+            worst_tick_gap: Duration::ZERO,
             selected_source_id: None,
             expanded_source_id: None,
             drag_state: DragState::None,
@@ -104,6 +107,7 @@ impl Engine {
     }
 
     pub fn new_project() -> Self {
+        let started = Instant::now();
         let mut engine = Self::new(Config::default());
 
         // NDI discovery has to be up before the project's sources are restored.
@@ -125,20 +129,41 @@ impl Engine {
         }
 
         engine.rebuild_from_config();
+        tracing::info!(
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "engine created"
+        );
         return engine;
     }
 
     pub(super) fn rebuild_from_config(&mut self) {
+        let clear_started = Instant::now();
         self.registry.clear();
+        let clear_sources = clear_started.elapsed();
+        let clear_outputs_started = Instant::now();
         self.output_registry.clear();
+        let clear_outputs = clear_outputs_started.elapsed();
         self.comp = None;
         self.load_warnings.clear();
 
+        let load_started = Instant::now();
         self.warn_unavailable_protocols();
         self.restore_test_sources();
         self.seed_demo_layout();
         self.load_outputs();
         self.restart_control();
+        let load = load_started.elapsed();
+
+        // Every stage runs on the thread that opened the project, holding the
+        // engine lock: a stage that blocks freezes the UI for its whole duration.
+        tracing::info!(
+            clear_sources_ms = clear_sources.as_millis() as u64,
+            clear_outputs_ms = clear_outputs.as_millis() as u64,
+            load_ms = load.as_millis() as u64,
+            sources = self.cfg.canvas.sources.len(),
+            outputs = self.cfg.canvas.outputs.len(),
+            "project rebuilt"
+        );
     }
 
     /// A project from a newer build is loaded best-effort; unknown fields are
@@ -248,7 +273,15 @@ impl Engine {
 
     pub fn open_project(&mut self, path: impl AsRef<std::path::Path>) -> Result<(), ProjectError> {
         let path = path.as_ref().to_path_buf();
-        let cfg = Config::load_from(&path)?;
+        let started = Instant::now();
+        tracing::info!(path = %path.display(), "opening project");
+        let cfg = match Config::load_from(&path) {
+            Ok(cfg) => cfg,
+            Err(e) => {
+                tracing::error!(path = %path.display(), "project open failed: {e}");
+                return Err(e.into());
+            }
+        };
         self.cfg = cfg;
         self.dirty = false;
         self.rebuild_from_config();
@@ -259,7 +292,12 @@ impl Engine {
         let mut session = Session::load();
         session.record_recent(&path);
         session.save()?;
-        Ok(())
+        tracing::info!(
+            path = %path.display(),
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "project opened"
+        );
+        return Ok(());
     }
 
     pub fn save_project(&mut self) -> Result<(), ProjectError> {

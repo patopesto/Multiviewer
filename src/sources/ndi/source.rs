@@ -226,4 +226,8 @@ impl VideoSource for NdiSource {
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
         return self.stats.clone();
     }
+
+    fn alive(&self) -> bool {
+        return self.thread.as_ref().is_none_or(|thread| !thread.is_finished());
+    }
 }

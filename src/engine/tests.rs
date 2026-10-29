@@ -697,6 +697,23 @@ fn an_unconfigured_manual_source_is_registered() {
     assert!(!engine.dirty);
 }
 
+/// The heartbeat keeps the worst tick gap until it is reported, so a tick that
+/// stalled (inline teardown, blocked present) is not averaged away by the
+/// ticks that follow it.
+#[test]
+fn heartbeat_keeps_the_worst_tick_gap_until_it_reports() {
+    let mut engine = test_engine(Canvas::default());
+
+    engine.last_tick = Instant::now() - Duration::from_secs(3);
+    engine.last_heartbeat = Instant::now();
+    engine.update();
+    assert!(engine.worst_tick_gap >= Duration::from_secs(3));
+
+    engine.last_heartbeat = Instant::now() - Duration::from_secs(60);
+    engine.update();
+    assert_eq!(engine.worst_tick_gap, Duration::ZERO);
+}
+
 /// An edit on one placement persists to every placement bound to the same
 /// (protocol, source_ref) — and to no placement bound to a different source or
 /// protocol, even when the reference string is identical.

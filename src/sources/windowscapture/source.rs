@@ -423,4 +423,10 @@ impl VideoSource for WindowsCaptureSource {
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
         return self.stats.clone();
     }
+
+    /// No capture thread: the SDK pushes frames. A session that failed to open
+    /// leaves no control handle.
+    fn alive(&self) -> bool {
+        return self.control.lock().unwrap().is_some();
+    }
 }

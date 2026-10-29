@@ -188,11 +188,10 @@ impl Engine {
         return source
             .source_ref
             .as_ref()
-            .map(|source_ref| {
+            .is_some_and(|source_ref| {
                 self.registry
-                    .contains(&SourceKey::new(source.protocol.clone(), source_ref.clone()))
-            })
-            .unwrap_or(false);
+                    .is_live(&SourceKey::new(source.protocol.clone(), source_ref.clone()))
+            });
     }
 
     /// Publish OSC feedback for any state that changed since the last frame.

@@ -385,6 +385,10 @@ impl VideoSource for RdpSource {
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
         return self.stats.clone();
     }
+
+    fn alive(&self) -> bool {
+        return self.thread.as_ref().is_none_or(|thread| !thread.is_finished());
+    }
 }
 
 #[cfg(test)]

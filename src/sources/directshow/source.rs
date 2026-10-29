@@ -161,6 +161,10 @@ impl VideoSource for DirectShowSource {
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
         return self.stats.clone();
     }
+
+    fn alive(&self) -> bool {
+        return self.thread.as_ref().is_none_or(|thread| !thread.is_finished());
+    }
 }
 
 /// The full capture loop; owns the thread's COM apartment for its lifetime.

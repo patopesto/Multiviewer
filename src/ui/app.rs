@@ -28,6 +28,9 @@ const MAX_RENDER_TIMESTAMPS: usize = 256;
 const TICK_PARK: Duration = Duration::from_millis(20);
 const UI_STALL: Duration = Duration::from_millis(250);
 const SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
+/// Waiting this long for the engine lock means the tick thread is busy in a way
+/// the user experiences as a frozen window.
+const SLOW_LOCK: Duration = Duration::from_millis(100);
 
 pub struct App {
     engine: Arc<Mutex<Engine>>,
@@ -243,7 +246,15 @@ impl App {
     }
 
     fn engine(&self) -> MutexGuard<'_, Engine> {
-        return self.engine.lock().unwrap();
+        let started = Instant::now();
+        let engine = self.engine.lock().unwrap();
+        let waited = started.elapsed();
+        if waited >= SLOW_LOCK {
+            // The tick thread holds this lock across discovery, output presents
+            // and any inline source teardown, so a long wait is the UI freeze.
+            tracing::warn!(waited_ms = waited.as_millis() as u64, "engine lock wait");
+        }
+        return engine;
     }
 
     fn configure_egui(ctx: &egui::Context) {
@@ -334,8 +345,11 @@ impl eframe::App for App {
     }
 
     fn on_exit(&mut self) {
+        let started = Instant::now();
+        tracing::info!("exiting");
         drop(self.tick.take());
         drop(self.trace_guard.take());
+        tracing::info!(total_ms = started.elapsed().as_millis() as u64, "exit");
     }
 }
 

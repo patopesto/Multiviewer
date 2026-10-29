@@ -12,8 +12,13 @@ use crate::sources::{find_syphon_server, AvFoundationSourceConfig, ensure_screen
 use crate::sources::{DirectShowSourceConfig, MediaFoundationSourceConfig, SpoutSourceConfig, WindowsCaptureSourceConfig};
 
 const DISCOVERY_INTERVAL: Duration = Duration::from_millis(250);
+/// Liveness accounting interval. A healthy report is logged at debug; a gap
+/// longer than `SLOW_TICK`, or a late report, is logged as a warning.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
+/// Four frames at 60 Hz: a tick that took longer than this was blocked.
+const SLOW_TICK: Duration = Duration::from_millis(250);
 
-/// Placements of `protocol` that name a source_ref but have no runtime source yet, paired with the key they bind to.
+/// Placements of `protocol` that name a source_ref with no live runtime source, paired with the key they bind to.
 fn pending_sources<'a>(
     placements: &'a [Source],
     registry: &SourceRegistry,
@@ -25,13 +30,14 @@ fn pending_sources<'a>(
         .filter_map(|placement| {
             let source_ref = placement.source_ref.as_deref()?;
             let key = SourceKey::new(protocol.clone(), source_ref.to_string());
-            return (!registry.contains(&key)).then_some((placement, key));
+            return registry.can_open(&key).then_some((placement, key));
         })
         .collect();
 }
 
 impl Engine {
     pub fn update(&mut self) {
+        self.record_heartbeat();
         for command in self.control.drain() {
             if let Err(e) = self.apply_command(command) {
                 tracing::warn!("control command rejected: {e}");
@@ -66,6 +72,37 @@ impl Engine {
         }
 
         self.registry.apply_pending_restarts();
+    }
+
+    /// Report that the engine is still ticking, and how long the worst gap
+    /// between two ticks was since the last report.
+    fn record_heartbeat(&mut self) {
+        let now = Instant::now();
+        let gap = now.duration_since(self.last_tick);
+        self.last_tick = now;
+        self.worst_tick_gap = self.worst_tick_gap.max(gap);
+
+        let interval = now.duration_since(self.last_heartbeat);
+        if interval < HEARTBEAT_INTERVAL {
+            return;
+        }
+        self.last_heartbeat = now;
+        let sources = self.registry.iter().count();
+        let outputs = self.output_registry.count();
+        let interval_ms = interval.as_millis() as u64;
+        let worst_tick_ms = self.worst_tick_gap.as_millis() as u64;
+        if self.worst_tick_gap >= SLOW_TICK || interval >= HEARTBEAT_INTERVAL * 2 {
+            tracing::warn!(
+                sources,
+                outputs,
+                interval_ms,
+                worst_tick_ms,
+                "engine tick stalled"
+            );
+        } else {
+            tracing::debug!(sources, outputs, interval_ms, worst_tick_ms, "engine tick");
+        }
+        self.worst_tick_gap = Duration::ZERO;
     }
 
     /// Auto-connect pending NDI sources when they appear in discovery

@@ -343,6 +343,10 @@ impl VideoSource for ScreenCaptureKitSource {
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
         return self.stats.clone();
     }
+
+    fn alive(&self) -> bool {
+        return self.thread.as_ref().is_none_or(|thread| !thread.is_finished());
+    }
 }
 
 /// Filter + output size + key for the current content; `Err` = un-capturable, hold the last frame.

@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::compositor::{Compositor, Rect};
 use crate::config::{Config, SourceId};
@@ -96,6 +96,9 @@ pub struct Engine {
     pub dirty: bool,
     last_saved_at: Instant,
     last_discovery: Instant,
+    last_tick: Instant,
+    last_heartbeat: Instant,
+    worst_tick_gap: Duration,
     pub selected_source_id: Option<SourceId>,
     pub expanded_source_id: Option<SourceId>,
     pub drag_state: DragState,

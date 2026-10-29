@@ -47,6 +47,12 @@ impl SourceKey {
 pub trait VideoSource: Send + Sync {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame>;
     fn stats(&self) -> Arc<Mutex<SourceStats>>;
+    /// Whether this source can still produce frames. A capture thread that
+    /// exited (failed open, SDK error) reports false, so the registry treats the
+    /// key as absent and the reconnect pass retries it.
+    fn alive(&self) -> bool {
+        return true;
+    }
 }
 
 /// Protocol-specific source configuration stored in the config file.
@@ -289,6 +295,7 @@ impl SourceKind {
     }
 
     fn new(key: &SourceKey, config: SourceConfig, runtime: SourceRuntimeConfig) -> Self {
+        let started = Instant::now();
         let source: Box<dyn VideoSource> = match (&config, &runtime) {
             (SourceConfig::Test(c), SourceRuntimeConfig::Test) => {
                 Box::new(test::TestSource::spawn(key.source_ref.clone(), c))
@@ -340,6 +347,15 @@ impl SourceKind {
             // variant; no other pairing can exist.
             _ => unreachable!("source config paired with a foreign runtime config"),
         };
+        let elapsed = started.elapsed();
+        if elapsed >= SLOW_TEARDOWN {
+            tracing::warn!(
+                protocol = key.protocol.name(),
+                source = key.source_ref,
+                elapsed_ms = elapsed.as_millis() as u64,
+                "source open is slow"
+            );
+        }
         return Self { source, config, runtime };
     }
 
@@ -357,6 +373,10 @@ impl SourceKind {
 
     pub fn stats(&self) -> Arc<Mutex<SourceStats>> {
         return self.source.stats();
+    }
+
+    fn alive(&self) -> bool {
+        return self.source.alive();
     }
 
     pub fn to_config(&self) -> SourceConfig {
@@ -394,6 +414,14 @@ impl SourceKind {
 /// How long a restart may stay outstanding before its key is released for another attempt.
 const RESTART_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// Spacing between open attempts for a key whose capture thread died. Short
+/// enough to recover a busy device, long enough not to spawn a thread per tick.
+const RETRY_BACKOFF: Duration = Duration::from_secs(2);
+
+/// Opening a source runs inline on the thread holding the engine lock, and a
+/// release slower than this is worth a log line.
+const SLOW_TEARDOWN: Duration = Duration::from_millis(100);
+
 pub struct RestartResult {
     pub key: SourceKey,
     pub kind: SourceKind,
@@ -421,6 +449,8 @@ pub struct SourceRegistry {
     next_vnc: u32,
     next_rdp: u32,
     pending_restarts: HashMap<SourceKey, Instant>,
+    /// When a key whose capture thread died may be opened again.
+    retry_after: HashMap<SourceKey, Instant>,
     restart_tx: Sender<RestartResult>,
     restart_rx: Receiver<RestartResult>,
 }
@@ -434,17 +464,37 @@ impl SourceRegistry {
             next_vnc: 0,
             next_rdp: 0,
             pending_restarts: HashMap::new(),
+            retry_after: HashMap::new(),
             restart_tx: tx,
             restart_rx: rx,
         }
     }
 
+    /// Whether `key` has a runtime source that can still produce frames.
+    pub fn is_live(&self, key: &SourceKey) -> bool {
+        return self.sources.get(key).is_some_and(SourceKind::alive);
+    }
+
+    /// Whether the reconnect pass may open `key` now: it has no live source and
+    /// its last attempt is not still in backoff.
+    pub fn can_open(&self, key: &SourceKey) -> bool {
+        if self.is_live(key) {
+            return false;
+        }
+        return self.retry_after.get(key).is_none_or(|at| Instant::now() >= *at);
+    }
+
+    fn note_opened(&mut self, key: &SourceKey) {
+        self.retry_after.insert(key.clone(), Instant::now() + RETRY_BACKOFF);
+    }
+
     /// Build and register a source under `key`, unless one is already live or
     /// restarting. Every placement binding a key shares one runtime source.
     fn add_new(&mut self, key: SourceKey, config: SourceConfig, runtime: SourceRuntimeConfig) -> SourceKey {
-        if !self.contains(&key) {
+        if !self.is_live(&key) {
             let kind = SourceKind::new(&key, config, runtime);
             self.sources.insert(key.clone(), kind);
+            self.note_opened(&key);
         }
         return key;
     }
@@ -607,9 +657,9 @@ impl SourceRegistry {
         );
     }
 
-    /// Whether a source for this key is live or being restarted.
-    pub fn contains(&self, key: &SourceKey) -> bool {
-        self.sources.contains_key(key) || self.pending_restarts.contains_key(key)
+    /// Whether the map holds an entry for this key, live or dead.
+    fn contains(&self, key: &SourceKey) -> bool {
+        return self.sources.contains_key(key) || self.pending_restarts.contains_key(key);
     }
 
     pub fn get(&self, key: &SourceKey) -> Option<&SourceKind> {
@@ -698,6 +748,7 @@ impl SourceRegistry {
             // The entry in the map is the pending stand-in, so dropping it inline
             // is instant; the live source was already dropped on the restart thread.
             self.sources.insert(result.key.clone(), result.kind);
+            self.note_opened(&result.key);
             if edited {
                 self.restart(&result.key);
             }
@@ -726,12 +777,53 @@ impl SourceRegistry {
     }
 
     pub fn clear(&mut self) {
-        self.sources.clear();
+        let drained: Vec<(SourceKey, SourceKind)> = self.sources.drain().collect();
         self.next_test = 0;
         self.next_vnc = 0;
         self.next_rdp = 0;
         self.pending_restarts.clear();
+        self.retry_after.clear();
         while self.restart_rx.try_recv().is_ok() {}
+        if drained.is_empty() {
+            return;
+        }
+        // Releasing a device (DeckLink stop, camera session, SDK thread) takes
+        // seconds, and every caller of `clear` holds the engine lock.
+        tracing::debug!(sources = drained.len(), "releasing sources in background");
+        std::thread::Builder::new()
+            .name("source-teardown".into())
+            .spawn(move || release_sources(drained))
+            .ok();
+    }
+}
+
+/// Drop drained sources one at a time, reporting the slow ones.
+fn release_sources(sources: Vec<(SourceKey, SourceKind)>) {
+    let started = Instant::now();
+    for (key, kind) in sources {
+        let item_started = Instant::now();
+        drop(kind);
+        let elapsed = item_started.elapsed();
+        if elapsed >= SLOW_TEARDOWN {
+            tracing::warn!(
+                protocol = key.protocol.name(),
+                source = key.source_ref,
+                elapsed_ms = elapsed.as_millis() as u64,
+                "source teardown is slow"
+            );
+        }
+    }
+    let elapsed = started.elapsed();
+    if elapsed >= SLOW_TEARDOWN {
+        tracing::warn!(elapsed_ms = elapsed.as_millis() as u64, "sources released");
+    }
+}
+
+impl Drop for SourceRegistry {
+    fn drop(&mut self) {
+        // ponytail: process exit can outrun this release and leave the device to
+        // its driver; waiting for it would put the freeze back on the quit path.
+        self.clear();
     }
 }
 
@@ -903,5 +995,84 @@ mod tests {
 
         registry.restart(&key);
         assert!(registry.pending_restarts.contains_key(&key));
+    }
+
+    /// A source whose capture thread exited (failed open) must be reopened by the
+    /// reconnect pass, but only after its backoff, so a device that stays busy is
+    /// not retried on every tick.
+    #[test]
+    fn a_dead_source_is_retried_once_its_backoff_expires() {
+        struct DeadSource;
+
+        impl VideoSource for DeadSource {
+            fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
+                return None;
+            }
+
+            fn stats(&self) -> Arc<Mutex<SourceStats>> {
+                return Arc::new(Mutex::new(SourceStats::new()));
+            }
+
+            fn alive(&self) -> bool {
+                return false;
+            }
+        }
+
+        let mut registry = SourceRegistry::new();
+        let key = registry.add_test(None);
+        assert!(!registry.can_open(&key));
+
+        registry.sources.get_mut(&key).unwrap().source = Box::new(DeadSource);
+        assert!(!registry.can_open(&key));
+
+        registry.retry_after.insert(key.clone(), Instant::now() - Duration::from_millis(1));
+        assert!(registry.can_open(&key));
+
+        let reopened = registry.add_new(
+            key.clone(),
+            SourceConfig::Test(Default::default()),
+            SourceRuntimeConfig::Test,
+        );
+        assert_eq!(reopened, key);
+        assert!(registry.is_live(&key));
+    }
+
+    /// Releasing equipment takes seconds per source, so a teardown started while
+    /// the engine lock is held must not wait for it.
+    #[test]
+    fn clear_returns_before_the_sources_are_released() {
+        struct SlowDrop;
+
+        impl VideoSource for SlowDrop {
+            fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
+                return None;
+            }
+
+            fn stats(&self) -> Arc<Mutex<SourceStats>> {
+                return Arc::new(Mutex::new(SourceStats::new()));
+            }
+        }
+
+        impl Drop for SlowDrop {
+            fn drop(&mut self) {
+                std::thread::sleep(Duration::from_millis(400));
+            }
+        }
+
+        let mut registry = SourceRegistry::new();
+        registry.sources.insert(
+            SourceKey::new(Protocol::Test, "slow".to_string()),
+            SourceKind {
+                source: Box::new(SlowDrop),
+                config: SourceConfig::Test(Default::default()),
+                runtime: SourceRuntimeConfig::Test,
+            },
+        );
+
+        let started = Instant::now();
+        registry.clear();
+
+        assert!(started.elapsed() < Duration::from_millis(200));
+        assert!(registry.sources.is_empty());
     }
 }

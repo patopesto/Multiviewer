@@ -17,6 +17,10 @@ use super::spout;
 
 pub type OutputId = String;
 
+/// A release slower than this would have blocked the engine lock for its whole
+/// duration, so it is reported.
+const SLOW_TEARDOWN: Duration = Duration::from_millis(100);
+
 /// Runtime video output. Implemented by NDI, Syphon, and DeckLink.
 pub trait VideoOutput: Send {
     fn present(
@@ -212,6 +216,10 @@ impl OutputKind {
         self.output.finish();
     }
 
+    pub fn name(&self) -> &str {
+        return self.output.name();
+    }
+
     pub fn enabled(&self) -> bool {
         return self.output.enabled();
     }
@@ -289,6 +297,10 @@ impl OutputRegistry {
         return self.outputs.values().any(|ok| ok.enabled());
     }
 
+    pub fn count(&self) -> usize {
+        return self.outputs.len();
+    }
+
     #[instrument(level = "debug", skip_all)]
     pub fn present_all(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
         for output in self.outputs.values() {
@@ -306,7 +318,48 @@ impl OutputRegistry {
     }
 
     pub fn clear(&mut self) {
-        self.outputs.clear();
+        let drained: Vec<(OutputId, OutputKind)> = self.outputs.drain().collect();
+        if drained.is_empty() {
+            return;
+        }
+        // NDI/OMT/DeckLink releases join their worker, which every caller of
+        // `clear` would otherwise wait for while holding the engine lock.
+        tracing::debug!(outputs = drained.len(), "releasing outputs in background");
+        std::thread::Builder::new()
+            .name("output-teardown".into())
+            .spawn(move || release_outputs(drained))
+            .ok();
+    }
+}
+
+/// Drop drained outputs one at a time, reporting the slow ones.
+fn release_outputs(outputs: Vec<(OutputId, OutputKind)>) {
+    let started = Instant::now();
+    for (id, kind) in outputs {
+        let item_started = Instant::now();
+        let name = kind.name().to_string();
+        drop(kind);
+        let elapsed = item_started.elapsed();
+        if elapsed >= SLOW_TEARDOWN {
+            tracing::warn!(
+                output = name,
+                id = id,
+                elapsed_ms = elapsed.as_millis() as u64,
+                "output teardown is slow"
+            );
+        }
+    }
+    let elapsed = started.elapsed();
+    if elapsed >= SLOW_TEARDOWN {
+        tracing::warn!(elapsed_ms = elapsed.as_millis() as u64, "outputs released");
+    }
+}
+
+impl Drop for OutputRegistry {
+    fn drop(&mut self) {
+        // ponytail: process exit can outrun this release and leave the device to
+        // its driver; waiting for it would put the freeze back on the quit path.
+        self.clear();
     }
 }
 
