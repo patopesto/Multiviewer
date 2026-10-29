@@ -212,7 +212,6 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
         );
     }
 
-    drop(push);
     values.sort_by(|a, b| a.0.cmp(&b.0));
     return values;
 }

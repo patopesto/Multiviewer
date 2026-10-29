@@ -121,7 +121,6 @@ impl PinnedState {
                 };
                 let mut write = view.slice(..);
                 pointers.push(write.as_raw_ptr().as_ptr() as *mut u8);
-                std::mem::forget(write);
                 std::mem::forget(view);
             }
             buffers.push(buffer);
@@ -771,16 +770,16 @@ impl VideoSource for DecklinkSource {
         if cfg!(any(target_os = "windows", target_os = "linux")) {
             self.ensure_pinned(device, queue);
             self.reap_pinned(device);
-            if let Some(pending) = self.pinned_slot.lock().unwrap().take() {
-                if let Some(frame) = self.copy_pinned(pending, device, queue) {
-                    *self.pinned_frame.lock().unwrap() = Some(frame.clone());
-                    return Some(frame);
-                }
+            if let Some(pending) = self.pinned_slot.lock().unwrap().take()
+                && let Some(frame) = self.copy_pinned(pending, device, queue)
+            {
+                *self.pinned_frame.lock().unwrap() = Some(frame.clone());
+                return Some(frame);
             }
-            if self.desired_pinned.load(Ordering::Relaxed) {
-                if let Some(frame) = self.pinned_frame.lock().unwrap().clone() {
-                    return Some(frame);
-                }
+            if self.desired_pinned.load(Ordering::Relaxed)
+                && let Some(frame) = self.pinned_frame.lock().unwrap().clone()
+            {
+                return Some(frame);
             }
         }
         return self.slot.lock().unwrap().clone();

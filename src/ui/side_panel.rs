@@ -1051,10 +1051,10 @@ fn draw_source_properties_section(ui: &mut egui::Ui, engine: &mut Engine, select
     }
 }
 
-fn preferred_output_mode<'a>(
-    port: &'a DecklinkOutputPort,
+fn preferred_output_mode(
+    port: &DecklinkOutputPort,
     current: DecklinkMode,
-) -> Option<&'a DecklinkOutputMode> {
+) -> Option<&DecklinkOutputMode> {
     if let Some(mode) = port.modes.iter().find(|mode| mode.mode == current) {
         return Some(mode);
     }
@@ -1146,6 +1146,7 @@ impl PickerGroup {
         };
     }
 
+    #[allow(dead_code)] // Screen-capture pickers only exist on macOS and Windows.
     fn titled(header: &'static str, items: impl IntoIterator<Item = PickerItem>) -> Self {
         return Self {
             header: Some(header),

@@ -1133,7 +1133,7 @@ mod tests {
 
     #[test]
     fn tick_rate_follows_what_is_on_screen() {
-        let mut engine = Engine::test_instance(Canvas::default());
+        let engine = Engine::test_instance(Canvas::default());
 
         assert_eq!(target_fps(true, &engine), ACTIVE_FPS);
         assert_eq!(target_fps(false, &engine), IDLE_FPS);

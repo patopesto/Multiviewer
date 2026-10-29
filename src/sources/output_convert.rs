@@ -217,6 +217,7 @@ impl YuvConverter {
 
     /// Convert `source` into `target`. `target.layout` must be the UYVY layout
     /// of the same frame size, at half width.
+    #[allow(clippy::too_many_arguments)]
     pub fn convert(
         &self,
         source: &wgpu::TextureView,

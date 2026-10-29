@@ -403,14 +403,10 @@ impl SyphonOutput {
         queue.write_buffer(vb, 0, bytemuck::cast_slice(&FLIP_VERTICES));
 
         let flipped = self.flipped.lock().unwrap();
-        let Some(flipped) = flipped.as_ref() else {
-            return None;
-        };
+        let flipped = flipped.as_ref()?;
         let view = &flipped.view;
         let bind_group = self.flipped_bind_group.lock().unwrap();
-        let Some(ref bind_group) = *bind_group else {
-            return None;
-        };
+        let bind_group = (*bind_group).as_ref()?;
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("syphon-flip"),

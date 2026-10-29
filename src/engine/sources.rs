@@ -246,7 +246,7 @@ impl Engine {
         };
         let discovered = discovery.list();
         for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Spout) {
-            if !discovered.iter().any(|s| *s == key.source_ref) {
+            if !discovered.contains(&key.source_ref) {
                 continue;
             }
             let config = match &placement.config {

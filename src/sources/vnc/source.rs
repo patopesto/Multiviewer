@@ -713,18 +713,18 @@ mod tests {
         let source = VncSource::spawn("VNC 1".to_string(), &config);
         let deadline = Instant::now() + Duration::from_secs(10);
         let frame = loop {
-            if let Some(frame) = source.slot.lock().unwrap().clone() {
-                break Some(frame);
+            if let Some(Frame::Cpu(frame)) = source.slot.lock().unwrap().clone()
+                && frame.data.get(0..4) == Some(&[0x11, 0x22, 0x33, 0xff][..])
+            {
+                break frame;
             }
-            if Instant::now() >= deadline {
-                break None;
-            }
+            assert!(
+                Instant::now() < deadline,
+                "VNC source never published the test rectangle"
+            );
             std::thread::sleep(Duration::from_millis(20));
         };
 
-        let Some(Frame::Cpu(frame)) = frame else {
-            panic!("no frame published by the VNC source");
-        };
         assert_eq!((frame.w, frame.h), (2, 2));
         assert_eq!(frame.fmt, PixelFormat::Bgra8);
         assert_eq!(&frame.data[0..4], &[0x11, 0x22, 0x33, 0xff]);

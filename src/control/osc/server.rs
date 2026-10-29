@@ -302,7 +302,7 @@ fn selector_arg(arg: &OscType) -> Option<Selector> {
         return parse_selector(text);
     }
     let index = arg_i32(arg)?;
-    return (index >= 0).then(|| Selector::Index(index as usize));
+    return (index >= 0).then_some(Selector::Index(index as usize));
 }
 
 fn arg_f32(arg: &OscType) -> Option<f32> {

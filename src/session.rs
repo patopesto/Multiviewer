@@ -123,24 +123,21 @@ mod tests {
 
     #[test]
     fn record_recent_moves_duplicate_to_front_and_caps() {
+        let dir = std::env::temp_dir();
+        let a = dir.join("a.multiviewer");
+        let b = dir.join("b.multiviewer");
         let mut s = Session::default();
-        s.record_recent("/tmp/a.multiviewer");
-        s.record_recent("/tmp/b.multiviewer");
-        s.record_recent("/tmp/a.multiviewer");
-        assert_eq!(
-            s.recent_projects,
-            vec![
-                PathBuf::from("/tmp/a.multiviewer"),
-                PathBuf::from("/tmp/b.multiviewer")
-            ]
-        );
-        assert_eq!(s.last_project, Some(PathBuf::from("/tmp/a.multiviewer")));
+        s.record_recent(&a);
+        s.record_recent(&b);
+        s.record_recent(&a);
+        assert_eq!(s.recent_projects, vec![a.clone(), b]);
+        assert_eq!(s.last_project, Some(a));
 
         for i in 0..20 {
-            s.record_recent(format!("/tmp/p{i}.multiviewer"));
+            s.record_recent(dir.join(format!("p{i}.multiviewer")));
         }
         assert_eq!(s.recent_projects.len(), RECENT_MAX);
-        assert_eq!(s.recent_projects[0], PathBuf::from("/tmp/p19.multiviewer"));
+        assert_eq!(s.recent_projects[0], dir.join("p19.multiviewer"));
     }
 
     #[test]
@@ -174,8 +171,10 @@ mod tests {
 
     #[test]
     fn prune_missing_drops_nonexistent_paths() {
-        let mut s = Session::default();
-        s.recent_projects = vec![std::env::temp_dir(), PathBuf::from("/nonexistent/x.multiviewer")];
+        let mut s = Session {
+            recent_projects: vec![std::env::temp_dir(), PathBuf::from("/nonexistent/x.multiviewer")],
+            ..Default::default()
+        };
         s.prune_missing();
         assert_eq!(s.recent_projects, vec![std::env::temp_dir()]);
     }

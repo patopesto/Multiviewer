@@ -510,8 +510,7 @@ impl DecklinkOutput {
                                 }
                                 #[cfg(target_os = "macos")]
                                 OutputFrame::Cv { index, .. } => {
-                                    cv_completed_arg
-                                        .expect("macOS completions")
+                                    cv_completed_worker
                                         .lock()
                                         .unwrap()
                                         .push(index);
@@ -673,8 +672,7 @@ impl DecklinkOutput {
                             }
                             if !ok {
                                 cv_failed_worker.store(true, Ordering::Relaxed);
-                                cv_completed_arg
-                                    .expect("macOS completions")
+                                cv_completed_worker
                                     .lock()
                                     .unwrap()
                                     .push(index);
@@ -902,6 +900,7 @@ impl DecklinkOutput {
         return scaled;
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_scale(
         &self,
         device: &wgpu::Device,
@@ -950,7 +949,7 @@ impl DecklinkOutput {
         queue.write_buffer(self.scale_vb.get().unwrap(), 0, bytemuck::cast_slice(&vertices));
 
         let bind_group = self.scaled_bind_group.lock().unwrap();
-        let Some(ref bind_group) = *bind_group else { return None };
+        let bind_group = (*bind_group).as_ref()?;
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("decklink-scale"),
@@ -1253,8 +1252,7 @@ impl VideoOutput for DecklinkOutput {
                 Ok(view) => {
                     // The mapping stays active until unmap_and_release; the
                     // view only owns the map-context range, so it must drop.
-                    let ptr = unsafe { view.as_ptr().add(16) } as *mut u8;
-                    ptr
+                    unsafe { view.as_ptr().add(16) as *mut u8 }
                 }
                 Err(e) => {
                     tracing::error!(output = self.name, "DeckLink output mapped range unavailable: {e:?}");

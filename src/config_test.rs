@@ -817,8 +817,10 @@ fn config_version_round_trips() {
 
 #[test]
 fn auto_save_interval_round_trips() {
-    let mut cfg = Config::default();
-    cfg.auto_save_interval = 300;
+    let cfg = Config {
+        auto_save_interval: 300,
+        ..Default::default()
+    };
 
     let reloaded: Config = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
 

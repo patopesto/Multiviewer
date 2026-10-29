@@ -64,7 +64,7 @@ impl Engine {
         let bbox_w = (max_x - min_x).max(1.0);
         let bbox_h = (max_y - min_y).max(1.0);
         let (base_scale, base_ox, base_oy) = compositor::canvas_transform(canvas, panel_rect);
-        if !(base_scale > 0.0) {
+        if !base_scale.is_finite() || base_scale <= 0.0 {
             return;
         }
         let target_scale = (panel_rect.width() / bbox_w).min(panel_rect.height() / bbox_h) * 0.9;
@@ -81,7 +81,7 @@ impl Engine {
             compositor::canvas_transform(&self.cfg.canvas, panel_rect);
         // A viewport that has not been laid out yet (or a zero-size panel)
         // would divide by zero and poison the view with NaN.
-        if !(base_scale > 0.0) {
+        if !base_scale.is_finite() || base_scale <= 0.0 {
             return;
         }
         let old_zoom = self.view.zoom;

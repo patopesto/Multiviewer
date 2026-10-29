@@ -358,7 +358,7 @@ fn client(config: &RdpSourceConfig, frames: mpsc::Sender<RdpOutputEvent>) -> any
 /// compositor samples. RDP leaves the fourth byte zero, and the canvas an output
 /// reads would carry that alpha through, so it is forced opaque.
 fn to_bgra(pixels: &[u32], out: &mut [u8]) {
-    for (pixel, quad) in pixels.iter().zip(out.chunks_exact_mut(BGRA_BYTES)) {
+    for (pixel, quad) in pixels.iter().zip(out.as_chunks_mut::<BGRA_BYTES>().0) {
         quad[0] = *pixel as u8;
         quad[1] = (*pixel >> 8) as u8;
         quad[2] = (*pixel >> 16) as u8;
