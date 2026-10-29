@@ -558,6 +558,35 @@ fn nudge_selected_source_ignores_when_expanded() {
 }
 
 #[test]
+fn hit_test_picks_the_topmost_source_on_a_z_tie() {
+    let mut canvas = Canvas {
+        width: 100,
+        height: 100,
+        sources: vec![],
+        outputs: Vec::new(),
+        ..Default::default()
+    };
+    for name in ["A", "B"] {
+        canvas.sources.push(Source::new(
+            name.into(), Protocol::Test, None,
+            0.0, 0.0, 50, 50, 0,
+            TextureMode::Fit, false, false,
+        ));
+    }
+    let mut engine = test_engine(canvas);
+    let panel = Rect { x: 0.0, y: 0.0, w: 400.0, h: 400.0 };
+    let (a, b) = (
+        engine.cfg.canvas.sources[0].uuid.clone(),
+        engine.cfg.canvas.sources[1].uuid.clone(),
+    );
+
+    assert_eq!(engine.hit_test(&panel, (5.0, 5.0)), Some(b));
+
+    engine.cfg.canvas.sources[1].z = -1;
+    assert_eq!(engine.hit_test(&panel, (5.0, 5.0)), Some(a));
+}
+
+#[test]
 fn auto_save_triggers_after_interval_when_dirty() {
     let mut engine = test_engine(Canvas::default());
     engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));

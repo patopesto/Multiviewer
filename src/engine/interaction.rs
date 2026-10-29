@@ -256,11 +256,13 @@ impl Engine {
         let cx = panel_rect.x + offset_x;
         let cy = panel_rect.y + offset_y;
 
+        // Must mirror compositor::Compositor::build: same sort, so equal z
+        // keeps list order and the last drawn source is the topmost to hit.
         let mut sources: Vec<_> = canvas.sources.iter().collect();
-        sources.sort_by_key(|l| -l.z);
+        sources.sort_by_key(|l| l.z);
 
         let (px, py) = pos;
-        for source in sources {
+        for source in sources.iter().rev() {
             let lx = cx + source.x * scale;
             let ly = cy + source.y * scale;
             let lw = source.width as f32 * scale;
