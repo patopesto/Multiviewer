@@ -259,7 +259,8 @@ fn screencapturekit_source_round_trips_on_unavailable_platform() {
         "flip_h":false,"flip_v":false,
         "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"ScreenCaptureKit","kind":"display",
-                  "display_id":"724561234"}
+                  "display_id":"724561234",
+                  "settings":{"show_cursor":true}}
     }"#;
     let parsed: Source =
         assert_unavailable_round_trip(json, "ScreenCaptureKit", cfg!(target_os = "macos"));

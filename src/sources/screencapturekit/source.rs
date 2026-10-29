@@ -138,6 +138,7 @@ impl StreamDelegate {
 
 // @docs protocol="Screen capture" section="macOS" direction=input
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ScreenCaptureKitSettings {
     // @docs label="Cursor" options="Show,Hide" default="Show"
     /// Whether the mouse pointer is drawn into the capture.

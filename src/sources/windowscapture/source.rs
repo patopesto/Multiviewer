@@ -78,6 +78,7 @@ impl CaptureSecondaryWindows {
 
 // @docs protocol="Screen capture" section="Windows" direction=input
 #[derive(Clone, Debug, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct WindowsCaptureSettings {
     /// Whether the mouse pointer is captured.
     pub cursor: CaptureCursor,
