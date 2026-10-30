@@ -13,8 +13,9 @@ includes:
 vars:
   APP_NAME: Multiviewer
   DIST_DIR: dist
-  VERSION: 1.1.0
-    # sh: grep '^version = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/'
+  PKGID:
+    sh: cargo pkgid
+  VERSION: '{{ regexReplaceAll "^.*@" .PKGID "" }}'
   DIST_NAME: "{{.APP_NAME}}_v{{.VERSION}}_{{OS}}_{{ARCH}}"
 
 tasks:
@@ -55,9 +56,11 @@ tasks:
   check:version:
     desc: Verify versions are consistent
     platforms: [darwin, linux]
+    silent: true
     cmds:
       - |
         set -e
+        echo "Cargo.toml: {{.VERSION}}"
         packager_version=$(grep '^version = ' task/Packager.common.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
         if [ "{{.VERSION}}" != "$packager_version" ]; then
           echo "❌ Version mismatch: Cargo.toml={{.VERSION}}, task/Packager.common.toml=$packager_version"
