@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
-use super::Engine;
+use super::{Engine, RunTotals};
 use crate::config::{Config, ConfigError, Source, TextureMode, CONFIG_VERSION};
 #[cfg(test)]
 use crate::config::Canvas;
@@ -103,6 +103,7 @@ impl Engine {
             canvas_rect: Rect::default(),
             ui_visible: true,
             load_warnings: Vec::new(),
+            totals: RunTotals::default(),
         };
     }
 

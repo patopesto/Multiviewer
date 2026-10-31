@@ -67,6 +67,33 @@ pub struct SnapGuides {
     pub y: Option<f32>,
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct RunTotals {
+    pub ticks: u64,
+    pub work_ms: f64,
+    pub gpu_ms: f64,
+    pub gpu_samples: u64,
+    pub uploads: u64,
+    pub upload_bytes: u64,
+    pub upload_fallbacks: u64,
+}
+
+impl RunTotals {
+    pub fn mean_work_ms(&self) -> f32 {
+        if self.ticks == 0 {
+            return 0.0;
+        }
+        return (self.work_ms / self.ticks as f64) as f32;
+    }
+
+    pub fn mean_gpu_ms(&self) -> Option<f32> {
+        if self.gpu_samples == 0 {
+            return None;
+        }
+        return Some((self.gpu_ms / self.gpu_samples as f64) as f32);
+    }
+}
+
 pub struct Engine {
     pub cfg: Config,
     pub registry: SourceRegistry,
@@ -108,6 +135,7 @@ pub struct Engine {
     pub canvas_rect: Rect,
     pub ui_visible: bool,
     pub load_warnings: Vec<String>,
+    totals: RunTotals,
 }
 
 impl Engine {

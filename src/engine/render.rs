@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::Engine;
+use super::{Engine, RunTotals};
 use crate::compositor::{Compositor, Draw, Rect, Shared};
 
 impl Engine {
@@ -13,6 +13,28 @@ impl Engine {
         if self.comp.is_none() {
             self.comp = Some(Compositor::new(device, queue, target_format));
         }
+    }
+
+    /// Close out one tick: emit its counters and fold them into the run totals.
+    /// Returns the smoothed GPU pass time for the status bar.
+    pub fn finish_tick(&mut self, tick_ms: f32) -> Option<f32> {
+        let gpu_ms = self.comp.as_mut().and_then(Compositor::gpu_ms);
+        let stats = self.comp.as_ref().map(Compositor::frame_stats).unwrap_or_default();
+        stats.report(self.cfg.canvas.sources.len(), tick_ms, gpu_ms);
+        self.totals.ticks += 1;
+        self.totals.work_ms += tick_ms as f64;
+        if let Some(gpu) = gpu_ms {
+            self.totals.gpu_ms += gpu as f64;
+            self.totals.gpu_samples += 1;
+        }
+        self.totals.uploads += stats.uploads as u64;
+        self.totals.upload_bytes += stats.upload_bytes;
+        self.totals.upload_fallbacks += stats.upload_fallbacks as u64;
+        return gpu_ms;
+    }
+
+    pub fn run_totals(&self) -> RunTotals {
+        return self.totals;
     }
 
     /// Start a new frame: clear the compositor's per-frame source cache and pull every canvas source once
@@ -28,6 +50,7 @@ impl Engine {
             &self.cfg.canvas,
             self.expanded_source_id.as_deref(),
         );
+        comp.flush_uploads(queue);
     }
 
     pub fn build_frame(

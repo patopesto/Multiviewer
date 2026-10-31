@@ -50,6 +50,9 @@ pub struct App {
     gpu_name: Option<String>,
     next_frame: Instant,
     next_output_frame: Instant,
+    /// Set by `--exit-after`; the first frame past it closes the window so
+    /// `on_exit` runs and the trace flushes.
+    deadline: Option<Instant>,
     trace_guard: Option<tracing_chrome::FlushGuard>,
 }
 
@@ -188,6 +191,7 @@ impl App {
         cc: &eframe::CreationContext<'_>,
         startup_path: Option<PathBuf>,
         trace_guard: Option<tracing_chrome::FlushGuard>,
+        deadline: Option<Instant>,
     ) -> Self {
         let (gpu_backend, gpu_name) = match &cc.wgpu_render_state {
             Some(render_state) => {
@@ -214,6 +218,7 @@ impl App {
             gpu_name,
             next_frame: Instant::now(),
             next_output_frame: Instant::now(),
+            deadline,
             trace_guard,
         };
 
@@ -278,6 +283,13 @@ impl App {
 impl eframe::App for App {
     // Called once per frame before ui(), should not perform any drawing here
     fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        if self.deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            self.deadline = None;
+            tracing::info!("run deadline reached, closing");
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+
         self.handle_dropped_files(ctx);
         self.handle_platform_open_files();
         self.update_title(ctx);
@@ -348,6 +360,16 @@ impl eframe::App for App {
         let started = Instant::now();
         tracing::info!("exiting");
         drop(self.tick.take());
+        let totals = self.engine().run_totals();
+        tracing::info!(
+            ticks = totals.ticks,
+            mean_work_ms = totals.mean_work_ms(),
+            mean_gpu_ms = ?totals.mean_gpu_ms(),
+            uploads = totals.uploads,
+            upload_mb = totals.upload_bytes / (1024 * 1024),
+            upload_fallbacks = totals.upload_fallbacks,
+            "run totals"
+        );
         drop(self.trace_guard.take());
         tracing::info!(total_ms = started.elapsed().as_millis() as u64, "exit");
     }

@@ -20,15 +20,18 @@ pub const APP_NAME: &str = "Multiviewer";
 pub const PROJECT_FILE_EXTENSION: &str = "multiviewer";
 
 fn main() -> eframe::Result<()> {
-    let (show_console, startup_path, trace_path) = parse_cli();
-    platform::init_console(show_console);
+    let start = std::time::Instant::now();
+    let cli = parse_cli(std::env::args().skip(1));
+    // Wall clock from process start, so --exit-after includes startup.
+    let deadline = cli.exit_after.map(|run| start + run);
+    platform::init_console(cli.console);
 
-    let trace_guard = init_tracing(trace_path);
+    let trace_guard = init_tracing(cli.trace);
 
     platform::setup_app();
 
     let session = session::Session::load();
-    let startup_path = startup_path.or(session.last_project);
+    let startup_path = cli.project.or(session.last_project);
 
     let icon = eframe::icon_data::from_png_bytes(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/appicon/AppIcon.png")))
         .expect("failed to decode app icon");
@@ -50,34 +53,46 @@ fn main() -> eframe::Result<()> {
             platform::on_window_created(&cc.egui_ctx);
             log_wgpu_backend(cc);
             install_wgpu_error_handler(cc);
-            return Ok(Box::new(ui::App::new(cc, startup_path, trace_guard)));
+            return Ok(Box::new(ui::App::new(cc, startup_path, trace_guard, deadline)));
         }),
     );
 }
 
-fn parse_cli() -> (bool, Option<std::path::PathBuf>, Option<std::path::PathBuf>) {
-    let mut show_console = false;
-    let mut trace_path: Option<std::path::PathBuf> = None;
-    let mut positional: Option<std::path::PathBuf> = None;
+/// Command-line options. Anything unrecognised is ignored.
+#[derive(Default)]
+struct Cli {
+    console: bool,
+    project: Option<std::path::PathBuf>,
+    trace: Option<std::path::PathBuf>,
+    exit_after: Option<std::time::Duration>,
+}
 
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    let mut i = 0;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--console" => show_console = true,
-            "--trace" => {
-                i += 1;
-                trace_path = args.get(i).map(std::path::PathBuf::from);
+fn parse_cli(args: impl IntoIterator<Item = String>) -> Cli {
+    let mut cli = Cli::default();
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--console" => cli.console = true,
+            "--trace" => cli.trace = args.next().map(std::path::PathBuf::from),
+            "--exit-after" => {
+                let Some(value) = args.next() else {
+                    eprintln!("--exit-after needs a duration in seconds");
+                    continue;
+                };
+                match value.parse::<f32>() {
+                    Ok(secs) if secs.is_finite() && secs >= 0.0 => {
+                        cli.exit_after = Some(std::time::Duration::from_secs_f32(secs));
+                    }
+                    _ => eprintln!("ignoring --exit-after {value}: expected seconds"),
+                }
             }
-            arg if positional.is_none() && !arg.starts_with('-') => {
-                positional = Some(std::path::PathBuf::from(arg));
+            other if cli.project.is_none() && !other.starts_with('-') => {
+                cli.project = Some(std::path::PathBuf::from(other));
             }
             _ => {}
         }
-        i += 1;
     }
-
-    return (show_console, positional, trace_path);
+    return cli;
 }
 
 /// Chrome/Perfetto trace export when `--trace <file>.json` is passed;
@@ -149,3 +164,30 @@ fn install_wgpu_error_handler(cc: &eframe::CreationContext<'_>) {
     }));
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn cli(args: &[&str]) -> Cli {
+        return parse_cli(args.iter().map(|arg| arg.to_string()));
+    }
+
+    #[test]
+    fn parses_exit_after_and_project() {
+        let parsed = cli(&["--exit-after", "2.5", "show.multiviewer"]);
+        assert_eq!(parsed.exit_after, Some(Duration::from_secs_f32(2.5)));
+        assert_eq!(
+            parsed.project,
+            Some(std::path::PathBuf::from("show.multiviewer"))
+        );
+    }
+
+    #[test]
+    fn rejects_missing_or_invalid_exit_after() {
+        assert_eq!(cli(&["--exit-after"]).exit_after, None);
+        assert_eq!(cli(&["--exit-after", "soon"]).exit_after, None);
+        assert_eq!(cli(&["--exit-after", "-1"]).exit_after, None);
+        assert_eq!(cli(&["--exit-after", "inf"]).exit_after, None);
+    }
+}
