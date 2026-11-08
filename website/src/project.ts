@@ -9,6 +9,7 @@ export const project: ProjectConfig = {
   description:
     'Compose NDI, DeckLink, Syphon, Spout, capture-device and screen sources on a real-time canvas, then broadcast the result. Native apps for macOS, Windows and Linux.',
   domain: 'https://multiviewer.bambinito.net',
+  copyright: '© 2026 Alban Moreon',
   accent: '#ff3b30',
   icon: { svg: icon, size: '30px' },
   gitlabProject: 'patopest/multiviewer',

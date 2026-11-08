@@ -3,7 +3,8 @@ title: Licenses
 description: Multiviewer's own license and the third-party components it ships with.
 ---
 
-import AppLicense from '../../components/AppLicense.astro';
+import AppLicense from '@patopest/astro-theme/components/AppLicense.astro';
+import license from '../../../../LICENSE?raw';
 import VendorLicenses from '../../components/VendorLicenses.astro';
 
 <div class="container prose section">
@@ -14,7 +15,7 @@ Multiviewer is released under the MIT License. It is distributed with the third-
 
 ---
 
-<AppLicense />
+<AppLicense text={license} />
 
 ---
 

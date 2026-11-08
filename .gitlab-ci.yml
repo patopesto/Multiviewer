@@ -200,5 +200,6 @@ pages:
   artifacts:
     paths:
       - website/dist
+    expire_in: 1 day
   pages:
     publish: website/dist

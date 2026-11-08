@@ -11,9 +11,9 @@
   </defs>
   <!-- <rect width="1024" height="1024" rx="229" fill="url(#bg)" /> -->
   <g fill="url(#red)">
-    <rect x="100" y="100" width="350" height="350" rx="40" />
-    <rect x="534" y="100" width="350" height="350" rx="40" />
-    <rect x="100" y="534" width="350" height="350" rx="40" />
-    <rect x="534" y="534" width="350" height="350" rx="40" />
+    <rect x="120" y="120" width="350" height="350" rx="40" />
+    <rect x="554" y="120" width="350" height="350" rx="40" />
+    <rect x="120" y="554" width="350" height="350" rx="40" />
+    <rect x="554" y="554" width="350" height="350" rx="40" />
   </g>
 </svg>
