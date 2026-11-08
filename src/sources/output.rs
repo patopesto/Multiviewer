@@ -378,6 +378,7 @@ pub struct ReadbackPool {
 struct ReadbackSlot {
     buffer: wgpu::Buffer,
     pending: Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>,
+    pending_since: Option<Instant>,
     mapped: bool,
     width: u32,
     height: u32,
@@ -385,6 +386,9 @@ struct ReadbackSlot {
 }
 
 const READBACK_SLOTS: usize = 3; // default number of slots
+/// A map that has not completed in this long is treated as lost, not waiting:
+/// leaving the slot pending starves the ring until the next project load.
+const STUCK_MAP: Duration = Duration::from_secs(1);
 
 impl ReadbackPool {
     pub fn new() -> Self {
@@ -422,6 +426,7 @@ impl ReadbackPool {
                 ReadbackSlot {
                     buffer,
                     pending: None,
+                    pending_since: None,
                     mapped: false,
                     width: 0,
                     height: 0,
@@ -468,6 +473,7 @@ impl ReadbackPool {
                 let _ = tx.send(result);
             });
         self.slots[slot].pending = Some(rx);
+        self.slots[slot].pending_since = Some(Instant::now());
     }
 
     /// Layout the slot's readback was recorded with.
@@ -482,24 +488,42 @@ impl ReadbackPool {
 
     /// The first slot whose map completed, left mapped for the caller to read.
     pub fn take_ready(&mut self) -> Option<usize> {
+        let now = Instant::now();
         for i in 0..self.slots.len() {
-            let result = match self.slots[i].pending.as_ref() {
-                Some(rx) => rx.try_recv(),
-                None => continue,
+            let Some(rx) = self.slots[i].pending.take() else {
+                continue;
             };
-            match result {
+            match rx.try_recv() {
                 Ok(Ok(())) => {
-                    self.slots[i].pending = None;
+                    self.slots[i].pending_since = None;
                     self.slots[i].mapped = true;
                     return Some(i);
                 }
                 Ok(Err(_)) | Err(mpsc::TryRecvError::Disconnected) => {
-                    self.slots[i].pending = None;
+                    self.recover_slot(i, "readback map lost");
                 }
-                Err(mpsc::TryRecvError::Empty) => {}
+                Err(mpsc::TryRecvError::Empty) => {
+                    let stuck = self.slots[i]
+                        .pending_since
+                        .is_some_and(|since| now.duration_since(since) >= STUCK_MAP);
+                    if stuck {
+                        self.recover_slot(i, "readback map stalled");
+                    } else {
+                        self.slots[i].pending = Some(rx);
+                    }
+                }
             }
         }
         return None;
+    }
+
+    /// A failed or abandoned map leaves the buffer mapped, and wgpu then rejects
+    /// every submit that copies into it: unmap before the slot is reused.
+    fn recover_slot(&mut self, slot: usize, reason: &str) {
+        self.slots[slot].buffer.unmap();
+        self.slots[slot].pending = None;
+        self.slots[slot].pending_since = None;
+        tracing::debug!(slot, reason, "readback slot recovered");
     }
 
     /// Return a slot after its mapped range was dropped and unmapped.
