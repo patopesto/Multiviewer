@@ -341,19 +341,28 @@ impl Engine {
         }
     }
 
+    /// Source keys the canvas still references. Placements can share a key, so
+    /// the result has no duplicates.
+    pub fn active_source_keys(&self) -> Vec<SourceKey> {
+        let mut keys: Vec<SourceKey> = Vec::new();
+        for source in &self.cfg.canvas.sources {
+            let Some(source_ref) = source.source_ref.clone() else {
+                continue;
+            };
+            let key = SourceKey::new(source.protocol.clone(), source_ref);
+            if !keys.contains(&key) {
+                keys.push(key);
+            }
+        }
+        return keys;
+    }
+
     pub fn cleanup_orphaned_sources(&mut self) {
-        let active_keys: Vec<SourceKey> = self
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .filter_map(|l| {
-                l.source_ref
-                    .clone()
-                    .map(|source_ref| SourceKey::new(l.protocol.clone(), source_ref))
-            })
-            .collect();
+        let active_keys = self.active_source_keys();
         self.registry.cleanup_orphaned_sources(&active_keys);
+        if let Some(comp) = self.comp.as_mut() {
+            comp.retain_sources(&active_keys);
+        }
     }
 
     /// Persisted config of the source placement on `protocol` that references `source_ref`
@@ -557,6 +566,13 @@ impl Engine {
             self.expanded_source_id = None;
         }
         self.dirty = true;
+        // A placement's runtime textures outlive it otherwise; keys are shared
+        // between placements, so prune against what the canvas still references.
+        let active_keys = self.active_source_keys();
+        if let Some(comp) = self.comp.as_mut() {
+            comp.forget_placement(uuid);
+            comp.retain_sources(&active_keys);
+        }
     }
 
     /// Persist a runtime protocol config edit. The runtime source is shared by

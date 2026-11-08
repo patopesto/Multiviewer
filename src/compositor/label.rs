@@ -107,9 +107,13 @@ impl Frame<'_> {
 }
 
 impl Compositor {
+    /// Drop the cached label of a placement that left the canvas.
+    pub fn forget_placement(&mut self, uuid: &str) {
+        self.label_textures.remove(uuid);
+    }
+
     /// Cached label texture for `uuid`; re-rasterizes when the key hash changes.
-    pub(super) fn ensure_label_texture(
-        &mut self,
+    pub(super) fn ensure_label_texture(        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         uuid: String,

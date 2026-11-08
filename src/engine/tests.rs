@@ -137,6 +137,38 @@ fn removing_expanded_source_clears_it() {
 
     engine.remove_source(&uuid);
     assert!(engine.expanded_source_id().is_none());
+    assert!(engine.active_source_keys().is_empty());
+}
+
+#[test]
+fn active_source_keys_dedupes_shared_refs_and_skips_unbound() {
+    let mut canvas = Canvas {
+        width: 1920,
+        height: 1080,
+        sources: vec![],
+        outputs: Vec::new(),
+        ..Default::default()
+    };
+    for (name, source_ref) in [("A", Some("Test A")), ("B", Some("Test A")), ("C", None)] {
+        canvas.sources.push(Source::new(
+            name.into(),
+            Protocol::Test,
+            source_ref.map(str::to_string),
+            100.0,
+            100.0,
+            100,
+            100,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        ));
+    }
+    let engine = test_engine(canvas);
+    assert_eq!(
+        engine.active_source_keys(),
+        vec![SourceKey::new(Protocol::Test, "Test A".into())]
+    );
 }
 
 #[test]

@@ -238,4 +238,15 @@ impl Compositor {
         }
         return st;
     }
+
+    /// Drop the GPU resources of placements the canvas no longer references.
+    pub fn retain_sources(&mut self, active: &[SourceKey]) {
+        self.textures.retain(|key, _| {
+            let keep = active.contains(key);
+            if !keep {
+                tracing::debug!(source = %key.source_ref, "dropping source texture");
+            }
+            return keep;
+        });
+    }
 }
