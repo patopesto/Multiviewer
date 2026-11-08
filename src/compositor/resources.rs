@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use super::gpu::{conv_uniform, create_cell_layout, create_sampler, create_vertex_index_buffers, placeholder, render_pipeline, solid_bind_group, texture_bind_group, MAX_LAYERS, QUADS_PER_SOURCE, SHADER};
-use super::{Compositor, Shared, Vert};
+use super::metrics::GpuTimers;
+use super::upload::{Staging, Uploader};
+use super::{Compositor, FrameStats, Shared, Vert};
 use crate::sources::{
     CpuFrame, PixelFormat, SourceKey, SourceStats, TextureTarget, UPLOAD_TARGET_USAGE,
 };
@@ -13,6 +15,7 @@ pub(super) struct SourceTex {
     _uniform: wgpu::Buffer,
     pub(super) bg: Arc<wgpu::BindGroup>,
     seq: u64,
+    staging: Option<Arc<Staging>>,
 }
 
 impl Compositor {
@@ -115,6 +118,9 @@ impl Compositor {
             label_bg_color,
             label_bg_bg,
             text_pipeline,
+            timers: GpuTimers::new(device, queue),
+            uploader: Uploader::new(),
+            frame_stats: FrameStats::default(),
         }
     }
 
@@ -144,6 +150,7 @@ impl Compositor {
         if stale {
             self.textures.remove(key);
         }
+        let created = !self.textures.contains_key(key);
         let st = self.textures.entry(key.clone()).or_insert_with(|| {
             let mut target = None;
             TextureTarget::ensure(
@@ -167,38 +174,66 @@ impl Compositor {
                 _uniform: uniform,
                 bg,
                 seq: u64::MAX,
+                staging: None,
             }
         });
+        if created {
+            self.frame_stats.texture_created();
+        }
         if st.seq != f.seq {
-            let upload_span = tracing::debug_span!("upload", source = %key.source_ref);
+            // Padded frames carry their native stride; 0 = tightly packed.
+            let row_bytes = f.w * layout.bpp;
+            let pitch = if f.pitch != 0 { f.pitch } else { row_bytes };
+            let bytes = pitch as u64 * layout.tex_h as u64;
+            let upload_span = tracing::debug_span!(
+                "upload",
+                source = %key.source_ref,
+                width = f.w,
+                height = f.h,
+                fmt = f.fmt.label(),
+                pitch,
+                bytes,
+            );
             let _upload_guard = upload_span.entered();
             let t0 = Instant::now();
-            // Padded frames carry their native stride; 0 = tightly packed.
-            let pitch = if f.pitch != 0 { f.pitch } else { f.w * layout.bpp };
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &st.target.texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &f.data,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(pitch),
-                    rows_per_image: Some(layout.tex_h),
-                },
-                wgpu::Extent3d {
-                    width: layout.tex_w,
-                    height: layout.tex_h,
-                    depth_or_array_layers: 1,
-                },
-            );
+            self.uploader.reap(device);
+            let staging = st.staging.get_or_insert_with(|| {
+                Arc::new(Staging::new(device, key.source_ref.as_str(), layout.tex_w, row_bytes, layout.tex_h))
+            });
+            let fallback = !staging.is_free();
+            if !fallback {
+                staging.write(&f.data, pitch, row_bytes);
+                let staging = staging.clone();
+                self.uploader.copy(device, staging, &st.target.texture);
+            } else {
+                // The previous batch still reads this buffer: copy the frame the
+                // slow but always-correct way.
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &st.target.texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &f.data,
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(pitch),
+                        rows_per_image: Some(layout.tex_h),
+                    },
+                    wgpu::Extent3d {
+                        width: layout.tex_w,
+                        height: layout.tex_h,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
             let upload_ms = t0.elapsed().as_secs_f32() * 1000.0;
             if let Some(stats) = stats {
                 let mut s = stats.lock().unwrap();
-                s.record_upload_time(upload_ms, pitch as u64 * layout.tex_h as u64);
+                s.record_upload_time(upload_ms, bytes);
             }
+            self.frame_stats.upload(bytes, fallback);
             st.seq = f.seq;
         }
         return st;

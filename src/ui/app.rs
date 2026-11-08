@@ -60,6 +60,7 @@ pub struct App {
 struct RenderStats {
     recent_frames: VecDeque<Instant>,
     work_ms: VecDeque<f32>,
+    gpu_ms: Option<f32>,
 }
 
 impl RenderStats {
@@ -67,6 +68,7 @@ impl RenderStats {
         Self {
             recent_frames: VecDeque::new(),
             work_ms: VecDeque::new(),
+            gpu_ms: None,
         }
     }
 
@@ -86,19 +88,17 @@ impl RenderStats {
     }
 
     fn record_work(&mut self, elapsed: Duration) {
-        self.work_ms.push_back(elapsed.as_secs_f32() * 1000.0);
-        if self.work_ms.len() > MAX_RENDER_TIMESTAMPS {
-            self.work_ms.pop_front();
-        }
+        push_window(&mut self.work_ms, elapsed);
+    }
+
+    fn record_gpu(&mut self, gpu_ms: Option<f32>) {
+        self.gpu_ms = gpu_ms;
     }
 
     /// Average engine and output work per frame. The frame rate alone cannot show
     /// this: a frame over the display deadline reads the same as one twice over.
     fn work_ms(&self) -> f32 {
-        if self.work_ms.is_empty() {
-            return 0.0;
-        }
-        return self.work_ms.iter().sum::<f32>() / self.work_ms.len() as f32;
+        return mean(&self.work_ms);
     }
 
     fn fps(&self) -> f64 {
@@ -113,6 +113,20 @@ impl RenderStats {
         }
         return (self.recent_frames.len() - 1) as f64 / secs;
     }
+}
+
+fn push_window(samples: &mut VecDeque<f32>, elapsed: Duration) {
+    samples.push_back(elapsed.as_secs_f32() * 1000.0);
+    if samples.len() > MAX_RENDER_TIMESTAMPS {
+        samples.pop_front();
+    }
+}
+
+fn mean(samples: &VecDeque<f32>) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    return samples.iter().sum::<f32>() / samples.len() as f32;
 }
 
 enum Confirm {
@@ -638,18 +652,21 @@ impl App {
     }
 
     fn draw_status_bar(&self, ui: &mut egui::Ui) {
-        let (fps, work_ms) = {
+        let (fps, work_ms, gpu_ms) = {
             let stats = self.render_stats.lock().unwrap();
-            (stats.fps(), stats.work_ms())
+            (stats.fps(), stats.work_ms(), stats.gpu_ms)
         };
+        let mut text = format!("{fps:.0} FPS · {work_ms:.1} ms");
+        let mut label = String::from("Frame rate over the last 2s · CPU time per frame");
+        if let Some(gpu_ms) = gpu_ms {
+            text.push_str(&format!(" · {gpu_ms:.1} ms"));
+            label.push_str(" · GPU time per frame");
+        }
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.label(self.status_text());
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(format!("{fps:.0} FPS · {work_ms:.1} ms"))
-                        .on_hover_text(
-                            "Frame rate over the last 2 s · average engine, compositor and output work per frame",
-                        );
+                    ui.label(text).on_hover_text(label);
                 });
             });
         });
@@ -1012,6 +1029,7 @@ fn tick_engine(
     format: wgpu::TextureFormat,
     next_output: &mut Instant,
 ) {
+    let _span = tracing::debug_span!("tick").entered();
     let started = Instant::now();
     stats.lock().unwrap().record_frame();
     engine.update();
@@ -1026,7 +1044,14 @@ fn tick_engine(
         *next_output = advance_deadline(*next_output, now, interval);
         engine.render_outputs(device, queue);
     }
-    stats.lock().unwrap().record_work(started.elapsed());
+
+    let elapsed = started.elapsed();
+    let gpu_ms = engine.finish_tick(elapsed.as_secs_f32() * 1000.0);
+    {
+        let mut s = stats.lock().unwrap();
+        s.record_work(elapsed);
+        s.record_gpu(gpu_ms);
+    }
 }
 
 /// Tick rate: a live preview whenever something is on screen, or whenever an

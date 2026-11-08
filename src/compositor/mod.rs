@@ -3,8 +3,11 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use crate::sources::{SourceKey, TextureTarget};
+use metrics::GpuTimers;
+use upload::Uploader;
 
 pub use crate::sources::{ConvMode, ConvUniform};
+pub use metrics::FrameStats;
 pub use layout::canvas_transform;
 
 mod build;
@@ -12,7 +15,9 @@ mod canvas;
 mod gpu;
 mod label;
 mod layout;
+mod metrics;
 mod resources;
+mod upload;
 #[cfg(test)]
 mod tests;
 
@@ -84,6 +89,9 @@ pub struct Compositor {
     label_bg_color: [u8; 4],
     label_bg_bg: Arc<wgpu::BindGroup>,
     text_pipeline: wgpu::RenderPipeline,
+    timers: Option<GpuTimers>,
+    uploader: Uploader,
+    frame_stats: FrameStats,
 }
 
 pub enum Pipeline {

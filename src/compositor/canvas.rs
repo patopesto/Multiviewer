@@ -1,11 +1,16 @@
 use tracing::instrument;
 
+use super::metrics::GpuTimers;
 use super::{Compositor, Pipeline, Rect};
 use crate::config::Canvas;
 use crate::sources::{PixelFormat, RENDER_TARGET_USAGE, SourceRegistry, TextureTarget};
 
 impl Compositor {
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(
+        level = "debug",
+        skip_all,
+        fields(width = canvas.width, height = canvas.height, draws = tracing::field::Empty)
+    )]
     pub fn render_canvas(
         &mut self,
         device: &wgpu::Device,
@@ -35,12 +40,17 @@ impl Compositor {
 
         queue.write_buffer(&self.canvas_vb, 0, bytemuck::cast_slice(&draw.verts));
 
+        let timer_slot = self.timers.as_ref().and_then(GpuTimers::free_slot);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("canvas-output"),
         });
 
         {
             let view = &self.canvas.as_ref().unwrap().view;
+            let timestamp_writes = match (self.timers.as_ref(), timer_slot) {
+                (Some(timers), Some(slot)) => Some(timers.writes(slot)),
+                _ => None,
+            };
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("canvas-output"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -53,7 +63,7 @@ impl Compositor {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes,
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
@@ -76,7 +86,16 @@ impl Compositor {
             }
         }
 
+        if let (Some(timers), Some(slot)) = (self.timers.as_ref(), timer_slot) {
+            timers.encode_readback(&mut encoder, slot);
+        }
         queue.submit(Some(encoder.finish()));
+        if let (Some(timers), Some(slot)) = (self.timers.as_mut(), timer_slot) {
+            timers.arm(slot);
+        }
+
+        self.frame_stats.canvas_pass(draw.draws.len() as u32, draw.verts.len() as u32);
+        tracing::Span::current().record("draws", draw.draws.len());
     }
 
     fn ensure_canvas_texture(&mut self, device: &wgpu::Device, canvas_w: u32, canvas_h: u32) {

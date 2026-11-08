@@ -4,7 +4,7 @@ use std::time::Instant;
 use tracing::instrument;
 
 use super::gpu::solid_bind_group;
-use super::{Compositor, Draw, DrawCall, Pipeline, Rect, ResolvedSource, Vert};
+use super::{Compositor, Draw, DrawCall, FrameStats, Pipeline, Rect, ResolvedSource, Vert};
 use crate::config::{BorderVisibility, Canvas, Source, SourceBorderVisibility, TextureMode};
 use crate::sources::{Frame as SourceFrame, SourceKey, SourceRegistry};
 
@@ -234,10 +234,11 @@ impl Compositor {
     /// Start a new frame: drop the resolved-source cache so the next build pulls each source again.
     pub fn begin_frame(&mut self) {
         self.pulls.clear();
+        self.frame_stats = FrameStats::default();
     }
 
     /// Pull every source this frame will need before any render runs
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(level = "debug", skip_all, fields(sources = canvas.sources.len()))]
     pub fn prefetch_sources(
         &mut self,
         device: &wgpu::Device,
@@ -271,16 +272,17 @@ impl Compositor {
         let resolved: ResolvedSource = (|| {
             let src = registry.get(key)?;
             let stats = src.stats();
-            let latest_span = tracing::debug_span!("latest", source = %key.source_ref);
-            let _latest_guard = latest_span.entered();
-            let t = Instant::now();
-            let frame = src.latest(device, queue)?;
-            let receive_ms = t.elapsed().as_secs_f32() * 1000.0;
-            {
+            let frame = {
+                let latest_span = tracing::debug_span!("latest", source = %key.source_ref);
+                let _latest_guard = latest_span.entered();
+                let t = Instant::now();
+                let frame = src.latest(device, queue)?;
+                let receive_ms = t.elapsed().as_secs_f32() * 1000.0;
                 let mut s = stats.lock().unwrap();
                 s.record_receive_time(receive_ms);
                 s.record_consumed(frame.seq());
-            }
+                frame
+            };
             match frame {
                 SourceFrame::Cpu(f) => {
                     let st = self.ensure_texture(device, queue, key, &f, Some(stats));
@@ -297,7 +299,18 @@ impl Compositor {
 
     /// Per-frame: upload changed source textures, build quads for all sources.
     #[allow(clippy::too_many_arguments)]
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(
+        level = "debug",
+        skip_all,
+        fields(
+            sources = canvas.sources.len(),
+            panel_w = panel_rect.w,
+            scale = transform.0,
+            visible = tracing::field::Empty,
+            draws = tracing::field::Empty,
+            verts = tracing::field::Empty,
+        )
+    )]
     pub fn build(
         &mut self,
         device: &wgpu::Device,
@@ -337,6 +350,7 @@ impl Compositor {
             scale,
             sources.len(),
         );
+        let mut visible = 0u32;
         for source in sources {
             let expanded = expanded_source == Some(source.uuid.as_str());
             if expanded_source.is_some() && !expanded {
@@ -346,7 +360,16 @@ impl Compositor {
             frame.push_source(source, &place);
             frame.push_border(source, &place, canvas, expanded);
             frame.push_label(source, &place, canvas, expanded);
+            visible += 1;
         }
-        return frame.finish();
+        let span = tracing::Span::current();
+        span.record("visible", visible);
+        span.record("draws", frame.draws.len());
+        span.record("verts", frame.verts.len());
+        let draw = frame.finish();
+        // The preview build can pull a source the tick did not prefetch; get the
+        // copies in flight rather than leaving them for the next tick.
+        self.uploader.flush(queue);
+        return draw;
     }
 }

@@ -28,6 +28,11 @@ fn install_device_descriptor(options: &mut eframe::NativeOptions) {
             if adapter.features().contains(Features::BGRA8UNORM_STORAGE) {
                 features |= Features::BGRA8UNORM_STORAGE;
             }
+            // Optional: the canvas pass samples its own duration with timestamp
+            // queries, and GL/GLES adapters must still start without them.
+            if adapter.features().contains(Features::TIMESTAMP_QUERY) {
+                features |= Features::TIMESTAMP_QUERY;
+            }
             let base_limits = if adapter.get_info().backend == Backend::Gl {
                 Limits::downlevel_webgl2_defaults()
             } else {

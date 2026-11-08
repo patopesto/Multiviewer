@@ -212,6 +212,7 @@ impl OutputKind {
         return self.output.present(texture, width, height, device, queue);
     }
 
+    #[instrument(level = "debug", skip_all, fields(output = %self.output.name()))]
     pub fn finish(&self) {
         self.output.finish();
     }
@@ -301,7 +302,11 @@ impl OutputRegistry {
         return self.outputs.len();
     }
 
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(
+        level = "debug",
+        skip_all,
+        fields(outputs = self.outputs.values().filter(|ok| ok.enabled()).count())
+    )]
     pub fn present_all(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) {
         for output in self.outputs.values() {
             if output.enabled() {
