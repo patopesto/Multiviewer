@@ -43,6 +43,18 @@ impl SourceKey {
     }
 }
 
+/// How a changed source config reaches the running source.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfigApply {
+    /// Applied to the running source without reopening it.
+    #[allow(dead_code)] // No protocol implements in-place application yet.
+    Live,
+    /// Only recorded; the next open uses it.
+    Persist,
+    /// The source must be reopened.
+    Restart,
+}
+
 // Runtime video source
 pub trait VideoSource: Send + Sync {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame>;
@@ -52,6 +64,11 @@ pub trait VideoSource: Send + Sync {
     /// key as absent and the reconnect pass retries it.
     fn alive(&self) -> bool {
         return true;
+    }
+    /// Apply a changed config to the running source. Protocols that can update
+    /// in place override this; everything else reopens.
+    fn apply_config(&mut self, _config: &SourceConfig) -> ConfigApply {
+        return ConfigApply::Restart;
     }
 }
 
@@ -221,6 +238,32 @@ impl SourceConfig {
             Protocol::Unknown(_) => SourceConfig::default(),
         }
     }
+
+    pub fn matches(&self, protocol: &Protocol) -> bool {
+        return match (self, protocol) {
+            (SourceConfig::Test(_), Protocol::Test) => true,
+            (SourceConfig::Ndi(_), Protocol::Ndi) => true,
+            (SourceConfig::Omt(_), Protocol::Omt) => true,
+            (SourceConfig::Decklink(_), Protocol::Decklink) => true,
+            #[cfg(target_os = "macos")]
+            (SourceConfig::Syphon(_), Protocol::Syphon) => true,
+            #[cfg(target_os = "macos")]
+            (SourceConfig::AvFoundation(_), Protocol::AvFoundation) => true,
+            #[cfg(target_os = "macos")]
+            (SourceConfig::ScreenCaptureKit(_), Protocol::ScreenCaptureKit) => true,
+            #[cfg(target_os = "windows")]
+            (SourceConfig::Spout(_), Protocol::Spout) => true,
+            #[cfg(target_os = "windows")]
+            (SourceConfig::MediaFoundation(_), Protocol::MediaFoundation) => true,
+            #[cfg(target_os = "windows")]
+            (SourceConfig::DirectShow(_), Protocol::DirectShow) => true,
+            #[cfg(target_os = "windows")]
+            (SourceConfig::WindowsCapture(_), Protocol::WindowsCapture) => true,
+            (SourceConfig::Vnc(_), Protocol::Vnc) => true,
+            (SourceConfig::Rdp(_), Protocol::Rdp) => true,
+            _ => false,
+        };
+    }
 }
 
 /// Data a source needs to open that cannot be derived from the `SourceKey`
@@ -379,8 +422,10 @@ impl SourceKind {
         return self.source.alive();
     }
 
-    pub fn to_config(&self) -> SourceConfig {
-        return self.config.clone();
+    pub fn apply_config(&mut self, config: SourceConfig) -> ConfigApply {
+        let outcome = self.source.apply_config(&config);
+        self.config = config;
+        return outcome;
     }
 
     /// Human-readable label for source selection. Handles protocol specifics labels
@@ -670,10 +715,13 @@ impl SourceRegistry {
         self.sources.get_mut(key)
     }
 
-    /// Live sources, for the tests that count them.
-    #[allow(dead_code)]
+    /// Live sources, for the runtime snapshot and the tests that count them.
     pub fn iter(&self) -> impl Iterator<Item = (&SourceKey, &SourceKind)> {
         self.sources.iter()
+    }
+
+    pub fn is_pending_restart(&self, key: &SourceKey) -> bool {
+        return self.pending_restarts.contains_key(key);
     }
 
     /// Restart the source under `key` with its current config.

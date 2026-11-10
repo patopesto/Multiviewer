@@ -25,8 +25,8 @@ use crate::sources::SpoutDiscovery;
 #[cfg(target_os = "windows")]
 use crate::sources::WindowsCaptureDiscovery;
 
-use super::interaction::DragState;
-use super::{SnapGuides, ViewState};
+use super::state::EngineState;
+use super::transform::ViewState;
 use crate::compositor::Rect;
 use crate::control::ControlRegistry;
 
@@ -66,7 +66,16 @@ impl Engine {
     /// starts, tests leave them all off.
     fn new(cfg: Config) -> Self {
         return Self {
-            cfg,
+            state: EngineState {
+                cfg,
+                selected_source_id: None,
+                expanded_source_id: None,
+                view: ViewState::new(),
+                dirty: false,
+                project_path: None,
+                ui_visible: true,
+                revision: 0,
+            },
             registry: SourceRegistry::new(),
             output_registry: OutputRegistry::new(),
             control: ControlRegistry::new(),
@@ -88,20 +97,12 @@ impl Engine {
             #[cfg(target_os = "windows")]
             windowscapture: None,
             comp: None,
-            project_path: None,
-            dirty: false,
             last_saved_at: Instant::now(),
             last_discovery: Instant::now(),
             last_tick: Instant::now(),
             last_heartbeat: Instant::now(),
             worst_tick_gap: Duration::ZERO,
-            selected_source_id: None,
-            expanded_source_id: None,
-            drag_state: DragState::None,
-            snap_guides: SnapGuides::default(),
-            view: ViewState::new(),
             canvas_rect: Rect::default(),
-            ui_visible: true,
             load_warnings: Vec::new(),
             totals: RunTotals::default(),
         };
@@ -153,6 +154,8 @@ impl Engine {
         self.seed_demo_layout();
         self.load_outputs();
         self.restart_control();
+        self.sync_all_placement_configs();
+        self.state.revision = self.state.revision.wrapping_add(1);
         let load = load_started.elapsed();
 
         // Every stage runs on the thread that opened the project, holding the
@@ -161,8 +164,8 @@ impl Engine {
             clear_sources_ms = clear_sources.as_millis() as u64,
             clear_outputs_ms = clear_outputs.as_millis() as u64,
             load_ms = load.as_millis() as u64,
-            sources = self.cfg.canvas.sources.len(),
-            outputs = self.cfg.canvas.outputs.len(),
+            sources = self.state.cfg.canvas.sources.len(),
+            outputs = self.state.cfg.canvas.outputs.len(),
             "project rebuilt"
         );
     }
@@ -170,26 +173,26 @@ impl Engine {
     /// A project from a newer build is loaded best-effort; unknown fields are
     /// dropped on parse, so clamp the version we write back to what we understand.
     pub(super) fn warn_if_newer_version(&mut self) {
-        if self.cfg.version <= CONFIG_VERSION {
+        if self.state.cfg.version <= CONFIG_VERSION {
             return;
         }
         self.load_warnings.push(format!(
             "Project was saved by a newer version ({} > {}); some settings may not load",
-            self.cfg.version, CONFIG_VERSION
+            self.state.cfg.version, CONFIG_VERSION
         ));
-        self.cfg.version = CONFIG_VERSION;
+        self.state.cfg.version = CONFIG_VERSION;
     }
 
     /// Report protocols this platform cannot run. Their entries stay in the
     /// config untouched (raw JSON preserved) and are written back on save.
     fn warn_unavailable_protocols(&mut self) {
         let unavailable: BTreeSet<&str> = self
-            .cfg
+            .state.cfg
             .canvas
             .sources
             .iter()
             .map(|s| &s.protocol)
-            .chain(self.cfg.canvas.outputs.iter().map(|o| &o.protocol))
+            .chain(self.state.cfg.canvas.outputs.iter().map(|o| &o.protocol))
             .filter_map(|p| match p {
                 Protocol::Unknown(name) => Some(name.as_str()),
                 _ => None,
@@ -206,14 +209,14 @@ impl Engine {
     /// Restore Test sources for all Test sources in the loaded config.
     /// Each Test source gets a fresh dedicated test source.
     fn restore_test_sources(&mut self) {
-        for (i, source) in self.cfg.canvas.sources.iter_mut().enumerate() {
+        for (i, source) in self.state.cfg.canvas.sources.iter_mut().enumerate() {
             if source.uuid.is_empty() {
                 source.uuid = uuid::Uuid::new_v4().to_string();
-                self.dirty = true;
+                self.state.dirty = true;
             }
             if source.name.is_empty() {
                 source.name = format!("Source {}", i + 1);
-                self.dirty = true;
+                self.state.dirty = true;
             }
             if source.protocol == Protocol::Test {
                 let test_config = match &source.config {
@@ -222,7 +225,7 @@ impl Engine {
                 };
                 let key = self.registry.add_test(test_config);
                 source.source_ref = Some(key.source_ref);
-                self.dirty = true;
+                self.state.dirty = true;
             }
             // NDI and Syphon sources keep their source_ref; auto-connect happens in update()
         }
@@ -230,16 +233,16 @@ impl Engine {
 
     /// Seed demo layout if nothing was loaded
     fn seed_demo_layout(&mut self) {
-        if !self.cfg.canvas.sources.is_empty() {
+        if !self.state.cfg.canvas.sources.is_empty() {
             return;
         }
-        let w = self.cfg.canvas.width as f32;
-        let h = self.cfg.canvas.height as f32;
+        let w = self.state.cfg.canvas.width as f32;
+        let h = self.state.cfg.canvas.height as f32;
         for i in 0..2 {
             let key = self.registry.add_test(None);
             let col = i % 2;
             let row = i / 2;
-            self.cfg.canvas.sources.push(Source::new(
+            self.state.cfg.canvas.sources.push(Source::new(
                 format!("Source {}", i + 1),
                 Protocol::Test,
                 Some(key.source_ref),
@@ -253,14 +256,14 @@ impl Engine {
                 false,
             ));
         }
-        self.dirty = true;
+        self.state.dirty = true;
     }
 
     fn load_outputs(&mut self) {
-        for output in &mut self.cfg.canvas.outputs {
+        for output in &mut self.state.cfg.canvas.outputs {
             if output.uuid.is_empty() {
                 output.uuid = uuid::Uuid::new_v4().to_string();
-                self.dirty = true;
+                self.state.dirty = true;
             }
             self.output_registry.add(
                 &output.protocol,
@@ -283,13 +286,13 @@ impl Engine {
                 return Err(e.into());
             }
         };
-        self.cfg = cfg;
-        self.dirty = false;
+        self.state.cfg = cfg;
+        self.state.dirty = false;
         self.rebuild_from_config();
         self.warn_if_newer_version();
-        self.project_path = Some(path.clone());
+        self.state.project_path = Some(path.clone());
         self.last_saved_at = Instant::now();
-        self.dirty = false;
+        self.state.dirty = false;
         let mut session = Session::load();
         session.record_recent(&path);
         session.save()?;
@@ -302,19 +305,19 @@ impl Engine {
     }
 
     pub fn save_project(&mut self) -> Result<(), ProjectError> {
-        let path = self.project_path.clone().ok_or(ProjectError::NoProjectPath)?;
-        self.cfg.save_to(&path)?;
+        let path = self.state.project_path.clone().ok_or(ProjectError::NoProjectPath)?;
+        self.state.cfg.save_to(&path)?;
         self.last_saved_at = Instant::now();
-        self.dirty = false;
+        self.state.dirty = false;
         Ok(())
     }
 
     pub fn save_project_as(&mut self, path: impl AsRef<std::path::Path>) -> Result<(), ProjectError> {
         let path = path.as_ref().to_path_buf();
-        self.cfg.save_to(&path)?;
-        self.project_path = Some(path.clone());
+        self.state.cfg.save_to(&path)?;
+        self.state.project_path = Some(path.clone());
         self.last_saved_at = Instant::now();
-        self.dirty = false;
+        self.state.dirty = false;
         let mut session = Session::load();
         session.record_recent(&path);
         session.save()?;
@@ -323,11 +326,11 @@ impl Engine {
 
     /// Whether the project is due for an auto-save at `now`.
     pub fn should_auto_save(&self, now: Instant) -> bool {
-        return self.cfg.auto_save_interval > 0
-            && self.dirty
-            && self.project_path.is_some()
+        return self.state.cfg.auto_save_interval > 0
+            && self.state.dirty
+            && self.state.project_path.is_some()
             && now.duration_since(self.last_saved_at)
-                >= Duration::from_secs(self.cfg.auto_save_interval);
+                >= Duration::from_secs(self.state.cfg.auto_save_interval);
     }
 
     pub fn auto_save(&mut self) {

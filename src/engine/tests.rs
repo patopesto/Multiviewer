@@ -1,6 +1,6 @@
 use super::*;
 use crate::compositor::{self, Rect};
-use crate::config::{Canvas, Output, Source, TextureMode, CONFIG_VERSION};
+use crate::config::{Canvas, Config, Output, Source, TextureMode, CONFIG_VERSION};
 use crate::control::{Command, Selector};
 use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::VncSourceConfig;
@@ -8,6 +8,15 @@ use std::time::{Duration, Instant};
 
 fn test_engine(canvas: Canvas) -> Engine {
     return Engine::test_instance(canvas);
+}
+
+fn display_transform(engine: &Engine, panel: &Rect) -> (f32, f32, f32) {
+    return super::transform::display_transform(
+        &engine.state.view,
+        &engine.state.cfg.canvas,
+        panel,
+        engine.state.ui_visible,
+    );
 }
 
 /// A project authored where unavailable protocols exist (Syphon on
@@ -51,9 +60,9 @@ fn load_project_with_unavailable_protocol_warns_and_skips_runtime() {
     engine.rebuild_from_config();
 
     // Both entries survive, the unavailable config is kept verbatim.
-    assert_eq!(engine.cfg.canvas.sources.len(), 2);
-    assert_eq!(engine.cfg.canvas.outputs.len(), 1);
-    let SourceConfig::Unknown(v) = &engine.cfg.canvas.sources[0].config else {
+    assert_eq!(engine.state.cfg.canvas.sources.len(), 2);
+    assert_eq!(engine.state.cfg.canvas.outputs.len(), 1);
+    let SourceConfig::Unknown(v) = &engine.state.cfg.canvas.sources[0].config else {
         panic!("expected Unknown config")
     };
     assert_eq!(v.get("name"), Some(&serde_json::json!("Game")));
@@ -66,7 +75,7 @@ fn load_project_with_unavailable_protocol_warns_and_skips_runtime() {
     assert!(engine.registry.get(&unavailable_key).is_none());
     let test_key = SourceKey::new(
         Protocol::Test,
-        engine.cfg.canvas.sources[1].source_ref.clone().unwrap(),
+        engine.state.cfg.canvas.sources[1].source_ref.clone().unwrap(),
     );
     assert!(engine.registry.get(&test_key).is_some());
 
@@ -100,13 +109,13 @@ fn expand_and_clear_source() {
         false,
     ));
     let mut engine = test_engine(canvas);
-    let uuid = engine.cfg.canvas.sources[0].uuid.clone();
+    let uuid = engine.state.cfg.canvas.sources[0].uuid.clone();
 
-    assert!(engine.expanded_source_id().is_none());
+    assert!(engine.state.expanded_source_id.as_deref().is_none());
     engine.expand_source(uuid.clone());
-    assert_eq!(engine.expanded_source_id(), Some(uuid.as_str()));
+    assert_eq!(engine.state.expanded_source_id.as_deref(), Some(uuid.as_str()));
     engine.clear_expanded_source();
-    assert!(engine.expanded_source_id().is_none());
+    assert!(engine.state.expanded_source_id.as_deref().is_none());
 }
 
 #[test]
@@ -132,11 +141,11 @@ fn removing_expanded_source_clears_it() {
         false,
     ));
     let mut engine = test_engine(canvas);
-    let uuid = engine.cfg.canvas.sources[0].uuid.clone();
+    let uuid = engine.state.cfg.canvas.sources[0].uuid.clone();
     engine.expand_source(uuid.clone());
 
     engine.remove_source(&uuid);
-    assert!(engine.expanded_source_id().is_none());
+    assert!(engine.state.expanded_source_id.as_deref().is_none());
     assert!(engine.active_source_keys().is_empty());
 }
 
@@ -172,6 +181,16 @@ fn active_source_keys_dedupes_shared_refs_and_skips_unbound() {
 }
 
 #[test]
+fn rebuilding_the_project_bumps_the_document_revision() {
+    let mut engine = test_engine(Canvas::default());
+    let before = engine.state.revision;
+
+    engine.rebuild_from_config();
+
+    assert!(engine.state.revision > before);
+}
+
+#[test]
 fn display_transform_is_base_at_default_zoom() {
     let engine = test_engine(Canvas {
         width: 1920,
@@ -186,9 +205,50 @@ fn display_transform_is_base_at_default_zoom() {
         w: 800.0,
         h: 600.0,
     };
-    let (scale, ox, oy) = engine.display_transform(&panel);
+    let (scale, ox, oy) = display_transform(&engine, &panel);
     let (base_scale, base_ox, base_oy) =
-        compositor::canvas_transform(&engine.cfg.canvas, &panel);
+        compositor::canvas_transform(&engine.state.cfg.canvas, &panel);
+    assert!((scale - base_scale).abs() < 1e-3);
+    assert!((ox - base_ox).abs() < 1e-3);
+    assert!((oy - base_oy).abs() < 1e-3);
+}
+
+#[test]
+fn display_transform_applies_view_when_ui_is_visible() {
+    let mut engine = test_engine(Canvas::default());
+    engine.state.view.zoom = 2.0;
+    engine.state.view.pan = [10.0, 20.0];
+
+    let panel = Rect {
+        x: 0.0,
+        y: 0.0,
+        w: 800.0,
+        h: 600.0,
+    };
+    let (scale, ox, oy) = display_transform(&engine, &panel);
+    let (base_scale, base_ox, base_oy) =
+        compositor::canvas_transform(&engine.state.cfg.canvas, &panel);
+    assert!((scale - base_scale * 2.0).abs() < 1e-3);
+    assert!((ox - (base_ox + 10.0)).abs() < 1e-3);
+    assert!((oy - (base_oy + 20.0)).abs() < 1e-3);
+}
+
+#[test]
+fn display_transform_ignores_view_when_ui_is_hidden() {
+    let mut engine = test_engine(Canvas::default());
+    engine.state.view.zoom = 2.0;
+    engine.state.view.pan = [10.0, 20.0];
+    engine.state.ui_visible = false;
+
+    let panel = Rect {
+        x: 0.0,
+        y: 0.0,
+        w: 800.0,
+        h: 600.0,
+    };
+    let (scale, ox, oy) = display_transform(&engine, &panel);
+    let (base_scale, base_ox, base_oy) =
+        compositor::canvas_transform(&engine.state.cfg.canvas, &panel);
     assert!((scale - base_scale).abs() < 1e-3);
     assert!((ox - base_ox).abs() < 1e-3);
     assert!((oy - base_oy).abs() < 1e-3);
@@ -209,8 +269,8 @@ fn recenter_fits_canvas_with_margin() {
         w: 800.0,
         h: 600.0,
     };
-    engine.recenter_view(&panel);
-    let (scale, ox, oy) = engine.display_transform(&panel);
+    engine.state.view.recenter(&engine.state.cfg.canvas, &panel);
+    let (scale, ox, oy) = display_transform(&engine, &panel);
     let expected_scale = (panel.w / 1920.0).min(panel.h / 1080.0) * 0.9;
     assert!((scale - expected_scale).abs() < 1e-3);
     assert!((ox - (panel.w - 1920.0 * scale) / 2.0).abs() < 1e-3);
@@ -260,220 +320,12 @@ fn recenter_expands_to_include_sources() {
         w: 400.0,
         h: 400.0,
     };
-    engine.recenter_view(&panel);
-    let (scale, _ox, _oy) = engine.display_transform(&panel);
+    engine.state.view.recenter(&engine.state.cfg.canvas, &panel);
+    let (scale, _ox, _oy) = display_transform(&engine, &panel);
     let bbox_w = 350.0;
     let bbox_h = 350.0;
     let expected_scale = (panel.w / bbox_w).min(panel.h / bbox_h) * 0.9;
     assert!((scale - expected_scale).abs() < 1e-3);
-}
-
-#[test]
-fn resize_source_handles_corners_and_edges() {
-    let mut canvas = Canvas {
-        width: 1920,
-        height: 1080,
-        sources: vec![],
-        outputs: Vec::new(),
-        ..Default::default()
-    };
-    canvas.sources.push(Source::new(
-
-        "L1".into(),
-        Protocol::Test,
-        None,
-        100.0,
-        100.0,
-        200,
-        100,
-        0,
-        TextureMode::Fit,
-        false,
-        false,
-    ));
-    let mut engine = test_engine(canvas);
-    let panel = Rect {
-        x: 0.0,
-        y: 0.0,
-        w: 1920.0,
-        h: 1080.0,
-    };
-    let uuid = engine.cfg.canvas.sources[0].uuid.clone();
-    let start = engine.source_rect_world(&uuid).unwrap();
-
-    // Edge resize: drag right edge 30 px to the right.
-    engine.resize_source(&uuid, ResizeHandle::Right, start, (30.0, 0.0), &panel);
-    let source = &engine.cfg.canvas.sources[0];
-    assert_eq!(source.x, 100.0);
-    assert_eq!(source.y, 100.0);
-    assert_eq!(source.width, 230);
-    assert_eq!(source.height, 100);
-
-    // Edge resize: drag top edge 20 px up.
-    let start = engine.source_rect_world(&uuid).unwrap();
-    engine.resize_source(&uuid, ResizeHandle::Top, start, (0.0, -20.0), &panel);
-    let source = &engine.cfg.canvas.sources[0];
-    assert_eq!(source.x, 100.0);
-    assert_eq!(source.y, 80.0);
-    assert_eq!(source.width, 230);
-    assert_eq!(source.height, 120);
-
-    // Corner resize: drag bottom-right along the diagonal.
-    let start = engine.source_rect_world(&uuid).unwrap();
-    engine.resize_source(
-        &uuid,
-        ResizeHandle::BottomRight,
-        start,
-        (50.0, 50.0 * 120.0 / 230.0),
-        &panel,
-    );
-    let source = &engine.cfg.canvas.sources[0];
-    let aspect = source.width as f32 / source.height as f32;
-    // Integer dimensions can't match the exact float aspect; allow ~1% rounding error.
-    assert!(
-        (aspect - 230.0 / 120.0).abs() < 0.02,
-        "aspect should be preserved, got {aspect}"
-    );
-    assert_eq!(source.x, 100.0);
-    assert_eq!(source.y, 80.0);
-}
-
-#[test]
-fn drag_source_snaps_to_canvas_edge() {
-    let mut canvas = Canvas {
-        width: 1920,
-        height: 1080,
-        sources: vec![],
-        outputs: Vec::new(),
-        ..Default::default()
-    };
-    canvas.sources.push(Source::new(
-
-        "L1".into(),
-        Protocol::Test,
-        None,
-        15.0,
-        100.0,
-        100,
-        100,
-        0,
-        TextureMode::Fit,
-        false,
-        false,
-    ));
-    let mut engine = test_engine(canvas);
-    let panel = Rect {
-        x: 0.0,
-        y: 0.0,
-        w: 1920.0,
-        h: 1080.0,
-    };
-    let uuid = engine.cfg.canvas.sources[0].uuid.clone();
-    // Drag left by 14 px: left edge moves from 15 to 1, within the 2 px snap threshold of 0.
-    engine.drag_source(&uuid, (-14.0, 0.0), &panel);
-    let source = &engine.cfg.canvas.sources[0];
-    assert_eq!(source.x, 0.0);
-    assert!(engine.snap_guides.x.is_some());
-}
-
-#[test]
-fn resize_source_snaps_to_other_source_edge() {
-    let mut canvas = Canvas {
-        width: 1920,
-        height: 1080,
-        sources: vec![],
-        outputs: Vec::new(),
-        ..Default::default()
-    };
-    canvas.sources.push(Source::new(
-
-        "L1".into(),
-        Protocol::Test,
-        None,
-        100.0,
-        100.0,
-        100,
-        100,
-        0,
-        TextureMode::Fit,
-        false,
-        false,
-    ));
-    canvas.sources.push(Source::new(
-        "L2".into(),
-        Protocol::Test,
-        None,
-        300.0,
-        100.0,
-        100,
-        100,
-        1,
-        TextureMode::Fit,
-        false,
-        false,
-    ));
-    let mut engine = test_engine(canvas);
-    let panel = Rect {
-        x: 0.0,
-        y: 0.0,
-        w: 1920.0,
-        h: 1080.0,
-    };
-    let uuid = engine.cfg.canvas.sources[0].uuid.clone();
-    let start = engine.source_rect_world(&uuid).unwrap();
-    // Drag L1's right edge to 299: should snap to L2's left edge at 300.
-    engine.resize_source(&uuid, ResizeHandle::Right, start, (99.0, 0.0), &panel);
-    let source = &engine.cfg.canvas.sources[0];
-    assert_eq!(source.width, 200);
-    assert!(engine.snap_guides.x.is_some());
-}
-
-#[test]
-fn drag_source_hysteresis_releases_after_break_threshold() {
-    let mut canvas = Canvas {
-        width: 1920,
-        height: 1080,
-        sources: vec![],
-        outputs: Vec::new(),
-        ..Default::default()
-    };
-    canvas.sources.push(Source::new(
-
-        "L1".into(),
-        Protocol::Test,
-        None,
-        15.0,
-        100.0,
-        100,
-        100,
-        0,
-        TextureMode::Fit,
-        false,
-        false,
-    ));
-    let mut engine = test_engine(canvas);
-    let panel = Rect {
-        x: 0.0,
-        y: 0.0,
-        w: 1920.0,
-        h: 1080.0,
-    };
-    let uuid = engine.cfg.canvas.sources[0].uuid.clone();
-
-    // Snap left edge to the canvas edge at 0.
-    engine.drag_source(&uuid, (-14.0, 0.0), &panel);
-    assert_eq!(engine.cfg.canvas.sources[0].x, 0.0);
-    assert!(engine.snap_guides.x.is_some());
-
-    // Move 1 px back: stays snapped within the 20 px break threshold.
-    engine.drag_source(&uuid, (1.0, 0.0), &panel);
-    assert_eq!(engine.cfg.canvas.sources[0].x, 0.0);
-    assert!(engine.snap_guides.x.is_some());
-
-    // Move 25 px past the snap point: breaks free.
-    engine.drag_source(&uuid, (25.0, 0.0), &panel);
-    assert_eq!(engine.cfg.canvas.sources[0].x, 25.0);
-    assert!(engine.snap_guides.x.is_none());
 }
 
 #[test]
@@ -496,17 +348,17 @@ fn select_source_cycles_forward_and_wraps() {
         TextureMode::Fit, false, false,
     ));
     let mut engine = test_engine(canvas);
-    let uuids: Vec<String> = engine.cfg.canvas.sources.iter().map(|s| s.uuid.clone()).collect();
+    let uuids: Vec<String> = engine.state.cfg.canvas.sources.iter().map(|s| s.uuid.clone()).collect();
 
     engine.select_source(1);
-    assert_eq!(engine.selected_source_id.as_ref(), Some(&uuids[0]));
+    assert_eq!(engine.state.selected_source_id.as_ref(), Some(&uuids[0]));
 
-    engine.selected_source_id = Some(uuids[0].clone());
+    engine.state.selected_source_id = Some(uuids[0].clone());
     engine.select_source(1);
-    assert_eq!(engine.selected_source_id.as_ref(), Some(&uuids[1]));
+    assert_eq!(engine.state.selected_source_id.as_ref(), Some(&uuids[1]));
 
     engine.select_source(1);
-    assert_eq!(engine.selected_source_id.as_ref(), Some(&uuids[0]));
+    assert_eq!(engine.state.selected_source_id.as_ref(), Some(&uuids[0]));
 }
 
 #[test]
@@ -529,18 +381,18 @@ fn select_source_cycles_backward_and_wraps() {
         TextureMode::Fit, false, false,
     ));
     let mut engine = test_engine(canvas);
-    let uuids: Vec<String> = engine.cfg.canvas.sources.iter().map(|s| s.uuid.clone()).collect();
+    let uuids: Vec<String> = engine.state.cfg.canvas.sources.iter().map(|s| s.uuid.clone()).collect();
 
-    engine.selected_source_id = Some(uuids[0].clone());
+    engine.state.selected_source_id = Some(uuids[0].clone());
     engine.select_source(-1);
-    assert_eq!(engine.selected_source_id.as_ref(), Some(&uuids[1]));
+    assert_eq!(engine.state.selected_source_id.as_ref(), Some(&uuids[1]));
 
     engine.select_source(-1);
-    assert_eq!(engine.selected_source_id.as_ref(), Some(&uuids[0]));
+    assert_eq!(engine.state.selected_source_id.as_ref(), Some(&uuids[0]));
 }
 
 #[test]
-fn nudge_selected_source_moves_by_delta() {
+fn nudge_command_moves_by_delta() {
     let mut canvas = Canvas {
         width: 1920,
         height: 1080,
@@ -554,18 +406,18 @@ fn nudge_selected_source_moves_by_delta() {
         TextureMode::Fit, false, false,
     ));
     let mut engine = test_engine(canvas);
-    let uuid = engine.cfg.canvas.sources[0].uuid.clone();
+    let uuid = engine.state.cfg.canvas.sources[0].uuid.clone();
 
-    engine.selected_source_id = Some(uuid.clone());
-    engine.nudge_selected_source(3.0, -5.0);
-    let source = &engine.cfg.canvas.sources[0];
+    engine.state.selected_source_id = Some(uuid.clone());
+    engine.apply_command(Command::Nudge { dx: 3.0, dy: -5.0 }).unwrap();
+    let source = &engine.state.cfg.canvas.sources[0];
     assert_eq!(source.x, 13.0);
     assert_eq!(source.y, 15.0);
-    assert!(engine.dirty);
+    assert!(engine.state.dirty);
 }
 
 #[test]
-fn nudge_selected_source_ignores_when_expanded() {
+fn nudge_command_ignores_when_expanded() {
     let mut canvas = Canvas {
         width: 1920,
         height: 1080,
@@ -579,51 +431,22 @@ fn nudge_selected_source_ignores_when_expanded() {
         TextureMode::Fit, false, false,
     ));
     let mut engine = test_engine(canvas);
-    let uuid = engine.cfg.canvas.sources[0].uuid.clone();
+    let uuid = engine.state.cfg.canvas.sources[0].uuid.clone();
 
-    engine.selected_source_id = Some(uuid.clone());
+    engine.state.selected_source_id = Some(uuid.clone());
     engine.expand_source(uuid.clone());
-    engine.nudge_selected_source(3.0, -5.0);
-    let source = &engine.cfg.canvas.sources[0];
+    engine.apply_command(Command::Nudge { dx: 3.0, dy: -5.0 }).unwrap();
+    let source = &engine.state.cfg.canvas.sources[0];
     assert_eq!(source.x, 10.0);
     assert_eq!(source.y, 20.0);
 }
 
 #[test]
-fn hit_test_picks_the_topmost_source_on_a_z_tie() {
-    let mut canvas = Canvas {
-        width: 100,
-        height: 100,
-        sources: vec![],
-        outputs: Vec::new(),
-        ..Default::default()
-    };
-    for name in ["A", "B"] {
-        canvas.sources.push(Source::new(
-            name.into(), Protocol::Test, None,
-            0.0, 0.0, 50, 50, 0,
-            TextureMode::Fit, false, false,
-        ));
-    }
-    let mut engine = test_engine(canvas);
-    let panel = Rect { x: 0.0, y: 0.0, w: 400.0, h: 400.0 };
-    let (a, b) = (
-        engine.cfg.canvas.sources[0].uuid.clone(),
-        engine.cfg.canvas.sources[1].uuid.clone(),
-    );
-
-    assert_eq!(engine.hit_test(&panel, (5.0, 5.0)), Some(b));
-
-    engine.cfg.canvas.sources[1].z = -1;
-    assert_eq!(engine.hit_test(&panel, (5.0, 5.0)), Some(a));
-}
-
-#[test]
 fn auto_save_triggers_after_interval_when_dirty() {
     let mut engine = test_engine(Canvas::default());
-    engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
-    engine.dirty = true;
-    let interval = Duration::from_secs(engine.cfg.auto_save_interval);
+    engine.state.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
+    engine.state.dirty = true;
+    let interval = Duration::from_secs(engine.state.cfg.auto_save_interval);
     engine.last_saved_at = Instant::now() - interval - Duration::from_secs(1);
     assert!(engine.should_auto_save(Instant::now()));
 }
@@ -631,9 +454,9 @@ fn auto_save_triggers_after_interval_when_dirty() {
 #[test]
 fn auto_save_does_not_trigger_when_clean() {
     let mut engine = test_engine(Canvas::default());
-    engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
-    engine.dirty = false;
-    let interval = Duration::from_secs(engine.cfg.auto_save_interval);
+    engine.state.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
+    engine.state.dirty = false;
+    let interval = Duration::from_secs(engine.state.cfg.auto_save_interval);
     engine.last_saved_at = Instant::now() - interval - Duration::from_secs(1);
     assert!(!engine.should_auto_save(Instant::now()));
 }
@@ -641,9 +464,9 @@ fn auto_save_does_not_trigger_when_clean() {
 #[test]
 fn auto_save_does_not_trigger_without_project_path() {
     let mut engine = test_engine(Canvas::default());
-    engine.project_path = None;
-    engine.dirty = true;
-    let interval = Duration::from_secs(engine.cfg.auto_save_interval);
+    engine.state.project_path = None;
+    engine.state.dirty = true;
+    let interval = Duration::from_secs(engine.state.cfg.auto_save_interval);
     engine.last_saved_at = Instant::now() - interval - Duration::from_secs(1);
     assert!(!engine.should_auto_save(Instant::now()));
 }
@@ -651,9 +474,9 @@ fn auto_save_does_not_trigger_without_project_path() {
 #[test]
 fn auto_save_does_not_trigger_when_disabled() {
     let mut engine = test_engine(Canvas::default());
-    engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
-    engine.dirty = true;
-    engine.cfg.auto_save_interval = 0;
+    engine.state.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
+    engine.state.dirty = true;
+    engine.state.cfg.auto_save_interval = 0;
     engine.last_saved_at = Instant::now() - Duration::from_secs(3600);
     assert!(!engine.should_auto_save(Instant::now()));
 }
@@ -661,9 +484,9 @@ fn auto_save_does_not_trigger_when_disabled() {
 #[test]
 fn auto_save_uses_the_configured_interval() {
     let mut engine = test_engine(Canvas::default());
-    engine.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
-    engine.dirty = true;
-    engine.cfg.auto_save_interval = 300;
+    engine.state.project_path = Some(std::path::PathBuf::from("/tmp/test.multiviewer"));
+    engine.state.dirty = true;
+    engine.state.cfg.auto_save_interval = 300;
     engine.last_saved_at = Instant::now() - Duration::from_secs(60);
     assert!(!engine.should_auto_save(Instant::now()));
     engine.last_saved_at = Instant::now() - Duration::from_secs(301);
@@ -674,8 +497,8 @@ fn auto_save_uses_the_configured_interval() {
 fn control_sets_auto_save_interval() {
     let mut engine = test_engine(Canvas::default());
     engine.apply_command(Command::SetAutoSaveInterval(300)).unwrap();
-    assert_eq!(engine.cfg.auto_save_interval, 300);
-    assert!(engine.dirty);
+    assert_eq!(engine.state.cfg.auto_save_interval, 300);
+    assert!(engine.state.dirty);
 }
 
 /// A cfg output entry without its runtime object (project saved before the
@@ -693,11 +516,11 @@ fn enabling_output_with_missing_runtime_recreates_it() {
         }),
     );
     let id = output.uuid.clone();
-    engine.cfg.canvas.outputs.push(output);
+    engine.state.cfg.canvas.outputs.push(output);
 
     engine.set_output_enabled(&id, true);
 
-    assert!(engine.cfg.canvas.outputs.iter().any(|o| o.uuid == id && o.enabled));
+    assert!(engine.state.cfg.canvas.outputs.iter().any(|o| o.uuid == id && o.enabled));
     let registered = engine.output_registry.get(&id).expect("runtime object recreated");
     assert!(registered.enabled());
 }
@@ -721,12 +544,12 @@ fn an_unconfigured_manual_source_is_registered() {
 
     // The discovery tick is what registers a placement's runtime.
     engine.last_discovery = Instant::now() - Duration::from_secs(1);
-    engine.update();
+    engine.maintain();
 
     let key = SourceKey::new(Protocol::Vnc, "VNC 1".to_string());
     assert!(engine.registry.get(&key).is_some());
     // Auto-connect only builds a runtime source; the project itself is unchanged.
-    assert!(!engine.dirty);
+    assert!(!engine.state.dirty);
 }
 
 /// The heartbeat keeps the worst tick gap until it is reported, so a tick that
@@ -738,11 +561,11 @@ fn heartbeat_keeps_the_worst_tick_gap_until_it_reports() {
 
     engine.last_tick = Instant::now() - Duration::from_secs(3);
     engine.last_heartbeat = Instant::now();
-    engine.update();
+    engine.maintain();
     assert!(engine.worst_tick_gap >= Duration::from_secs(3));
 
     engine.last_heartbeat = Instant::now() - Duration::from_secs(60);
-    engine.update();
+    engine.maintain();
     assert_eq!(engine.worst_tick_gap, Duration::ZERO);
 }
 
@@ -789,11 +612,11 @@ fn sync_source_config_updates_quads_sharing_the_key() {
     });
     canvas.sources.extend([quad_a, quad_b, quad_c, quad_d]);
     let mut engine = test_engine(canvas);
-    let uuid_a = engine.cfg.canvas.sources[0].uuid.clone();
+    let uuid_a = engine.state.cfg.canvas.sources[0].uuid.clone();
 
     engine.sync_source_config(&uuid_a, ndi(lowest));
 
-    let [a, b, c, d] = &engine.cfg.canvas.sources[..] else {
+    let [a, b, c, d] = &engine.state.cfg.canvas.sources[..] else {
         panic!("expected four sources")
     };
     // Same (protocol, source_ref): both quads show the edit.
@@ -812,17 +635,17 @@ fn sync_source_config_updates_quads_sharing_the_key() {
         panic!("expected Decklink config")
     };
     assert_eq!(cd.connection, DecklinkVideoConnection::Hdmi);
-    assert!(engine.dirty);
+    assert!(engine.state.dirty);
 }
 
 #[test]
 fn newer_project_version_warns_and_clamps() {
     let mut engine = test_engine(Canvas::default());
-    engine.cfg.version = CONFIG_VERSION + 1;
+    engine.state.cfg.version = CONFIG_VERSION + 1;
 
     engine.warn_if_newer_version();
 
-    assert_eq!(engine.cfg.version, CONFIG_VERSION);
+    assert_eq!(engine.state.cfg.version, CONFIG_VERSION);
     assert_eq!(engine.load_warnings.len(), 1);
     assert!(engine.load_warnings[0].contains("newer version"));
 }
@@ -830,12 +653,12 @@ fn newer_project_version_warns_and_clamps() {
 #[test]
 fn current_project_version_does_not_warn() {
     let mut engine = test_engine(Canvas::default());
-    engine.cfg.version = CONFIG_VERSION;
+    engine.state.cfg.version = CONFIG_VERSION;
 
     engine.warn_if_newer_version();
 
     assert!(engine.load_warnings.is_empty());
-    assert_eq!(engine.cfg.version, CONFIG_VERSION);
+    assert_eq!(engine.state.cfg.version, CONFIG_VERSION);
 }
 
 #[test]
@@ -844,7 +667,7 @@ fn control_commands_mutate_the_canvas() {
 
     engine.apply_command(Command::AddSource).unwrap();
     let uuid = engine
-        .selected_source_id
+        .state.selected_source_id
         .clone()
         .expect("added source is selected");
 
@@ -862,14 +685,14 @@ fn control_commands_mutate_the_canvas() {
         })
         .unwrap();
 
-    let source = &engine.cfg.canvas.sources[0];
+    let source = &engine.state.cfg.canvas.sources[0];
     assert_eq!(source.x, 123.0);
     assert_eq!(source.width, 321);
     assert_eq!(source.height, 123);
-    assert!(engine.dirty);
+    assert!(engine.state.dirty);
 
     engine.apply_command(Command::ToggleUi).unwrap();
-    assert!(!engine.ui_visible);
+    assert!(!engine.state.ui_visible);
 }
 
 #[test]
@@ -900,11 +723,11 @@ fn control_rejects_unknown_targets_and_bad_values() {
 fn control_clear_selection_deselects() {
     let mut engine = test_engine(Canvas::default());
     engine.apply_command(Command::AddSource).unwrap();
-    assert!(engine.selected_source_id.is_some());
+    assert!(engine.state.selected_source_id.is_some());
 
     engine.apply_command(Command::ClearSelection).unwrap();
 
-    assert!(engine.selected_source_id.is_none());
+    assert!(engine.state.selected_source_id.is_none());
 }
 
 /// A view command that arrives before the first frame has laid out the canvas
@@ -917,7 +740,7 @@ fn view_commands_ignore_an_uninitialised_viewport() {
     engine.apply_command(Command::Zoom { factor: 1.1 }).unwrap();
     engine.apply_command(Command::RecenterView).unwrap();
 
-    assert_eq!(engine.view.zoom, 1.0);
-    assert!(engine.view.pan.x.is_finite());
-    assert!(engine.view.pan.y.is_finite());
+    assert_eq!(engine.state.view.zoom, 1.0);
+    assert!(engine.state.view.pan[0].is_finite());
+    assert!(engine.state.view.pan[1].is_finite());
 }

@@ -15,7 +15,7 @@ use crate::sources::{
 };
 
 // @docs protocol="OMT" direction=output
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
 pub struct OmtOutputConfig {
     // @docs hidden
     /// Name advertised on the network. Empty uses the output's name.

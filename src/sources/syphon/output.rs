@@ -65,7 +65,7 @@ const FLIP_VERTICES: [FlipVert; 4] = [
 
 const FLIP_INDICES: [u16; 6] = [0, 1, 2, 2, 1, 3];
 
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
 // @docs protocol="Syphon" direction=output
 pub struct SyphonOutputConfig {
     /// Name of the announced Syphon server. Empty uses the output's name.

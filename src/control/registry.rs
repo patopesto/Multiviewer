@@ -3,7 +3,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use super::command::Command;
+use crate::control::Command;
 use super::config::ControlConfig;
 use super::osc::{FeedbackMode, FeedbackValue, OscServer, normalize_prefix};
 

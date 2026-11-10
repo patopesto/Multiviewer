@@ -9,7 +9,7 @@ use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, OutputLiveness, ReadbackPool, VideoOutput};
 
 // @docs protocol="NDI" direction=output
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
 pub struct NdiOutputConfig {
     // @docs hidden
     /// Name advertised on the network. Empty uses the output's name.

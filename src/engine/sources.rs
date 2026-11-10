@@ -15,8 +15,8 @@ const DISCOVERY_INTERVAL: Duration = Duration::from_millis(250);
 /// Liveness accounting interval. A healthy report is logged at debug; a gap
 /// longer than `SLOW_TICK`, or a late report, is logged as a warning.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
-/// Four frames at 60 Hz: a tick that took longer than this was blocked.
-const SLOW_TICK: Duration = Duration::from_millis(250);
+/// The runner maintains at 4 Hz; a gap beyond this is a real stall.
+const SLOW_TICK: Duration = Duration::from_secs(1);
 
 /// Placements of `protocol` that name a source_ref with no live runtime source, paired with the key they bind to.
 fn pending_sources<'a>(
@@ -36,14 +36,19 @@ fn pending_sources<'a>(
 }
 
 impl Engine {
-    pub fn update(&mut self) {
-        self.record_heartbeat();
+    /// Poll the control listeners and publish their feedback.
+    pub fn poll_control(&mut self) {
         for command in self.control.drain() {
             if let Err(e) = self.apply_command(command) {
                 tracing::warn!("control command rejected: {e}");
             }
         }
         self.publish_control_feedback();
+    }
+
+    /// Discovery, reconnect, heartbeat and pending restart progress.
+    pub fn maintain(&mut self) {
+        self.record_heartbeat();
 
         // Rate-limit discovery changes
         let now = Instant::now();
@@ -72,6 +77,8 @@ impl Engine {
         }
 
         self.registry.apply_pending_restarts();
+        self.cleanup_orphaned_sources();
+        self.sync_all_placement_configs();
     }
 
     /// Report that the engine is still ticking, and how long the worst gap
@@ -111,7 +118,7 @@ impl Engine {
             return;
         };
         let discovered = discovery.list();
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Ndi) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::Ndi) {
             let Some(src) = discovered.iter().find(|s| s.name == key.source_ref) else {
                 continue;
             };
@@ -119,7 +126,7 @@ impl Engine {
                 SourceConfig::Ndi(c) => c.clone(),
                 _ => NdiSourceConfig::default(),
             };
-            self.registry.add_ndi(key, config, src.clone());
+            self.registry.add_ndi(key.clone(), config, src.clone());
         }
     }
 
@@ -129,7 +136,7 @@ impl Engine {
             return;
         };
         let discovered = discovery.list();
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Omt) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::Omt) {
             let Some(src) = discovered
                 .iter()
                 .find(|s| s.instance_name() == key.source_ref)
@@ -140,7 +147,7 @@ impl Engine {
                 SourceConfig::Omt(c) => c.clone(),
                 _ => OmtSourceConfig::default(),
             };
-            self.registry.add_omt(key, config, src.clone());
+            self.registry.add_omt(key.clone(), config, src.clone());
         }
     }
 
@@ -150,7 +157,7 @@ impl Engine {
             return;
         };
         let discovered = discovery.list();
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Decklink) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::Decklink) {
             let Some(port) = discovered.iter().find(|p| p.name == key.source_ref) else {
                 continue;
             };
@@ -158,7 +165,7 @@ impl Engine {
                 SourceConfig::Decklink(c) => c.clone(),
                 _ => DecklinkSourceConfig::default(),
             };
-            self.registry.add_decklink(key, config, port.connections);
+            self.registry.add_decklink(key.clone(), config, port.connections);
         }
     }
 
@@ -169,7 +176,7 @@ impl Engine {
             return;
         };
         let discovered = discovery.list();
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Syphon) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::Syphon) {
             let Some(info) = discovered
                 .iter()
                 .find(|s| s.display_name() == key.source_ref)
@@ -180,7 +187,7 @@ impl Engine {
                 SourceConfig::Syphon(c) => c.clone(),
                 _ => SyphonSourceConfig::default(),
             };
-            self.registry.add_syphon(key, config, info.clone());
+            self.registry.add_syphon(key.clone(), config, info.clone());
         }
     }
 
@@ -190,7 +197,7 @@ impl Engine {
         let Some(avf) = &self.avfoundation else {
             return;
         };
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::AvFoundation) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::AvFoundation) {
             let Some(device) = avf.find_by_name(&key.source_ref) else {
                 continue;
             };
@@ -199,7 +206,7 @@ impl Engine {
                 _ => AvFoundationSourceConfig::default(),
             };
             config.device_unique_id = device.unique_id.clone();
-            self.registry.add_avfoundation(key, config);
+            self.registry.add_avfoundation(key.clone(), config);
         }
     }
 
@@ -208,7 +215,7 @@ impl Engine {
     fn reconnect_screencapturekit(&mut self) {
         // Prompt once per source creation: discovery stays blank until permission exists.
         if self
-            .cfg
+            .state.cfg
             .canvas
             .sources
             .iter()
@@ -220,7 +227,7 @@ impl Engine {
             return;
         };
         let targets = discovery.list();
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::ScreenCaptureKit) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::ScreenCaptureKit) {
             let default_config = ScreenCaptureKitSourceConfig::default();
             let candidate = match &placement.config {
                 SourceConfig::ScreenCaptureKit(c) => c,
@@ -245,7 +252,7 @@ impl Engine {
             return;
         };
         let discovered = discovery.list();
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::Spout) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::Spout) {
             if !discovered.contains(&key.source_ref) {
                 continue;
             }
@@ -253,7 +260,7 @@ impl Engine {
                 SourceConfig::Spout(c) => c.clone(),
                 _ => SpoutSourceConfig::default(),
             };
-            self.registry.add_spout(key, config);
+            self.registry.add_spout(key.clone(), config);
         }
     }
 
@@ -264,7 +271,7 @@ impl Engine {
             return;
         };
         let discovered = discovery.list();
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::MediaFoundation) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::MediaFoundation) {
             let Some(device) = discovered.iter().find(|d| d.id == key.source_ref) else {
                 continue;
             };
@@ -273,7 +280,7 @@ impl Engine {
                 _ => MediaFoundationSourceConfig::default(),
             };
             config.device_id = device.id.clone();
-            self.registry.add_mediafoundation(key, config, device.name.clone());
+            self.registry.add_mediafoundation(key.clone(), config, device.name.clone());
         }
     }
 
@@ -284,7 +291,7 @@ impl Engine {
             return;
         };
         let discovered = discovery.list();
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::DirectShow) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::DirectShow) {
             let Some(device) = discovered.iter().find(|d| d.id == key.source_ref) else {
                 continue;
             };
@@ -293,7 +300,7 @@ impl Engine {
                 _ => DirectShowSourceConfig::default(),
             };
             config.device_id = device.id.clone();
-            self.registry.add_directshow(key, config, device.name.clone());
+            self.registry.add_directshow(key.clone(), config, device.name.clone());
         }
     }
 
@@ -304,7 +311,7 @@ impl Engine {
             return;
         };
         let targets = discovery.list();
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &Protocol::WindowsCapture) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::WindowsCapture) {
             let default_config = WindowsCaptureSourceConfig::default();
             let candidate = match &placement.config {
                 SourceConfig::WindowsCapture(c) => c,
@@ -316,13 +323,13 @@ impl Engine {
             let mut config = target.to_config();
             // Discovery only supplies target identity; keep the settings already chosen for this source.
             *config.settings_mut() = candidate.settings().clone();
-            self.registry.add_windows_capture(key, config, target.label.clone());
+            self.registry.add_windows_capture(key.clone(), config, target.label.clone());
         }
     }
 
     /// Auto-connect sources for protocols with no discovery service.
     fn reconnect_manual(&mut self, protocol: Protocol) {
-        for (placement, key) in pending_sources(&self.cfg.canvas.sources, &self.registry, &protocol) {
+        for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &protocol) {
             if key.source_ref.is_empty() {
                 continue;
             }
@@ -331,10 +338,10 @@ impl Engine {
             // nothing to open with either.
             match &placement.config {
                 SourceConfig::Vnc(config) => {
-                    self.registry.add_vnc_at(key, config.clone());
+                    self.registry.add_vnc_at(key.clone(), config.clone());
                 }
                 SourceConfig::Rdp(config) => {
-                    self.registry.add_rdp_at(key, config.clone());
+                    self.registry.add_rdp_at(key.clone(), config.clone());
                 }
                 _ => {}
             }
@@ -345,7 +352,7 @@ impl Engine {
     /// the result has no duplicates.
     pub fn active_source_keys(&self) -> Vec<SourceKey> {
         let mut keys: Vec<SourceKey> = Vec::new();
-        for source in &self.cfg.canvas.sources {
+        for source in &self.state.cfg.canvas.sources {
             let Some(source_ref) = source.source_ref.clone() else {
                 continue;
             };
@@ -368,7 +375,7 @@ impl Engine {
     /// Persisted config of the source placement on `protocol` that references `source_ref`
     fn source_placement_config(&self, protocol: &Protocol, source_ref: &str) -> Option<&SourceConfig> {
         return self
-            .cfg
+            .state.cfg
             .canvas
             .sources
             .iter()
@@ -376,9 +383,37 @@ impl Engine {
             .map(|s| &s.config);
     }
 
+    /// Copy the live runtime config back to every placement bound to it.
+    fn sync_placement_config(&mut self, key: &SourceKey) {
+        let Some(kind) = self.registry.get(key) else {
+            return;
+        };
+        let config = kind.config.clone();
+        for placement in &mut self.state.cfg.canvas.sources {
+            if placement.protocol == key.protocol
+                && placement.source_ref.as_deref() == Some(key.source_ref.as_str())
+            {
+                placement.config = config.clone();
+            }
+        }
+    }
+
+    /// Normalize every placement config from its live runtime, if one exists.
+    pub(super) fn sync_all_placement_configs(&mut self) {
+        for placement in &mut self.state.cfg.canvas.sources {
+            let Some(source_ref) = placement.source_ref.clone() else {
+                continue;
+            };
+            let key = SourceKey::new(placement.protocol.clone(), source_ref);
+            if let Some(kind) = self.registry.get(&key) {
+                placement.config = kind.config.clone();
+            }
+        }
+    }
+
     /// Persist `config` to every source placement bound to `(protocol, source_ref)`.
     fn apply_config_to_placements(&mut self, protocol: &Protocol, source_ref: &str, config: SourceConfig) {
-        for placement in self.cfg.canvas.sources.iter_mut().filter(|s| {
+        for placement in self.state.cfg.canvas.sources.iter_mut().filter(|s| {
             s.protocol == *protocol && s.source_ref.as_deref() == Some(source_ref)
         }) {
             placement.config = config.clone();
@@ -398,7 +433,7 @@ impl Engine {
                         Some(SourceConfig::Ndi(c)) => c.clone(),
                         _ => NdiSourceConfig::default(),
                     };
-                    self.registry.add_ndi(key, config, src);
+                    self.registry.add_ndi(key.clone(), config, src);
                 }
             }
             Protocol::Decklink => {
@@ -412,7 +447,7 @@ impl Engine {
                     .and_then(|d| d.find_by_name(name))
                     .map(|p| p.connections)
                     .unwrap_or_default();
-                self.registry.add_decklink(key, config, supported_connections);
+                self.registry.add_decklink(key.clone(), config, supported_connections);
             }
             Protocol::Omt => {
                 if let Some(ref discovery) = self.omt
@@ -422,7 +457,7 @@ impl Engine {
                         Some(SourceConfig::Omt(c)) => c.clone(),
                         _ => OmtSourceConfig::default(),
                     };
-                    self.registry.add_omt(key, config, src);
+                    self.registry.add_omt(key.clone(), config, src);
                 }
             }
             #[cfg(target_os = "macos")]
@@ -434,7 +469,7 @@ impl Engine {
                         Some(SourceConfig::Syphon(c)) => c.clone(),
                         _ => SyphonSourceConfig::default(),
                     };
-                    self.registry.add_syphon(key, config, info);
+                    self.registry.add_syphon(key.clone(), config, info);
                 }
             }
             #[cfg(target_os = "macos")]
@@ -444,7 +479,7 @@ impl Engine {
                         device_unique_id: device.unique_id.clone(),
                         ..AvFoundationSourceConfig::default()
                     };
-                    self.registry.add_avfoundation(key, config);
+                    self.registry.add_avfoundation(key.clone(), config);
                 }
             }
             #[cfg(target_os = "macos")]
@@ -462,7 +497,7 @@ impl Engine {
                         SourceConfig::ScreenCaptureKit(config.clone()),
                     );
                     let label = target.label.clone();
-                    self.registry.add_screencapturekit(key, config, label);
+                    self.registry.add_screencapturekit(key.clone(), config, label);
                 }
             }
             #[cfg(target_os = "windows")]
@@ -471,7 +506,7 @@ impl Engine {
                     Some(SourceConfig::Spout(c)) => c.clone(),
                     _ => SpoutSourceConfig::default(),
                 };
-                self.registry.add_spout(key, config);
+                self.registry.add_spout(key.clone(), config);
             }
             #[cfg(target_os = "windows")]
             Protocol::MediaFoundation => {
@@ -488,7 +523,7 @@ impl Engine {
                     .map(|d| d.id.clone())
                     .unwrap_or_else(|| name.to_string());
                 let label = device.map(|d| d.name).unwrap_or_else(|| name.to_string());
-                self.registry.add_mediafoundation(key, config, label);
+                self.registry.add_mediafoundation(key.clone(), config, label);
             }
             #[cfg(target_os = "windows")]
             Protocol::DirectShow => {
@@ -505,7 +540,7 @@ impl Engine {
                     .map(|d| d.id.clone())
                     .unwrap_or_else(|| name.to_string());
                 let label = device.map(|d| d.name).unwrap_or_else(|| name.to_string());
-                self.registry.add_directshow(key, config, label);
+                self.registry.add_directshow(key.clone(), config, label);
             }
             #[cfg(target_os = "windows")]
             Protocol::WindowsCapture => {
@@ -527,45 +562,48 @@ impl Engine {
                         SourceConfig::WindowsCapture(config.clone()),
                     );
                     let label = target.label.clone();
-                    self.registry.add_windows_capture(key, config, label);
+                    self.registry.add_windows_capture(key.clone(), config, label);
                 }
             }
             // Unavailable protocols have no runtime source to connect.
             Protocol::Unknown(_) => {}
         }
+        self.sync_placement_config(&key);
     }
 
     pub fn add_source(&mut self) -> String {
         let key = self.registry.add_test(None);
-        let num = self.cfg.canvas.sources.len() + 1;
+        let num = self.state.cfg.canvas.sources.len() + 1;
         let source = Source::new(
             format!("Source {num}"),
             Protocol::Test,
             Some(key.source_ref),
-            self.cfg.canvas.width as f32 * 0.25,
-            self.cfg.canvas.height as f32 * 0.25,
-            self.cfg.canvas.width / 2,
-            self.cfg.canvas.height / 2,
-            self.cfg.canvas.sources.len() as i32,
+            self.state.cfg.canvas.width as f32 * 0.25,
+            self.state.cfg.canvas.height as f32 * 0.25,
+            self.state.cfg.canvas.width / 2,
+            self.state.cfg.canvas.height / 2,
+            self.state.cfg.canvas.sources.len() as i32,
             TextureMode::Fit,
             false,
             false,
         );
+        let mut source = source;
+        source.config = SourceConfig::for_protocol(&Protocol::Test);
         let uuid = source.uuid.clone();
-        self.cfg.canvas.sources.push(source);
-        self.dirty = true;
+        self.state.cfg.canvas.sources.push(source);
+        self.state.dirty = true;
         return uuid;
     }
 
     pub fn remove_source(&mut self, uuid: &str) {
-        self.cfg.canvas.sources.retain(|l| l.uuid != uuid);
-        if self.selected_source_id.as_deref() == Some(uuid) {
-            self.selected_source_id = None;
+        self.state.cfg.canvas.sources.retain(|l| l.uuid != uuid);
+        if self.state.selected_source_id.as_deref() == Some(uuid) {
+            self.state.selected_source_id = None;
         }
-        if self.expanded_source_id.as_deref() == Some(uuid) {
-            self.expanded_source_id = None;
+        if self.state.expanded_source_id.as_deref() == Some(uuid) {
+            self.state.expanded_source_id = None;
         }
-        self.dirty = true;
+        self.state.dirty = true;
         // A placement's runtime textures outlive it otherwise; keys are shared
         // between placements, so prune against what the canvas still references.
         let active_keys = self.active_source_keys();
@@ -580,7 +618,7 @@ impl Engine {
     /// edit is written to all of them — one runtime source, one config.
     pub fn sync_source_config(&mut self, source_uuid: &str, config: SourceConfig) {
         let Some((protocol, source_ref)) = self
-            .cfg
+            .state.cfg
             .canvas
             .sources
             .iter()
@@ -592,7 +630,7 @@ impl Engine {
         // The edited placement always takes the config; the siblings sharing
         // its key follow through the same write the connect path uses.
         if let Some(placement) = self
-            .cfg
+            .state.cfg
             .canvas
             .sources
             .iter_mut()
@@ -603,48 +641,44 @@ impl Engine {
         if let Some(source_ref) = &source_ref {
             self.apply_config_to_placements(&protocol, source_ref, config);
         }
-        self.dirty = true;
+        self.state.dirty = true;
     }
 
     pub fn expand_source(&mut self, uuid: String) {
-        self.expanded_source_id = Some(uuid);
+        self.state.expanded_source_id = Some(uuid);
     }
 
     pub fn clear_expanded_source(&mut self) {
-        self.expanded_source_id = None;
-    }
-
-    pub fn expanded_source_id(&self) -> Option<&str> {
-        self.expanded_source_id.as_deref()
+        self.state.expanded_source_id = None;
     }
 
     /// Cycle the selection by `step` sources, wrapping in either direction.
     pub fn select_source(&mut self, step: isize) {
-        let len = self.cfg.canvas.sources.len();
+        let len = self.state.cfg.canvas.sources.len();
         if len == 0 {
-            self.selected_source_id = None;
+            self.state.selected_source_id = None;
             return;
         }
         let current = self
-            .selected_source_id
+            .state.selected_source_id
             .as_ref()
-            .and_then(|uuid| self.cfg.canvas.sources.iter().position(|s| &s.uuid == uuid));
+            .and_then(|uuid| self.state.cfg.canvas.sources.iter().position(|s| &s.uuid == uuid));
         let next = match current {
             Some(i) => (i as isize + step).rem_euclid(len as isize) as usize,
             None if step < 0 => len - 1,
             None => 0,
         };
-        self.selected_source_id = Some(self.cfg.canvas.sources[next].uuid.clone());
+        self.state.selected_source_id = Some(self.state.cfg.canvas.sources[next].uuid.clone());
     }
 
     pub fn move_source(&mut self, from_index: usize, to_index: usize) {
-        let len = self.cfg.canvas.sources.len();
+        let len = self.state.cfg.canvas.sources.len();
         if from_index == to_index || from_index >= len || to_index >= len {
             return;
         }
-        let source = self.cfg.canvas.sources.remove(from_index);
-        self.cfg.canvas.sources.insert(to_index, source);
-        self.dirty = true;
+        let source = self.state.cfg.canvas.sources.remove(from_index);
+        self.state.cfg.canvas.sources.insert(to_index, source);
+        self.state.dirty = true;
     }
 }
 
@@ -666,7 +700,7 @@ mod tests {
             (Protocol::Ndi, Some(live.source_ref)),
             (Protocol::Test, None),
         ] {
-            engine.cfg.canvas.sources.push(Source::new(
+            engine.state.cfg.canvas.sources.push(Source::new(
                 "placement".to_string(),
                 protocol,
                 source_ref,
@@ -681,7 +715,7 @@ mod tests {
             ));
         }
 
-        let pending = pending_sources(&engine.cfg.canvas.sources, &engine.registry, &Protocol::Test);
+        let pending = pending_sources(&engine.state.cfg.canvas.sources, &engine.registry, &Protocol::Test);
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].1.source_ref, "Test B");
     }

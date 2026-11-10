@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::{Engine, RunTotals};
+use super::Engine;
 use crate::compositor::{Compositor, Draw, Rect, Shared};
 
 impl Engine {
@@ -20,7 +20,7 @@ impl Engine {
     pub fn finish_tick(&mut self, tick_ms: f32) -> Option<f32> {
         let gpu_ms = self.comp.as_mut().and_then(Compositor::gpu_ms);
         let stats = self.comp.as_ref().map(Compositor::frame_stats).unwrap_or_default();
-        stats.report(self.cfg.canvas.sources.len(), tick_ms, gpu_ms);
+        stats.report(self.state.cfg.canvas.sources.len(), tick_ms, gpu_ms);
         self.totals.ticks += 1;
         self.totals.work_ms += tick_ms as f64;
         if let Some(gpu) = gpu_ms {
@@ -33,22 +33,37 @@ impl Engine {
         return gpu_ms;
     }
 
-    pub fn run_totals(&self) -> RunTotals {
-        return self.totals;
+    pub fn log_run_totals(&self) {
+        let totals = self.totals;
+        tracing::info!(
+            ticks = totals.ticks,
+            mean_work_ms = totals.mean_work_ms(),
+            mean_gpu_ms = ?totals.mean_gpu_ms(),
+            uploads = totals.uploads,
+            upload_mb = totals.upload_bytes / (1024 * 1024),
+            upload_fallbacks = totals.upload_fallbacks,
+            "run totals"
+        );
     }
 
-    /// Start a new frame: clear the compositor's per-frame source cache and pull every canvas source once
-    pub fn begin_frame(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    /// Start a new tick: clear the compositor's per-frame source cache.
+    pub fn begin_tick(&mut self) {
+        if let Some(comp) = self.comp.as_mut() {
+            comp.begin_frame();
+        }
+    }
+
+    /// Pull the sources the preview will paint this tick.
+    pub fn prefetch_preview(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         let Some(comp) = self.comp.as_mut() else {
             return;
         };
-        comp.begin_frame();
         comp.prefetch_sources(
             device,
             queue,
             &self.registry,
-            &self.cfg.canvas,
-            self.expanded_source_id.as_deref(),
+            &self.state.cfg.canvas,
+            self.state.expanded_source_id.as_deref(),
         );
         comp.flush_uploads(queue);
     }
@@ -64,11 +79,11 @@ impl Engine {
         comp.build(
             device,
             queue,
-            &self.cfg.canvas,
+            &self.state.cfg.canvas,
             &self.registry,
             panel_rect,
             transform,
-            self.expanded_source_id.as_deref(),
+            self.state.expanded_source_id.as_deref(),
         )
     }
 
@@ -80,9 +95,9 @@ impl Engine {
         comp.render_canvas(
             device,
             queue,
-            &self.cfg.canvas,
+            &self.state.cfg.canvas,
             &self.registry,
-            self.expanded_source_id.as_deref(),
+            self.state.expanded_source_id.as_deref(),
         );
         if let Some((texture, w, h)) = comp.canvas_texture() {
             self.output_registry.present_all(texture, w, h, device, queue);

@@ -32,7 +32,7 @@ pub use common::{FramePool, Framebuffer};
 pub use common::{ColorRange, ColorSpace};
 pub use common::{PUBLISH_INTERVAL, PollGate, publish_due, sleep_while_running};
 pub use source::{
-    SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
+    ConfigApply, SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
     SourceRegistry, VideoSource,
 };
 pub use output::{OutputConfig, OutputRegistry};
@@ -64,7 +64,10 @@ pub use syphon::{
 #[cfg(target_os = "macos")]
 pub use avfoundation::{AvFoundationDiscovery, AvFoundationSourceConfig, AvFoundationMode};
 #[cfg(target_os = "macos")]
-pub use screencapturekit::{ScreenCaptureKitDiscovery, ScreenCaptureKitSourceConfig, ensure_screen_capture_access_requested};
+pub use screencapturekit::{
+    ScreenCaptureKitDiscovery, ScreenCaptureKitSourceConfig, ScreenCaptureTarget,
+    ensure_screen_capture_access_requested,
+};
 
 #[cfg(target_os = "windows")]
 pub use spout::{SpoutDiscovery, SpoutSourceConfig, SpoutOutputConfig, spout_version};
@@ -74,6 +77,6 @@ pub use mediafoundation::{MediaFoundationDiscovery, MediaFoundationSourceConfig,
 pub use directshow::{DirectShowDiscovery, DirectShowSourceConfig, DirectShowMode};
 #[cfg(target_os = "windows")]
 pub use windowscapture::{
-    WindowsCaptureDiscovery, WindowsCaptureSourceConfig,
+    WindowsCaptureDiscovery, WindowsCaptureSourceConfig, WindowsCaptureTarget,
     WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows,
 };

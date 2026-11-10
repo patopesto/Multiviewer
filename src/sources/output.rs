@@ -51,7 +51,7 @@ pub trait VideoOutput: Send {
 /// carrier for config JSON this platform cannot interpret: the original value
 /// is kept untouched and written back on save, so a project round-trips to a
 /// platform that does understand it.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum OutputConfig {
     Ndi(ndi::NdiOutputConfig),
     Decklink(decklink::DecklinkOutputConfig),

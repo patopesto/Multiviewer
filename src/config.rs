@@ -21,7 +21,7 @@ fn default_auto_save_interval() -> u64 {
     return 30;
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
     #[serde(default = "config_version")]
     pub version: u32,

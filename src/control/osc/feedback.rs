@@ -34,7 +34,7 @@ impl FeedbackValue {
 /// Current feedback values, sorted by address. Read straight from the engine on
 /// the UI thread; nothing is stored outside the publishing adapter.
 pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
-    let canvas = &engine.cfg.canvas;
+    let canvas = &engine.state.cfg.canvas;
     let mut values = Vec::new();
     let mut push = |path: &str, value: FeedbackValue| {
         values.push((format!("{prefix}{path}"), value));
@@ -63,28 +63,28 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
     // @osc path="/ui/visible" kind="feedback" args="value:0|1" group="Global" desc="Whether the editor UI is visible."
     push(
         "/ui/visible",
-        FeedbackValue::Int(engine.ui_visible as i32),
+        FeedbackValue::Int(engine.state.ui_visible as i32),
     );
     // @osc path="/view/zoom" kind="feedback" args="value:float" group="Global" desc="Current zoom level."
-    push("/view/zoom", FeedbackValue::Float(engine.view.zoom));
+    push("/view/zoom", FeedbackValue::Float(engine.state.view.zoom));
     // @osc path="/view/pan_x" kind="feedback" args="value:float" group="Global" desc="Horizontal pan offset."
     push(
         "/view/pan_x",
-        FeedbackValue::Float(engine.view.pan.x),
+        FeedbackValue::Float(engine.state.view.pan[0]),
     );
     // @osc path="/view/pan_y" kind="feedback" args="value:float" group="Global" desc="Vertical pan offset."
     push(
         "/view/pan_y",
-        FeedbackValue::Float(engine.view.pan.y),
+        FeedbackValue::Float(engine.state.view.pan[1]),
     );
     // @osc path="/project/auto_save_interval" kind="feedback" args="value:int" group="Global" desc="Seconds between auto-saves; 0 when auto-save is off."
     push(
         "/project/auto_save_interval",
-        FeedbackValue::Int(engine.cfg.auto_save_interval as i32),
+        FeedbackValue::Int(engine.state.cfg.auto_save_interval as i32),
     );
 
     let selected_index = engine
-        .selected_source_id
+        .state.selected_source_id
         .as_ref()
         .and_then(|uuid| canvas.sources.iter().position(|source| &source.uuid == uuid))
         .map(|index| index as i32 + 1)
@@ -94,7 +94,7 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
     // @osc path="/selected/uuid" kind="feedback" args="value:string" group="Global" desc="Selected source uuid, empty when nothing is selected."
     push(
         "/selected/uuid",
-        FeedbackValue::String(engine.selected_source_id.clone().unwrap_or_default()),
+        FeedbackValue::String(engine.state.selected_source_id.clone().unwrap_or_default()),
     );
     // @osc path="/source/count" kind="feedback" args="value:int" group="Global" desc="Number of sources."
     push(
@@ -109,8 +109,8 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
 
     for (index, source) in canvas.sources.iter().enumerate() {
         let i = index + 1;
-        let selected = engine.selected_source_id.as_deref() == Some(source.uuid.as_str());
-        let expanded = engine.expanded_source_id.as_deref() == Some(source.uuid.as_str());
+        let selected = engine.state.selected_source_id.as_deref() == Some(source.uuid.as_str());
+        let expanded = engine.state.expanded_source_id.as_deref() == Some(source.uuid.as_str());
 
         // @osc path="/source/{i}/exists" kind="feedback" args="value:0|1" group="Sources" desc="Whether a source exists at this index."
         push(&format!("/source/{i}/exists"), FeedbackValue::Int(1));
@@ -226,10 +226,10 @@ mod tests {
     fn describes_sources_and_outputs() {
         let mut engine = Engine::test_instance(Canvas::default());
         let uuid = engine.add_source();
-        engine.selected_source_id = Some(uuid.clone());
-        engine.expanded_source_id = Some(uuid);
-        engine.cfg.auto_save_interval = 300;
-        engine.cfg.canvas.outputs.push(Output::new(
+        engine.state.selected_source_id = Some(uuid.clone());
+        engine.state.expanded_source_id = Some(uuid);
+        engine.state.cfg.auto_save_interval = 300;
+        engine.state.cfg.canvas.outputs.push(Output::new(
             "Program".to_string(),
             Protocol::Ndi,
             true,

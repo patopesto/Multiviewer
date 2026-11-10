@@ -1,8 +1,6 @@
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use crate::compositor::{Compositor, Rect};
-use crate::config::{Config, SourceId};
 use crate::control::ControlRegistry;
 use crate::sources::{OutputRegistry, SourceRegistry};
 use crate::sources::{DecklinkDiscovery, decklink_version};
@@ -23,48 +21,76 @@ use crate::sources::DirectShowDiscovery;
 #[cfg(target_os = "windows")]
 use crate::sources::WindowsCaptureDiscovery;
 
+use self::state::EngineState;
+
+mod command;
 mod control;
-mod interaction;
 mod outputs;
 mod project;
 mod render;
+mod runner;
+mod snapshot;
 mod sources;
+mod state;
+mod transform;
+mod view;
 #[cfg(test)]
 mod tests;
 
-pub use interaction::DragState;
+pub use command::{Command, Selector, SourcePlacementPatch};
+pub use runner::{EngineRuntime, Runner, RunnerStats, StartupError};
+pub use snapshot::EngineSnapshot;
+pub use view::{PickerGroupView, PickerItemView};
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct ViewState {
-    pub zoom: f32,
-    pub pan: egui::Vec2,
+pub struct Engine {
+    pub state: EngineState,
+    pub registry: SourceRegistry,
+    pub output_registry: OutputRegistry,
+    pub control: ControlRegistry,
+    // Protocols
+    pub ndi: Option<NdiDiscovery>,
+    pub decklink: Option<DecklinkDiscovery>,
+    pub omt: Option<OmtDiscovery>,
+    #[cfg(target_os = "macos")]
+    pub syphon: Option<SyphonDiscovery>,
+    #[cfg(target_os = "macos")]
+    pub avfoundation: Option<AvFoundationDiscovery>,
+    #[cfg(target_os = "macos")]
+    pub screencapturekit: Option<ScreenCaptureKitDiscovery>,
+    #[cfg(target_os = "windows")]
+    pub spout: Option<SpoutDiscovery>,
+    #[cfg(target_os = "windows")]
+    pub mediafoundation: Option<MediaFoundationDiscovery>,
+    #[cfg(target_os = "windows")]
+    pub directshow: Option<DirectShowDiscovery>,
+    #[cfg(target_os = "windows")]
+    pub windowscapture: Option<WindowsCaptureDiscovery>,
+    // Other
+    comp: Option<Compositor>,
+    last_saved_at: Instant,
+    last_discovery: Instant,
+    last_tick: Instant,
+    last_heartbeat: Instant,
+    worst_tick_gap: Duration,
+    /// Last canvas panel rectangle, used by control commands that zoom or recenter.
+    pub canvas_rect: Rect,
+    pub load_warnings: Vec<String>,
+    totals: RunTotals,
 }
 
-impl ViewState {
-    pub fn new() -> Self {
-        Self {
-            zoom: 1.0,
-            pan: egui::Vec2::ZERO,
-        }
+impl Engine {
+    /// Protocol/driver versions of the linked third-party libraries, for display.
+    pub fn vendor_versions() -> Vec<(&'static str, Option<String>)> {
+        return Vec::from([
+            ("NDI", ndi_version()),
+            ("OMT", omt_version()),
+            ("DeckLink", decklink_version()),
+            #[cfg(target_os = "macos")]
+            ("Syphon", syphon_version()),
+            #[cfg(target_os = "windows")]
+            ("Spout", spout_version()),
+        ]);
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ResizeHandle {
-    TopLeft,
-    Top,
-    TopRight,
-    Right,
-    BottomRight,
-    Bottom,
-    BottomLeft,
-    Left,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SnapGuides {
-    pub x: Option<f32>,
-    pub y: Option<f32>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -91,64 +117,5 @@ impl RunTotals {
             return None;
         }
         return Some((self.gpu_ms / self.gpu_samples as f64) as f32);
-    }
-}
-
-pub struct Engine {
-    pub cfg: Config,
-    pub registry: SourceRegistry,
-    pub output_registry: OutputRegistry,
-    pub control: ControlRegistry,
-    // Protocols
-    pub ndi: Option<NdiDiscovery>,
-    pub decklink: Option<DecklinkDiscovery>,
-    pub omt: Option<OmtDiscovery>,
-    #[cfg(target_os = "macos")]
-    pub syphon: Option<SyphonDiscovery>,
-    #[cfg(target_os = "macos")]
-    pub avfoundation: Option<AvFoundationDiscovery>,
-    #[cfg(target_os = "macos")]
-    pub screencapturekit: Option<ScreenCaptureKitDiscovery>,
-    #[cfg(target_os = "windows")]
-    pub spout: Option<SpoutDiscovery>,
-    #[cfg(target_os = "windows")]
-    pub mediafoundation: Option<MediaFoundationDiscovery>,
-    #[cfg(target_os = "windows")]
-    pub directshow: Option<DirectShowDiscovery>,
-    #[cfg(target_os = "windows")]
-    pub windowscapture: Option<WindowsCaptureDiscovery>,
-    // Other
-    comp: Option<Compositor>,
-    pub project_path: Option<PathBuf>,
-    pub dirty: bool,
-    last_saved_at: Instant,
-    last_discovery: Instant,
-    last_tick: Instant,
-    last_heartbeat: Instant,
-    worst_tick_gap: Duration,
-    pub selected_source_id: Option<SourceId>,
-    pub expanded_source_id: Option<SourceId>,
-    pub drag_state: DragState,
-    pub snap_guides: SnapGuides,
-    pub view: ViewState,
-    /// Last canvas panel rectangle, used by control commands that zoom or recenter.
-    pub canvas_rect: Rect,
-    pub ui_visible: bool,
-    pub load_warnings: Vec<String>,
-    totals: RunTotals,
-}
-
-impl Engine {
-    /// Protocol/driver versions of the linked third-party libraries, for display.
-    pub fn vendor_versions() -> Vec<(&'static str, Option<String>)> {
-        return Vec::from([
-            ("NDI", ndi_version()),
-            ("OMT", omt_version()),
-            ("DeckLink", decklink_version()),
-            #[cfg(target_os = "macos")]
-            ("Syphon", syphon_version()),
-            #[cfg(target_os = "windows")]
-            ("Spout", spout_version()),
-        ]);
     }
 }

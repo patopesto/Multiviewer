@@ -319,7 +319,7 @@ fn classify_token(token: u64) -> TokenKind {
 }
 
 // @docs protocol="DeckLink" direction=output
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct DecklinkOutputConfig {
     // @docs label="Decklink Device"
     /// Playback device. Empty means no device is selected; the output stays closed.

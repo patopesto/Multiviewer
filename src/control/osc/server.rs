@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use rosc::{OscMessage, OscPacket, OscType, decoder, encoder};
 
-use super::super::command::{Command, Selector};
+use crate::control::{Command, Selector};
 use super::super::registry::ControlMessage;
 use super::feedback::FeedbackValue;
 use crate::config::TextureMode;

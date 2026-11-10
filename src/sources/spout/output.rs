@@ -10,7 +10,7 @@ use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, VideoOutput};
 
 // @docs protocol="Spout" direction=output
-#[derive(Serialize, Deserialize, Clone, Default)]
+#[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
 pub struct SpoutOutputConfig {
     // @docs hidden
     /// Name of the announced Spout sender. Empty uses the output's name.
