@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::APP_NAME;
-use crate::engine::Engine;
+use crate::engine::EngineSnapshot;
 use crate::ui::shortcuts::Shortcut;
 
 /// A menu-bar item the user activated this frame.
@@ -26,7 +26,7 @@ const AUTO_SAVE_INTERVALS: &[(u64, &str)] = &[
 ];
 
 /// Draw the top menu bar (File / Edit / View / About).
-pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuAction> {
+pub fn draw(ui: &mut egui::Ui, snapshot: &EngineSnapshot, recent: &[PathBuf]) -> Vec<MenuAction> {
     let mut actions = Vec::new();
     egui::Panel::top("menu_bar").show(ui, |ui| {
         egui::MenuBar::new().ui(ui, |ui| {
@@ -39,7 +39,7 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
                 menu_item(ui, &mut actions, Shortcut::SaveProjectAs, true);
                 ui.separator();
                 ui.menu_button("Auto-save", |ui| {
-                    let mut selected = engine.cfg.auto_save_interval;
+                    let mut selected = snapshot.state.cfg.auto_save_interval;
                     for &(secs, label) in AUTO_SAVE_INTERVALS {
                         if ui.radio_value(&mut selected, secs, label).changed() {
                             actions.push(MenuAction::SetAutoSaveInterval(secs));
@@ -51,15 +51,15 @@ pub fn draw(ui: &mut egui::Ui, engine: &Engine, recent: &[PathBuf]) -> Vec<MenuA
 
             menu_button(ui, "Edit", |ui| {
                 menu_item(ui, &mut actions, Shortcut::AddSource, true);
-                menu_item(ui, &mut actions, Shortcut::DeleteSource, engine.selected_source_id.is_some());
+                menu_item(ui, &mut actions, Shortcut::DeleteSource, snapshot.state.selected_source_id.is_some());
                 ui.separator();
-                menu_item(ui, &mut actions, Shortcut::ExpandSource, engine.selected_source_id.is_some() || engine.expanded_source_id.is_some());
-                menu_item(ui, &mut actions, Shortcut::ExitExpanded, engine.expanded_source_id.is_some());
+                menu_item(ui, &mut actions, Shortcut::ExpandSource, snapshot.state.selected_source_id.is_some() || snapshot.state.expanded_source_id.is_some());
+                menu_item(ui, &mut actions, Shortcut::ExitExpanded, snapshot.state.expanded_source_id.is_some());
                 ui.separator();
                 menu_item(ui, &mut actions, Shortcut::SelectPreviousSource, true);
                 menu_item(ui, &mut actions, Shortcut::SelectNextSource, true);
                 ui.separator();
-                let nudge = engine.selected_source_id.is_some();
+                let nudge = snapshot.state.selected_source_id.is_some();
                 menu_item(ui, &mut actions, Shortcut::NudgeUp, nudge);
                 menu_item(ui, &mut actions, Shortcut::NudgeDown, nudge);
                 menu_item(ui, &mut actions, Shortcut::NudgeLeft, nudge);

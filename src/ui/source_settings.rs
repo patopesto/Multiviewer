@@ -1,5 +1,5 @@
 use crate::ui::side_panel::{settings_grid, settings_row};
-use crate::sources::{SourceKind, SourceRuntimeConfig, SourceConfig};
+use crate::sources::{SourceRuntimeConfig, SourceConfig};
 use crate::sources::{TestSourceConfig, TestPattern, RadarDirection};
 use crate::sources::{NdiSourceConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{OmtSourceConfig, OmtQuality};
@@ -26,26 +26,30 @@ use crate::sources::{
     WindowsCaptureSourceConfig,
 };
 
-pub fn render_source_settings(source: &mut SourceKind, ui: &mut egui::Ui) -> bool {
-    return match &mut source.config {
+pub fn render_source_settings_config(
+    config: &mut SourceConfig,
+    runtime: &SourceRuntimeConfig,
+    ui: &mut egui::Ui,
+) -> bool {
+    return match config {
         SourceConfig::Test(cfg) => test_settings_ui(cfg, ui),
         SourceConfig::Ndi(cfg) => ndi_settings_ui(cfg, ui),
         SourceConfig::Omt(cfg) => omt_settings_ui(cfg, ui),
-        SourceConfig::Decklink(cfg) => decklink_settings_ui(cfg, &source.runtime, ui),
+        SourceConfig::Decklink(cfg) => decklink_settings_ui(cfg, runtime, ui),
         SourceConfig::Vnc(cfg) => vnc_settings_ui(cfg, ui),
         SourceConfig::Rdp(cfg) => rdp_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
         SourceConfig::Syphon(cfg) => syphon_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
-        SourceConfig::AvFoundation(cfg) => avfoundation_settings_ui(cfg, &source.runtime, ui),
+        SourceConfig::AvFoundation(cfg) => avfoundation_settings_ui(cfg, runtime, ui),
         #[cfg(target_os = "macos")]
         SourceConfig::ScreenCaptureKit(cfg) => screencapturekit_settings_ui(cfg, ui),
         #[cfg(target_os = "windows")]
         SourceConfig::Spout(cfg) => spout_settings_ui(cfg, ui),
         #[cfg(target_os = "windows")]
-        SourceConfig::MediaFoundation(cfg) => mediafoundation_settings_ui(cfg, &source.runtime, ui),
+        SourceConfig::MediaFoundation(cfg) => mediafoundation_settings_ui(cfg, runtime, ui),
         #[cfg(target_os = "windows")]
-        SourceConfig::DirectShow(cfg) => directshow_settings_ui(cfg, &source.runtime, ui),
+        SourceConfig::DirectShow(cfg) => directshow_settings_ui(cfg, runtime, ui),
         #[cfg(target_os = "windows")]
         SourceConfig::WindowsCapture(cfg) => windowscapture_settings_ui(cfg, ui),
         // Config from a platform that has this protocol; no runtime source.

@@ -1,7 +1,5 @@
-use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -9,7 +7,7 @@ use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
 use crate::control::{Command, ControlStatus, FeedbackMode, Selector};
-use crate::engine::Engine;
+use crate::engine::{Engine, EngineRuntime, Runner, RunnerStats};
 use crate::platform::poll_open_file;
 use crate::session::Session;
 use crate::ui::canvas;
@@ -20,22 +18,19 @@ use crate::ui::shortcuts::{self, Shortcut};
 const DEFAULT_PROJECT_NAME: &str = "Untitled";
 const LICENSES_TEXT: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/vendor/LICENSE.md"));
 
-const ACTIVE_FPS: f64 = 60.0;
-const IDLE_FPS: f64 = 10.0;
-const FRAME_TOLERANCE: Duration = Duration::from_millis(2);
-const RENDER_FPS_WINDOW: Duration = Duration::from_secs(2);
-const MAX_RENDER_TIMESTAMPS: usize = 256;
-const TICK_PARK: Duration = Duration::from_millis(20);
-const UI_STALL: Duration = Duration::from_millis(250);
-const SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
+const VISIBLE_REPAINT: Duration = Duration::from_millis(16);
+const HIDDEN_REPAINT: Duration = Duration::from_secs(1);
 /// Waiting this long for the engine lock means the tick thread is busy in a way
 /// the user experiences as a frozen window.
 const SLOW_LOCK: Duration = Duration::from_millis(100);
 
 pub struct App {
     engine: Arc<Mutex<Engine>>,
-    render_stats: Arc<Mutex<RenderStats>>,
-    tick: Option<Tick>,
+    runner: Runner,
+    commands: mpsc::Sender<Command>,
+    canvas_ui: canvas::CanvasUi,
+    panel: side_panel::SidePanel,
+    present_stats: RunnerStats,
     recent_projects: Vec<PathBuf>,
     last_error: Option<String>,
     last_warning: Option<String>,
@@ -48,155 +43,16 @@ pub struct App {
     vendor_versions: Vec<(&'static str, Option<String>)>,
     gpu_backend: Option<String>,
     gpu_name: Option<String>,
-    next_frame: Instant,
-    next_output_frame: Instant,
     /// Set by `--exit-after`; the first frame past it closes the window so
     /// `on_exit` runs and the trace flushes.
     deadline: Option<Instant>,
     trace_guard: Option<tracing_chrome::FlushGuard>,
 }
 
-// Moving-window FPS tracker over logic() calls.
-struct RenderStats {
-    recent_frames: VecDeque<Instant>,
-    work_ms: VecDeque<f32>,
-    gpu_ms: Option<f32>,
-}
-
-impl RenderStats {
-    fn new() -> Self {
-        Self {
-            recent_frames: VecDeque::new(),
-            work_ms: VecDeque::new(),
-            gpu_ms: None,
-        }
-    }
-
-    fn record_frame(&mut self) {
-        let now = Instant::now();
-        self.recent_frames.push_back(now);
-        while let Some(front) = self.recent_frames.front() {
-            if now.duration_since(*front) > RENDER_FPS_WINDOW {
-                self.recent_frames.pop_front();
-            } else {
-                break;
-            }
-        }
-        if self.recent_frames.len() > MAX_RENDER_TIMESTAMPS {
-            self.recent_frames.pop_front();
-        }
-    }
-
-    fn record_work(&mut self, elapsed: Duration) {
-        push_window(&mut self.work_ms, elapsed);
-    }
-
-    fn record_gpu(&mut self, gpu_ms: Option<f32>) {
-        self.gpu_ms = gpu_ms;
-    }
-
-    /// Average engine and output work per frame. The frame rate alone cannot show
-    /// this: a frame over the display deadline reads the same as one twice over.
-    fn work_ms(&self) -> f32 {
-        return mean(&self.work_ms);
-    }
-
-    fn fps(&self) -> f64 {
-        if self.recent_frames.len() < 2 {
-            return 0.0;
-        }
-        let front = self.recent_frames.front().unwrap();
-        let back = self.recent_frames.back().unwrap();
-        let secs = back.duration_since(*front).as_secs_f64();
-        if secs <= 0.0 {
-            return 0.0;
-        }
-        return (self.recent_frames.len() - 1) as f64 / secs;
-    }
-}
-
-fn push_window(samples: &mut VecDeque<f32>, elapsed: Duration) {
-    samples.push_back(elapsed.as_secs_f32() * 1000.0);
-    if samples.len() > MAX_RENDER_TIMESTAMPS {
-        samples.pop_front();
-    }
-}
-
-fn mean(samples: &VecDeque<f32>) -> f32 {
-    if samples.is_empty() {
-        return 0.0;
-    }
-    return samples.iter().sum::<f32>() / samples.len() as f32;
-}
-
 enum Confirm {
     New,
     Open,
     OpenPath(PathBuf),
-}
-
-/// Ticks the engine at a fixed rate while the window is unfocused.
-///
-/// `App::logic` is only called from the window paint loop, and on Windows and
-/// Wayland that loop stalls when the window is not foreground, which would drag
-/// every output down with it. This thread owns the engine tick instead.
-struct Tick {
-    state: Arc<Mutex<TickState>>,
-    stop: Arc<AtomicBool>,
-    done: Receiver<()>,
-}
-
-struct TickState {
-    unfocused: bool,
-    /// Nothing is showing the preview: minimised, hidden or fully occluded.
-    idle: bool,
-    last_ui_tick: Instant,
-}
-
-impl Tick {
-    fn start(
-        engine: Arc<Mutex<Engine>>,
-        render_stats: Arc<Mutex<RenderStats>>,
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        format: wgpu::TextureFormat,
-    ) -> Option<Self> {
-        let state = Arc::new(Mutex::new(TickState {
-            unfocused: false,
-            idle: false,
-            last_ui_tick: Instant::now(),
-        }));
-        let stop = Arc::new(AtomicBool::new(false));
-        let (done_tx, done) = mpsc::channel();
-        let thread_state = state.clone();
-        let thread_stop = stop.clone();
-        std::thread::Builder::new()
-            .name("engine-tick".into())
-            .spawn(move || {
-                run_tick(engine, render_stats, device, queue, format, thread_state, thread_stop);
-                let _ = done_tx.send(());
-            })
-            .ok()?;
-        return Some(Self { state, stop, done });
-    }
-
-    /// Called from the paint loop: record where the UI is at, so the tick thread
-    /// can tell whether it should be the one running the engine.
-    fn mark_ui_tick(&self, focused: bool, on_screen: bool) {
-        let mut state = self.state.lock().unwrap();
-        state.unfocused = !focused;
-        state.idle = !on_screen;
-        state.last_ui_tick = Instant::now();
-    }
-}
-
-impl Drop for Tick {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        // Bounded: the thread can sit inside a blocking output present, in which
-        // case it detaches and the process exit takes the engine down with it.
-        let _ = self.done.recv_timeout(SHUTDOWN_GRACE);
-    }
 }
 
 // Init stuff
@@ -214,13 +70,36 @@ impl App {
             }
             None => (None, None),
         };
+        let render_state = cc
+            .wgpu_render_state
+            .as_ref()
+            .expect("eframe wgpu render state");
+        let runtime = EngineRuntime::start(
+            startup_path,
+            render_state.device.clone(),
+            render_state.queue.clone(),
+            render_state.target_format,
+            true,
+        )
+        .expect("spawn engine runner");
+        let engine = runtime.engine;
+        let runner = runtime.runner;
+        let last_error = runtime.startup_error.map(|error| error.message());
+        let last_warning = runtime.startup_warning;
+
+        Self::configure_egui(&cc.egui_ctx);
+
+        let commands = runner.commands();
         let mut app = Self {
-            engine: Arc::new(Mutex::new(Engine::new_project())),
-            render_stats: Arc::new(Mutex::new(RenderStats::new())),
-            tick: None,
+            engine,
+            runner,
+            commands,
+            canvas_ui: canvas::CanvasUi::default(),
+            panel: side_panel::SidePanel::default(),
+            present_stats: RunnerStats::new(),
             recent_projects: Vec::new(),
-            last_error: None,
-            last_warning: None,
+            last_error,
+            last_warning,
             pending_confirm: None,
             show_about: false,
             show_shortcuts: false,
@@ -230,36 +109,9 @@ impl App {
             vendor_versions: Engine::vendor_versions(),
             gpu_backend,
             gpu_name,
-            next_frame: Instant::now(),
-            next_output_frame: Instant::now(),
             deadline,
             trace_guard,
         };
-
-        if let Some(rs) = &cc.wgpu_render_state {
-            app.tick = Tick::start(
-                app.engine.clone(),
-                app.render_stats.clone(),
-                rs.device.clone(),
-                rs.queue.clone(),
-                rs.target_format,
-            );
-        }
-
-        Self::configure_egui(&cc.egui_ctx);
-
-        if let Some(path) = startup_path {
-            if path.exists() {
-                let result = app.engine().open_project(&path);
-                if let Err(e) = result {
-                    app.last_error = Some(e.to_string());
-                } else {
-                    app.refresh_warning();
-                }
-            } else {
-                app.last_error = Some(format!("Startup project not found: {}", path.display()));
-            }
-        }
         app.refresh_recent();
         return app;
     }
@@ -296,7 +148,7 @@ impl App {
 
 impl eframe::App for App {
     // Called once per frame before ui(), should not perform any drawing here
-    fn logic(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.deadline.is_some_and(|deadline| Instant::now() >= deadline) {
             self.deadline = None;
             tracing::info!("run deadline reached, closing");
@@ -308,51 +160,63 @@ impl eframe::App for App {
         self.handle_platform_open_files();
         self.update_title(ctx);
 
-        // App focused: run at display refresh rate.
-        let (focused, minimized, occluded) = ctx.input(|i| {
+        let (minimized, occluded) = ctx.input(|i| {
             let viewport = i.viewport();
-            (
-                viewport.focused.unwrap_or(false),
-                viewport.minimized.unwrap_or(false),
-                viewport.occluded,
-            )
+            (viewport.minimized.unwrap_or(false), viewport.occluded)
         });
-        // Minimised, hidden or fully occluded means nothing is showing the preview.
-        let on_screen = !minimized && occluded != Some(true);
-        if let Some(tick) = &self.tick {
-            tick.mark_ui_tick(focused, on_screen);
-        }
-        if focused {
-            self.run_frame(frame);
-            ctx.request_repaint();
-            return;
-        }
+        // Minimised or fully occluded means nothing is showing the preview.
+        // Focus is deliberately not part of this: a partially covered window
+        // is still visible and its preview must keep running.
+        let visible = !minimized && occluded != Some(true);
+        self.runner.set_window_state(visible);
 
-        // App not focused: still a live preview unless the window is out of sight.
-        let interval = Duration::from_secs_f64(1.0 / target_fps(on_screen, &self.engine()));
-
-        let now = Instant::now();
-        if now + FRAME_TOLERANCE < self.next_frame {
-            ctx.request_repaint_after(self.next_frame - now);
-            return;
-        }
-        self.next_frame = advance_deadline(self.next_frame, now, interval);
-
-        // Without a tick thread the paint loop is the only tick; with one, the
-        // engine is already running on it and this pass only refreshes the window.
-        if self.tick.is_none() {
-            self.run_frame(frame);
-        }
-        ctx.request_repaint();
+        let interval = if visible {
+            VISIBLE_REPAINT
+        } else {
+            HIDDEN_REPAINT
+        };
+        ctx.request_repaint_after(interval);
     }
 
     // Draw function
-    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        self.present_stats.record_frame();
 
-        if self.engine().ui_visible {
-            let actions = menu_bar::draw(ui, &self.engine(), &self.recent_projects);
-            side_panel::draw(ui, &mut self.engine());
+        let snapshot = self.runner.snapshot();
+        let ui_visible = snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.state.ui_visible)
+            .unwrap_or(true);
+        let actions = if ui_visible {
+            match snapshot.as_deref() {
+                Some(snapshot) => {
+                    let discovery_focus =
+                        snapshot
+                            .state
+                            .selected_source_id
+                            .as_ref()
+                            .and_then(|id| {
+                                snapshot
+                                    .state
+                                    .cfg
+                                    .canvas
+                                    .sources
+                                    .iter()
+                                    .find(|source| &source.uuid == id)
+                                    .map(|source| &source.protocol)
+                            });
+                    self.runner.set_discovery_focus(discovery_focus);
+                    let actions = menu_bar::draw(ui, snapshot, &self.recent_projects);
+                    side_panel::draw(ui, snapshot, &mut self.panel, &self.commands);
+                    actions
+                }
+                None => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
+        if !actions.is_empty() {
             self.handle_menu_actions(&actions, ui);
         }
         self.handle_global_shortcuts(ui);
@@ -361,29 +225,29 @@ impl eframe::App for App {
         self.draw_shortcuts_modal(&ctx);
         self.draw_control_window(&ctx);
         self.draw_licenses_modal(&ctx);
-        if self.engine().ui_visible {
+        if ui_visible {
             self.draw_status_bar(ui);
         }
 
         egui::CentralPanel::default().show(ui, |ui| {
-            canvas::update(ui, &mut self.engine(), &ctx, frame);
+            if let Some(snapshot) = &snapshot {
+                canvas::update(
+                    ui,
+                    snapshot,
+                    &self.commands,
+                    &mut self.canvas_ui,
+                    &self.runner,
+                    &ctx,
+                );
+            }
         });
     }
 
     fn on_exit(&mut self) {
         let started = Instant::now();
         tracing::info!("exiting");
-        drop(self.tick.take());
-        let totals = self.engine().run_totals();
-        tracing::info!(
-            ticks = totals.ticks,
-            mean_work_ms = totals.mean_work_ms(),
-            mean_gpu_ms = ?totals.mean_gpu_ms(),
-            uploads = totals.uploads,
-            upload_mb = totals.upload_bytes / (1024 * 1024),
-            upload_fallbacks = totals.upload_fallbacks,
-            "run totals"
-        );
+        self.runner.stop();
+        self.engine().log_run_totals();
         drop(self.trace_guard.take());
         tracing::info!(total_ms = started.elapsed().as_millis() as u64, "exit");
     }
@@ -391,23 +255,6 @@ impl eframe::App for App {
 
 // Update stuff
 impl App {
-    /// One frame of engine work: discovery, auto-save, compositing and outputs.
-    fn run_frame(&mut self, frame: &mut eframe::Frame) {
-        let Some(rs) = frame.wgpu_render_state() else {
-            return;
-        };
-        let mut next_output = self.next_output_frame;
-        tick_engine(
-            &mut self.engine(),
-            &self.render_stats,
-            &rs.device,
-            &rs.queue,
-            rs.target_format,
-            &mut next_output,
-        );
-        self.next_output_frame = next_output;
-    }
-
     /// Promote warnings collected while loading the current project to the status bar.
     fn refresh_warning(&mut self) {
         let warning = {
@@ -437,7 +284,7 @@ impl App {
     }
 
     fn confirm_or(&mut self, action: Confirm) {
-        let dirty = self.engine().dirty;
+        let dirty = self.engine().state.dirty;
         if dirty {
             self.pending_confirm = Some(action);
         } else {
@@ -449,6 +296,8 @@ impl App {
         match action {
             Confirm::New => {
                 *self.engine() = Engine::new_project();
+                self.panel = side_panel::SidePanel::default();
+                self.canvas_ui = canvas::CanvasUi::default();
                 self.last_error = None;
                 self.last_warning = None;
             }
@@ -511,7 +360,12 @@ impl App {
         };
 
         // In hidden UI mode only allow toggling back and exiting expanded view.
-        if !self.engine().ui_visible {
+        let ui_visible = self
+            .runner
+            .snapshot()
+            .map(|snapshot| snapshot.state.ui_visible)
+            .unwrap_or(true);
+        if !ui_visible {
             match shortcut {
                 Shortcut::ToggleUi | Shortcut::ExitExpanded => {}
                 _ => return,
@@ -539,7 +393,7 @@ impl App {
                 return;
             }
             Shortcut::SaveProject => {
-                if self.engine().project_path.is_some() {
+                if self.engine().state.project_path.is_some() {
                     let result = self.engine().apply_command(Command::SaveProject);
                     if let Err(e) = result {
                         self.last_error = Some(e.to_string());
@@ -588,14 +442,17 @@ impl App {
     }
 
     fn update_title(&self, ctx: &egui::Context) {
-        let engine = self.engine();
-        let filename = engine
+        let Some(snapshot) = self.runner.snapshot() else {
+            return;
+        };
+        let filename = snapshot
+            .state
             .project_path
             .as_ref()
             .and_then(|p| p.file_stem())
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| DEFAULT_PROJECT_NAME.to_string());
-        let prefix = if engine.dirty { "* " } else { "" };
+        let prefix = if snapshot.state.dirty { "* " } else { "" };
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{}{} — {}", prefix, filename, APP_NAME)));
     }
 
@@ -641,9 +498,11 @@ impl App {
         if let Some(warn) = &self.last_warning {
             return format!("Warning: {warn}");
         }
-        let engine = self.engine();
-        if engine.dirty {
-            if engine.project_path.is_some() {
+        let Some(snapshot) = self.runner.snapshot() else {
+            return "Saved".to_string();
+        };
+        if snapshot.state.dirty {
+            if snapshot.state.project_path.is_some() {
                 return "Unsaved changes".to_string();
             }
             return "Untitled — use Save As".to_string();
@@ -652,15 +511,19 @@ impl App {
     }
 
     fn draw_status_bar(&self, ui: &mut egui::Ui) {
-        let (fps, work_ms, gpu_ms) = {
-            let stats = self.render_stats.lock().unwrap();
-            (stats.fps(), stats.work_ms(), stats.gpu_ms)
+        let (tick_fps, work_ms, gpu_ms) = {
+            let stats = self.runner.stats();
+            let stats = stats.lock().unwrap();
+            (stats.fps(), stats.work_ms(), stats.gpu_ms())
         };
-        let mut text = format!("{fps:.0} FPS · {work_ms:.1} ms");
-        let mut label = String::from("Frame rate over the last 2s · CPU time per frame");
+        let present_fps = self.present_stats.fps();
+        let mut text = format!("{tick_fps:.0} tick · {present_fps:.0} present · {work_ms:.1} ms");
+        let mut label = String::from(
+            "Engine ticks over the last 2s · UI frames presented over the last 2s · CPU time per tick",
+        );
         if let Some(gpu_ms) = gpu_ms {
-            text.push_str(&format!(" · {gpu_ms:.1} ms"));
-            label.push_str(" · GPU time per frame");
+            text.push_str(&format!(" · {gpu_ms:.1} ms GPU"));
+            label.push_str(" · GPU canvas time");
         }
         egui::Panel::bottom("status_bar").show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -782,7 +645,7 @@ impl App {
         let mut engine = self.engine();
 
         let open = centered_window(ctx, "OSC Control", false, Some([440.0, 420.0]), |ui| {
-            let osc = &mut engine.cfg.control.osc;
+            let osc = &mut engine.state.cfg.control.osc;
 
             ui.heading("OSC input");
             if ui.checkbox(&mut osc.enabled, "Enabled").changed() {
@@ -877,7 +740,7 @@ impl App {
         });
 
         if dirty {
-            engine.dirty = true;
+            engine.state.dirty = true;
         }
         if apply {
             engine.restart_control();
@@ -952,26 +815,26 @@ fn control_status_label(engine: &Engine) -> String {
 /// Translate a keyboard shortcut into the shared control command vocabulary.
 /// Returns `None` for actions that are UI-only (dialogs, confirmation).
 fn shortcut_command(shortcut: Shortcut, engine: &Engine, nudge_amount: f32) -> Option<Command> {
-    let selected = || engine.selected_source_id.clone().map(Selector::Key);
+    let selected = || engine.state.selected_source_id.clone().map(Selector::Key);
     return match shortcut {
         Shortcut::AddSource => Some(Command::AddSource),
         // Deleting while expanded would pull the view out from under the user.
         Shortcut::DeleteSource => {
-            if engine.expanded_source_id.is_some() {
+            if engine.state.expanded_source_id.is_some() {
                 None
             } else {
                 selected().map(Command::RemoveSource)
             }
         }
         Shortcut::ExpandSource => {
-            if engine.expanded_source_id.is_some() {
+            if engine.state.expanded_source_id.is_some() {
                 Some(Command::ExitExpanded)
             } else {
                 selected().map(Command::ExpandSource)
             }
         }
         Shortcut::ExitExpanded => {
-            if engine.expanded_source_id.is_some() {
+            if engine.state.expanded_source_id.is_some() {
                 Some(Command::ExitExpanded)
             } else {
                 Some(Command::ClearSelection)
@@ -1013,97 +876,6 @@ fn ensure_extension(mut path: std::path::PathBuf, ext: &str) -> std::path::PathB
     return path;
 }
 
-fn advance_deadline(prev: Instant, now: Instant, interval: Duration) -> Instant {
-    return if now >= prev + interval {
-        now + interval
-    } else {
-        prev + interval
-    };
-}
-
-fn tick_engine(
-    engine: &mut Engine,
-    stats: &Mutex<RenderStats>,
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    format: wgpu::TextureFormat,
-    next_output: &mut Instant,
-) {
-    let _span = tracing::debug_span!("tick").entered();
-    let started = Instant::now();
-    stats.lock().unwrap().record_frame();
-    engine.update();
-    engine.auto_save();
-    engine.ensure_compositor(device, queue, format);
-    engine.begin_frame(device, queue);
-
-    // Outputs run at their own fixed rate
-    let now = Instant::now();
-    if now + FRAME_TOLERANCE >= *next_output {
-        let interval = Duration::from_secs_f64(1.0 / ACTIVE_FPS);
-        *next_output = advance_deadline(*next_output, now, interval);
-        engine.render_outputs(device, queue);
-    }
-
-    let elapsed = started.elapsed();
-    let gpu_ms = engine.finish_tick(elapsed.as_secs_f32() * 1000.0);
-    {
-        let mut s = stats.lock().unwrap();
-        s.record_work(elapsed);
-        s.record_gpu(gpu_ms);
-    }
-}
-
-/// Tick rate: a live preview whenever something is on screen, or whenever an
-/// output or the control listener depends on the engine; otherwise idle.
-fn target_fps(on_screen: bool, engine: &Engine) -> f64 {
-    if on_screen || engine.output_registry.any_enabled() || engine.control.is_enabled() {
-        return ACTIVE_FPS;
-    }
-    return IDLE_FPS;
-}
-
-/// Whether the tick thread has to run the engine: the window is unfocused, or the
-/// paint loop that would otherwise tick it has stalled.
-fn owns_tick(state: &TickState, now: Instant) -> bool {
-    return state.unfocused || now.duration_since(state.last_ui_tick) > UI_STALL;
-}
-
-fn run_tick(
-    engine: Arc<Mutex<Engine>>,
-    stats: Arc<Mutex<RenderStats>>,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    format: wgpu::TextureFormat,
-    state: Arc<Mutex<TickState>>,
-    stop: Arc<AtomicBool>,
-) {
-    let mut next_frame = Instant::now();
-    let mut next_output = Instant::now();
-    while !stop.load(Ordering::Relaxed) {
-        let (run, on_screen) = {
-            let state = state.lock().unwrap();
-            (owns_tick(&state, Instant::now()), !state.idle)
-        };
-        if !run {
-            std::thread::sleep(TICK_PARK);
-            continue;
-        }
-
-        let mut engine = engine.lock().unwrap();
-        let interval = Duration::from_secs_f64(1.0 / target_fps(on_screen, &engine));
-
-        let now = Instant::now();
-        if now + FRAME_TOLERANCE < next_frame {
-            drop(engine);
-            std::thread::sleep(next_frame - now);
-            continue;
-        }
-        next_frame = advance_deadline(next_frame, now, interval);
-        tick_engine(&mut engine, &stats, &device, &queue, format, &mut next_output);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1136,61 +908,10 @@ mod tests {
     }
 
     #[test]
-    fn deadline_advances_on_a_fixed_grid_when_running_early() {
-        let interval = Duration::from_millis(16);
-        let deadline = Instant::now() + interval;
-        // Ran 2ms before the deadline: the next deadline must still be a full
-        // interval after the current one, not 2ms sooner.
-        let now = deadline - Duration::from_millis(2);
-        assert_eq!(advance_deadline(deadline, now, interval), deadline + interval);
-    }
-
-    #[test]
-    fn deadline_resyncs_when_fallen_behind() {
-        let interval = Duration::from_millis(16);
-        let deadline = Instant::now();
-        let now = deadline + Duration::from_millis(100);
-        assert_eq!(advance_deadline(deadline, now, interval), now + interval);
-    }
-
-    #[test]
-    fn tick_thread_takes_over_only_when_the_paint_loop_cannot() {
-        let now = Instant::now();
-        let alive = TickState {
-            unfocused: false,
-            idle: false,
-            last_ui_tick: now,
-        };
-        assert!(!owns_tick(&alive, now));
-
-        let stalled = TickState {
-            unfocused: false,
-            idle: false,
-            last_ui_tick: now - UI_STALL - Duration::from_millis(1),
-        };
-        assert!(owns_tick(&stalled, now));
-
-        let unfocused = TickState {
-            unfocused: true,
-            idle: false,
-            last_ui_tick: now,
-        };
-        assert!(owns_tick(&unfocused, now));
-    }
-
-    #[test]
-    fn tick_rate_follows_what_is_on_screen() {
-        let engine = Engine::test_instance(Canvas::default());
-
-        assert_eq!(target_fps(true, &engine), ACTIVE_FPS);
-        assert_eq!(target_fps(false, &engine), IDLE_FPS);
-    }
-
-    #[test]
     fn shortcut_mapping_uses_the_control_commands() {
         let mut engine = Engine::test_instance(Canvas::default());
         let uuid = engine.add_source();
-        engine.selected_source_id = Some(uuid.clone());
+        engine.state.selected_source_id = Some(uuid.clone());
 
         assert_eq!(
             shortcut_command(Shortcut::AddSource, &engine, 1.0),
@@ -1230,8 +951,8 @@ mod tests {
     fn expanded_view_guards_shortcut_commands() {
         let mut engine = Engine::test_instance(Canvas::default());
         let uuid = engine.add_source();
-        engine.selected_source_id = Some(uuid.clone());
-        engine.expanded_source_id = Some(uuid);
+        engine.state.selected_source_id = Some(uuid.clone());
+        engine.state.expanded_source_id = Some(uuid);
 
         assert_eq!(shortcut_command(Shortcut::DeleteSource, &engine, 1.0), None);
         assert_eq!(
@@ -1248,7 +969,7 @@ mod tests {
     fn escape_clears_selection_when_not_expanded() {
         let mut engine = Engine::test_instance(Canvas::default());
         let uuid = engine.add_source();
-        engine.selected_source_id = Some(uuid);
+        engine.state.selected_source_id = Some(uuid);
 
         assert_eq!(
             shortcut_command(Shortcut::ExitExpanded, &engine, 1.0),

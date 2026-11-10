@@ -1,23 +1,82 @@
 use std::sync::Arc;
+use std::sync::mpsc::Sender;
 
 use eframe::egui_wgpu;
 
-use crate::compositor::{self, Rect, Vert};
-use crate::config::Canvas;
-use crate::engine::{DragState, Engine, ResizeHandle, SnapGuides};
+use crate::compositor::{self, Draw, Rect};
+use crate::config::{Canvas, Source, SourceId};
+use crate::engine::{Command, EngineSnapshot, Runner, Selector};
 
-// Macro to load from the assets directory
 macro_rules! asset_image {
     ($file:expr) => {
         egui::include_image!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/icons/", $file))
     };
 }
 
+const HANDLE_TOLERANCE: f32 = 8.0;
+const SNAP_THRESHOLD: f32 = 2.0;
+const SNAP_BREAK_THRESHOLD: f32 = 2.0;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ResizeHandle {
+    TopLeft,
+    Top,
+    TopRight,
+    Right,
+    BottomRight,
+    Bottom,
+    BottomLeft,
+    Left,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct SnapGuides {
+    x: Option<f32>,
+    y: Option<f32>,
+}
+
+#[derive(Clone, Copy)]
+struct WorldRect {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+}
+
+struct SnapCandidates {
+    x: Vec<f32>,
+    y: Vec<f32>,
+}
+
+/// Local canvas interaction state. Never shared with the engine.
+#[derive(Default)]
+pub struct CanvasUi {
+    drag: Option<CanvasDrag>,
+    snap_guides: SnapGuides,
+}
+
+enum CanvasDrag {
+    Move {
+        id: SourceId,
+        start: egui::Pos2,
+        origin: (f32, f32),
+    },
+    Resize {
+        id: SourceId,
+        handle: ResizeHandle,
+        start: egui::Pos2,
+        origin: (f32, f32, u32, u32),
+    },
+    Pan {
+        start: egui::Pos2,
+        pan: [f32; 2],
+    },
+}
+
 pub struct CanvasCallback {
     rect_px: [f32; 4], // x, y, w, h (physical pixels, origin top-left)
     shared: Arc<compositor::Shared>,
-    verts: Arc<Vec<Vert>>,
-    draws: Vec<compositor::DrawCall>,
+    draw: Arc<Draw>,
 }
 
 impl egui_wgpu::CallbackTrait for CanvasCallback {
@@ -29,7 +88,7 @@ impl egui_wgpu::CallbackTrait for CanvasCallback {
         _encoder: &mut wgpu::CommandEncoder,
         _resources: &mut egui_wgpu::CallbackResources,
     ) -> Vec<wgpu::CommandBuffer> {
-        queue.write_buffer(&self.shared.vb, 0, bytemuck::cast_slice(&self.verts));
+        queue.write_buffer(&self.shared.vb, 0, bytemuck::cast_slice(&self.draw.verts));
         Vec::new()
     }
 
@@ -45,7 +104,7 @@ impl egui_wgpu::CallbackTrait for CanvasCallback {
         rpass.set_vertex_buffer(0, self.shared.vb.slice(..));
         rpass.set_index_buffer(self.shared.ib.slice(..), wgpu::IndexFormat::Uint16);
         let mut current_pipeline = None;
-        for draw_call in &self.draws {
+        for draw_call in &self.draw.draws {
             let pipeline = match draw_call.pipeline {
                 compositor::Pipeline::Main => &self.shared.pipeline,
                 compositor::Pipeline::Text => &self.shared.text_pipeline,
@@ -62,9 +121,11 @@ impl egui_wgpu::CallbackTrait for CanvasCallback {
 
 pub fn update(
     ui: &mut egui::Ui,
-    engine: &mut Engine,
+    snapshot: &EngineSnapshot,
+    commands: &Sender<Command>,
+    state: &mut CanvasUi,
+    runner: &Runner,
     ctx: &egui::Context,
-    frame: &mut eframe::Frame,
 ) {
     let rect = ui.available_rect_before_wrap();
     let panel_rect = Rect {
@@ -73,146 +134,216 @@ pub fn update(
         w: rect.width(),
         h: rect.height(),
     };
-    let ui_visible = engine.ui_visible;
-    engine.canvas_rect = panel_rect;
+    runner.set_preview_rect(panel_rect);
     let (response, painter) = ui.allocate_painter(rect.size(), egui::Sense::click_and_drag());
 
-    // Only start a drag if the press actually happened on the canvas.
-    let pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
+    let doc = &snapshot.state;
+    let canvas = &doc.cfg.canvas;
+    let ui_visible = doc.ui_visible;
+    let transform = if ui_visible {
+        display_transform(canvas, doc.view.zoom, doc.view.pan, &panel_rect)
+    } else {
+        display_transform(canvas, 1.0, [0.0, 0.0], &panel_rect)
+    };
+    let (scale, offset_x, offset_y) = transform;
+    let origin_x = panel_rect.x + offset_x;
+    let origin_y = panel_rect.y + offset_y;
+
     let primary_down = ctx.input(|i| i.pointer.primary_down());
+    let pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
     if !primary_down {
-        engine.drag_state = DragState::None;
-        engine.snap_guides = SnapGuides::default();
+        state.drag = None;
+        state.snap_guides = SnapGuides::default();
     } else if ui_visible
         && pressed
         && response.hovered()
         && let Some(pos) = response.interact_pointer_pos()
     {
         response.request_focus();
-        if engine.expanded_source_id().is_some() {
-            // While a source is expanded, the canvas is used for panning only.
-            engine.drag_state = DragState::None;
-        } else if let Some((uuid, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y)) {
-            let start = engine
-                .source_rect_world(&uuid)
-                .expect("selected source exists");
-            engine.selected_source_id = Some(uuid.clone());
-            engine.drag_state = DragState::Resize {
-                uuid,
+        if doc.expanded_source_id.is_some() {
+            state.drag = Some(CanvasDrag::Pan {
+                start: pos,
+                pan: doc.view.pan,
+            });
+        } else if let Some((id, handle)) = hit_resize_handle(
+            canvas,
+            doc.selected_source_id.as_deref(),
+            pos,
+            scale,
+            origin_x,
+            origin_y,
+        ) {
+            let source = canvas
+                .sources
+                .iter()
+                .find(|source| source.uuid == id)
+                .expect("hit-tested source exists");
+            state.drag = Some(CanvasDrag::Resize {
+                id,
                 handle,
-                start,
-                start_screen: (pos.x, pos.y),
-            };
+                start: pos,
+                origin: (source.x, source.y, source.width, source.height),
+            });
+        } else if let Some(id) = hit_test(canvas, pos, scale, origin_x, origin_y) {
+            let _ = commands.send(Command::SelectSource(Selector::Id(id.clone())));
+            let source = canvas
+                .sources
+                .iter()
+                .find(|source| source.uuid == id)
+                .expect("hit-tested source exists");
+            state.drag = Some(CanvasDrag::Move {
+                id,
+                start: pos,
+                origin: (source.x, source.y),
+            });
         } else {
-            let hit = engine.hit_test(&panel_rect, (pos.x, pos.y));
-            engine.selected_source_id = hit.clone();
-            engine.drag_state = hit.map(|uuid| DragState::Move { uuid }).unwrap_or_default();
+            state.drag = Some(CanvasDrag::Pan {
+                start: pos,
+                pan: doc.view.pan,
+            });
         }
     }
 
     if ui_visible && response.dragged() {
-        match engine.drag_state.clone() {
-            DragState::Move { uuid } => {
-                engine.drag_source(
-                    &uuid,
-                    (response.drag_delta().x, response.drag_delta().y),
-                    &panel_rect,
-                );
-            }
-            DragState::Resize {
-                uuid,
-                handle,
-                start,
-                start_screen,
-            } => {
-                if let Some(pos) = response.interact_pointer_pos() {
-                    let delta = (pos.x - start_screen.0, pos.y - start_screen.1);
-                    engine.resize_source(&uuid, handle, start, delta, &panel_rect);
+        let mut guides = state.snap_guides;
+        match &state.drag {
+            Some(CanvasDrag::Move { id, start, origin }) => {
+                let pointer = response.interact_pointer_pos().unwrap_or(*start);
+                if let Some(source) = canvas.sources.iter().find(|source| source.uuid == *id) {
+                    let ((x, y), next) = snap_move(
+                        canvas,
+                        id,
+                        *origin,
+                        (source.width as f32, source.height as f32),
+                        (pointer.x - start.x, pointer.y - start.y),
+                        scale,
+                        guides,
+                    );
+                    guides = next;
+                    let _ = commands.send(Command::SetSourceRect {
+                        source: Selector::Id(id.clone()),
+                        x,
+                        y,
+                        width: source.width,
+                        height: source.height,
+                    });
                 }
             }
-            DragState::None => {
-                // Primary-drag on empty canvas pans the view.
-                engine.view.pan += response.drag_delta();
+            Some(CanvasDrag::Resize {
+                id,
+                handle,
+                start,
+                origin,
+            }) => {
+                let pointer = response.interact_pointer_pos().unwrap_or(*start);
+                let ((x, y, width, height), next) = snap_resize(
+                    canvas,
+                    id,
+                    *handle,
+                    *origin,
+                    (pointer.x - start.x, pointer.y - start.y),
+                    scale,
+                    guides,
+                );
+                guides = next;
+                let _ = commands.send(Command::SetSourceRect {
+                    source: Selector::Id(id.clone()),
+                    x,
+                    y,
+                    width,
+                    height,
+                });
             }
+            Some(CanvasDrag::Pan { start, pan }) => {
+                guides = SnapGuides::default();
+                let _ = commands.send(Command::SetView {
+                    zoom: doc.view.zoom,
+                    pan: [
+                        pan[0] + response.interact_pointer_pos().unwrap_or(*start).x - start.x,
+                        pan[1] + response.interact_pointer_pos().unwrap_or(*start).y - start.y,
+                    ],
+                });
+            }
+            None => {}
         }
+        state.snap_guides = guides;
     }
 
-    // Cursor feedback when hovering a resize handle.
-    if ui_visible
-        && response.hovered()
-        && !primary_down
-        && engine.expanded_source_id().is_none()
+    if ui_visible && response.hovered() && !primary_down
         && let Some(pos) = response.hover_pos()
-        && let Some((_, handle)) = engine.hit_test_resize_handle(&panel_rect, (pos.x, pos.y))
+        && let Some((_, handle)) = hit_resize_handle(
+            canvas,
+            doc.selected_source_id.as_deref(),
+            pos,
+            scale,
+            origin_x,
+            origin_y,
+        )
     {
-        ui.output_mut(|o| o.cursor_icon = cursor_for_handle(handle));
+        ui.output_mut(|output| output.cursor_icon = cursor_for_handle(handle));
     }
 
-    // Zoom toward the center of the view.
     if ui_visible && response.hovered() {
         let scroll = ctx.input(|i| i.smooth_scroll_delta).y;
         if scroll != 0.0 {
             let factor = 1.1_f32.powf(scroll / 50.0);
-            engine.zoom_view(&panel_rect, factor);
+            let _ = commands.send(Command::Zoom { factor });
         }
     }
 
-    let Some(rs) = frame.wgpu_render_state() else {
-        return;
-    };
-    engine.ensure_compositor(&rs.device, &rs.queue, rs.target_format);
-
-    let transform = if ui_visible {
-        engine.display_transform(&panel_rect)
-    } else {
-        engine.default_transform(&panel_rect)
-    };
-    let draw = engine.build_frame(&rs.device, &rs.queue, &panel_rect, transform);
-    let ppp = ctx.pixels_per_point();
-
-    painter.add(egui_wgpu::Callback::new_paint_callback(
-        rect,
-        CanvasCallback {
-            rect_px: [
-                rect.min.x * ppp,
-                rect.min.y * ppp,
-                rect.width() * ppp,
-                rect.height() * ppp,
-            ],
-            shared: engine.shared().expect("compositor initialized"),
-            verts: draw.verts,
-            draws: draw.draws,
-        },
-    ));
-
-    if ui_visible {
-        draw_overlays(&engine.cfg.canvas, &panel_rect, &painter, engine, transform);
+    if let Some(preview) = runner.preview()
+        && preview.rect == panel_rect
+    {
+        let ppp = ctx.pixels_per_point();
+        painter.add(egui_wgpu::Callback::new_paint_callback(
+            rect,
+            CanvasCallback {
+                rect_px: [
+                    rect.min.x * ppp,
+                    rect.min.y * ppp,
+                    rect.width() * ppp,
+                    rect.height() * ppp,
+                ],
+                shared: preview.shared,
+                draw: preview.draw,
+            },
+        ));
     }
 
-    // Context menu on sources
+    if ui_visible {
+        draw_overlays(
+            canvas,
+            &panel_rect,
+            &painter,
+            doc.selected_source_id.as_deref(),
+            doc.expanded_source_id.is_some(),
+            &state.snap_guides,
+            transform,
+        );
+    }
+
     if ui_visible {
         response.context_menu(|ui| {
             ui.set_min_width(100.0);
-            if engine.expanded_source_id().is_some() {
+            if doc.expanded_source_id.is_some() {
                 if ui.button("Exit expanded view").clicked() {
-                    engine.clear_expanded_source();
+                    let _ = commands.send(Command::ExitExpanded);
                     ui.close();
                 }
             } else if let Some(pos) = ui.input(|i| i.pointer.latest_pos())
-                && let Some(uuid) = engine.hit_test(&panel_rect, (pos.x, pos.y))
+                && let Some(id) = hit_test(canvas, pos, scale, origin_x, origin_y)
             {
-                engine.selected_source_id = Some(uuid.clone());
+                let _ = commands.send(Command::SelectSource(Selector::Id(id.clone())));
                 if ui.button("Expand to full canvas").clicked() {
-                    engine.expand_source(uuid);
+                    let _ = commands.send(Command::ExpandSource(Selector::Id(id)));
                     ui.close();
                 }
             }
         });
     }
 
-    // Buttons
     if ui_visible {
-        if engine.expanded_source_id().is_some() {
+        if doc.expanded_source_id.is_some() {
             let close_icon = asset_image!("close.svg");
             let close_image = egui::Image::new(close_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
             let close_rect = egui::Rect::from_min_size(
@@ -221,7 +352,7 @@ pub fn update(
             );
             let close_btn = egui::Button::image(close_image).corner_radius(5.0);
             if ui.put(close_rect, close_btn).on_hover_text("Exit expanded view").clicked() {
-                engine.clear_expanded_source();
+                let _ = commands.send(Command::ExitExpanded);
             }
         }
 
@@ -233,9 +364,393 @@ pub fn update(
         );
         let btn = egui::Button::image(btn_image).corner_radius(5.0);
         if ui.put(btn_rect, btn).on_hover_text("Re-center view").clicked() {
-            engine.recenter_view(&panel_rect);
+            let _ = commands.send(Command::RecenterView);
         }
     }
+}
+
+fn display_transform(canvas: &Canvas, zoom: f32, pan: [f32; 2], panel: &Rect) -> (f32, f32, f32) {
+    let (base_scale, base_ox, base_oy) = compositor::canvas_transform(canvas, panel);
+    return (
+        base_scale * zoom,
+        base_ox + pan[0],
+        base_oy + pan[1],
+    );
+}
+
+fn hit_test(canvas: &Canvas, pos: egui::Pos2, scale: f32, origin_x: f32, origin_y: f32) -> Option<SourceId> {
+    let cx = (pos.x - origin_x) / scale;
+    let cy = (pos.y - origin_y) / scale;
+    let mut sources: Vec<&Source> = canvas.sources.iter().collect();
+    sources.sort_by_key(|source| source.z);
+    for source in sources.into_iter().rev() {
+        let x0 = source.x;
+        let y0 = source.y;
+        let x1 = source.x + source.width as f32;
+        let y1 = source.y + source.height as f32;
+        if cx >= x0 && cx < x1 && cy >= y0 && cy < y1 {
+            return Some(source.uuid.clone());
+        }
+    }
+    return None;
+}
+
+fn hit_resize_handle(
+    canvas: &Canvas,
+    selected: Option<&str>,
+    pos: egui::Pos2,
+    scale: f32,
+    origin_x: f32,
+    origin_y: f32,
+) -> Option<(SourceId, ResizeHandle)> {
+    let selected = selected?;
+    let source = canvas.sources.iter().find(|source| source.uuid == selected)?;
+    let x0 = origin_x + source.x * scale;
+    let y0 = origin_y + source.y * scale;
+    let x1 = x0 + source.width as f32 * scale;
+    let y1 = y0 + source.height as f32 * scale;
+    let near = |a: f32, b: f32| (a - b).abs() <= HANDLE_TOLERANCE;
+    let left = near(pos.x, x0);
+    let right = near(pos.x, x1);
+    let top = near(pos.y, y0);
+    let bottom = near(pos.y, y1);
+    let handle = match (left, right, top, bottom) {
+        (true, _, true, _) => ResizeHandle::TopLeft,
+        (true, _, _, true) => ResizeHandle::BottomLeft,
+        (_, true, true, _) => ResizeHandle::TopRight,
+        (_, true, _, true) => ResizeHandle::BottomRight,
+        (true, false, false, false) => ResizeHandle::Left,
+        (false, true, false, false) => ResizeHandle::Right,
+        (false, false, true, false) => ResizeHandle::Top,
+        (false, false, false, true) => ResizeHandle::Bottom,
+        _ => return None,
+    };
+    return Some((source.uuid.clone(), handle));
+}
+
+fn snap_candidates(canvas: &Canvas, exclude_uuid: &str) -> SnapCandidates {
+    let mut x = vec![0.0, canvas.width as f32];
+    let mut y = vec![0.0, canvas.height as f32];
+    for source in &canvas.sources {
+        if source.uuid == exclude_uuid {
+            continue;
+        }
+        x.push(source.x);
+        x.push(source.x + source.width as f32);
+        y.push(source.y);
+        y.push(source.y + source.height as f32);
+    }
+    return SnapCandidates { x, y };
+}
+
+fn snap_value(
+    value: f32,
+    candidates: &[f32],
+    snap_threshold: f32,
+    break_threshold: f32,
+    current: Option<f32>,
+) -> Option<f32> {
+    let mut best = None;
+    let mut best_dist = f32::INFINITY;
+    for &candidate in candidates {
+        let dist = (candidate - value).abs();
+        if dist < best_dist {
+            best_dist = dist;
+            best = Some(candidate);
+        }
+    }
+    if best_dist < snap_threshold {
+        return best;
+    }
+    // Hysteresis: stay snapped to the current guide until the pointer moves
+    // past the larger break threshold.
+    if let Some(current) = current {
+        let dist = (current - value).abs();
+        if dist < break_threshold {
+            return Some(current);
+        }
+    }
+    return None;
+}
+
+fn resolve_axis_snap(
+    snap_lo: Option<f32>,
+    snap_hi: Option<f32>,
+    lo: f32,
+    hi: f32,
+) -> (f32, f32) {
+    return match (snap_lo, snap_hi) {
+        (Some(lo_snap), Some(hi_snap)) => {
+            if (lo_snap - lo).abs() < (hi_snap - hi).abs() {
+                (lo_snap - lo, lo_snap)
+            } else {
+                (hi_snap - hi, hi_snap)
+            }
+        }
+        (Some(lo_snap), None) => (lo_snap - lo, lo_snap),
+        (None, Some(hi_snap)) => (hi_snap - hi, hi_snap),
+        (None, None) => (0.0, 0.0),
+    };
+}
+
+fn snap_move(
+    canvas: &Canvas,
+    id: &SourceId,
+    origin: (f32, f32),
+    size: (f32, f32),
+    delta: (f32, f32),
+    scale: f32,
+    guides: SnapGuides,
+) -> ((f32, f32), SnapGuides) {
+    let candidates = snap_candidates(canvas, id);
+    let snap_threshold = SNAP_THRESHOLD / scale;
+    let break_threshold = SNAP_BREAK_THRESHOLD / scale;
+
+    let proposed_x = origin.0 + delta.0 / scale;
+    let proposed_y = origin.1 + delta.1 / scale;
+    let left = proposed_x;
+    let right = proposed_x + size.0;
+    let top = proposed_y;
+    let bottom = proposed_y + size.1;
+
+    let snap_left = snap_value(left, &candidates.x, snap_threshold, break_threshold, guides.x);
+    let snap_right = snap_value(right, &candidates.x, snap_threshold, break_threshold, guides.x);
+    let snap_top = snap_value(top, &candidates.y, snap_threshold, break_threshold, guides.y);
+    let snap_bottom = snap_value(bottom, &candidates.y, snap_threshold, break_threshold, guides.y);
+
+    let (x_offset, guide_x) = resolve_axis_snap(snap_left, snap_right, left, right);
+    let (y_offset, guide_y) = resolve_axis_snap(snap_top, snap_bottom, top, bottom);
+
+    return (
+        (
+            (proposed_x + x_offset).round(),
+            (proposed_y + y_offset).round(),
+        ),
+        SnapGuides {
+            x: if x_offset != 0.0 { Some(guide_x) } else { None },
+            y: if y_offset != 0.0 { Some(guide_y) } else { None },
+        },
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn snap_resize(
+    canvas: &Canvas,
+    id: &SourceId,
+    handle: ResizeHandle,
+    origin: (f32, f32, u32, u32),
+    delta: (f32, f32),
+    scale: f32,
+    guides: SnapGuides,
+) -> ((f32, f32, u32, u32), SnapGuides) {
+    let candidates = snap_candidates(canvas, id);
+    let snap_threshold = SNAP_THRESHOLD / scale;
+    let break_threshold = SNAP_BREAK_THRESHOLD / scale;
+    let start = WorldRect {
+        x: origin.0,
+        y: origin.1,
+        w: origin.2 as f32,
+        h: origin.3 as f32,
+    };
+    let dx = delta.0 / scale;
+    let dy = delta.1 / scale;
+
+    let (x, y, w, h, guide_x, guide_y) = match handle {
+        ResizeHandle::Left => {
+            let (x, w, guide) = resize_leading(
+                start.x,
+                start.w,
+                dx,
+                &candidates.x,
+                snap_threshold,
+                break_threshold,
+                guides.x,
+            );
+            (x, start.y, w, start.h, guide, None)
+        }
+        ResizeHandle::Right => {
+            let (_, w, guide) = resize_trailing(
+                start.x,
+                start.w,
+                dx,
+                &candidates.x,
+                snap_threshold,
+                break_threshold,
+                guides.x,
+            );
+            (start.x, start.y, w, start.h, guide, None)
+        }
+        ResizeHandle::Top => {
+            let (y, h, guide) = resize_leading(
+                start.y,
+                start.h,
+                dy,
+                &candidates.y,
+                snap_threshold,
+                break_threshold,
+                guides.y,
+            );
+            (start.x, y, start.w, h, None, guide)
+        }
+        ResizeHandle::Bottom => {
+            let (_, h, guide) = resize_trailing(
+                start.y,
+                start.h,
+                dy,
+                &candidates.y,
+                snap_threshold,
+                break_threshold,
+                guides.y,
+            );
+            (start.x, start.y, start.w, h, None, guide)
+        }
+        _ => resize_corner(
+            handle,
+            start,
+            dx,
+            dy,
+            &candidates,
+            snap_threshold,
+            break_threshold,
+            guides,
+        ),
+    };
+
+    return (
+        (
+            x.round(),
+            y.round(),
+            w.max(1.0).round() as u32,
+            h.max(1.0).round() as u32,
+        ),
+        SnapGuides {
+            x: guide_x,
+            y: guide_y,
+        },
+    );
+}
+
+fn resize_leading(
+    start: f32,
+    size: f32,
+    delta: f32,
+    candidates: &[f32],
+    snap_threshold: f32,
+    break_threshold: f32,
+    current_guide: Option<f32>,
+) -> (f32, f32, Option<f32>) {
+    if let Some(snap) = snap_value(
+        start + delta,
+        candidates,
+        snap_threshold,
+        break_threshold,
+        current_guide,
+    ) {
+        let pos = snap.min(start + size - 1.0);
+        return (pos, (start + size) - pos, Some(snap));
+    }
+    let new_pos = start + delta;
+    let new_size = (start + size) - new_pos;
+    if new_size >= 1.0 {
+        return (new_pos, new_size, None);
+    }
+    return (start + size - 1.0, 1.0, None);
+}
+
+fn resize_trailing(
+    start: f32,
+    size: f32,
+    delta: f32,
+    candidates: &[f32],
+    snap_threshold: f32,
+    break_threshold: f32,
+    current_guide: Option<f32>,
+) -> (f32, f32, Option<f32>) {
+    if let Some(snap) = snap_value(
+        start + size + delta,
+        candidates,
+        snap_threshold,
+        break_threshold,
+        current_guide,
+    ) {
+        return (start, (snap - start).max(1.0), Some(snap));
+    }
+    return (start, (size + delta).max(1.0), None);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn resize_corner(
+    handle: ResizeHandle,
+    start: WorldRect,
+    dx: f32,
+    dy: f32,
+    candidates: &SnapCandidates,
+    snap_threshold: f32,
+    break_threshold: f32,
+    guides: SnapGuides,
+) -> (f32, f32, f32, f32, Option<f32>, Option<f32>) {
+    let (fx, fy) = match handle {
+        ResizeHandle::TopLeft => (start.x + start.w, start.y + start.h),
+        ResizeHandle::TopRight => (start.x, start.y + start.h),
+        ResizeHandle::BottomRight => (start.x, start.y),
+        ResizeHandle::BottomLeft => (start.x + start.w, start.y),
+        _ => unreachable!(),
+    };
+    let mx0 = start.x + start.w - (fx - start.x);
+    let my0 = start.y + start.h - (fy - start.y);
+    let diag_x = mx0 - fx;
+    let diag_y = my0 - fy;
+    let denom = diag_x * diag_x + diag_y * diag_y;
+    if denom <= 0.0 {
+        return (start.x, start.y, start.w, start.h, None, None);
+    }
+
+    let t = ((mx0 + dx - fx) * diag_x + (my0 + dy - fy) * diag_y) / denom;
+    let min_t = (1.0 / start.w).max(1.0 / start.h);
+    let t = t.max(min_t);
+    let mut mx = fx + t * diag_x;
+    let mut my = fy + t * diag_y;
+
+    let snap_mx = snap_value(mx, &candidates.x, snap_threshold, break_threshold, guides.x);
+    let snap_my = snap_value(my, &candidates.y, snap_threshold, break_threshold, guides.y);
+    let dist_x = snap_mx.map(|value| (value - mx).abs());
+    let dist_y = snap_my.map(|value| (value - my).abs());
+    let mut guide_x = None;
+    let mut guide_y = None;
+    match (dist_x, dist_y) {
+        (Some(dist_x), Some(dist_y)) => {
+            if dist_x < dist_y {
+                mx = snap_mx.unwrap();
+                guide_x = Some(mx);
+            } else {
+                my = snap_my.unwrap();
+                mx = fx + (my - fy) * diag_x / diag_y;
+                guide_y = Some(my);
+            }
+        }
+        (Some(_), None) => {
+            mx = snap_mx.unwrap();
+            guide_x = Some(mx);
+        }
+        (None, Some(_)) => {
+            my = snap_my.unwrap();
+            mx = fx + (my - fy) * diag_x / diag_y;
+            guide_y = Some(my);
+        }
+        (None, None) => {}
+    }
+
+    let new_w = (mx - fx).abs().round().max(1.0);
+    let new_h = (new_w * start.h / start.w).round().max(1.0);
+    let x = match handle {
+        ResizeHandle::TopLeft | ResizeHandle::BottomLeft => fx - new_w,
+        _ => fx,
+    };
+    let y = match handle {
+        ResizeHandle::TopLeft | ResizeHandle::TopRight => fy - new_h,
+        _ => fy,
+    };
+    return (x, y, new_w, new_h, guide_x, guide_y);
 }
 
 fn cursor_for_handle(handle: ResizeHandle) -> egui::CursorIcon {
@@ -251,7 +766,9 @@ fn draw_overlays(
     canvas: &Canvas,
     panel_rect: &Rect,
     painter: &egui::Painter,
-    engine: &Engine,
+    selected_source_id: Option<&str>,
+    expanded: bool,
+    snap_guides: &SnapGuides,
     transform: (f32, f32, f32),
 ) {
     let (scale, offset_x, offset_y) = transform;
@@ -260,7 +777,6 @@ fn draw_overlays(
     let cw = canvas.width as f32 * scale;
     let ch = canvas.height as f32 * scale;
 
-    // Canvas borders
     painter.rect_stroke(
         egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(cw, ch)),
         0.0,
@@ -271,18 +787,14 @@ fn draw_overlays(
         egui::StrokeKind::Inside,
     );
 
-    // Hide selection overlays while a source is expanded.
-    if engine.expanded_source_id().is_some() {
+    if expanded {
         return;
     }
 
-    // Selected source borders
-    let selected_uuid = match &engine.selected_source_id {
-        Some(uuid) => uuid,
-        None => return,
+    let Some(selected_uuid) = selected_source_id else {
+        return;
     };
-
-    let Some(source) = canvas.sources.iter().find(|l| &l.uuid == selected_uuid) else {
+    let Some(source) = canvas.sources.iter().find(|source| source.uuid == selected_uuid) else {
         return;
     };
     let lx = cx + source.x * scale;
@@ -296,14 +808,248 @@ fn draw_overlays(
         egui::StrokeKind::Inside,
     );
 
-    // Snap guides.
     let guide_stroke = egui::Stroke::new(1.0, egui::Color32::CYAN);
-    if let Some(gx) = engine.snap_guides.x {
+    if let Some(gx) = snap_guides.x {
         let sx = cx + gx * scale;
         painter.vline(sx, panel_rect.y..=panel_rect.y + panel_rect.h, guide_stroke);
     }
-    if let Some(gy) = engine.snap_guides.y {
+    if let Some(gy) = snap_guides.y {
         let sy = cy + gy * scale;
         painter.hline(panel_rect.x..=panel_rect.x + panel_rect.w, sy, guide_stroke);
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{Canvas, Source, TextureMode};
+    use crate::sources::Protocol;
+
+    fn source(uuid: &str, x: f32, y: f32, width: u32, height: u32, z: i32) -> Source {
+        let mut source = Source::new(
+            uuid.into(),
+            Protocol::Test,
+            None,
+            x,
+            y,
+            width,
+            height,
+            z,
+            TextureMode::Fit,
+            false,
+            false,
+        );
+        source.uuid = uuid.into();
+        return source;
+    }
+
+    fn canvas(sources: Vec<Source>) -> Canvas {
+        return Canvas {
+            sources,
+            ..Canvas::default()
+        };
+    }
+
+    #[test]
+    fn hit_test_uses_canvas_coordinates_and_topmost_z() {
+        let canvas = canvas(vec![
+            source("a", 0.0, 0.0, 640, 360, 0),
+            source("b", 100.0, 100.0, 640, 360, 1),
+        ]);
+
+        assert_eq!(
+            hit_test(&canvas, egui::Pos2::new(200.0, 200.0), 1.0, 0.0, 0.0).as_deref(),
+            Some("b")
+        );
+        assert_eq!(
+            hit_test(&canvas, egui::Pos2::new(500.0, 50.0), 1.0, 0.0, 0.0).as_deref(),
+            Some("a")
+        );
+        assert!(hit_test(&canvas, egui::Pos2::new(900.0, 900.0), 1.0, 0.0, 0.0).is_none());
+    }
+
+    #[test]
+    fn hit_test_converts_screen_offsets_and_scale() {
+        let canvas = canvas(vec![source("a", 100.0, 50.0, 640, 360, 0)]);
+
+        assert_eq!(
+            hit_test(&canvas, egui::Pos2::new(200.0, 100.0), 2.0, 0.0, 0.0).as_deref(),
+            Some("a")
+        );
+        assert!(hit_test(&canvas, egui::Pos2::new(0.0, 0.0), 2.0, 0.0, 0.0).is_none());
+    }
+
+    #[test]
+    fn resize_handle_is_found_on_selected_source_edges() {
+        let canvas = canvas(vec![source("a", 100.0, 50.0, 640, 360, 0)]);
+
+        assert_eq!(
+            hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(100.0, 50.0), 1.0, 0.0, 0.0),
+            Some(("a".into(), ResizeHandle::TopLeft))
+        );
+        assert_eq!(
+            hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(740.0, 50.0), 1.0, 0.0, 0.0),
+            Some(("a".into(), ResizeHandle::TopRight))
+        );
+        assert!(
+            hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(400.0, 200.0), 1.0, 0.0, 0.0)
+                .is_none()
+        );
+        assert!(
+            hit_resize_handle(&canvas, None, egui::Pos2::new(100.0, 50.0), 1.0, 0.0, 0.0)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn hit_test_uses_the_panel_origin() {
+        let canvas = canvas(vec![source("a", 100.0, 50.0, 640, 360, 0)]);
+
+        // World (100, 50) is screen (380, 90) with a panel origin of (280, 40).
+        assert_eq!(
+            hit_test(&canvas, egui::Pos2::new(400.0, 100.0), 1.0, 280.0, 40.0).as_deref(),
+            Some("a")
+        );
+        assert!(
+            hit_test(&canvas, egui::Pos2::new(120.0, 60.0), 1.0, 280.0, 40.0).is_none()
+        );
+    }
+
+    #[test]
+    fn hit_test_with_panel_origin_picks_the_topmost_source() {
+        let canvas = canvas(vec![
+            source("a", 100.0, 50.0, 640, 360, 0),
+            source("b", 200.0, 100.0, 640, 360, 1),
+        ]);
+
+        // World (250, 150) is screen (530, 190) with a panel origin of (280, 40).
+        assert_eq!(
+            hit_test(&canvas, egui::Pos2::new(530.0, 190.0), 1.0, 280.0, 40.0).as_deref(),
+            Some("b")
+        );
+        // World (150, 75) is screen (430, 115); only the lower source contains it.
+        assert_eq!(
+            hit_test(&canvas, egui::Pos2::new(430.0, 115.0), 1.0, 280.0, 40.0).as_deref(),
+            Some("a")
+        );
+    }
+
+    #[test]
+    fn hit_resize_handle_uses_the_panel_origin() {
+        let canvas = canvas(vec![source("a", 100.0, 50.0, 640, 360, 0)]);
+
+        assert_eq!(
+            hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(380.0, 90.0), 1.0, 280.0, 40.0),
+            Some(("a".into(), ResizeHandle::TopLeft))
+        );
+        assert!(
+            hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(100.0, 50.0), 1.0, 280.0, 40.0)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn snap_move_snaps_to_the_canvas_edge() {
+        let canvas = canvas(vec![source("a", 15.0, 100.0, 100, 100, 0)]);
+
+        let ((x, y), guides) = snap_move(
+            &canvas,
+            &"a".into(),
+            (15.0, 100.0),
+            (100.0, 100.0),
+            (-14.0, 0.0),
+            1.0,
+            SnapGuides::default(),
+        );
+
+        assert_eq!((x, y), (0.0, 100.0));
+        assert!(guides.x.is_some());
+    }
+
+    #[test]
+    fn snap_move_snaps_to_another_source_edge() {
+        let canvas = canvas(vec![
+            source("a", 0.0, 0.0, 100, 100, 0),
+            source("b", 300.0, 0.0, 100, 100, 1),
+        ]);
+
+        let ((x, _), guides) = snap_move(
+            &canvas,
+            &"a".into(),
+            (0.0, 0.0),
+            (100.0, 100.0),
+            (199.0, 0.0),
+            1.0,
+            SnapGuides::default(),
+        );
+
+        assert_eq!(x, 200.0);
+        assert!(guides.x.is_some());
+    }
+
+    #[test]
+    fn snap_value_keeps_the_current_guide_until_the_break_threshold() {
+        assert_eq!(snap_value(1.5, &[0.0], 2.0, 2.0, Some(0.0)), Some(0.0));
+        assert_eq!(snap_value(2.5, &[0.0], 2.0, 2.0, Some(0.0)), None);
+    }
+
+    #[test]
+    fn snap_resize_snaps_the_right_edge_to_a_neighbour() {
+        let canvas = canvas(vec![
+            source("a", 100.0, 100.0, 100, 100, 0),
+            source("b", 300.0, 100.0, 100, 100, 1),
+        ]);
+
+        let ((x, y, width, height), guides) = snap_resize(
+            &canvas,
+            &"a".into(),
+            ResizeHandle::Right,
+            (100.0, 100.0, 100, 100),
+            (99.0, 0.0),
+            1.0,
+            SnapGuides::default(),
+        );
+
+        assert_eq!((x, y, width, height), (100.0, 100.0, 200, 100));
+        assert!(guides.x.is_some());
+    }
+
+    #[test]
+    fn snap_resize_keeps_the_corner_aspect() {
+        let canvas = canvas(vec![source("a", 100.0, 100.0, 200, 100, 0)]);
+
+        let ((x, y, width, height), _guides) = snap_resize(
+            &canvas,
+            &"a".into(),
+            ResizeHandle::BottomRight,
+            (100.0, 100.0, 200, 100),
+            (50.0, 25.0),
+            1.0,
+            SnapGuides::default(),
+        );
+
+        assert_eq!((x, y), (100.0, 100.0));
+        let aspect = width as f32 / height as f32;
+        assert!(
+            (aspect - 2.0).abs() < 0.02,
+            "aspect should be preserved, got {aspect}"
+        );
+    }
+
+    #[test]
+    fn display_transform_applies_local_zoom_and_pan() {
+        let canvas = Canvas::default();
+        let panel = Rect {
+            x: 0.0,
+            y: 0.0,
+            w: 960.0,
+            h: 540.0,
+        };
+        let (base_scale, base_ox, base_oy) = compositor::canvas_transform(&canvas, &panel);
+        let (scale, ox, oy) = display_transform(&canvas, 2.0, [10.0, 20.0], &panel);
+        assert_eq!(scale, base_scale * 2.0);
+        assert_eq!(ox, base_ox + 10.0);
+        assert_eq!(oy, base_oy + 20.0);
+    }
+
 }
