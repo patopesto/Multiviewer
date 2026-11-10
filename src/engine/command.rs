@@ -47,6 +47,8 @@ pub enum Command {
     ExpandSource(Selector),
     ExitExpanded,
     Nudge {
+        /// `None` nudges the selected source.
+        source: Option<Selector>,
         dx: f32,
         dy: f32,
     },
@@ -118,9 +120,27 @@ pub enum Command {
         source: Selector,
         value: bool,
     },
+    SetSourceName {
+        source: Selector,
+        value: String,
+    },
+    SetSourceLabelVisibility {
+        source: Selector,
+        value: SourceLabelVisibility,
+    },
+    SetSourceBorderVisibility {
+        source: Selector,
+        value: SourceBorderVisibility,
+    },
     SetCanvasSize {
         width: u32,
         height: u32,
+    },
+    SetCanvasLabelVisibility {
+        enabled: bool,
+    },
+    SetCanvasBorderVisibility {
+        enabled: bool,
     },
     PatchCanvas {
         width: u32,

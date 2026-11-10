@@ -1,6 +1,7 @@
 use rosc::OscType;
 
 use crate::APP_NAME;
+use crate::config::{BorderVisibility, LabelVisibility};
 use crate::engine::Engine;
 
 /// One OSC feedback value. Addresses always carry a single argument so a
@@ -64,6 +65,16 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
     push(
         "/ui/visible",
         FeedbackValue::Int(engine.state.ui_visible as i32),
+    );
+    // @osc path="/canvas/label/visible" kind="feedback" args="value:0|1" group="Global" desc="Whether source labels are drawn."
+    push(
+        "/canvas/label/visible",
+        FeedbackValue::Int((canvas.label.visibility == LabelVisibility::Show) as i32),
+    );
+    // @osc path="/canvas/border/visible" kind="feedback" args="value:0|1" group="Global" desc="Whether source borders are drawn."
+    push(
+        "/canvas/border/visible",
+        FeedbackValue::Int((canvas.border.visibility == BorderVisibility::Show) as i32),
     );
     // @osc path="/view/zoom" kind="feedback" args="value:float" group="Global" desc="Current zoom level."
     push("/view/zoom", FeedbackValue::Float(engine.state.view.zoom));
@@ -184,6 +195,16 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
             &format!("/source/{i}/flip_v"),
             FeedbackValue::Int(source.flip_v as i32),
         );
+        // @osc path="/source/{i}/label" kind="feedback" args="value:string" group="Sources" desc="Label override: Inherit, Always show or Always hide."
+        push(
+            &format!("/source/{i}/label"),
+            FeedbackValue::String(source.label_visibility.label().to_string()),
+        );
+        // @osc path="/source/{i}/border" kind="feedback" args="value:string" group="Sources" desc="Border override: Inherit, Always show or Always hide."
+        push(
+            &format!("/source/{i}/border"),
+            FeedbackValue::String(source.border_visibility.label().to_string()),
+        );
     }
 
     for (index, output) in canvas.outputs.iter().enumerate() {
@@ -263,6 +284,16 @@ mod tests {
             get("/project/auto_save_interval"),
             Some(FeedbackValue::Int(300))
         );
+        assert_eq!(
+            get("/source/1/label"),
+            Some(FeedbackValue::String("Inherit".to_string()))
+        );
+        assert_eq!(
+            get("/source/1/border"),
+            Some(FeedbackValue::String("Inherit".to_string()))
+        );
+        assert_eq!(get("/canvas/label/visible"), Some(FeedbackValue::Int(0)));
+        assert_eq!(get("/canvas/border/visible"), Some(FeedbackValue::Int(1)));
     }
 
     #[test]

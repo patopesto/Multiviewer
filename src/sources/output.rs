@@ -86,7 +86,7 @@ impl OutputConfig {
 
     /// Default config for a protocol. Protocols without an output (Test, VNC,
     /// AVFoundation, unavailable ones) fall back to the unknown default.
-    fn for_protocol(protocol: &Protocol) -> Self {
+    pub fn for_protocol(protocol: &Protocol) -> Self {
         return match protocol {
             Protocol::Ndi => OutputConfig::Ndi(ndi::NdiOutputConfig::default()),
             Protocol::Decklink => OutputConfig::Decklink(decklink::DecklinkOutputConfig::default()),

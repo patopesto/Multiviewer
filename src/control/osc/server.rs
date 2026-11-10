@@ -11,14 +11,15 @@ use rosc::{OscMessage, OscPacket, OscType, decoder, encoder};
 use crate::control::{Command, Selector};
 use super::super::registry::ControlMessage;
 use super::feedback::FeedbackValue;
-use crate::config::TextureMode;
+use crate::config::{SourceBorderVisibility, SourceLabelVisibility, TextureMode};
+use crate::sources::{OutputConfig, Protocol};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(200);
 
 /// Bump when adding or removing an OSC route; the docs route table and the
 /// `documented_routes_parse` test are checked against this value.
 #[cfg(test)]
-const OSC_ROUTE_COUNT: usize = 59;
+const OSC_ROUTE_COUNT: usize = 75;
 
 /// A UDP OSC listener. Bind happens on the caller's thread so a bad address or
 /// a taken port is reported immediately; the receive loop runs on its own.
@@ -162,20 +163,32 @@ fn parse_message(addr: &str, args: &[OscType]) -> Option<Command> {
     let parts: Vec<&str> = addr.strip_prefix('/')?.split('/').collect();
     return match *parts.first()? {
         "source" => parse_source(&parts[1..], args),
-        // @osc path="/nudge" args="dx:float dy:float" group="Canvas & view" desc="Move the selected source by a delta."
-        "nudge" => Some(Command::Nudge {
-            dx: arg_f32(args.first()?)?,
-            dy: arg_f32(args.get(1)?)?,
-        }),
         // @osc path="/canvas/size" args="width:uint height:uint" group="Canvas & view" desc="Set the canvas size in pixels."
         "canvas" if parts.get(1) == Some(&"size") => Some(Command::SetCanvasSize {
             width: arg_u32(args.first()?)?,
             height: arg_u32(args.get(1)?)?,
         }),
+        // @osc path="/canvas/label/visibility" args="enabled:0|1" group="Canvas & view" desc="Draw or hide source labels on the whole canvas."
+        "canvas" if parts.get(1) == Some(&"label") && parts.get(2) == Some(&"visibility") => {
+            Some(Command::SetCanvasLabelVisibility {
+                enabled: arg_bool(args.first()?)?,
+            })
+        }
+        // @osc path="/canvas/border/visibility" args="enabled:0|1" group="Canvas & view" desc="Draw or hide source borders on the whole canvas."
+        "canvas" if parts.get(1) == Some(&"border") && parts.get(2) == Some(&"visibility") => {
+            Some(Command::SetCanvasBorderVisibility {
+                enabled: arg_bool(args.first()?)?,
+            })
+        }
         "view" => match *parts.get(1)? {
             // @osc path="/view/zoom" args="factor:float" group="Canvas & view" desc="Multiply the current zoom level."
             "zoom" => Some(Command::Zoom {
                 factor: arg_f32(args.first()?)?,
+            }),
+            // @osc path="/view/set" args="zoom:float pan_x:float pan_y:float" group="Canvas & view" desc="Set the zoom and pan directly, for absolute recall."
+            "set" => Some(Command::SetView {
+                zoom: arg_f32(args.first()?)?,
+                pan: [arg_f32(args.get(1)?)?, arg_f32(args.get(2)?)?],
             }),
             // @osc path="/view/recenter" group="Canvas & view" desc="Fit and center the canvas."
             "recenter" => Some(Command::RecenterView),
@@ -206,6 +219,26 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
         ["select"] => return Some(Command::SelectSource(selector_arg(args.first()?)?)),
         // @osc path="/source/deselect" group="Sources" desc="Clear the selection."
         ["deselect"] => return Some(Command::ClearSelection),
+        // @osc path="/source/nudge" args="dx:float dy:float" group="Sources" desc="Move the selected source by a delta."
+        ["nudge"] => {
+            return Some(Command::Nudge {
+                source: None,
+                dx: arg_f32(args.first()?)?,
+                dy: arg_f32(args.get(1)?)?,
+            });
+        }
+        // @osc path="/source/move" args="from:uint to:uint" group="Sources" desc="Move a source to another list position, 1-based; the positions between shift."
+        ["move"] => {
+            let from = arg_u32(args.first()?)?;
+            let to = arg_u32(args.get(1)?)?;
+            if from == 0 || to == 0 {
+                return None;
+            }
+            return Some(Command::MoveSource {
+                from: from as usize - 1,
+                to: to as usize - 1,
+            });
+        }
         _ => {}
     }
 
@@ -237,6 +270,20 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
             width: arg_u32(args.first()?)?,
             height: arg_u32(args.get(1)?)?,
         }),
+        // @osc path="/source/{sel}/rect" args="x:float y:float width:uint height:uint" group="Placement" desc="Move and resize in one message."
+        "rect" => Some(Command::SetSourceRect {
+            source,
+            x: arg_f32(args.first()?)?,
+            y: arg_f32(args.get(1)?)?,
+            width: arg_u32(args.get(2)?)?,
+            height: arg_u32(args.get(3)?)?,
+        }),
+        // @osc path="/source/{sel}/nudge" args="dx:float dy:float" group="Placement" desc="Move this source by a delta."
+        "nudge" => Some(Command::Nudge {
+            source: Some(source),
+            dx: arg_f32(args.first()?)?,
+            dy: arg_f32(args.get(1)?)?,
+        }),
         // @osc path="/source/{sel}/z" args="value:int" group="Placement" desc="Stacking order; higher values draw on top."
         "z" => Some(Command::SetSourceZ {
             source,
@@ -257,6 +304,21 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
             source,
             value: arg_bool(args.first()?)?,
         }),
+        // @osc path="/source/{sel}/name" args="name:string" group="Placement" desc="Rename the source. The name is how other OSC addresses select it."
+        "name" => Some(Command::SetSourceName {
+            source,
+            value: arg_str(args.first()?)?.to_string(),
+        }),
+        // @osc path="/source/{sel}/label" args="visibility:inherit|show|hide" group="Placement" desc="Override the canvas label setting for this source. Also accepts `always show` and `always hide`."
+        "label" => Some(Command::SetSourceLabelVisibility {
+            source,
+            value: arg_label_visibility(args.first()?)?,
+        }),
+        // @osc path="/source/{sel}/border" args="visibility:inherit|show|hide" group="Placement" desc="Override the canvas border setting for this source. Also accepts `always show` and `always hide`."
+        "border" => Some(Command::SetSourceBorderVisibility {
+            source,
+            value: arg_border_visibility(args.first()?)?,
+        }),
         // @osc path="/source/{sel}/select" group="Sources" desc="Select this source."
         "select" => Some(Command::SelectSource(source)),
         // @osc path="/source/{sel}/expand" args="expanded:0|1" group="Sources" desc="Expand this source full-canvas; 0 exits expanded view."
@@ -267,6 +329,14 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
                 Some(Command::ExitExpanded)
             }
         }
+        // @osc path="/source/{sel}/bind" args="name:string" group="Sources" desc="Bind to a discovered source by name, reconnecting it; an empty name unbinds."
+        "bind" => {
+            let name = arg_str(args.first()?)?;
+            Some(Command::SetSourceBinding {
+                source,
+                source_ref: (!name.is_empty()).then(|| name.to_string()),
+            })
+        }
         // @osc path="/source/{sel}/remove" group="Sources" desc="Remove this source."
         "remove" => Some(Command::RemoveSource(source)),
         _ => None,
@@ -274,6 +344,16 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
 }
 
 fn parse_output(rest: &[&str], args: &[OscType]) -> Option<Command> {
+    // @osc path="/output/add" args="protocol:Ndi|Omt|Decklink|Syphon|Spout" group="Outputs" desc="Add an output for a protocol that has one on this platform, with default settings. The name is case-insensitive."
+    if rest == ["add"] {
+        let protocol = arg_protocol(args.first()?)?;
+        let config = OutputConfig::for_protocol(&protocol);
+        // A protocol without an output maps to the unknown config.
+        if matches!(config, OutputConfig::Unknown(_)) {
+            return None;
+        }
+        return Some(Command::AddOutput { protocol, config });
+    }
     let output = parse_selector(rest.first()?)?;
     return match *rest.get(1)? {
         // @osc path="/output/{sel}/enabled" args="enabled:0|1" group="Outputs" desc="Enable or disable an output."
@@ -283,6 +363,8 @@ fn parse_output(rest: &[&str], args: &[OscType]) -> Option<Command> {
         }),
         // @osc path="/output/{sel}/restart" group="Outputs" desc="Rebuild the output from its settings."
         "restart" => Some(Command::RestartOutput(output)),
+        // @osc path="/output/{sel}/remove" group="Outputs" desc="Remove an output."
+        "remove" => Some(Command::RemoveOutput(output)),
         _ => None,
     };
 }
@@ -337,6 +419,20 @@ fn arg_bool(arg: &OscType) -> Option<bool> {
     };
 }
 
+fn arg_str(arg: &OscType) -> Option<&str> {
+    return match arg {
+        OscType::String(value) => Some(value),
+        _ => None,
+    };
+}
+
+fn arg_protocol(arg: &OscType) -> Option<Protocol> {
+    return match Protocol::from_name(arg_str(arg)?) {
+        Protocol::Unknown(_) => None,
+        protocol => Some(protocol),
+    };
+}
+
 fn arg_mode(arg: &OscType) -> Option<TextureMode> {
     if let OscType::String(name) = arg {
         return match name.to_ascii_lowercase().as_str() {
@@ -352,6 +448,30 @@ fn arg_mode(arg: &OscType) -> Option<TextureMode> {
         2 => Some(TextureMode::Stretch),
         _ => None,
     };
+}
+
+fn arg_label_visibility(arg: &OscType) -> Option<SourceLabelVisibility> {
+    if let OscType::String(name) = arg {
+        return match name.to_ascii_lowercase().as_str() {
+            "inherit" => Some(SourceLabelVisibility::Inherit),
+            "show" | "always show" => Some(SourceLabelVisibility::Show),
+            "hide" | "always hide" => Some(SourceLabelVisibility::Hide),
+            _ => None,
+        };
+    }
+    return None;
+}
+
+fn arg_border_visibility(arg: &OscType) -> Option<SourceBorderVisibility> {
+    if let OscType::String(name) = arg {
+        return match name.to_ascii_lowercase().as_str() {
+            "inherit" => Some(SourceBorderVisibility::Inherit),
+            "show" | "always show" => Some(SourceBorderVisibility::Show),
+            "hide" | "always hide" => Some(SourceBorderVisibility::Hide),
+            _ => None,
+        };
+    }
+    return None;
 }
 
 #[cfg(test)]
@@ -473,6 +593,161 @@ mod tests {
         assert_eq!(parse_message("/nope", &[]), None);
         assert_eq!(parse_message("/source/1/x", &[OscType::String("x".into())]), None);
         assert_eq!(parse_message("source/1/x", &[OscType::Float(1.0)]), None);
+        assert_eq!(
+            parse_message("/source/move", &[OscType::Int(0), OscType::Int(1)]),
+            None
+        );
+        assert_eq!(
+            parse_message("/source/nudge", &[OscType::String("x".into())]),
+            None
+        );
+        assert_eq!(
+            parse_message("/discovery/refresh", &[OscType::String("Ndi".into())]),
+            None
+        );
+    }
+
+    #[test]
+    fn parses_visibility_and_name_routes() {
+        assert_eq!(
+            parse_message("/source/1/name", &[OscType::String("Cam A".to_string())]),
+            Some(Command::SetSourceName {
+                source: Selector::Index(1),
+                value: "Cam A".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_message("/source/1/label", &[OscType::String("show".to_string())]),
+            Some(Command::SetSourceLabelVisibility {
+                source: Selector::Index(1),
+                value: SourceLabelVisibility::Show,
+            })
+        );
+        assert_eq!(
+            parse_message(
+                "/source/1/label",
+                &[OscType::String("Always hide".to_string())],
+            ),
+            Some(Command::SetSourceLabelVisibility {
+                source: Selector::Index(1),
+                value: SourceLabelVisibility::Hide,
+            })
+        );
+        assert_eq!(
+            parse_message("/source/2/border", &[OscType::String("Inherit".to_string())]),
+            Some(Command::SetSourceBorderVisibility {
+                source: Selector::Index(2),
+                value: SourceBorderVisibility::Inherit,
+            })
+        );
+        assert_eq!(
+            parse_message("/canvas/label/visibility", &[OscType::Int(0)]),
+            Some(Command::SetCanvasLabelVisibility { enabled: false })
+        );
+        assert_eq!(
+            parse_message("/canvas/border/visibility", &[OscType::Int(1)]),
+            Some(Command::SetCanvasBorderVisibility { enabled: true })
+        );
+        assert_eq!(
+            parse_message("/source/1/label", &[OscType::String("always".to_string())]),
+            None
+        );
+    }
+
+    #[test]
+    fn parses_recall_and_lifecycle_routes() {
+        assert_eq!(
+            parse_message(
+                "/source/2/rect",
+                &[
+                    OscType::Float(10.0),
+                    OscType::Float(20.0),
+                    OscType::Int(640),
+                    OscType::Int(360),
+                ],
+            ),
+            Some(Command::SetSourceRect {
+                source: Selector::Index(2),
+                x: 10.0,
+                y: 20.0,
+                width: 640,
+                height: 360,
+            })
+        );
+        assert_eq!(
+            parse_message("/source/move", &[OscType::Int(1), OscType::Int(3)]),
+            Some(Command::MoveSource { from: 0, to: 2 })
+        );
+        assert_eq!(
+            parse_message("/source/nudge", &[OscType::Float(3.0), OscType::Float(-4.0)]),
+            Some(Command::Nudge {
+                source: None,
+                dx: 3.0,
+                dy: -4.0,
+            })
+        );
+        assert_eq!(
+            parse_message(
+                "/source/2/nudge",
+                &[OscType::Float(-5.0), OscType::Int(6)],
+            ),
+            Some(Command::Nudge {
+                source: Some(Selector::Index(2)),
+                dx: -5.0,
+                dy: 6.0,
+            })
+        );
+        assert_eq!(
+            parse_message(
+                "/view/set",
+                &[
+                    OscType::Float(1.5),
+                    OscType::Float(10.0),
+                    OscType::Float(-5.0),
+                ],
+            ),
+            Some(Command::SetView {
+                zoom: 1.5,
+                pan: [10.0, -5.0],
+            })
+        );
+        assert_eq!(
+            parse_message("/output/1/remove", &[]),
+            Some(Command::RemoveOutput(Selector::Index(1)))
+        );
+        assert_eq!(
+            parse_message("/source/1/bind", &[OscType::String("Cam A".to_string())]),
+            Some(Command::SetSourceBinding {
+                source: Selector::Index(1),
+                source_ref: Some("Cam A".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_message("/source/1/bind", &[OscType::String(String::new())]),
+            Some(Command::SetSourceBinding {
+                source: Selector::Index(1),
+                source_ref: None,
+            })
+        );
+    }
+
+    #[test]
+    fn output_add_needs_a_protocol_that_has_an_output() {
+        assert!(matches!(
+            parse_message("/output/add", &[OscType::String("ndi".to_string())]),
+            Some(Command::AddOutput {
+                protocol: Protocol::Ndi,
+                ..
+            })
+        ));
+        assert_eq!(
+            parse_message("/output/add", &[OscType::String("Test".to_string())]),
+            None
+        );
+        assert_eq!(
+            parse_message("/output/add", &[OscType::String("Bogus".to_string())]),
+            None
+        );
     }
 
     #[test]

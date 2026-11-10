@@ -125,6 +125,9 @@ LAN address (or `0.0.0.0`) and allow UDP `9000` and `9001` through the firewall.
 oscsend localhost 9000 /source/2/x 100
 oscsend localhost 9000 /view/recenter
 
+# Move and resize source 2 in one message
+oscsend localhost 9000 /source/2/rect 0 0 1280 720
+
 # Expand source 2, then collapse it
 oscsend localhost 9000 /source/2/expand 1
 oscsend localhost 9000 /source/2/expand 0

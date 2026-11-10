@@ -1,7 +1,7 @@
 use super::Engine;
 use super::transform::{MAX_ZOOM, MIN_ZOOM};
 use super::project::ProjectError;
-use crate::config::Source;
+use crate::config::{BorderVisibility, LabelVisibility, Source};
 use crate::control::{
     Command, Selector, feedback_values, normalize_prefix,
 };
@@ -62,16 +62,22 @@ impl Engine {
                 self.expand_source(uuid);
             }
             Command::ExitExpanded => self.clear_expanded_source(),
-            Command::Nudge { dx, dy } => {
+            Command::Nudge { source, dx, dy } => {
                 let dx = finite(dx)?;
                 let dy = finite(dy)?;
-                if self.state.expanded_source_id.is_none()
-                    && let Some(uuid) = self.state.selected_source_id.clone()
-                {
-                    self.update_source(&Selector::Id(uuid), |source| {
-                        source.x += dx;
-                        source.y += dy;
-                    })?;
+                if self.state.expanded_source_id.is_none() {
+                    let selector = source.or_else(|| {
+                        self.state
+                            .selected_source_id
+                            .clone()
+                            .map(Selector::Id)
+                    });
+                    if let Some(selector) = selector {
+                        self.update_source(&selector, |source| {
+                            source.x += dx;
+                            source.y += dy;
+                        })?;
+                    }
                 }
             }
             Command::SetSourceRect {
@@ -250,9 +256,34 @@ impl Engine {
             Command::SetSourceFlipV { source, value } => {
                 self.update_source(&source, |source| source.flip_v = value)?;
             }
+            Command::SetSourceName { source, value } => {
+                self.update_source(&source, |source| source.name = value)?;
+            }
+            Command::SetSourceLabelVisibility { source, value } => {
+                self.update_source(&source, |source| source.label_visibility = value)?;
+            }
+            Command::SetSourceBorderVisibility { source, value } => {
+                self.update_source(&source, |source| source.border_visibility = value)?;
+            }
             Command::SetCanvasSize { width, height } => {
                 self.state.cfg.canvas.width = width.clamp(100, 7680);
                 self.state.cfg.canvas.height = height.clamp(100, 7680);
+                self.state.dirty = true;
+            }
+            Command::SetCanvasLabelVisibility { enabled } => {
+                self.state.cfg.canvas.label.visibility = if enabled {
+                    LabelVisibility::Show
+                } else {
+                    LabelVisibility::Hide
+                };
+                self.state.dirty = true;
+            }
+            Command::SetCanvasBorderVisibility { enabled } => {
+                self.state.cfg.canvas.border.visibility = if enabled {
+                    BorderVisibility::Show
+                } else {
+                    BorderVisibility::Hide
+                };
                 self.state.dirty = true;
             }
             Command::PatchCanvas {
@@ -451,7 +482,8 @@ fn finite(value: f32) -> Result<f32, ControlError> {
 mod tests {
     use super::*;
     use crate::config::{
-        Canvas, Source, SourceBorderVisibility, SourceLabelVisibility, TextureMode,
+        BorderVisibility, Canvas, LabelVisibility, Source, SourceBorderVisibility,
+        SourceLabelVisibility, TextureMode,
     };
     use crate::engine::state::EngineState;
     use crate::engine::SourcePlacementPatch;
@@ -622,6 +654,113 @@ mod tests {
         assert!(!source.flip_v);
         assert_eq!(source.label_visibility, SourceLabelVisibility::Hide);
         assert_eq!(source.border_visibility, SourceBorderVisibility::Show);
+    }
+
+    #[test]
+    fn narrow_placement_commands_update_only_their_field() {
+        let (mut engine, id) = engine_with_source();
+        engine
+            .apply_command(Command::SetSourceName {
+                source: Selector::Id(id.clone()),
+                value: "Cam A".into(),
+            })
+            .unwrap();
+        engine
+            .apply_command(Command::SetSourceLabelVisibility {
+                source: Selector::Id(id.clone()),
+                value: SourceLabelVisibility::Show,
+            })
+            .unwrap();
+        engine
+            .apply_command(Command::SetSourceBorderVisibility {
+                source: Selector::Id(id.clone()),
+                value: SourceBorderVisibility::Hide,
+            })
+            .unwrap();
+
+        let source = engine
+            .state
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .find(|source| source.uuid == id)
+            .unwrap();
+        assert_eq!(source.name, "Cam A");
+        assert_eq!(source.label_visibility, SourceLabelVisibility::Show);
+        assert_eq!(source.border_visibility, SourceBorderVisibility::Hide);
+        assert_eq!((source.x, source.y), (0.0, 0.0));
+    }
+
+    #[test]
+    fn canvas_visibility_commands_toggle_label_and_border() {
+        let (mut engine, _id) = engine_with_source();
+        engine
+            .apply_command(Command::SetCanvasLabelVisibility { enabled: true })
+            .unwrap();
+        engine
+            .apply_command(Command::SetCanvasBorderVisibility { enabled: false })
+            .unwrap();
+
+        assert_eq!(engine.state.cfg.canvas.label.visibility, LabelVisibility::Show);
+        assert_eq!(engine.state.cfg.canvas.border.visibility, BorderVisibility::Hide);
+    }
+
+    #[test]
+    fn nudge_targets_the_selection_or_an_explicit_source() {
+        let (mut engine, id) = engine_with_source();
+        let position = |engine: &Engine| {
+            let source = engine
+                .state
+                .cfg
+                .canvas
+                .sources
+                .iter()
+                .find(|source| source.uuid == id)
+                .unwrap();
+            (source.x, source.y)
+        };
+
+        engine
+            .apply_command(Command::Nudge {
+                source: None,
+                dx: 10.0,
+                dy: 10.0,
+            })
+            .unwrap();
+        assert_eq!(position(&engine), (0.0, 0.0));
+
+        engine.state.selected_source_id = Some(id.clone());
+        engine
+            .apply_command(Command::Nudge {
+                source: None,
+                dx: 5.0,
+                dy: -2.0,
+            })
+            .unwrap();
+        assert_eq!(position(&engine), (5.0, -2.0));
+
+        engine.state.selected_source_id = None;
+        engine
+            .apply_command(Command::Nudge {
+                source: Some(Selector::Id(id.clone())),
+                dx: -1.0,
+                dy: 1.0,
+            })
+            .unwrap();
+        assert_eq!(position(&engine), (4.0, -1.0));
+
+        engine
+            .apply_command(Command::ExpandSource(Selector::Id(id.clone())))
+            .unwrap();
+        engine
+            .apply_command(Command::Nudge {
+                source: Some(Selector::Index(1)),
+                dx: 100.0,
+                dy: 100.0,
+            })
+            .unwrap();
+        assert_eq!(position(&engine), (4.0, -1.0));
     }
 
     #[test]

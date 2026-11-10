@@ -61,6 +61,34 @@ impl Protocol {
         }
     }
 
+    /// Parse a protocol name, ignoring case; unknown names keep the original
+    /// spelling in `Unknown`.
+    pub fn from_name(name: &str) -> Self {
+        return match name.to_ascii_lowercase().as_str() {
+            "test" => Protocol::Test,
+            "ndi" => Protocol::Ndi,
+            "omt" => Protocol::Omt,
+            "decklink" => Protocol::Decklink,
+            #[cfg(target_os = "macos")]
+            "syphon" => Protocol::Syphon,
+            #[cfg(target_os = "macos")]
+            "avfoundation" => Protocol::AvFoundation,
+            #[cfg(target_os = "macos")]
+            "screencapturekit" => Protocol::ScreenCaptureKit,
+            #[cfg(target_os = "windows")]
+            "spout" => Protocol::Spout,
+            #[cfg(target_os = "windows")]
+            "mediafoundation" => Protocol::MediaFoundation,
+            #[cfg(target_os = "windows")]
+            "directshow" => Protocol::DirectShow,
+            #[cfg(target_os = "windows")]
+            "windowscapture" => Protocol::WindowsCapture,
+            "vnc" => Protocol::Vnc,
+            "rdp" => Protocol::Rdp,
+            _ => Protocol::Unknown(name.to_string()),
+        };
+    }
+
     pub fn label(&self) -> String {
         match self {
             Protocol::Test => "Test".to_string(),
@@ -97,29 +125,7 @@ impl Serialize for Protocol {
 impl<'de> Deserialize<'de> for Protocol {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        Ok(match s.as_str() {
-            "Test" => Protocol::Test,
-            "Ndi" => Protocol::Ndi,
-            "Omt" => Protocol::Omt,
-            "Decklink" => Protocol::Decklink,
-            #[cfg(target_os = "macos")]
-            "Syphon" => Protocol::Syphon,
-            #[cfg(target_os = "macos")]
-            "AvFoundation" => Protocol::AvFoundation,
-            #[cfg(target_os = "macos")]
-            "ScreenCaptureKit" => Protocol::ScreenCaptureKit,
-            #[cfg(target_os = "windows")]
-            "Spout" => Protocol::Spout,
-            #[cfg(target_os = "windows")]
-            "MediaFoundation" => Protocol::MediaFoundation,
-            #[cfg(target_os = "windows")]
-            "DirectShow" => Protocol::DirectShow,
-            #[cfg(target_os = "windows")]
-            "WindowsCapture" => Protocol::WindowsCapture,
-            "Vnc" => Protocol::Vnc,
-            "Rdp" => Protocol::Rdp,
-            other => Protocol::Unknown(other.to_string()),
-        })
+        return Ok(Protocol::from_name(&s));
     }
 }
 

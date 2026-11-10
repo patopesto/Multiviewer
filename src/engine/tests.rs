@@ -409,7 +409,7 @@ fn nudge_command_moves_by_delta() {
     let uuid = engine.state.cfg.canvas.sources[0].uuid.clone();
 
     engine.state.selected_source_id = Some(uuid.clone());
-    engine.apply_command(Command::Nudge { dx: 3.0, dy: -5.0 }).unwrap();
+    engine.apply_command(Command::Nudge { source: None, dx: 3.0, dy: -5.0 }).unwrap();
     let source = &engine.state.cfg.canvas.sources[0];
     assert_eq!(source.x, 13.0);
     assert_eq!(source.y, 15.0);
@@ -435,7 +435,7 @@ fn nudge_command_ignores_when_expanded() {
 
     engine.state.selected_source_id = Some(uuid.clone());
     engine.expand_source(uuid.clone());
-    engine.apply_command(Command::Nudge { dx: 3.0, dy: -5.0 }).unwrap();
+    engine.apply_command(Command::Nudge { source: None, dx: 3.0, dy: -5.0 }).unwrap();
     let source = &engine.state.cfg.canvas.sources[0];
     assert_eq!(source.x, 10.0);
     assert_eq!(source.y, 20.0);

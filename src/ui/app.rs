@@ -843,18 +843,22 @@ fn shortcut_command(shortcut: Shortcut, engine: &Engine, nudge_amount: f32) -> O
         Shortcut::SelectNextSource => Some(Command::SelectNext),
         Shortcut::SelectPreviousSource => Some(Command::SelectPrevious),
         Shortcut::NudgeUp => Some(Command::Nudge {
+            source: None,
             dx: 0.0,
             dy: -nudge_amount,
         }),
         Shortcut::NudgeDown => Some(Command::Nudge {
+            source: None,
             dx: 0.0,
             dy: nudge_amount,
         }),
         Shortcut::NudgeLeft => Some(Command::Nudge {
+            source: None,
             dx: -nudge_amount,
             dy: 0.0,
         }),
         Shortcut::NudgeRight => Some(Command::Nudge {
+            source: None,
             dx: nudge_amount,
             dy: 0.0,
         }),
@@ -924,6 +928,7 @@ mod tests {
         assert_eq!(
             shortcut_command(Shortcut::NudgeUp, &engine, 1.0),
             Some(Command::Nudge {
+                source: None,
                 dx: 0.0,
                 dy: -1.0
             })
@@ -931,6 +936,7 @@ mod tests {
         assert_eq!(
             shortcut_command(Shortcut::NudgeRight, &engine, 10.0),
             Some(Command::Nudge {
+                source: None,
                 dx: 10.0,
                 dy: 0.0
             })
