@@ -61,7 +61,6 @@ export const project: ProjectConfig = {
       name: 'sACN Monitor',
       description: 'A tool to view sACN and ArtNet DMX data on the network',
       href: "https://sacn-monitor.bambinito.net",
-      logo: "https://sacn-monitor.bambinito.net/appicon.png"
     },
     {
       name: 'Timecoder',
