@@ -9,6 +9,11 @@ export const project: ProjectConfig = {
   description:
     'Compose NDI, DeckLink, Syphon, Spout, capture-device and screen sources on a real-time canvas, then broadcast the result. Native apps for macOS, Windows and Linux.',
   domain: 'https://multiviewer.bambinito.net',
+  copyright: '© 2026 Alban Moreon',
+  author: 'Alban Moreon',
+  ogImage: '/og.png',
+  ogImageAlt: 'Multiviewer canvas with several video sources arranged in a grid',
+  applicationCategory: 'MultimediaApplication',
   accent: '#ff3b30',
   icon: { svg: icon, size: '30px' },
   gitlabProject: 'patopest/multiviewer',
@@ -56,7 +61,6 @@ export const project: ProjectConfig = {
       name: 'sACN Monitor',
       description: 'A tool to view sACN and ArtNet DMX data on the network',
       href: "https://sacn-monitor.bambinito.net",
-      logo: "https://sacn-monitor.bambinito.net/appicon.png"
     },
     {
       name: 'Timecoder',
