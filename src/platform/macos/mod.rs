@@ -220,8 +220,6 @@ fn percent_decode(s: &str) -> String {
     return result;
 }
 
-pub fn init_console(_show_console: bool) {}
-
 pub fn setup_app() {
     unsafe {
         let name = CFStringCreateWithCString(
@@ -246,8 +244,7 @@ pub fn setup_app() {
     }
 }
 
-pub fn configure_wgpu(options: &mut eframe::NativeOptions) {
-    super::install_device_descriptor(options);
+pub fn setup_process() {
     // Syphon's zero-copy receiver orders its Metal blit against wgpu with an
     // MTLSharedEvent instead of a CPU drain only when this is set; the crate
     // reads it once, on the first Syphon source. The output path stages the

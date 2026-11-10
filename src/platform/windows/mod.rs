@@ -33,10 +33,13 @@ pub fn setup_app() {}
 
 /// Force wgpu to the D3D12 backend for Spout to work
 pub fn configure_wgpu(options: &mut eframe::NativeOptions) {
-    super::install_device_descriptor(options);
     if let WgpuSetup::CreateNew(create_new) = &mut options.wgpu_options.wgpu_setup {
         create_new.instance_descriptor.backends = eframe::wgpu::Backends::DX12;
     }
+}
+
+pub fn headless_backends() -> eframe::wgpu::Backends {
+    return eframe::wgpu::Backends::DX12;
 }
 
 pub fn on_window_created(_ctx: &egui::Context) {}
