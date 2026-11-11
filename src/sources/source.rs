@@ -43,18 +43,6 @@ impl SourceKey {
     }
 }
 
-/// How a changed source config reaches the running source.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConfigApply {
-    /// Applied to the running source without reopening it.
-    #[allow(dead_code)] // No protocol implements in-place application yet.
-    Live,
-    /// Only recorded; the next open uses it.
-    Persist,
-    /// The source must be reopened.
-    Restart,
-}
-
 // Runtime video source
 pub trait VideoSource: Send + Sync {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame>;
@@ -64,11 +52,6 @@ pub trait VideoSource: Send + Sync {
     /// key as absent and the reconnect pass retries it.
     fn alive(&self) -> bool {
         return true;
-    }
-    /// Apply a changed config to the running source. Protocols that can update
-    /// in place override this; everything else reopens.
-    fn apply_config(&mut self, _config: &SourceConfig) -> ConfigApply {
-        return ConfigApply::Restart;
     }
 }
 
@@ -420,12 +403,6 @@ impl SourceKind {
 
     fn alive(&self) -> bool {
         return self.source.alive();
-    }
-
-    pub fn apply_config(&mut self, config: SourceConfig) -> ConfigApply {
-        let outcome = self.source.apply_config(&config);
-        self.config = config;
-        return outcome;
     }
 
     /// Human-readable label for source selection. Handles protocol specifics labels

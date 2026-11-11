@@ -32,7 +32,7 @@ pub use common::{FramePool, Framebuffer};
 pub use common::{ColorRange, ColorSpace};
 pub use common::{PUBLISH_INTERVAL, PollGate, publish_due, sleep_while_running};
 pub use source::{
-    ConfigApply, SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
+    SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig,
     SourceRegistry, VideoSource,
 };
 pub use output::{OutputConfig, OutputRegistry};

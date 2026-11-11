@@ -6,7 +6,7 @@ use crate::control::{
     Command, Selector, feedback_values, normalize_prefix,
 };
 use crate::sources::{
-    ConfigApply, Protocol, RdpSourceConfig, SourceConfig, SourceKey, VncSourceConfig,
+    Protocol, RdpSourceConfig, SourceConfig, SourceKey, VncSourceConfig,
 };
 
 #[derive(Debug)]
@@ -127,22 +127,23 @@ impl Engine {
                 if !config.matches(&protocol) {
                     return Err(ControlError::InvalidArgument);
                 }
-                let apply = match &source_ref {
-                    Some(source_ref) => {
-                        let key = SourceKey::new(protocol.clone(), source_ref.clone());
-                        self.registry
-                            .get_mut(&key)
-                            .map(|kind| kind.apply_config(config.clone()))
-                            .unwrap_or(ConfigApply::Persist)
-                    }
-                    None => ConfigApply::Persist,
+                let key = source_ref.map(|source_ref| SourceKey::new(protocol, source_ref));
+                // A client may resend a config the runtime already holds; reopening
+                // for it would drop frames and could re-prompt for a device.
+                let restart = match &key {
+                    Some(key) => match self.registry.get_mut(key) {
+                        Some(kind) if kind.config == config => false,
+                        Some(kind) => {
+                            kind.config = config.clone();
+                            true
+                        }
+                        None => false,
+                    },
+                    None => false,
                 };
                 self.sync_source_config(&uuid, config);
-                if apply == ConfigApply::Restart
-                    && let Some(source_ref) = source_ref
-                {
-                    self.registry
-                        .restart(&SourceKey::new(protocol, source_ref));
+                if restart && let Some(key) = key {
+                    self.registry.restart(&key);
                 }
             }
             Command::SetSourceProtocol { source, protocol } => {
@@ -490,6 +491,8 @@ fn finite(value: f32) -> Result<f32, ControlError> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::config::{
         BorderVisibility, Canvas, LabelVisibility, Source, SourceBorderVisibility,
@@ -883,6 +886,70 @@ mod tests {
         let source = &engine.state.cfg.canvas.sources[0];
         assert!(matches!(&source.config, SourceConfig::Test(config) if config.width == 320));
         assert!(engine.state.dirty);
+    }
+
+    /// A config the runtime already holds must not reopen the source: clients
+    /// resend configs, and a reopen drops frames and can re-prompt for a device.
+    #[test]
+    fn reapplying_the_running_source_config_does_not_reopen_it() {
+        let (mut engine, _) = engine_with_source();
+        engine.apply_command(Command::AddSource).unwrap();
+        let id = engine.state.selected_source_id.clone().unwrap();
+        let source_ref = engine
+            .state
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .find(|source| source.uuid == id)
+            .and_then(|source| source.source_ref.clone())
+            .unwrap();
+        let key = SourceKey::new(Protocol::Test, source_ref);
+        let running = engine.registry.get(&key).unwrap().stats();
+
+        engine
+            .apply_command(Command::SetSourceConfig {
+                source: Selector::Id(id.clone()),
+                config: SourceConfig::for_protocol(&Protocol::Test),
+            })
+            .unwrap();
+
+        assert!(Arc::ptr_eq(&running, &engine.registry.get(&key).unwrap().stats()));
+    }
+
+    /// A changed config reopens the source, and the replacement opens with the
+    /// new value rather than the one it was built from.
+    #[test]
+    fn a_changed_source_config_reopens_it_with_the_new_value() {
+        let (mut engine, _) = engine_with_source();
+        engine.apply_command(Command::AddSource).unwrap();
+        let id = engine.state.selected_source_id.clone().unwrap();
+        let source_ref = engine
+            .state
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .find(|source| source.uuid == id)
+            .and_then(|source| source.source_ref.clone())
+            .unwrap();
+        let key = SourceKey::new(Protocol::Test, source_ref);
+        let running = engine.registry.get(&key).unwrap().stats();
+
+        let config = TestSourceConfig {
+            width: 320,
+            ..Default::default()
+        };
+        engine
+            .apply_command(Command::SetSourceConfig {
+                source: Selector::Id(id),
+                config: SourceConfig::Test(config.clone()),
+            })
+            .unwrap();
+
+        let opened = engine.registry.get(&key).unwrap();
+        assert!(!Arc::ptr_eq(&running, &opened.stats()));
+        assert_eq!(opened.config, SourceConfig::Test(config));
     }
 
     #[test]
