@@ -11,10 +11,11 @@ use wgpu::{
 
 use crate::APP_NAME;
 use crate::Cli;
-use crate::engine::{EngineRuntime, StartupError};
+use crate::engine::{EngineRuntime, StartupError, ViewerId};
 use crate::platform;
 use crate::session::Session;
 use crate::ui;
+use crate::ui::RemoteHost;
 
 pub fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let start = Instant::now();
@@ -102,17 +103,23 @@ fn run_headless(
         tracing::warn!("{warning}");
     }
 
-    match deadline {
-        Some(deadline) => {
-            while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
-                std::thread::sleep(remaining.min(Duration::from_secs(1)));
-            }
+    let mut remote = RemoteHost::new(
+        runtime.engine.clone(),
+        runtime.runner.snapshot_slot(),
+        runtime.runner.commands(),
+        runtime.runner.focus_handle(ViewerId::Remote),
+    );
+    remote.sync();
+
+    loop {
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            break;
         }
-        None => loop {
-            std::thread::park();
-        },
+        remote.sync();
+        std::thread::sleep(Duration::from_millis(250));
     }
 
+    drop(remote);
     runtime.runner.stop();
     runtime.engine.lock().unwrap().log_run_totals();
     drop(trace_guard);

@@ -348,6 +348,16 @@ impl Engine {
             Command::RefreshDiscovery { protocol } => {
                 self.refresh_discovery(&protocol);
             }
+            Command::PatchControl { control } => {
+                // Only bounce the OSC listener when its own section changed;
+                // the HTTP listener is applied by `RemoteHost::sync`.
+                let osc_changed = control.osc != self.state.cfg.control.osc;
+                self.state.cfg.control = control;
+                self.state.dirty = true;
+                if osc_changed {
+                    self.restart_control();
+                }
+            }
             Command::SaveProject => self.save_project()?,
             Command::SetAutoSaveInterval(seconds) => {
                 self.state.cfg.auto_save_interval = seconds;

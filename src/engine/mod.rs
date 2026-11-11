@@ -21,7 +21,6 @@ use crate::sources::DirectShowDiscovery;
 #[cfg(target_os = "windows")]
 use crate::sources::WindowsCaptureDiscovery;
 
-use self::state::EngineState;
 
 mod command;
 mod control;
@@ -38,8 +37,15 @@ mod view;
 mod tests;
 
 pub use command::{Command, Selector, SourcePlacementPatch};
-pub use runner::{EngineRuntime, Runner, RunnerStats, StartupError};
+pub use control::ControlError;
+pub use project::ProjectError;
+pub use state::EngineState;
+pub use runner::{
+    EngineRuntime, FocusHandle, PreviewFrame, Runner, RunnerStats, SnapshotSlot, StartupError,
+    ViewerId,
+};
 pub use snapshot::EngineSnapshot;
+pub(crate) use snapshot::publish_state;
 pub use view::{PickerGroupView, PickerItemView};
 
 pub struct Engine {

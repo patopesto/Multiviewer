@@ -5,7 +5,8 @@ use eframe::egui_wgpu;
 
 use crate::compositor::{self, Draw, Rect};
 use crate::config::{Canvas, Source, SourceId};
-use crate::engine::{Command, EngineSnapshot, Runner, Selector};
+use crate::engine::{Command, EngineSnapshot, PreviewFrame, Selector};
+use crate::sources::{SourceConfig, SourceKey};
 
 macro_rules! asset_image {
     ($file:expr) => {
@@ -124,9 +125,9 @@ pub fn update(
     snapshot: &EngineSnapshot,
     commands: &Sender<Command>,
     state: &mut CanvasUi,
-    runner: &Runner,
+    preview: Option<&PreviewFrame>,
     ctx: &egui::Context,
-) {
+) -> Rect {
     let rect = ui.available_rect_before_wrap();
     let panel_rect = Rect {
         x: rect.min.x,
@@ -134,7 +135,6 @@ pub fn update(
         w: rect.width(),
         h: rect.height(),
     };
-    runner.set_preview_rect(panel_rect);
     let (response, painter) = ui.allocate_painter(rect.size(), egui::Sense::click_and_drag());
 
     let doc = &snapshot.state;
@@ -291,23 +291,24 @@ pub fn update(
         }
     }
 
-    if let Some(preview) = runner.preview()
-        && preview.rect == panel_rect
-    {
-        let ppp = ctx.pixels_per_point();
-        painter.add(egui_wgpu::Callback::new_paint_callback(
-            rect,
-            CanvasCallback {
-                rect_px: [
-                    rect.min.x * ppp,
-                    rect.min.y * ppp,
-                    rect.width() * ppp,
-                    rect.height() * ppp,
-                ],
-                shared: preview.shared,
-                draw: preview.draw,
-            },
-        ));
+    match preview {
+        Some(preview) if preview.rect == panel_rect => {
+            let ppp = ctx.pixels_per_point();
+            painter.add(egui_wgpu::Callback::new_paint_callback(
+                rect,
+                CanvasCallback {
+                    rect_px: [
+                        rect.min.x * ppp,
+                        rect.min.y * ppp,
+                        rect.width() * ppp,
+                        rect.height() * ppp,
+                    ],
+                    shared: preview.shared.clone(),
+                    draw: preview.draw.clone(),
+                },
+            ));
+        }
+        _ => draw_placeholders(&painter, snapshot, &panel_rect, transform),
     }
 
     if ui_visible {
@@ -367,6 +368,8 @@ pub fn update(
             let _ = commands.send(Command::RecenterView);
         }
     }
+
+    return panel_rect;
 }
 
 fn display_transform(canvas: &Canvas, zoom: f32, pan: [f32; 2], panel: &Rect) -> (f32, f32, f32) {
@@ -819,10 +822,188 @@ fn draw_overlays(
     }
 }
 
+fn draw_placeholders(
+    painter: &egui::Painter,
+    snapshot: &EngineSnapshot,
+    panel_rect: &Rect,
+    transform: (f32, f32, f32),
+) {
+    let doc = &snapshot.state;
+    let canvas = &doc.cfg.canvas;
+    let (scale, offset_x, offset_y) = transform;
+    let cx = panel_rect.x + offset_x;
+    let cy = panel_rect.y + offset_y;
+    let cw = canvas.width as f32 * scale;
+    let ch = canvas.height as f32 * scale;
+    let expanded = doc.expanded_source_id.is_some();
+
+    let clip = egui::Rect::from_min_size(
+        egui::pos2(panel_rect.x, panel_rect.y),
+        egui::vec2(panel_rect.w.max(0.0), panel_rect.h.max(0.0)),
+    );
+    let painter = painter.with_clip_rect(clip);
+
+    let mut sources: Vec<&Source> = canvas.sources.iter().collect();
+    sources.sort_by_key(|source| source.z);
+    for source in sources {
+        if expanded && doc.expanded_source_id.as_deref() != Some(source.uuid.as_str()) {
+            continue;
+        }
+        let (x, y, w, h) = if expanded {
+            (cx, cy, cw, ch)
+        } else {
+            (
+                cx + source.x * scale,
+                cy + source.y * scale,
+                source.width as f32 * scale,
+                source.height as f32 * scale,
+            )
+        };
+        let source_rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w.max(1.0), h.max(1.0)));
+        let color = source_color(&source.uuid);
+        painter.rect_filled(
+            source_rect,
+            2.0,
+            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 45),
+        );
+        painter.rect_stroke(
+            source_rect,
+            2.0,
+            egui::Stroke::new(1.0, color),
+            egui::StrokeKind::Inside,
+        );
+
+        if w < 40.0 || h < 24.0 {
+            continue;
+        }
+        let panel_clip = egui::Rect::from_min_size(
+            egui::pos2(panel_rect.x, panel_rect.y),
+            egui::vec2(panel_rect.w.max(0.0), panel_rect.h.max(0.0)),
+        );
+        let text_painter = painter.with_clip_rect(panel_clip.intersect(source_rect));
+        text_painter.text(
+            egui::pos2(x + 8.0, y + 6.0),
+            egui::Align2::LEFT_TOP,
+            &source.name,
+            egui::FontId::proportional(14.0),
+            egui::Color32::WHITE,
+        );
+        let mut line_y = y + 24.0;
+        let mut source_shown = false;
+        if w >= 60.0 && h >= 44.0 {
+            text_painter.text(
+                egui::pos2(x + 8.0, line_y),
+                egui::Align2::LEFT_TOP,
+                placeholder_source(snapshot, source),
+                egui::FontId::monospace(11.0),
+                egui::Color32::from_gray(200),
+            );
+            line_y += 16.0;
+            source_shown = true;
+        }
+        let stats = placeholder_stats(snapshot, source);
+        let stats_min_height = if source_shown { 62.0 } else { 44.0 };
+        if !stats.is_empty() && h >= stats_min_height {
+            text_painter.text(
+                egui::pos2(x + 8.0, line_y),
+                egui::Align2::LEFT_TOP,
+                stats,
+                egui::FontId::monospace(11.0),
+                egui::Color32::from_gray(180),
+            );
+        }
+        if let Some(source_ref) = &source.source_ref {
+            let key = SourceKey::new(source.protocol.clone(), source_ref.clone());
+            if let Some(runtime) = snapshot.runtime.source(&key) {
+                let live = runtime.stats.frames_received > 0 && !runtime.restart_pending;
+                painter.circle_filled(
+                    egui::pos2(source_rect.right() - 12.0, source_rect.top() + 12.0),
+                    4.0,
+                    if live {
+                        egui::Color32::from_rgb(110, 220, 120)
+                    } else {
+                        egui::Color32::from_rgb(220, 110, 110)
+                    },
+                );
+            }
+        }
+    }
+}
+
+fn source_binding_label(snapshot: &EngineSnapshot, source: &Source) -> Option<String> {
+    let source_ref = source.source_ref.as_ref()?;
+    if let Some(label) = snapshot
+        .runtime
+        .discovery(&source.protocol)
+        .and_then(|discovery| {
+            discovery
+                .connected
+                .iter()
+                .find(|item| item.id == source_ref.as_str())
+        })
+        .map(|item| item.label.clone())
+        && !label.trim().is_empty()
+    {
+        return Some(label);
+    }
+    let fallback = match &source.config {
+        SourceConfig::Vnc(config) => config.label(source_ref.as_str()),
+        SourceConfig::Rdp(config) => config.label(source_ref.as_str()),
+        _ => source_ref.clone(),
+    };
+    if fallback.trim().is_empty() {
+        return None;
+    }
+    return Some(fallback);
+}
+
+fn placeholder_source(snapshot: &EngineSnapshot, source: &Source) -> String {
+    return match source_binding_label(snapshot, source) {
+        Some(binding) => format!("{} · {binding}", source.protocol.label()),
+        None => source.protocol.label(),
+    };
+}
+
+fn placeholder_stats(snapshot: &EngineSnapshot, source: &Source) -> String {
+    let Some(source_ref) = &source.source_ref else {
+        return String::new();
+    };
+    let key = SourceKey::new(source.protocol.clone(), source_ref.clone());
+    let Some(runtime) = snapshot.runtime.source(&key) else {
+        return "not connected".to_string();
+    };
+    let stats = &runtime.stats;
+    if stats.width == 0 || stats.height == 0 {
+        return "connecting".to_string();
+    }
+    return format!(
+        "{}x{} · {:.0} fps",
+        stats.width, stats.height, stats.computed_fps
+    );
+}
+
+fn source_color(uuid: &str) -> egui::Color32 {
+    const COLORS: [egui::Color32; 8] = [
+        egui::Color32::from_rgb(92, 156, 232),
+        egui::Color32::from_rgb(226, 160, 92),
+        egui::Color32::from_rgb(130, 200, 130),
+        egui::Color32::from_rgb(202, 130, 202),
+        egui::Color32::from_rgb(226, 118, 124),
+        egui::Color32::from_rgb(120, 196, 200),
+        egui::Color32::from_rgb(190, 190, 110),
+        egui::Color32::from_rgb(160, 150, 230),
+    ];
+    let hash = uuid
+        .bytes()
+        .fold(0u32, |hash, byte| hash.wrapping_mul(31).wrapping_add(byte as u32));
+    return COLORS[hash as usize % COLORS.len()];
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::{Canvas, Source, TextureMode};
+    use crate::engine::Engine;
     use crate::sources::Protocol;
 
     fn source(uuid: &str, x: f32, y: f32, width: u32, height: u32, z: i32) -> Source {
@@ -848,6 +1029,63 @@ mod tests {
             sources,
             ..Canvas::default()
         };
+    }
+
+    #[test]
+    fn binding_label_prefers_the_runtime_label() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let uuid = engine.add_source();
+        let snapshot = engine.snapshot();
+        let source = snapshot
+            .state
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .find(|source| source.uuid == uuid)
+            .unwrap();
+        assert_eq!(
+            source_binding_label(&snapshot, source),
+            source.source_ref.clone()
+        );
+        assert_eq!(
+            placeholder_source(&snapshot, source),
+            format!("Test · {}", source.source_ref.clone().unwrap())
+        );
+    }
+
+    #[test]
+    fn binding_label_falls_back_to_the_ref_and_hides_when_unbound() {
+        let mut bound = source("bound", 0.0, 0.0, 640, 360, 0);
+        bound.source_ref = Some("missing".to_string());
+        let unbound = source("unbound", 0.0, 0.0, 640, 360, 0);
+        let engine = Engine::test_instance(canvas(vec![bound, unbound]));
+        let snapshot = engine.snapshot();
+
+        assert_eq!(
+            source_binding_label(&snapshot, &snapshot.state.cfg.canvas.sources[0]).as_deref(),
+            Some("missing")
+        );
+        assert_eq!(
+            placeholder_source(&snapshot, &snapshot.state.cfg.canvas.sources[0]),
+            "Test · missing"
+        );
+        assert_eq!(
+            placeholder_stats(&snapshot, &snapshot.state.cfg.canvas.sources[0]),
+            "not connected"
+        );
+        assert_eq!(
+            source_binding_label(&snapshot, &snapshot.state.cfg.canvas.sources[1]),
+            None
+        );
+        assert_eq!(
+            placeholder_source(&snapshot, &snapshot.state.cfg.canvas.sources[1]),
+            "Test"
+        );
+        assert_eq!(
+            placeholder_stats(&snapshot, &snapshot.state.cfg.canvas.sources[1]),
+            ""
+        );
     }
 
     #[test]

@@ -1,0 +1,97 @@
+---
+title: HTTP API and web UI
+description: Control the app and open the browser UI over HTTP.
+lead: Enable the listener in HTTP Settings, then send JSON commands or open the web editor.
+order: 7
+---
+
+import HttpTable from '../../components/HttpTable.astro';
+import { getHttp } from '../../data/http.js';
+
+## Enabling
+
+Open **Control → HTTP Settings...**, tick **Enabled**, and click **Apply**.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| Enabled | off | Start or stop the listener. |
+| Bind address | `127.0.0.1` | Interface to listen on. See [Bind addresses](#bind-addresses). |
+| Port | `8090` | TCP port for the API and web UI. |
+
+The settings live in the project file. **Apply** updates the listener.
+
+## Bind addresses
+
+The bind address decides which interfaces accept connections.
+
+| Bind | Reachable from | Typical use |
+| --- | --- | --- |
+| `127.0.0.1` or `localhost` | this machine only | local tools or a browser on the same computer |
+| `0.0.0.0` | every IPv4 interface (use `::` for IPv6) | a trusted LAN, with a firewall rule |
+| a specific interface address, e.g. `192.168.1.50` | hosts that can route to that interface | a dedicated control network or one NIC |
+
+Browser requests must use the bound address, `localhost`, or an IP literal. If
+you use a DNS name, bind that name. Behind a reverse proxy, set
+`X-Forwarded-Host` to the public hostname.
+
+The API has **no authentication**: anyone who can reach the port can control the
+show, open or save files, and replace the project. Use a trusted network, a
+firewall, and a reverse proxy for TLS.
+
+## API
+
+<HttpTable groups={getHttp()} />
+
+Use `/api/v1/*` from scripts. `/` and `/ws` are for the browser.
+
+```bash
+curl -s http://127.0.0.1:8090/api/v1/status | jq
+```
+
+## Commands
+
+`POST /api/v1/commands` runs one command. The vocabulary is the same as
+[OSC](/docs/osc/#input-commands).
+
+```bash
+curl -X POST -H 'Content-Type: application/json' \
+  -d '{"type":"set_canvas_size","payload":{"width":1280,"height":720}}' \
+  http://127.0.0.1:8090/api/v1/commands
+```
+
+A selector is an index (`{"kind":"index","value":2}`, 1-based), a name or uuid
+(`{"kind":"key","value":"Mini 3"}`), or a uuid
+(`{"kind":"id","value":"<uuid>"}`). Unknown sources or outputs return `404`,
+invalid input `400`, and bad JSON `422`. The response includes the new
+`revision`.
+
+## Project files
+
+`GET /api/v1/project` returns the running project, including unsaved edits.
+`PUT` applies a project from the request body.
+
+```bash
+# Download the running project
+curl -OJ http://127.0.0.1:8090/api/v1/project
+
+# Upload, save as the current project, and run it
+curl -X PUT --data-binary @show.multiviewer \
+  'http://127.0.0.1:8090/api/v1/project?path=/shows/main.multiviewer'
+```
+
+`?path=` saves the upload as the current project; without it the project runs in
+memory. Uploads keep the running listener settings by default; add
+`?control=true` to apply the file's settings.
+`POST /api/v1/project/open` opens a path on the Multiviewer machine.
+
+## Web UI
+
+Open `http://<host>:<port>/`. It is the full editor, with a placeholder instead of
+video for each source: name, bound source, protocol, resolution, frame rate and
+live state.
+
+All tabs share one session: same panels, same selection, any tab can drive.
+Add `?view=1` for a read-only viewer.
+
+The page reconnects after a restart. After a bind address or port change, use the
+new URL.

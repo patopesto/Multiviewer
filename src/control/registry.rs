@@ -170,16 +170,31 @@ impl ControlRegistry {
         self.last_values = values.into_iter().collect();
     }
 
+    #[cfg(test)]
     pub fn status(&self) -> &ControlStatus {
         return &self.status;
     }
 
-    pub fn feedback_mode(&self) -> FeedbackMode {
-        return self.feedback_mode;
-    }
-
-    pub fn feedback_target(&self) -> Option<SocketAddr> {
-        return self.feedback_target;
+    /// One-line listener state for the Control settings window.
+    pub fn status_label(&self) -> String {
+        let listener = match &self.status {
+            ControlStatus::Stopped => "OSC stopped".to_string(),
+            ControlStatus::Listening(addr) => format!("OSC listening on {addr}"),
+            ControlStatus::Error(e) => format!("OSC error: {e}"),
+        };
+        let feedback = match self.feedback_mode {
+            FeedbackMode::Off => "feedback off".to_string(),
+            FeedbackMode::Senders => "feedback to senders".to_string(),
+            FeedbackMode::Configured => match self.feedback_target {
+                Some(addr) => format!("feedback to {addr}"),
+                None => "feedback target unavailable".to_string(),
+            },
+            FeedbackMode::Both => match self.feedback_target {
+                Some(addr) => format!("feedback to senders + {addr}"),
+                None => "feedback to senders (target unavailable)".to_string(),
+            },
+        };
+        return format!("{listener} · {feedback}");
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -317,6 +332,7 @@ mod tests {
                 prefix: "/a?b".to_string(),
                 ..OscControlConfig::default()
             },
+            ..ControlConfig::default()
         };
 
         registry.apply(&config);

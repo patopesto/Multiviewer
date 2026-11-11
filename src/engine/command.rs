@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::{
     BorderConfig, LabelConfig, SourceBorderVisibility, SourceId, SourceLabelVisibility, TextureMode,
 };
+use crate::control::ControlConfig;
 use crate::sources::{OutputConfig, Protocol, SourceConfig, SourceRef};
 
 /// Editable placement fields that never touch the protocol runtime.
@@ -173,6 +174,9 @@ pub enum Command {
     RestartOutput(Selector),
     RefreshDiscovery {
         protocol: Protocol,
+    },
+    PatchControl {
+        control: ControlConfig,
     },
     SaveProject,
     SetAutoSaveInterval(u64),

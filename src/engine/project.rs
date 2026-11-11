@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use super::{Engine, RunTotals};
@@ -275,9 +276,56 @@ impl Engine {
         }
     }
 
+    /// Replace the running document in place. `preserve_control` keeps the
+    /// listeners the app is already running, so a project loaded from the web
+    /// UI cannot switch off the HTTP server serving that request.
+    pub fn replace_project(
+        &mut self,
+        mut cfg: Config,
+        path: Option<PathBuf>,
+        preserve_control: bool,
+    ) -> Result<(), ProjectError> {
+        let started = Instant::now();
+        if preserve_control {
+            cfg.control = self.state.cfg.control.clone();
+        }
+        self.state.cfg = cfg;
+        self.state.selected_source_id = None;
+        self.state.expanded_source_id = None;
+        self.rebuild_from_config();
+        self.warn_if_newer_version();
+        self.state.project_path = path.clone();
+        self.last_saved_at = Instant::now();
+        self.state.dirty = path.is_none();
+        if let Some(path) = &path {
+            let mut session = Session::load();
+            session.record_recent(path);
+            session.save()?;
+        }
+        tracing::info!(
+            path = ?path,
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            sources = self.state.cfg.canvas.sources.len(),
+            "project replaced"
+        );
+        return Ok(());
+    }
+
+    /// Start a fresh document without dropping the registries or the control
+    /// listeners. The view and selection are reset; the control config is kept
+    /// when `preserve_control` is set.
+    pub fn new_in_place(&mut self, preserve_control: bool) -> Result<(), ProjectError> {
+        let control = self.state.cfg.control.clone();
+        self.state.view = ViewState::new();
+        let mut cfg = Config::default();
+        if preserve_control {
+            cfg.control = control;
+        }
+        return self.replace_project(cfg, None, preserve_control);
+    }
+
     pub fn open_project(&mut self, path: impl AsRef<std::path::Path>) -> Result<(), ProjectError> {
         let path = path.as_ref().to_path_buf();
-        let started = Instant::now();
         tracing::info!(path = %path.display(), "opening project");
         let cfg = match Config::load_from(&path) {
             Ok(cfg) => cfg,
@@ -286,22 +334,8 @@ impl Engine {
                 return Err(e.into());
             }
         };
-        self.state.cfg = cfg;
-        self.state.dirty = false;
-        self.rebuild_from_config();
-        self.warn_if_newer_version();
-        self.state.project_path = Some(path.clone());
-        self.last_saved_at = Instant::now();
-        self.state.dirty = false;
-        let mut session = Session::load();
-        session.record_recent(&path);
-        session.save()?;
-        tracing::info!(
-            path = %path.display(),
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "project opened"
-        );
-        return Ok(());
+        self.state.view = ViewState::new();
+        return self.replace_project(cfg, Some(path), false);
     }
 
     pub fn save_project(&mut self) -> Result<(), ProjectError> {

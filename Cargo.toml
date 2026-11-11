@@ -34,7 +34,7 @@ codegen-units = 1
 panic = "abort"
 
 [dependencies]
-eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts"] }
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "links"] }
 egui = "0.36"
 egui_extras = { version = "0.36", features = ["svg"] }
 egui_commonmark = { version = "0.25", default-features = false }
@@ -53,7 +53,8 @@ openmediatransport = { version = "0.1", features = ["wgpu"] }
 vnc = { package = "vnc-rs", version = "0.6" }
 ironrdp-client = { version = "0.1", default-features = false, features = ["rustls"] }
 ironrdp-pdu = "0.9"
-tokio = { version = "1", features = ["rt", "net", "time"] }
+tokio = { version = "1", features = ["rt", "net", "time", "sync", "macros"] }
+axum = { version = "0.8", features = ["ws"] }
 aes-gcm = "0.10"
 uuid = { version = "1", features = ["v4"] }
 multiviewer-decklink = { path = "src/sources/decklink/bindings" }
@@ -99,7 +100,7 @@ windows = { version = "0.62", default-features = false, features = [
 ] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "x11", "wayland"] }
+eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "links", "x11", "wayland"] }
 winit = { version = "0.30", default-features = false, features = ["wayland-dlopen"] }
 
 # Patched fork waiting for upstream PR

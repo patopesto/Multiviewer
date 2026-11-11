@@ -29,18 +29,56 @@ pub struct PreviewFrame {
     pub draw: Arc<Draw>,
 }
 
+/// Consumers of the runner's snapshot stream.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewerId {
+    Native,
+    Remote,
+}
+
+impl ViewerId {
+    fn index(self) -> usize {
+        return match self {
+            ViewerId::Native => 0,
+            ViewerId::Remote => 1,
+        };
+    }
+}
+
+/// A viewer's slot for its discovery focus, without holding the `Runner`.
+#[derive(Clone)]
+pub struct FocusHandle {
+    state: Arc<Mutex<RunnerState>>,
+    viewer: ViewerId,
+}
+
+impl FocusHandle {
+    /// The protocol whose discovered sources this viewer is showing.
+    pub fn set(&self, focus: Option<&Protocol>) {
+        let mut state = self.state.lock().unwrap();
+        let slot = &mut state.discovery_focus[self.viewer.index()];
+        if slot.as_ref() == focus {
+            return;
+        }
+        *slot = focus.cloned();
+    }
+}
+
 struct RunnerState {
     visible: bool,
     last_ui_tick: Instant,
     preview_rect: Rect,
-    discovery_focus: Option<Protocol>,
+    discovery_focus: [Option<Protocol>; 2],
 }
 
 /// Ticks the engine at a fixed rate and publishes the latest preview frame.
+/// The runner's published snapshot, shared with every viewer.
+pub type SnapshotSlot = Arc<Mutex<Option<Arc<EngineSnapshot>>>>;
+
 pub struct Runner {
     state: Arc<Mutex<RunnerState>>,
     preview: Arc<Mutex<Option<PreviewFrame>>>,
-    snapshot: Arc<Mutex<Option<Arc<EngineSnapshot>>>>,
+    snapshot: SnapshotSlot,
     commands: mpsc::Sender<Command>,
     stats: Arc<Mutex<RunnerStats>>,
     stop: Arc<AtomicBool>,
@@ -59,7 +97,7 @@ impl Runner {
             visible: false,
             last_ui_tick: Instant::now(),
             preview_rect: Rect::default(),
-            discovery_focus: None,
+            discovery_focus: [None, None],
         }));
         let preview = Arc::new(Mutex::new(None));
         let snapshot = Arc::new(Mutex::new(None));
@@ -115,12 +153,21 @@ impl Runner {
     }
 
     /// The protocol whose discovered sources the UI is currently showing.
-    pub fn set_discovery_focus(&self, focus: Option<&Protocol>) {
+    pub fn set_discovery_focus(&self, viewer: ViewerId, focus: Option<&Protocol>) {
         let mut state = self.state.lock().unwrap();
-        if state.discovery_focus.as_ref() == focus {
+        let slot = &mut state.discovery_focus[viewer.index()];
+        if slot.as_ref() == focus {
             return;
         }
-        state.discovery_focus = focus.cloned();
+        *slot = focus.cloned();
+    }
+
+    /// A handle a viewer can use to set its discovery focus without the runner.
+    pub fn focus_handle(&self, viewer: ViewerId) -> FocusHandle {
+        return FocusHandle {
+            state: self.state.clone(),
+            viewer,
+        };
     }
 
     pub fn preview(&self) -> Option<PreviewFrame> {
@@ -129,6 +176,11 @@ impl Runner {
 
     pub fn snapshot(&self) -> Option<Arc<EngineSnapshot>> {
         return self.snapshot.lock().unwrap().clone();
+    }
+
+    /// The shared slot the runner publishes snapshots into.
+    pub fn snapshot_slot(&self) -> SnapshotSlot {
+        return self.snapshot.clone();
     }
 
     pub fn commands(&self) -> mpsc::Sender<Command> {
@@ -301,7 +353,7 @@ fn publish_if_changed(
     if engine.state.revision == *published_revision {
         return;
     }
-    publish_snapshot(engine, snapshot, false, None);
+    publish_snapshot(engine, snapshot, false, &[None, None]);
     *published_revision = engine.state.revision;
 }
 
@@ -309,11 +361,11 @@ fn publish_snapshot(
     engine: &Engine,
     snapshot: &Mutex<Option<Arc<EngineSnapshot>>>,
     refresh_runtime: bool,
-    focus: Option<&Protocol>,
+    focuses: &[Option<Protocol>],
 ) {
     let mut slot = snapshot.lock().unwrap();
     if refresh_runtime {
-        *slot = Some(Arc::new(engine.snapshot_focused(focus)));
+        *slot = Some(Arc::new(engine.snapshot_focused(focuses)));
         return;
     }
     let runtime = slot
@@ -349,7 +401,7 @@ fn run(
 
     {
         let engine = engine_arc.lock().unwrap();
-        publish_snapshot(&engine, &snapshot, true, None);
+        publish_snapshot(&engine, &snapshot, true, &[None, None]);
         published_revision = engine.state.revision;
     }
 
@@ -410,7 +462,7 @@ fn run(
         if now + FRAME_TOLERANCE >= next_maintenance {
             next_maintenance = advance_deadline(next_maintenance, now, MAINTENANCE_INTERVAL);
             engine.maintain();
-            publish_snapshot(&engine, &snapshot, true, discovery_focus.as_ref());
+            publish_snapshot(&engine, &snapshot, true, &discovery_focus);
             published_revision = engine.state.revision;
         }
         if now + FRAME_TOLERANCE >= next_auto_save {

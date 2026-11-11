@@ -1,3 +1,4 @@
+use crate::config::OutputId;
 use crate::sources::{
     DecklinkOutputPort, OutputStats, Protocol, SourceConfig, SourceKey, SourceKind,
     SourceRuntimeConfig, SourceStats,
@@ -12,6 +13,13 @@ pub struct RuntimeView {
     pub outputs: Vec<OutputView>,
     pub discoveries: Vec<DiscoveryView>,
     pub decklink_outputs: Vec<DecklinkOutputPort>,
+    pub control: ControlView,
+}
+
+/// Listener state for the snapshot-driven Control settings window.
+#[derive(Clone, Default)]
+pub struct ControlView {
+    pub osc: String,
 }
 
 #[derive(Clone)]
@@ -24,6 +32,7 @@ pub struct SourceView {
 
 #[derive(Clone)]
 pub struct OutputView {
+    pub id: OutputId,
     pub protocol: Protocol,
     pub stats: OutputStats,
 }
@@ -88,16 +97,19 @@ impl RuntimeView {
 }
 
 impl Engine {
-    pub fn runtime_view(&self, focus: Option<&Protocol>) -> RuntimeView {
+    pub fn runtime_view(&self, focuses: &[Option<Protocol>]) -> RuntimeView {
         return RuntimeView {
             sources: self.source_views(),
             outputs: self.output_views(),
-            discoveries: self.discovery_views(focus),
+            discoveries: self.discovery_views(focuses),
             decklink_outputs: self
                 .decklink
                 .as_ref()
                 .map(|d| d.list_outputs())
                 .unwrap_or_default(),
+            control: ControlView {
+                osc: self.control.status_label(),
+            },
         };
     }
 
@@ -121,6 +133,7 @@ impl Engine {
                 continue;
             };
             views.push(OutputView {
+                id: output.uuid.clone(),
                 protocol: output.protocol.clone(),
                 stats: kind.stats().lock().unwrap().clone(),
             });
@@ -128,11 +141,11 @@ impl Engine {
         return views;
     }
 
-    fn discovery_views(&self, focus: Option<&Protocol>) -> Vec<DiscoveryView> {
+    fn discovery_views(&self, focuses: &[Option<Protocol>]) -> Vec<DiscoveryView> {
         let mut views = Vec::new();
 
         self.push_discovery(&mut views, Protocol::Test, Vec::new());
-        let ndi = if wants(focus, &Protocol::Ndi) {
+        let ndi = if wants(focuses, &Protocol::Ndi) {
             self.ndi
                 .as_ref()
                 .map(|d| {
@@ -147,7 +160,7 @@ impl Engine {
         };
         self.push_discovery(&mut views, Protocol::Ndi, flat(ndi));
 
-        let omt = if wants(focus, &Protocol::Omt) {
+        let omt = if wants(focuses, &Protocol::Omt) {
             self.omt
                 .as_ref()
                 .map(|d| {
@@ -162,7 +175,7 @@ impl Engine {
         };
         self.push_discovery(&mut views, Protocol::Omt, flat(omt));
 
-        let decklink = if wants(focus, &Protocol::Decklink) {
+        let decklink = if wants(focuses, &Protocol::Decklink) {
             self.decklink
                 .as_ref()
                 .map(|d| {
@@ -182,7 +195,7 @@ impl Engine {
 
         #[cfg(target_os = "macos")]
         {
-            let syphon = if wants(focus, &Protocol::Syphon) {
+            let syphon = if wants(focuses, &Protocol::Syphon) {
                 self.syphon
                     .as_ref()
                     .map(|d| {
@@ -202,7 +215,7 @@ impl Engine {
             };
             self.push_discovery(&mut views, Protocol::Syphon, flat(syphon));
 
-            let avfoundation = if wants(focus, &Protocol::AvFoundation) {
+            let avfoundation = if wants(focuses, &Protocol::AvFoundation) {
                 self.avfoundation
                     .as_ref()
                     .map(|d| {
@@ -217,7 +230,7 @@ impl Engine {
             };
             self.push_discovery(&mut views, Protocol::AvFoundation, flat(avfoundation));
 
-            let targets = if wants(focus, &Protocol::ScreenCaptureKit) {
+            let targets = if wants(focuses, &Protocol::ScreenCaptureKit) {
                 self.screencapturekit
                     .as_ref()
                     .map(|d| d.list())
@@ -234,7 +247,7 @@ impl Engine {
 
         #[cfg(target_os = "windows")]
         {
-            let spout = if wants(focus, &Protocol::Spout) {
+            let spout = if wants(focuses, &Protocol::Spout) {
                 self.spout
                     .as_ref()
                     .map(|d| d.list().iter().map(|name| PickerItemView::plain(name)).collect())
@@ -244,7 +257,7 @@ impl Engine {
             };
             self.push_discovery(&mut views, Protocol::Spout, flat(spout));
 
-            let mediafoundation = if wants(focus, &Protocol::MediaFoundation) {
+            let mediafoundation = if wants(focuses, &Protocol::MediaFoundation) {
                 self.mediafoundation
                     .as_ref()
                     .map(|d| {
@@ -259,7 +272,7 @@ impl Engine {
             };
             self.push_discovery(&mut views, Protocol::MediaFoundation, flat(mediafoundation));
 
-            let directshow = if wants(focus, &Protocol::DirectShow) {
+            let directshow = if wants(focuses, &Protocol::DirectShow) {
                 self.directshow
                     .as_ref()
                     .map(|d| {
@@ -274,7 +287,7 @@ impl Engine {
             };
             self.push_discovery(&mut views, Protocol::DirectShow, flat(directshow));
 
-            let targets = if wants(focus, &Protocol::WindowsCapture) {
+            let targets = if wants(focuses, &Protocol::WindowsCapture) {
                 self.windowscapture
                     .as_ref()
                     .map(|d| d.list())
@@ -318,11 +331,11 @@ impl Engine {
     }
 }
 
-fn wants(focus: Option<&Protocol>, protocol: &Protocol) -> bool {
-    return match focus {
-        Some(focus) => focus == protocol,
-        None => false,
-    };
+fn wants(focuses: &[Option<Protocol>], protocol: &Protocol) -> bool {
+    return focuses
+        .iter()
+        .flatten()
+        .any(|focus| focus == protocol);
 }
 
 fn flat(items: Vec<PickerItemView>) -> Vec<PickerGroupView> {
@@ -385,7 +398,7 @@ mod tests {
         let mut engine = Engine::test_instance(Canvas::default());
         engine.add_source();
 
-        let view = engine.runtime_view(Some(&Protocol::Ndi));
+        let view = engine.runtime_view(&[Some(Protocol::Ndi), None]);
 
         assert_eq!(
             view.discovery(&Protocol::Test)

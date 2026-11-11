@@ -10,7 +10,8 @@ pub enum MenuAction {
     OpenRecent(PathBuf),
     SetAutoSaveInterval(u64),
     ShowShortcuts,
-    ShowOSCControl,
+    ShowOscSettings,
+    ShowHttpSettings,
     ShowAbout,
     ShowLicenses,
 }
@@ -79,7 +80,10 @@ pub fn draw(ui: &mut egui::Ui, snapshot: &EngineSnapshot, recent: &[PathBuf]) ->
                     actions.push(MenuAction::ShowShortcuts);
                 }
                 if ui.button("OSC Settings...").clicked() {
-                    actions.push(MenuAction::ShowOSCControl);
+                    actions.push(MenuAction::ShowOscSettings);
+                }
+                if ui.button("HTTP Settings...").clicked() {
+                    actions.push(MenuAction::ShowHttpSettings);
                 }
             });
 

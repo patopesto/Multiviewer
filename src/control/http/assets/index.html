@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Multiviewer WebRemote</title>
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/favicon.png">
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #121416; }
+  canvas { display: block; width: 100vw; height: 100vh; outline: none; }
+  #status {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    color: #d6d9dd; background: rgba(18, 20, 22, .92); border: 1px solid #33383d;
+    border-radius: 8px; padding: 14px 22px; font: 14px system-ui, sans-serif;
+    pointer-events: none;
+  }
+  #status[hidden] { display: none; }
+  #badge {
+    position: fixed; right: 10px; bottom: 10px; color: #9aa1a8;
+    background: rgba(18, 20, 22, .8); border: 1px solid #33383d; border-radius: 6px;
+    padding: 4px 8px; font: 11px/1.3 ui-monospace, monospace;
+    pointer-events: none;
+  }
+  #badge[hidden] { display: none; }
+</style>
+</head>
+<body>
+<canvas id="ui"></canvas>
+<div id="status">Connecting…</div>
+<div id="badge" hidden>read-only</div>
+<script>
+"use strict";
+
+const canvas = document.getElementById("ui");
+const statusEl = document.getElementById("status");
+const badgeEl = document.getElementById("badge");
+const readOnly = new URLSearchParams(location.search).get("view") === "1";
+if (readOnly) badgeEl.hidden = false;
+
+const gl = canvas.getContext("webgl2", {
+  alpha: false, antialias: false, depth: false, stencil: false,
+  premultipliedAlpha: true, preserveDrawingBuffer: false,
+});
+if (!gl) {
+  statusEl.textContent = "WebGL2 is required to display this interface.";
+  throw new Error("WebGL2 unavailable");
+}
+
+const MAGIC = 0x4d565752;
+const HEADER = 28;
+const TEXTURE_HEADER = 20;
+const MESH_HEADER = 28;
+const VERTEX = 20;
+
+let width = window.innerWidth || 1;
+let height = window.innerHeight || 1;
+let dpr = window.devicePixelRatio || 1;
+let socket = null;
+let reconnectTimer = null;
+const textures = new Map();
+const downButtons = new Set();
+
+// ---------------------------------------------------------------- WebGL setup
+
+const vertexShader = `#version 300 es
+layout(location = 0) in vec2 a_pos;
+layout(location = 1) in vec2 a_uv;
+layout(location = 2) in vec4 a_color;
+uniform vec2 u_screen;
+out vec2 v_uv;
+out vec4 v_color;
+void main() {
+  vec2 p = a_pos / u_screen;
+  gl_Position = vec4(p.x * 2.0 - 1.0, 1.0 - p.y * 2.0, 0.0, 1.0);
+  v_uv = a_uv;
+  v_color = a_color;
+}`;
+
+const fragmentShader = `#version 300 es
+precision mediump float;
+in vec2 v_uv;
+in vec4 v_color;
+uniform sampler2D u_tex;
+out vec4 out_color;
+void main() {
+  out_color = v_color * texture(u_tex, v_uv);
+}`;
+
+function compile(type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    throw new Error(gl.getShaderInfoLog(shader));
+  }
+  return shader;
+}
+
+const program = gl.createProgram();
+gl.attachShader(program, compile(gl.VERTEX_SHADER, vertexShader));
+gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragmentShader));
+gl.linkProgram(program);
+if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+  throw new Error(gl.getProgramInfoLog(program));
+}
+const uScreen = gl.getUniformLocation(program, "u_screen");
+const uTexture = gl.getUniformLocation(program, "u_tex");
+
+const vao = gl.createVertexArray();
+const vbo = gl.createBuffer();
+const ibo = gl.createBuffer();
+gl.bindVertexArray(vao);
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, VERTEX, 0);
+gl.enableVertexAttribArray(1);
+gl.vertexAttribPointer(1, 2, gl.FLOAT, false, VERTEX, 8);
+gl.enableVertexAttribArray(2);
+gl.vertexAttribPointer(2, 4, gl.UNSIGNED_BYTE, true, VERTEX, 16);
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+gl.bindVertexArray(null);
+
+gl.disable(gl.DEPTH_TEST);
+gl.disable(gl.CULL_FACE);
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+
+function resize() {
+  width = Math.max(1, window.innerWidth || 1);
+  height = Math.max(1, window.innerHeight || 1);
+  dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(width * dpr));
+  canvas.height = Math.max(1, Math.round(height * dpr));
+  canvas.style.width = width + "px";
+  canvas.style.height = height + "px";
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  send({ type: "resize", width, height, dpr });
+}
+
+function clearTextures() {
+  for (const entry of textures.values()) gl.deleteTexture(entry.texture);
+  textures.clear();
+}
+
+// ------------------------------------------------------------------ transport
+
+function send(message) {
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify(message));
+  }
+}
+
+function connect() {
+  const protocol = location.protocol === "https:" ? "wss" : "ws";
+  const query = readOnly ? "?view=1" : "";
+  socket = new WebSocket(`${protocol}://${location.host}/ws${query}`);
+  socket.binaryType = "arraybuffer";
+  socket.onopen = () => {
+    statusEl.hidden = true;
+    send({ type: "hello", width, height, dpr });
+  };
+  socket.onclose = () => {
+    statusEl.hidden = false;
+    statusEl.textContent = "Disconnected, reconnecting…";
+    clearTextures();
+    downButtons.clear();
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(connect, 2000);
+  };
+  socket.onerror = () => socket.close();
+  socket.onmessage = (event) => {
+    if (typeof event.data === "string") return;
+    drawFrame(new DataView(event.data));
+  };
+}
+
+// --------------------------------------------------------------------- drawing
+
+function drawFrame(view) {
+  if (view.getUint32(0, true) !== MAGIC) return;
+  const textureCount = view.getUint16(8, true);
+  const meshCount = view.getUint16(10, true);
+  const freeCount = view.getUint16(12, true);
+  const indexBytes = view.getUint32(16, true);
+  const vertexBytes = view.getUint32(20, true);
+  const textureBytes = view.getUint32(24, true);
+
+  const textureBase = HEADER;
+  const meshBase = textureBase + textureCount * TEXTURE_HEADER;
+  const freeBase = meshBase + meshCount * MESH_HEADER;
+  const indexBase = freeBase + freeCount * 4;
+  const vertexBase = indexBase + indexBytes;
+  const textureDataBase = vertexBase + vertexBytes;
+  if (textureDataBase + textureBytes > view.byteLength) return;
+
+  for (let i = 0; i < textureCount; i++) {
+    const base = textureBase + i * TEXTURE_HEADER;
+    const id = view.getUint32(base, true);
+    const px = view.getUint16(base + 4, true);
+    const py = view.getUint16(base + 6, true);
+    const w = view.getUint16(base + 8, true);
+    const h = view.getUint16(base + 10, true);
+    const full = view.getUint16(base + 12, true) !== 0;
+    const offset = view.getUint32(base + 16, true);
+    const pixels = new Uint8Array(view.buffer, view.byteOffset + textureDataBase + offset, w * h * 4);
+    let entry = textures.get(id);
+    if (full || !entry) {
+      const texture = entry ? entry.texture : gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      textures.set(id, { texture, width: w, height: h });
+    } else {
+      gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, px, py, w, h, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    }
+  }
+
+  for (let i = 0; i < freeCount; i++) {
+    const id = view.getUint32(freeBase + i * 4, true);
+    const entry = textures.get(id);
+    if (entry) {
+      gl.deleteTexture(entry.texture);
+      textures.delete(id);
+    }
+  }
+
+  if (vertexBytes > 0) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, new Uint8Array(view.buffer, view.byteOffset + vertexBase, vertexBytes), gl.DYNAMIC_DRAW);
+  }
+  if (indexBytes > 0) {
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint8Array(view.buffer, view.byteOffset + indexBase, indexBytes), gl.DYNAMIC_DRAW);
+  }
+
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0.07, 0.078, 0.086, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(program);
+  gl.uniform2f(uScreen, canvas.width / dpr, canvas.height / dpr);
+  gl.uniform1i(uTexture, 0);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindVertexArray(vao);
+  gl.enable(gl.SCISSOR_TEST);
+
+  for (let i = 0; i < meshCount; i++) {
+    const base = meshBase + i * MESH_HEADER;
+    const textureId = view.getUint32(base, true);
+    const clipX0 = view.getFloat32(base + 4, true);
+    const clipY0 = view.getFloat32(base + 8, true);
+    const clipX1 = view.getFloat32(base + 12, true);
+    const clipY1 = view.getFloat32(base + 16, true);
+    const indexOffset = view.getUint32(base + 20, true);
+    const indexCount = view.getUint32(base + 24, true);
+    const entry = textures.get(textureId);
+    if (!entry || indexCount === 0) continue;
+    const x = Math.max(0, Math.floor(clipX0 * dpr));
+    const y = Math.max(0, Math.floor(clipY0 * dpr));
+    const x1 = Math.min(canvas.width, Math.ceil(clipX1 * dpr));
+    const y1 = Math.min(canvas.height, Math.ceil(clipY1 * dpr));
+    if (x1 <= x || y1 <= y) continue;
+    gl.scissor(x, canvas.height - y1, x1 - x, y1 - y);
+    gl.bindTexture(gl.TEXTURE_2D, entry.texture);
+    gl.drawElements(gl.TRIANGLES, indexCount, gl.UNSIGNED_INT, indexOffset);
+  }
+
+  gl.disable(gl.SCISSOR_TEST);
+  gl.bindVertexArray(null);
+}
+
+// ----------------------------------------------------------------------- input
+
+function pointerPosition(event) {
+  const rect = canvas.getBoundingClientRect();
+  return [event.clientX - rect.left, event.clientY - rect.top];
+}
+
+function buttonName(button) {
+  if (button === 1) return "middle";
+  if (button === 2) return "secondary";
+  return "primary";
+}
+
+function modifiers(event) {
+  return {
+    alt: event.altKey,
+    ctrl: event.ctrlKey,
+    shift: event.shiftKey,
+    command: event.metaKey,
+  };
+}
+
+canvas.addEventListener("pointermove", (event) => {
+  const [x, y] = pointerPosition(event);
+  send({ type: "pointer_move", x, y });
+});
+
+canvas.addEventListener("pointerdown", (event) => {
+  canvas.setPointerCapture(event.pointerId);
+  const [x, y] = pointerPosition(event);
+  const button = buttonName(event.button);
+  downButtons.add(event.button);
+  send({ type: "pointer_button", button, pressed: true, x, y });
+  event.preventDefault();
+});
+
+function releasePointer(event) {
+  const [x, y] = pointerPosition(event);
+  const button = buttonName(event.button);
+  if (!downButtons.has(event.button)) return;
+  downButtons.delete(event.button);
+  send({ type: "pointer_button", button, pressed: false, x, y });
+}
+
+canvas.addEventListener("pointerup", releasePointer);
+canvas.addEventListener("pointercancel", releasePointer);
+canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+
+window.addEventListener(
+  "wheel",
+  (event) => {
+    event.preventDefault();
+    send({ type: "scroll", dx: -event.deltaX, dy: -event.deltaY });
+  },
+  { passive: false },
+);
+
+const preventKeys = new Set([
+  "Tab", "Backspace", "Delete", "Enter", "Escape",
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Home", "End", "PageUp", "PageDown", " ",
+]);
+
+window.addEventListener("keydown", (event) => {
+  if (event.key === "F5" || event.key === "F12" || event.key === "F11") return;
+  const shortcut = (event.ctrlKey || event.metaKey) && ["s", "o", "n"].includes(event.key.toLowerCase());
+  if (preventKeys.has(event.key) || shortcut) event.preventDefault();
+  if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+  send({
+    type: "key",
+    key: event.key,
+    pressed: true,
+    repeat: event.repeat,
+    ...modifiers(event),
+  });
+  if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+    send({ type: "text", text: event.key });
+  }
+});
+
+window.addEventListener("keyup", (event) => {
+  if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+  send({
+    type: "key",
+    key: event.key,
+    pressed: false,
+    repeat: false,
+    ...modifiers(event),
+  });
+});
+
+window.addEventListener("focus", () => send({ type: "focus", focused: true }));
+window.addEventListener("blur", () => {
+  for (const button of downButtons) {
+    send({ type: "pointer_button", button: buttonName(button), pressed: false, x: 0, y: 0 });
+  }
+  downButtons.clear();
+  send({ type: "focus", focused: false });
+});
+
+window.addEventListener("resize", resize);
+setInterval(() => {
+  if ((window.devicePixelRatio || 1) !== dpr) resize();
+}, 1000);
+
+resize();
+connect();
+</script>
+</body>
+</html>

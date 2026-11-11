@@ -855,6 +855,21 @@ fn control_config_round_trips() {
 
 /// A project from before control existed loads with the listener disabled.
 #[test]
+fn http_control_config_round_trips() {
+    let mut cfg = Config::default();
+    cfg.control.http.enabled = true;
+    cfg.control.http.bind = "0.0.0.0".to_string();
+    cfg.control.http.port = 8095;
+
+    let json = serde_json::to_string(&cfg).unwrap();
+    let reloaded: Config = serde_json::from_str(&json).unwrap();
+
+    assert!(reloaded.control.http.enabled);
+    assert_eq!(reloaded.control.http.bind, "0.0.0.0");
+    assert_eq!(reloaded.control.http.port, 8095);
+}
+
+#[test]
 fn config_without_control_section_defaults_to_disabled() {
     let mut v = serde_json::to_value(Config::default()).unwrap();
     v.as_object_mut().unwrap().remove("control");
@@ -864,6 +879,9 @@ fn config_without_control_section_defaults_to_disabled() {
     assert!(!cfg.control.osc.enabled);
     assert_eq!(cfg.control.osc.bind, "127.0.0.1");
     assert_eq!(cfg.control.osc.port, 9000);
+    assert!(!cfg.control.http.enabled);
+    assert_eq!(cfg.control.http.bind, "127.0.0.1");
+    assert_eq!(cfg.control.http.port, 8090);
 }
 
 #[test]
