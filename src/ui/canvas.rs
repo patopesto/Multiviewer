@@ -292,7 +292,9 @@ pub fn update(
     }
 
     match preview {
-        Some(preview) if preview.rect == panel_rect => {
+        // The runner can be a frame behind a resize; painting the last frame
+        // stretched is less jarring than flashing the placeholder layer.
+        Some(preview) => {
             let ppp = ctx.pixels_per_point();
             painter.add(egui_wgpu::Callback::new_paint_callback(
                 rect,
@@ -308,7 +310,7 @@ pub fn update(
                 },
             ));
         }
-        _ => draw_placeholders(&painter, snapshot, &panel_rect, transform),
+        None => draw_placeholders(&painter, snapshot, &panel_rect, transform),
     }
 
     if ui_visible {

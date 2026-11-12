@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
 use crate::engine::{
-    Command, Engine, EngineRuntime, Runner, RunnerStats, ViewerId, publish_state,
+    Command, Engine, EngineRuntime, RepaintWake, Runner, RunnerStats, ViewerId, publish_state,
 };
 use crate::platform::poll_open_file;
 use crate::ui::remote::RemoteHost;
@@ -55,6 +55,7 @@ impl App {
             render_state.queue.clone(),
             render_state.target_format,
             true,
+            Some(repaint_wake(&cc.egui_ctx)),
         )
         .expect("spawn engine runner");
         let engine = runtime.engine;
@@ -269,6 +270,11 @@ impl eframe::App for App {
         drop(self.trace_guard.take());
         tracing::info!(total_ms = started.elapsed().as_millis() as u64, "exit");
     }
+}
+
+fn repaint_wake(ctx: &egui::Context) -> RepaintWake {
+    let ctx = ctx.clone();
+    return Arc::new(move || ctx.request_repaint());
 }
 
 fn lock_engine(engine: &Arc<Mutex<Engine>>) -> MutexGuard<'_, Engine> {

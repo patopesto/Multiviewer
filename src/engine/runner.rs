@@ -18,16 +18,18 @@ const AUTO_SAVE_INTERVAL: Duration = Duration::from_secs(1);
 const FRAME_TOLERANCE: Duration = Duration::from_millis(2);
 const RENDER_FPS_WINDOW: Duration = Duration::from_secs(2);
 const MAX_RENDER_TIMESTAMPS: usize = 256;
-const UI_STALL: Duration = Duration::from_millis(250);
 const SHUTDOWN_GRACE: Duration = Duration::from_millis(250);
 
 /// One preview frame built by the runner and painted by the UI.
 #[derive(Clone)]
 pub struct PreviewFrame {
-    pub rect: Rect,
     pub shared: Arc<Shared>,
     pub draw: Arc<Draw>,
 }
+
+/// Host hook run after a new preview frame is published, so the window repaints
+/// at the frame rate instead of the OS timer.
+pub type RepaintWake = Arc<dyn Fn() + Send + Sync>;
 
 /// Consumers of the runner's snapshot stream.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,7 +68,6 @@ impl FocusHandle {
 
 struct RunnerState {
     visible: bool,
-    last_ui_tick: Instant,
     preview_rect: Rect,
     discovery_focus: [Option<Protocol>; 2],
 }
@@ -92,10 +93,10 @@ impl Runner {
         queue: wgpu::Queue,
         format: wgpu::TextureFormat,
         preview_enabled: bool,
+        wake: Option<RepaintWake>,
     ) -> Option<Self> {
         let state = Arc::new(Mutex::new(RunnerState {
             visible: false,
-            last_ui_tick: Instant::now(),
             preview_rect: Rect::default(),
             discovery_focus: [None, None],
         }));
@@ -125,6 +126,7 @@ impl Runner {
                     thread_stats,
                     thread_stop,
                     preview_enabled,
+                    wake,
                 );
                 let _ = done_tx.send(());
             })
@@ -142,9 +144,7 @@ impl Runner {
 
     /// Update the window visibility from the paint loop.
     pub fn set_window_state(&self, visible: bool) {
-        let mut state = self.state.lock().unwrap();
-        state.visible = visible;
-        state.last_ui_tick = Instant::now();
+        self.state.lock().unwrap().visible = visible;
     }
 
     /// The panel rect the preview is built against.
@@ -236,6 +236,7 @@ impl EngineRuntime {
         queue: wgpu::Queue,
         format: wgpu::TextureFormat,
         preview_enabled: bool,
+        wake: Option<RepaintWake>,
     ) -> Result<Self, String> {
         let mut engine = Engine::new_project();
         let mut startup_error = None;
@@ -259,7 +260,7 @@ impl EngineRuntime {
         }
 
         let engine = Arc::new(Mutex::new(engine));
-        let runner = Runner::start(engine.clone(), device, queue, format, preview_enabled)
+        let runner = Runner::start(engine.clone(), device, queue, format, preview_enabled, wake)
             .ok_or_else(|| "spawn engine runner".to_string())?;
         return Ok(Self {
             engine,
@@ -391,6 +392,7 @@ fn run(
     stats: Arc<Mutex<RunnerStats>>,
     stop: Arc<AtomicBool>,
     preview_enabled: bool,
+    repaint: Option<RepaintWake>,
 ) {
     let mut next_maintenance = Instant::now();
     let mut next_auto_save = Instant::now();
@@ -407,16 +409,15 @@ fn run(
 
     while !stop.load(Ordering::Relaxed) {
         let _span = tracing::debug_span!("tick").entered();
-        let (visible, preview_rect, last_ui_tick, discovery_focus) = {
+        let (visible, preview_rect, discovery_focus) = {
             let state = state.lock().unwrap();
             (
                 state.visible,
                 state.preview_rect,
-                state.last_ui_tick,
                 state.discovery_focus.clone(),
             )
         };
-        let painting = preview_enabled && visible && last_ui_tick.elapsed() <= UI_STALL;
+        let painting = preview_enabled && visible;
 
         let mut engine = engine_arc.lock().unwrap();
         engine.canvas_rect = preview_rect;
@@ -487,15 +488,24 @@ fn run(
         let mut gpu_ms = None;
 
         if preview_due || output_due {
-            engine.ensure_compositor(&device, &queue, format);
-            engine.begin_tick();
-
             if preview_due {
                 next_preview = advance_deadline(
                     next_preview,
                     now,
                     Duration::from_secs_f64(1.0 / PREVIEW_FPS),
                 );
+            }
+            if output_due {
+                next_output = advance_deadline(
+                    next_output,
+                    now,
+                    Duration::from_secs_f64(1.0 / OUTPUT_FPS),
+                );
+            }
+            engine.ensure_compositor(&device, &queue, format);
+            engine.begin_tick();
+
+            if preview_due {
                 engine.prefetch_preview(&device, &queue);
                 if preview_rect.width() > 0.0 && preview_rect.height() > 0.0 {
                     let transform = super::transform::display_transform(
@@ -507,7 +517,6 @@ fn run(
                     let draw = engine.build_frame(&device, &queue, &preview_rect, transform);
                     if let Some(shared) = engine.shared() {
                         new_preview = Some(PreviewFrame {
-                            rect: preview_rect,
                             shared,
                             draw: Arc::new(draw),
                         });
@@ -516,11 +525,6 @@ fn run(
             }
 
             if output_due {
-                next_output = advance_deadline(
-                    next_output,
-                    now,
-                    Duration::from_secs_f64(1.0 / OUTPUT_FPS),
-                );
                 engine.render_outputs(&device, &queue);
             }
 
@@ -532,6 +536,9 @@ fn run(
 
         if let Some(frame) = new_preview {
             *preview.lock().unwrap() = Some(frame);
+            if let Some(repaint) = &repaint {
+                repaint();
+            }
         }
 
         let elapsed = started.elapsed();

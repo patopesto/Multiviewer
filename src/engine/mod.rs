@@ -41,8 +41,8 @@ pub use control::ControlError;
 pub use project::ProjectError;
 pub use state::EngineState;
 pub use runner::{
-    EngineRuntime, FocusHandle, PreviewFrame, Runner, RunnerStats, SnapshotSlot, StartupError,
-    ViewerId,
+    EngineRuntime, FocusHandle, PreviewFrame, RepaintWake, Runner, RunnerStats, SnapshotSlot,
+    StartupError, ViewerId,
 };
 pub use snapshot::EngineSnapshot;
 pub(crate) use snapshot::publish_state;

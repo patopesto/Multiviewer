@@ -89,6 +89,7 @@ fn run_headless(
         gpu.queue.clone(),
         wgpu::TextureFormat::Bgra8Unorm,
         false,
+        None,
     )
     .map_err(std::io::Error::other)?;
 
@@ -244,10 +245,9 @@ fn log_wgpu_backend(cc: &eframe::CreationContext<'_>) {
 }
 
 /// wgpu panics on every uncaptured validation error by default, which aborts the
-/// process when it happens inside winit's macOS event handlers. The OMT source and
-/// output submit GPU work on their own threads, racing eframe's surface reconfigure
-/// during a resize and tripping "Failed to wait for GPU to come idle"; log the error
-/// and let eframe reconfigure on the next frame instead of dying.
+/// process when it happens inside winit's event handlers. The vendored
+/// `wgpu-core` accepts a non-empty queue during `Surface::configure`; keep the
+/// handler for OMT and any other off-thread submitter.
 fn install_wgpu_error_handler(cc: &eframe::CreationContext<'_>) {
     let Some(render_state) = &cc.wgpu_render_state else {
         return;
