@@ -10,7 +10,7 @@ repository = "https://gitlab.com/patopest/multiviewer"
 
 [workspace]
 members = [".", "src/sources/decklink/bindings"]
-exclude = ["vendor/vmx"]
+exclude = ["vendor/vmx", "vendor/wgpu"]
 
 [workspace.package]
 version = "1.1.0"
@@ -103,6 +103,14 @@ windows = { version = "0.62", default-features = false, features = [
 eframe = { version = "0.36", default-features = false, features = ["wgpu", "default_fonts", "links", "x11", "wayland"] }
 winit = { version = "0.30", default-features = false, features = ["wayland-dlopen"] }
 
-# Patched fork waiting for upstream PR
 [patch.crates-io]
+# Patched fork waiting for upstream merge in openmediatransport-rs
 vmx = { path = "vendor/vmx" }
+# Forked wgpu 30.0.1: configure accepts a non-empty queue (the engine runner submits from its own thread).
+# The rest of the stack follows the same checkout so the graph has one wgpu-types/wgpu-hal.
+# Drop when a wgpu release carries the upstream presentation-lock rewrite.
+wgpu-core = { path = "vendor/wgpu/wgpu-core" }
+naga = { path = "vendor/wgpu/naga" }
+naga-types = { path = "vendor/wgpu/naga-types" }
+wgpu-hal = { path = "vendor/wgpu/wgpu-hal" }
+wgpu-types = { path = "vendor/wgpu/wgpu-types" }
