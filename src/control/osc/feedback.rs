@@ -66,6 +66,11 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
         "/ui/visible",
         FeedbackValue::Int(engine.state.ui_visible as i32),
     );
+    // @osc path="/ui/stats/visible" kind="feedback" args="value:0|1" group="Global" desc="Whether the source stats overlay is shown."
+    push(
+        "/ui/stats/visible",
+        FeedbackValue::Int(engine.state.show_stats as i32),
+    );
     // @osc path="/canvas/label/visible" kind="feedback" args="value:0|1" group="Global" desc="Whether source labels are drawn."
     push(
         "/canvas/label/visible",
@@ -250,6 +255,7 @@ mod tests {
         engine.state.selected_source_id = Some(uuid.clone());
         engine.state.expanded_source_id = Some(uuid);
         engine.state.cfg.auto_save_interval = 300;
+        engine.state.show_stats = true;
         engine.state.cfg.canvas.outputs.push(Output::new(
             "Program".to_string(),
             Protocol::Ndi,
@@ -294,6 +300,7 @@ mod tests {
         );
         assert_eq!(get("/canvas/label/visible"), Some(FeedbackValue::Int(0)));
         assert_eq!(get("/canvas/border/visible"), Some(FeedbackValue::Int(1)));
+        assert_eq!(get("/ui/stats/visible"), Some(FeedbackValue::Int(1)));
     }
 
     #[test]

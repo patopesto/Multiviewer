@@ -19,7 +19,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// Bump when adding or removing an OSC route; the docs route table and the
 /// `documented_routes_parse` test are checked against this value.
 #[cfg(test)]
-const OSC_ROUTE_COUNT: usize = 75;
+const OSC_ROUTE_COUNT: usize = 77;
 
 /// A UDP OSC listener. Bind happens on the caller's thread so a bad address or
 /// a taken port is reported immediately; the receive loop runs on its own.
@@ -196,6 +196,8 @@ fn parse_message(addr: &str, args: &[OscType]) -> Option<Command> {
         },
         // @osc path="/ui/toggle" group="Canvas & view" desc="Show or hide the editor UI."
         "ui" if parts.get(1) == Some(&"toggle") => Some(Command::ToggleUi),
+        // @osc path="/ui/stats" group="Canvas & view" desc="Show or hide the source stats overlay."
+        "ui" if parts.get(1) == Some(&"stats") => Some(Command::ToggleStats),
         "output" => parse_output(&parts[1..], args),
         // @osc path="/project/save" group="Project" desc="Save the project in place."
         "project" if parts.get(1) == Some(&"save") => Some(Command::SaveProject),
