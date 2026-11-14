@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "Multiviewer"
-version = "1.1.0"
+version = "1.2.0-dev"
 dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",
@@ -3642,7 +3642,7 @@ dependencies = [
 
 [[package]]
 name = "multiviewer-decklink"
-version = "1.1.0"
+version = "1.2.0-dev"
 dependencies = [
  "cc",
  "serde",

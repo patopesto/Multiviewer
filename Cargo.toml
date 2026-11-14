@@ -13,7 +13,7 @@ members = [".", "src/sources/decklink/bindings"]
 exclude = ["vendor/vmx", "vendor/wgpu"]
 
 [workspace.package]
-version = "1.1.0"
+version = "1.2.0-dev"
 
 [workspace.lints.clippy]
 needless_return = "allow"
