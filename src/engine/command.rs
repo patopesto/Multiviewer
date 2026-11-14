@@ -158,6 +158,7 @@ pub enum Command {
     },
     RecenterView,
     ToggleUi,
+    ToggleStats,
     SetOutputEnabled {
         output: Selector,
         enabled: bool,

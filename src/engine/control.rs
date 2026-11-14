@@ -316,6 +316,7 @@ impl Engine {
                 self.state.view.recenter(&self.state.cfg.canvas, &rect);
             }
             Command::ToggleUi => self.state.ui_visible = !self.state.ui_visible,
+            Command::ToggleStats => self.state.show_stats = !self.state.show_stats,
             Command::SetOutputEnabled { output, enabled } => {
                 let uuid = self.resolve_output(&output).ok_or(ControlError::UnknownOutput)?;
                 self.set_output_enabled(&uuid, enabled);

@@ -15,5 +15,6 @@ pub struct EngineState {
     pub dirty: bool,
     pub project_path: Option<PathBuf>,
     pub ui_visible: bool,
+    pub show_stats: bool,
     pub revision: u64,
 }

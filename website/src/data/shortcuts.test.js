@@ -10,7 +10,7 @@ function flat() {
 test('lists every shortcut with a label and a key', () => {
   const shortcuts = flat();
   // Mirrors the `all_global_lists_every_shortcut` tripwire in shortcuts.rs.
-  assert.equal(shortcuts.length, 18);
+  assert.equal(shortcuts.length, 19);
   for (const shortcut of shortcuts) {
     assert.ok(shortcut.label.length > 0, 'missing label');
     assert.ok(shortcut.key.length > 0, `missing key for ${shortcut.label}`);

@@ -69,6 +69,7 @@ pub fn draw(ui: &mut egui::Ui, snapshot: &EngineSnapshot, recent: &[PathBuf]) ->
 
             menu_button(ui, "View", |ui| {
                 menu_item(ui, &mut actions, Shortcut::ToggleUi, true);
+                menu_item(ui, &mut actions, Shortcut::ToggleStats, true);
                 ui.separator();
                 menu_item(ui, &mut actions, Shortcut::ZoomIn, true);
                 menu_item(ui, &mut actions, Shortcut::ZoomOut, true);

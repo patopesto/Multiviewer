@@ -860,6 +860,7 @@ fn shortcut_command(
         Shortcut::ZoomIn => Some(Command::Zoom { factor: 1.1 }),
         Shortcut::ZoomOut => Some(Command::Zoom { factor: 1.0 / 1.1 }),
         Shortcut::ToggleUi => Some(Command::ToggleUi),
+        Shortcut::ToggleStats => Some(Command::ToggleStats),
         Shortcut::NewProject
         | Shortcut::OpenProject
         | Shortcut::SaveProject

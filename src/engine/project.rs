@@ -75,6 +75,7 @@ impl Engine {
                 dirty: false,
                 project_path: None,
                 ui_visible: true,
+                show_stats: false,
                 revision: 0,
             },
             registry: SourceRegistry::new(),

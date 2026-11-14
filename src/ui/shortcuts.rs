@@ -26,6 +26,7 @@ pub enum Shortcut {
     SelectNextSource,
     SelectPreviousSource,
     ToggleUi,
+    ToggleStats,
 }
 
 /// Platform modifier name used by [`Shortcut::key`].
@@ -56,6 +57,7 @@ impl Shortcut {
             Shortcut::SelectNextSource => "Select Next Source",
             Shortcut::SelectPreviousSource => "Select Previous Source",
             Shortcut::ToggleUi => "Hide UI",
+            Shortcut::ToggleStats => "Show Stats",
         }
     }
 
@@ -80,6 +82,7 @@ impl Shortcut {
             Shortcut::SelectNextSource => format!("{MOD} + Alt + ↓"),
             Shortcut::SelectPreviousSource => format!("{MOD} + Alt + ↑"),
             Shortcut::ToggleUi => "Space".into(),
+            Shortcut::ToggleStats => "S".into(),
         }
     }
 
@@ -113,6 +116,7 @@ impl Shortcut {
             | Shortcut::NudgeLeft
             | Shortcut::NudgeRight
             | Shortcut::ToggleUi
+            | Shortcut::ToggleStats
             | Shortcut::ZoomIn
             | Shortcut::ZoomOut
             | Shortcut::RecenterView => "Canvas",
@@ -205,6 +209,9 @@ impl Shortcut {
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Space)) {
             return Some(Shortcut::ToggleUi);
         }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::S)) {
+            return Some(Shortcut::ToggleStats);
+        }
         None
     }
 
@@ -228,6 +235,7 @@ impl Shortcut {
             Shortcut::ZoomIn,
             Shortcut::ZoomOut,
             Shortcut::ToggleUi,
+            Shortcut::ToggleStats,
         ]
     }
 }
@@ -309,7 +317,7 @@ mod tests {
     // stays in sync with the keymap.
     #[test]
     fn all_global_lists_every_shortcut() {
-        assert_eq!(Shortcut::all_global().len(), 18);
+        assert_eq!(Shortcut::all_global().len(), 19);
         for shortcut in Shortcut::all_global() {
             assert!(!shortcut.label().is_empty());
             assert!(!shortcut.key().is_empty());

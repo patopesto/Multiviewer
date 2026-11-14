@@ -6,7 +6,7 @@ use eframe::egui_wgpu;
 use crate::compositor::{self, Draw, Rect};
 use crate::config::{Canvas, Source, SourceId};
 use crate::engine::{Command, EngineSnapshot, PreviewFrame, Selector};
-use crate::sources::{SourceConfig, SourceKey};
+use crate::sources::{SourceKey, SourceStats};
 
 macro_rules! asset_image {
     ($file:expr) => {
@@ -17,6 +17,10 @@ macro_rules! asset_image {
 const HANDLE_TOLERANCE: f32 = 8.0;
 const SNAP_THRESHOLD: f32 = 2.0;
 const SNAP_BREAK_THRESHOLD: f32 = 2.0;
+const STATS_LINE_HEIGHT: f32 = 14.0;
+const STATS_INSET: f32 = 6.0;
+const STATS_MIN_WIDTH: f32 = 100.0;
+const STATS_MIN_HEIGHT: f32 = 40.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ResizeHandle {
@@ -323,6 +327,9 @@ pub fn update(
             &state.snap_guides,
             transform,
         );
+        if doc.show_stats {
+            draw_source_stats_overlay(&painter, snapshot, &panel_rect, transform);
+        }
     }
 
     if ui_visible {
@@ -896,7 +903,7 @@ fn draw_placeholders(
             text_painter.text(
                 egui::pos2(x + 8.0, line_y),
                 egui::Align2::LEFT_TOP,
-                placeholder_source(snapshot, source),
+                source_heading(source),
                 egui::FontId::monospace(11.0),
                 egui::Color32::from_gray(200),
             );
@@ -932,37 +939,11 @@ fn draw_placeholders(
     }
 }
 
-fn source_binding_label(snapshot: &EngineSnapshot, source: &Source) -> Option<String> {
-    let source_ref = source.source_ref.as_ref()?;
-    if let Some(label) = snapshot
-        .runtime
-        .discovery(&source.protocol)
-        .and_then(|discovery| {
-            discovery
-                .connected
-                .iter()
-                .find(|item| item.id == source_ref.as_str())
-        })
-        .map(|item| item.label.clone())
-        && !label.trim().is_empty()
-    {
-        return Some(label);
-    }
-    let fallback = match &source.config {
-        SourceConfig::Vnc(config) => config.label(source_ref.as_str()),
-        SourceConfig::Rdp(config) => config.label(source_ref.as_str()),
-        _ => source_ref.clone(),
-    };
-    if fallback.trim().is_empty() {
-        return None;
-    }
-    return Some(fallback);
-}
-
-fn placeholder_source(snapshot: &EngineSnapshot, source: &Source) -> String {
-    return match source_binding_label(snapshot, source) {
-        Some(binding) => format!("{} · {binding}", source.protocol.label()),
-        None => source.protocol.label(),
+/// The protocol and raw source reference a placement is bound to.
+fn source_heading(source: &Source) -> String {
+    return match &source.source_ref {
+        Some(source_ref) => format!("{} · {source_ref}", source.protocol.label()),
+        None => source.protocol.label().to_string(),
     };
 }
 
@@ -982,6 +963,164 @@ fn placeholder_stats(snapshot: &EngineSnapshot, source: &Source) -> String {
         "{}x{} · {:.0} fps",
         stats.width, stats.height, stats.computed_fps
     );
+}
+
+/// Extended stats rows for a placed source; empty when it is not bound.
+fn source_stats_lines(snapshot: &EngineSnapshot, source: &Source) -> Vec<String> {
+    let Some(source_ref) = &source.source_ref else {
+        return Vec::new();
+    };
+    let key = SourceKey::new(source.protocol.clone(), source_ref.clone());
+    let runtime = snapshot.runtime.source(&key);
+    return stats_lines(
+        runtime.map(|runtime| &runtime.stats),
+        runtime.is_some_and(|runtime| runtime.restart_pending),
+    );
+}
+
+fn stats_lines(stats: Option<&SourceStats>, restarting: bool) -> Vec<String> {
+    if restarting {
+        return vec!["restarting...".to_string()];
+    }
+    let Some(stats) = stats else {
+        return vec!["not connected".to_string()];
+    };
+    if stats.width == 0 || stats.height == 0 {
+        return vec!["connecting".to_string()];
+    }
+
+    let mut lines = vec![format!(
+        "{}x{} {}",
+        stats.width, stats.height, stats.pixel_format
+    )];
+    if stats.nominal_fps > 0.0 {
+        lines.push(format!(
+            "{:.2} / {:.2} fps",
+            stats.computed_fps, stats.nominal_fps
+        ));
+    } else {
+        lines.push(format!("{:.2} fps", stats.computed_fps));
+    }
+    lines.push(format!(
+        "{} recv · {} shown · {} dropped",
+        stats.frames_received, stats.frames_consumed, stats.frames_dropped
+    ));
+    if stats.off_screen {
+        lines.push("offscreen: holding last frame".to_string());
+    }
+    let mut io = vec![format!("recv {:.2} ms", stats.receive_time_ms)];
+    if stats.gpu_direct {
+        if stats.network_mbps > 0.0 {
+            io.push(format!("net {:.1} MB/s", stats.network_mbps));
+        }
+        if stats.decode_ms > 0.0 {
+            io.push(format!("decode {:.2} ms", stats.decode_ms));
+        }
+    } else {
+        io.push(format!("copy {:.2} ms", stats.copy_time_ms));
+        io.push(format!("upload {:.2} ms", stats.upload_time_ms));
+        if stats.upload_mbps > 0.0 {
+            io.push(format!("{:.1} MB/s", stats.upload_mbps));
+        }
+    }
+    lines.push(io.join(" · "));
+    return lines;
+}
+
+/// Draw the stats block over each visible placement. Viewer-only: never part of
+/// the compositor draw, so it cannot reach an output.
+fn draw_source_stats_overlay(
+    painter: &egui::Painter,
+    snapshot: &EngineSnapshot,
+    panel_rect: &Rect,
+    transform: (f32, f32, f32),
+) {
+    let doc = &snapshot.state;
+    let canvas = &doc.cfg.canvas;
+    let (scale, offset_x, offset_y) = transform;
+    let cx = panel_rect.x + offset_x;
+    let cy = panel_rect.y + offset_y;
+    let expanded = doc.expanded_source_id.as_deref();
+    let clip = egui::Rect::from_min_size(
+        egui::pos2(panel_rect.x, panel_rect.y),
+        egui::vec2(panel_rect.w.max(0.0), panel_rect.h.max(0.0)),
+    );
+    let painter = painter.with_clip_rect(clip);
+    let font = egui::FontId::monospace(11.0);
+
+    let mut sources: Vec<&Source> = canvas.sources.iter().collect();
+    sources.sort_by_key(|source| source.z);
+    for source in sources {
+        if expanded.is_some_and(|uuid| uuid != source.uuid) {
+            continue;
+        }
+        let (x, y, w, h) = if expanded.is_some() {
+            (cx, cy, canvas.width as f32 * scale, canvas.height as f32 * scale)
+        } else {
+            (
+                cx + source.x * scale,
+                cy + source.y * scale,
+                source.width as f32 * scale,
+                source.height as f32 * scale,
+            )
+        };
+        if w < STATS_MIN_WIDTH || h < STATS_MIN_HEIGHT {
+            continue;
+        }
+
+        let mut lines = Vec::new();
+        if !source.name.is_empty() {
+            lines.push(source.name.clone());
+        }
+        lines.push(source_heading(source));
+        lines.extend(source_stats_lines(snapshot, source));
+
+        let mut galleys = Vec::with_capacity(lines.len());
+        for (index, line) in lines.iter().enumerate() {
+            let color = if index == 0 && !source.name.is_empty() {
+                egui::Color32::WHITE
+            } else {
+                egui::Color32::from_gray(200)
+            };
+            galleys.push(painter.layout_no_wrap(line.clone(), font.clone(), color));
+        }
+        let max_lines = ((h - STATS_INSET * 2.0) / STATS_LINE_HEIGHT).floor().max(0.0) as usize;
+        let used = galleys.len().min(max_lines);
+        if used == 0 {
+            continue;
+        }
+
+        let text_w = galleys[..used]
+            .iter()
+            .map(|galley| galley.size().x)
+            .fold(0.0_f32, f32::max);
+        let text_x = (x + STATS_INSET).min(x + w);
+        let text_y = (y + h - STATS_INSET - used as f32 * STATS_LINE_HEIGHT).max(y + STATS_INSET);
+        let box_rect = egui::Rect::from_min_size(
+            egui::pos2(text_x - 4.0, text_y - 3.0),
+            egui::vec2(
+                (text_w + 8.0).min(x + w - text_x + 4.0),
+                used as f32 * STATS_LINE_HEIGHT + 6.0,
+            ),
+        );
+        let text_painter = painter.with_clip_rect(
+            clip.intersect(egui::Rect::from_min_size(
+                egui::pos2(x, y),
+                egui::vec2(w, h),
+            )),
+        );
+        text_painter.rect_filled(box_rect, 2.0, egui::Color32::from_black_alpha(160));
+        let mut line_y = text_y;
+        for (index, galley) in galleys.into_iter().take(used).enumerate() {
+            let color = if index == 0 && !source.name.is_empty() {
+                egui::Color32::WHITE
+            } else {
+                egui::Color32::from_gray(200)
+            };
+            text_painter.galley(egui::pos2(text_x, line_y), galley, color);
+            line_y += STATS_LINE_HEIGHT;
+        }
+    }
 }
 
 fn source_color(uuid: &str) -> egui::Color32 {
@@ -1034,7 +1173,7 @@ mod tests {
     }
 
     #[test]
-    fn binding_label_prefers_the_runtime_label() {
+    fn source_heading_shows_the_protocol_and_source_ref() {
         let mut engine = Engine::test_instance(Canvas::default());
         let uuid = engine.add_source();
         let snapshot = engine.snapshot();
@@ -1047,17 +1186,13 @@ mod tests {
             .find(|source| source.uuid == uuid)
             .unwrap();
         assert_eq!(
-            source_binding_label(&snapshot, source),
-            source.source_ref.clone()
-        );
-        assert_eq!(
-            placeholder_source(&snapshot, source),
+            source_heading(source),
             format!("Test · {}", source.source_ref.clone().unwrap())
         );
     }
 
     #[test]
-    fn binding_label_falls_back_to_the_ref_and_hides_when_unbound() {
+    fn source_heading_hides_the_ref_when_unbound_and_stats_report_the_key() {
         let mut bound = source("bound", 0.0, 0.0, 640, 360, 0);
         bound.source_ref = Some("missing".to_string());
         let unbound = source("unbound", 0.0, 0.0, 640, 360, 0);
@@ -1065,11 +1200,7 @@ mod tests {
         let snapshot = engine.snapshot();
 
         assert_eq!(
-            source_binding_label(&snapshot, &snapshot.state.cfg.canvas.sources[0]).as_deref(),
-            Some("missing")
-        );
-        assert_eq!(
-            placeholder_source(&snapshot, &snapshot.state.cfg.canvas.sources[0]),
+            source_heading(&snapshot.state.cfg.canvas.sources[0]),
             "Test · missing"
         );
         assert_eq!(
@@ -1077,11 +1208,7 @@ mod tests {
             "not connected"
         );
         assert_eq!(
-            source_binding_label(&snapshot, &snapshot.state.cfg.canvas.sources[1]),
-            None
-        );
-        assert_eq!(
-            placeholder_source(&snapshot, &snapshot.state.cfg.canvas.sources[1]),
+            source_heading(&snapshot.state.cfg.canvas.sources[1]),
             "Test"
         );
         assert_eq!(
@@ -1292,4 +1419,35 @@ mod tests {
         assert_eq!(oy, base_oy + 20.0);
     }
 
+    #[test]
+    fn stats_lines_reports_connection_and_frame_state() {
+        assert_eq!(stats_lines(None, false), vec!["not connected"]);
+        assert_eq!(stats_lines(None, true), vec!["restarting..."]);
+
+        let mut stats = SourceStats::new();
+        assert_eq!(stats_lines(Some(&stats), false), vec!["connecting"]);
+
+        stats.record_frame(1920, 1080, "BGRA8", 60.0);
+        let lines = stats_lines(Some(&stats), false);
+        assert_eq!(lines[0], "1920x1080 BGRA8");
+        assert_eq!(lines[1], "0.00 / 60.00 fps");
+        assert_eq!(lines[2], "1 recv · 0 shown · 0 dropped");
+        assert!(lines[3].contains("recv 0.00 ms") && lines[3].contains("copy"));
+    }
+
+    #[test]
+    fn stats_lines_reports_network_and_decode_for_gpu_direct_sources() {
+        let mut stats = SourceStats::new();
+        stats.record_frame(1920, 1080, "BGRA8", 60.0);
+        stats.set_gpu_direct();
+        stats.network_mbps = 12.5;
+        stats.decode_ms = 1.5;
+        stats.off_screen = true;
+
+        let lines = stats_lines(Some(&stats), false);
+        assert!(lines.iter().any(|line| line.contains("offscreen")));
+        let io = lines.last().unwrap();
+        assert!(io.contains("net 12.5 MB/s") && io.contains("decode 1.50 ms"));
+        assert!(!io.contains("copy"));
+    }
 }

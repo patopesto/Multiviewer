@@ -693,6 +693,11 @@ fn control_commands_mutate_the_canvas() {
 
     engine.apply_command(Command::ToggleUi).unwrap();
     assert!(!engine.state.ui_visible);
+
+    engine.apply_command(Command::ToggleStats).unwrap();
+    assert!(engine.state.show_stats);
+    engine.apply_command(Command::ToggleStats).unwrap();
+    assert!(!engine.state.show_stats);
 }
 
 #[test]
