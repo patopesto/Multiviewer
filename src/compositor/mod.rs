@@ -59,6 +59,9 @@ pub struct Shared {
 struct LabelKey {
     name: String,
     size: f32,
+    /// Raster pixels per canvas pixel; bucketed so zoom only re-rasterizes on
+    /// power-of-two crossings.
+    raster: f32,
     text_color: [u8; 4],
 }
 
@@ -66,6 +69,7 @@ impl Hash for LabelKey {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state);
         self.size.to_bits().hash(state);
+        self.raster.to_bits().hash(state);
         self.text_color.hash(state);
     }
 }

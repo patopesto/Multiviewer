@@ -256,7 +256,8 @@ impl eframe::App for App {
                 web_status: remote_status.as_deref(),
             },
         );
-        self.runner.set_preview_rect(output.canvas_rect);
+        self.runner
+            .set_preview_rect(output.canvas_rect, ui.ctx().pixels_per_point());
         self.execute_actions(output.actions);
     }
 

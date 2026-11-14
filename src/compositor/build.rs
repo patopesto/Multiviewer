@@ -94,6 +94,8 @@ pub(super) struct Frame<'a> {
     pub queue: &'a wgpu::Queue,
     pub panel_rect: &'a Rect,
     pub scale: f32,
+    /// Raster pixels per canvas pixel a label is drawn at.
+    pub label_scale: f32,
     registry: &'a SourceRegistry,
     verts: Vec<Vert>,
     draws: Vec<DrawCall>,
@@ -108,6 +110,7 @@ impl<'a> Frame<'a> {
         registry: &'a SourceRegistry,
         panel_rect: &'a Rect,
         scale: f32,
+        label_scale: f32,
         source_count: usize,
     ) -> Self {
         return Self {
@@ -116,6 +119,7 @@ impl<'a> Frame<'a> {
             queue,
             panel_rect,
             scale,
+            label_scale,
             registry,
             // One content quad + four border edges + label background + label text.
             verts: Vec::with_capacity(source_count * 7 * 4),
@@ -320,6 +324,7 @@ impl Compositor {
         panel_rect: &Rect,
         transform: (f32, f32, f32),
         expanded_source: Option<&str>,
+        label_scale: f32,
     ) -> Draw {
         let (scale, offset_x, offset_y) = transform;
         let cx = panel_rect.x + offset_x;
@@ -348,6 +353,7 @@ impl Compositor {
             registry,
             panel_rect,
             scale,
+            label_scale,
             sources.len(),
         );
         let mut visible = 0u32;

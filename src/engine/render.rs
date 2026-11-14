@@ -74,6 +74,7 @@ impl Engine {
         queue: &wgpu::Queue,
         panel_rect: &Rect,
         transform: (f32, f32, f32),
+        label_scale: f32,
     ) -> Draw {
         let comp = self.comp.as_mut().expect("compositor not initialized");
         comp.build(
@@ -84,6 +85,7 @@ impl Engine {
             panel_rect,
             transform,
             self.state.expanded_source_id.as_deref(),
+            label_scale,
         )
     }
 

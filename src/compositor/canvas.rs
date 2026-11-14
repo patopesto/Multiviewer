@@ -36,6 +36,7 @@ impl Compositor {
             &panel_rect,
             transform,
             expanded_source,
+            1.0,
         );
 
         queue.write_buffer(&self.canvas_vb, 0, bytemuck::cast_slice(&draw.verts));

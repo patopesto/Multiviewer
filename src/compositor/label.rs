@@ -18,6 +18,22 @@ pub(super) struct LabelTex {
     key_hash: u64,
 }
 
+const LABEL_MIN_RASTER: f32 = 0.25;
+const LABEL_MAX_RASTER: f32 = 8.0;
+/// Cap on the rasterized em size, so maximum zoom cannot ask for an oversized texture.
+const LABEL_MAX_EM: f32 = 256.0;
+
+/// Raster pixels per canvas pixel for a label drawn at `display_scale`,
+/// bucketed to a power of two so zooming re-rasterizes on crossings only.
+fn raster_scale(display_scale: f32, size: f32) -> f32 {
+    if !display_scale.is_finite() || display_scale <= 0.0 {
+        return 1.0;
+    }
+    let cap = (LABEL_MAX_EM / size.max(1.0)).clamp(1.0, LABEL_MAX_RASTER);
+    let bucketed = 2.0_f32.powf(display_scale.min(cap).log2().ceil());
+    return bucketed.clamp(LABEL_MIN_RASTER, cap);
+}
+
 /// Top-left corner of the label background within a source rect, for a `LabelPosition`.
 pub(super) fn label_origin(pos: LabelPosition, rect: [f32; 4], bg: (f32, f32)) -> (f32, f32) {
     let [lx, ly, lw, lh] = rect;
@@ -68,9 +84,11 @@ impl Frame<'_> {
         }
 
         let label = &canvas.label;
+        let raster = raster_scale(self.label_scale, label.size);
         let label_key = LabelKey {
             name: source.name.clone(),
             size: label.size,
+            raster,
             text_color: label.text_color,
         };
         let (tex_w, tex_h, label_bg) = self.comp.ensure_label_texture(
@@ -80,9 +98,11 @@ impl Frame<'_> {
             &label_key,
         );
 
+        let text_w = tex_w as f32 * self.scale / raster;
+        let text_h = tex_h as f32 * self.scale / raster;
         let padding = 4.0 * self.scale;
-        let bg_w = (tex_w as f32 * self.scale + padding * 2.0).min(place.lw);
-        let bg_h = (tex_h as f32 * self.scale + padding * 2.0).min(place.lh);
+        let bg_w = (text_w + padding * 2.0).min(place.lw);
+        let bg_h = (text_h + padding * 2.0).min(place.lh);
         let (bg_x, bg_y) = label_origin(
             label.position,
             [place.lx, place.ly, place.lw, place.lh],
@@ -99,8 +119,8 @@ impl Frame<'_> {
         let [tx0, ty0] = clip(self.panel_rect, tx_x, tx_y);
         let [tx1, ty1] = clip(
             self.panel_rect,
-            tx_x + tex_w as f32 * self.scale,
-            tx_y + tex_h as f32 * self.scale,
+            tx_x + text_w,
+            tx_y + text_h,
         );
         self.quad([tx0, ty0, tx1, ty1], [0.0, 0.0, 1.0, 1.0], label_bg, Pipeline::Text);
     }
@@ -207,7 +227,7 @@ impl Compositor {
 fn label_pixels(font: &fontdue::Font, key: &LabelKey) -> Option<(u32, u32, Vec<u8>)> {
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings::default());
-    layout.append(&[font], &TextStyle::new(&key.name, key.size, 0));
+    layout.append(&[font], &TextStyle::new(&key.name, key.size * key.raster, 0));
 
     let glyphs = layout.glyphs();
     if glyphs.is_empty() {
@@ -255,4 +275,27 @@ fn label_pixels(font: &fontdue::Font, key: &LabelKey) -> Option<(u32, u32, Vec<u
         }
     }
     return Some((width, height, pixels));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn raster_scale_buckets_to_powers_of_two() {
+        assert_eq!(raster_scale(1.0, 24.0), 1.0);
+        assert_eq!(raster_scale(1.01, 24.0), 2.0);
+        assert_eq!(raster_scale(2.0, 24.0), 2.0);
+        assert_eq!(raster_scale(2.01, 24.0), 4.0);
+        assert_eq!(raster_scale(0.25, 24.0), 0.25);
+        assert_eq!(raster_scale(0.0, 24.0), 1.0);
+    }
+
+    /// A label at maximum zoom must not ask the GPU for a bigger em than the cap.
+    #[test]
+    fn raster_scale_caps_the_rasterized_em_size() {
+        assert_eq!(raster_scale(8.0, 64.0), 4.0);
+        assert!(raster_scale(64.0, 24.0) * 24.0 <= LABEL_MAX_EM);
+        assert!(raster_scale(64.0, 256.0) * 256.0 <= LABEL_MAX_EM);
+    }
 }

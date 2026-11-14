@@ -69,6 +69,7 @@ impl FocusHandle {
 struct RunnerState {
     visible: bool,
     preview_rect: Rect,
+    pixels_per_point: f32,
     discovery_focus: [Option<Protocol>; 2],
 }
 
@@ -98,6 +99,7 @@ impl Runner {
         let state = Arc::new(Mutex::new(RunnerState {
             visible: false,
             preview_rect: Rect::default(),
+            pixels_per_point: 1.0,
             discovery_focus: [None, None],
         }));
         let preview = Arc::new(Mutex::new(None));
@@ -147,9 +149,12 @@ impl Runner {
         self.state.lock().unwrap().visible = visible;
     }
 
-    /// The panel rect the preview is built against.
-    pub fn set_preview_rect(&self, rect: Rect) {
-        self.state.lock().unwrap().preview_rect = rect;
+    /// The panel rect the preview is built against, and the window's physical
+    /// pixels per logical point, so preview text rasterizes at display size.
+    pub fn set_preview_rect(&self, rect: Rect, pixels_per_point: f32) {
+        let mut state = self.state.lock().unwrap();
+        state.preview_rect = rect;
+        state.pixels_per_point = pixels_per_point;
     }
 
     /// The protocol whose discovered sources the UI is currently showing.
@@ -409,11 +414,12 @@ fn run(
 
     while !stop.load(Ordering::Relaxed) {
         let _span = tracing::debug_span!("tick").entered();
-        let (visible, preview_rect, discovery_focus) = {
+        let (visible, preview_rect, pixels_per_point, discovery_focus) = {
             let state = state.lock().unwrap();
             (
                 state.visible,
                 state.preview_rect,
+                state.pixels_per_point,
                 state.discovery_focus.clone(),
             )
         };
@@ -514,7 +520,9 @@ fn run(
                         &preview_rect,
                         engine.state.ui_visible,
                     );
-                    let draw = engine.build_frame(&device, &queue, &preview_rect, transform);
+                    let label_scale = transform.0 * pixels_per_point;
+                    let draw =
+                        engine.build_frame(&device, &queue, &preview_rect, transform, label_scale);
                     if let Some(shared) = engine.shared() {
                         new_preview = Some(PreviewFrame {
                             shared,
