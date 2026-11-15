@@ -102,32 +102,7 @@ pub(super) struct Frame<'a> {
     next_index: u32,
 }
 
-impl<'a> Frame<'a> {
-    fn new(
-        comp: &'a mut Compositor,
-        device: &'a wgpu::Device,
-        queue: &'a wgpu::Queue,
-        registry: &'a SourceRegistry,
-        panel_rect: &'a Rect,
-        scale: f32,
-        label_scale: f32,
-        source_count: usize,
-    ) -> Self {
-        return Self {
-            comp,
-            device,
-            queue,
-            panel_rect,
-            scale,
-            label_scale,
-            registry,
-            // One content quad + four border edges + label background + label text.
-            verts: Vec::with_capacity(source_count * 7 * 4),
-            draws: Vec::with_capacity(source_count * 7),
-            next_index: 0,
-        };
-    }
-
+impl Frame<'_> {
     /// Push one axis-aligned textured quad and its draw call.
     pub(super) fn quad(
         &mut self,
@@ -346,16 +321,19 @@ impl Compositor {
         let mut sources: Vec<_> = canvas.sources.iter().collect();
         sources.sort_by_key(|l| l.z);
 
-        let mut frame = Frame::new(
-            self,
+        let mut frame = Frame {
+            comp: self,
             device,
             queue,
-            registry,
             panel_rect,
             scale,
             label_scale,
-            sources.len(),
-        );
+            registry,
+            // One content quad + four border edges + label background + label text.
+            verts: Vec::with_capacity(sources.len() * 7 * 4),
+            draws: Vec::with_capacity(sources.len() * 7),
+            next_index: 0,
+        };
         let mut visible = 0u32;
         for source in sources {
             let expanded = expanded_source == Some(source.uuid.as_str());

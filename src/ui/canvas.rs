@@ -234,12 +234,7 @@ pub fn update(
         && let Some(pos) = response.interact_pointer_pos()
     {
         response.request_focus();
-        if middle_pressed {
-            state.drag = Some(CanvasDrag::Pan {
-                start: pos,
-                pan: doc.view.pan,
-            });
-        } else if doc.expanded_source_id.is_some() {
+        if middle_pressed || doc.expanded_source_id.is_some() {
             state.drag = Some(CanvasDrag::Pan {
                 start: pos,
                 pan: doc.view.pan,

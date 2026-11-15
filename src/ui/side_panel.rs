@@ -1285,17 +1285,23 @@ mod tests {
         output.textures_delta.clear();
     }
 
+    fn panel_with_rect() -> SidePanel {
+        return SidePanel {
+            panel_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(320.0, 800.0),
+            )),
+            ..Default::default()
+        };
+    }
+
     /// A canvas drag holds the primary button down for the whole gesture; the
     /// draft must still track the engine, or the panel only updates on release.
     #[test]
     fn draft_refreshes_while_the_pointer_is_down_on_the_canvas() {
         let mut engine = Engine::test_instance(Canvas::default());
         let ctx = egui::Context::default();
-        let mut panel = SidePanel::default();
-        panel.panel_rect = Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(320.0, 800.0),
-        ));
+        let mut panel = panel_with_rect();
         panel.sync(&engine.snapshot(), &ctx);
 
         pointer_button(&ctx, egui::pos2(800.0, 400.0), true);
@@ -1309,11 +1315,7 @@ mod tests {
     fn draft_holds_still_while_a_panel_widget_is_held() {
         let mut engine = Engine::test_instance(Canvas::default());
         let ctx = egui::Context::default();
-        let mut panel = SidePanel::default();
-        panel.panel_rect = Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(320.0, 800.0),
-        ));
+        let mut panel = panel_with_rect();
         panel.sync(&engine.snapshot(), &ctx);
 
         pointer_button(&ctx, egui::pos2(100.0, 100.0), true);

@@ -93,10 +93,10 @@ impl RemoteHost {
         if let Some(running) = self.running.take() {
             if wait_for_port {
                 drop(running);
-            } else if let Some(done) = shutdown_in_background(running) {
-                if let Some(previous) = &previous {
-                    self.retiring.push((previous.port, done));
-                }
+            } else if let Some(done) = shutdown_in_background(running)
+                && let Some(previous) = &previous
+            {
+                self.retiring.push((previous.port, done));
             }
         }
         self.error = None;

@@ -927,8 +927,10 @@ mod tests {
     #[test]
     fn source_config_command_updates_the_placement() {
         let (mut engine, id) = engine_with_source();
-        let mut config = TestSourceConfig::default();
-        config.width = 320;
+        let config = TestSourceConfig {
+            width: 320,
+            ..Default::default()
+        };
         engine
             .apply_command(Command::SetSourceConfig {
                 source: Selector::Id(id.clone()),

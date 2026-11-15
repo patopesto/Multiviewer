@@ -203,7 +203,7 @@ impl Engine {
                             .iter()
                             .map(|info| {
                                 PickerItemView::new(
-                                    &info.display_name(),
+                                    info.display_name(),
                                     &crate::sources::format_syphon_label(&info.app_name, &info.name),
                                 )
                             })
