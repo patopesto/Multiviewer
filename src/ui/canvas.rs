@@ -4,7 +4,9 @@ use std::sync::mpsc::Sender;
 use eframe::egui_wgpu;
 
 use crate::compositor::{self, Draw, Rect};
-use crate::config::{Canvas, Source, SourceId};
+use crate::config::{
+    Canvas, Source, SourceBorderVisibility, SourceId, SourceLabelVisibility, TextureMode,
+};
 use crate::engine::{Command, EngineSnapshot, PreviewFrame, Selector};
 use crate::sources::{SourceKey, SourceStats};
 
@@ -429,10 +431,10 @@ pub fn update(
                     ui.close();
                 }
             } else if let Some(id) = state.context_target.clone() {
-                if ui.button("Expand to full canvas").clicked() {
-                    let _ = commands.send(Command::ExpandSource(Selector::Id(id)));
-                    ui.close();
-                }
+                source_menu(ui, canvas, &id, commands);
+            } else if ui.button("Add source").clicked() {
+                let _ = commands.send(Command::AddSource);
+                ui.close();
             }
         });
     }
@@ -464,6 +466,136 @@ pub fn update(
     }
 
     return panel_rect;
+}
+
+/// Actions on the source the menu was opened on. Every item targets `id`, never
+/// the selection, so the menu cannot drift from what was right-clicked.
+fn source_menu(ui: &mut egui::Ui, canvas: &Canvas, id: &SourceId, commands: &Sender<Command>) {
+    let Some(source) = canvas.sources.iter().find(|source| source.uuid == *id) else {
+        return;
+    };
+    let selector = Selector::Id(id.clone());
+    let (back, front) = z_bounds(canvas);
+
+    if ui.button("Expand to full canvas").clicked() {
+        let _ = commands.send(Command::ExpandSource(selector.clone()));
+        ui.close();
+    }
+
+    ui.separator();
+
+    if ui.button("Bring to front").clicked() {
+        let _ = commands.send(Command::SetSourceZ {
+            source: selector.clone(),
+            value: front.saturating_add(1),
+        });
+        ui.close();
+    }
+    if ui.button("Send to back").clicked() {
+        let _ = commands.send(Command::SetSourceZ {
+            source: selector.clone(),
+            value: back.saturating_sub(1),
+        });
+        ui.close();
+    }
+    if ui.button("Fit to canvas").clicked() {
+        let _ = commands.send(Command::SetSourceRect {
+            source: selector.clone(),
+            x: 0.0,
+            y: 0.0,
+            width: canvas.width,
+            height: canvas.height,
+        });
+        ui.close();
+    }
+
+    ui.separator();
+
+    ui.menu_button("Mode", |ui| {
+        for mode in [TextureMode::Fit, TextureMode::Fill, TextureMode::Stretch] {
+            if ui.selectable_label(source.mode == mode, mode.label()).clicked() {
+                let _ = commands.send(Command::SetSourceMode {
+                    source: selector.clone(),
+                    mode,
+                });
+                ui.close();
+            }
+        }
+    });
+    let mut flip_h = source.flip_h;
+    if ui.checkbox(&mut flip_h, "Flip horizontal").changed() {
+        let _ = commands.send(Command::SetSourceFlipH {
+            source: selector.clone(),
+            value: flip_h,
+        });
+        ui.close();
+    }
+    let mut flip_v = source.flip_v;
+    if ui.checkbox(&mut flip_v, "Flip vertical").changed() {
+        let _ = commands.send(Command::SetSourceFlipV {
+            source: selector.clone(),
+            value: flip_v,
+        });
+        ui.close();
+    }
+
+    ui.separator();
+
+    ui.menu_button("Label", |ui| {
+        for visibility in [
+            SourceLabelVisibility::Inherit,
+            SourceLabelVisibility::Show,
+            SourceLabelVisibility::Hide,
+        ] {
+            let label = visibility.label();
+            if ui
+                .selectable_label(source.label_visibility == visibility, label)
+                .clicked()
+            {
+                let _ = commands.send(Command::SetSourceLabelVisibility {
+                    source: selector.clone(),
+                    value: visibility,
+                });
+                ui.close();
+            }
+        }
+    });
+    ui.menu_button("Border", |ui| {
+        for visibility in [
+            SourceBorderVisibility::Inherit,
+            SourceBorderVisibility::Show,
+            SourceBorderVisibility::Hide,
+        ] {
+            let label = visibility.label();
+            if ui
+                .selectable_label(source.border_visibility == visibility, label)
+                .clicked()
+            {
+                let _ = commands.send(Command::SetSourceBorderVisibility {
+                    source: selector.clone(),
+                    value: visibility,
+                });
+                ui.close();
+            }
+        }
+    });
+
+    ui.separator();
+
+    if ui.button("Delete source").clicked() {
+        let _ = commands.send(Command::RemoveSource(selector));
+        ui.close();
+    }
+}
+
+/// Stacking range of the whole canvas, as `(back, front)`.
+fn z_bounds(canvas: &Canvas) -> (i32, i32) {
+    return canvas
+        .sources
+        .iter()
+        .fold((i32::MAX, i32::MIN), |(back, front), source| {
+            (back.min(source.z), front.max(source.z))
+        });
 }
 
 fn display_transform(canvas: &Canvas, zoom: f32, pan: [f32; 2], panel: &Rect) -> (f32, f32, f32) {
@@ -1300,6 +1432,17 @@ mod tests {
             placeholder_stats(&snapshot, &snapshot.state.cfg.canvas.sources[1]),
             ""
         );
+    }
+
+    #[test]
+    fn z_bounds_report_the_back_and_front_extremes() {
+        let canvas = canvas(vec![
+            source("a", 0.0, 0.0, 640, 360, 7),
+            source("b", 0.0, 0.0, 640, 360, -3),
+            source("c", 0.0, 0.0, 640, 360, 2),
+        ]);
+
+        assert_eq!(z_bounds(&canvas), (-3, 7));
     }
 
     #[test]
