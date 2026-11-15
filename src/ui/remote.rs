@@ -324,7 +324,23 @@ impl InputState {
                     modifiers: self.modifiers,
                 });
             }
-            InputEvent::Scroll { dx, dy } => {
+            InputEvent::Scroll {
+                dx,
+                dy,
+                alt,
+                ctrl,
+                shift,
+                command,
+            } => {
+                self.modifiers = egui::Modifiers {
+                    alt,
+                    ctrl,
+                    shift,
+                    mac_cmd: command,
+                    command,
+                };
+                self.events
+                    .push(egui::Event::ModifiersChanged(self.modifiers));
                 self.events.push(egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
                     delta: egui::vec2(dx, dy),

@@ -327,7 +327,7 @@ window.addEventListener(
   "wheel",
   (event) => {
     event.preventDefault();
-    send({ type: "scroll", dx: -event.deltaX, dy: -event.deltaY });
+    send({ type: "scroll", dx: -event.deltaX, dy: -event.deltaY, ...modifiers(event) });
   },
   { passive: false },
 );

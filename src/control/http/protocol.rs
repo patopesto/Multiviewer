@@ -29,6 +29,14 @@ pub enum InputEvent {
     Scroll {
         dx: f32,
         dy: f32,
+        #[serde(default)]
+        alt: bool,
+        #[serde(default)]
+        ctrl: bool,
+        #[serde(default)]
+        shift: bool,
+        #[serde(default)]
+        command: bool,
     },
     Key {
         key: String,

@@ -156,6 +156,9 @@ pub enum Command {
     Zoom {
         factor: f32,
     },
+    Pan {
+        delta: [f32; 2],
+    },
     RecenterView,
     ToggleUi,
     ToggleStats,

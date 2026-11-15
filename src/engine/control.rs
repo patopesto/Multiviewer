@@ -311,6 +311,12 @@ impl Engine {
                 let rect = self.canvas_rect;
                 self.state.view.zoom(&self.state.cfg.canvas, &rect, factor);
             }
+            Command::Pan { delta } => {
+                self.state.view.pan = [
+                    self.state.view.pan[0] + finite(delta[0])?,
+                    self.state.view.pan[1] + finite(delta[1])?,
+                ];
+            }
             Command::RecenterView => {
                 let rect = self.canvas_rect;
                 self.state.view.recenter(&self.state.cfg.canvas, &rect);
@@ -1020,6 +1026,36 @@ mod tests {
 
         engine.apply_command(Command::RecenterView).unwrap();
         assert!(engine.state.view.zoom.is_finite() && engine.state.view.zoom > 0.0);
+    }
+
+    #[test]
+    fn pan_command_accumulates_the_offset() {
+        let (mut engine, _id) = engine_with_source();
+
+        engine
+            .apply_command(Command::Pan {
+                delta: [10.0, -4.0],
+            })
+            .unwrap();
+        engine
+            .apply_command(Command::Pan { delta: [5.0, 4.0] })
+            .unwrap();
+
+        assert_eq!(engine.state.view.pan, [15.0, 0.0]);
+    }
+
+    #[test]
+    fn pan_command_rejects_non_finite_deltas() {
+        let (mut engine, _id) = engine_with_source();
+
+        assert!(
+            engine
+                .apply_command(Command::Pan {
+                    delta: [f32::NAN, 0.0]
+                })
+                .is_err()
+        );
+        assert_eq!(engine.state.view.pan, [0.0, 0.0]);
     }
 
     #[test]

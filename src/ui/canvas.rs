@@ -58,6 +58,7 @@ struct SnapCandidates {
 pub struct CanvasUi {
     drag: Option<CanvasDrag>,
     snap_guides: SnapGuides,
+    scroll_device: ScrollDevice,
 }
 
 enum CanvasDrag {
@@ -76,6 +77,61 @@ enum CanvasDrag {
         start: egui::Pos2,
         pan: [f32; 2],
     },
+}
+
+/// A smooth-scrolling mouse reports `Point` exactly like a trackpad, so the
+/// phase is the only difference: touch surfaces bracket a gesture with `Start`/`End`, mice never send one.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+enum ScrollDevice {
+    #[default]
+    Wheel,
+    Trackpad,
+}
+
+fn scroll_device(previous: ScrollDevice, events: &[egui::Event]) -> ScrollDevice {
+    let mut device = previous;
+    for event in events {
+        let egui::Event::MouseWheel { unit, phase, .. } = event else {
+            continue;
+        };
+        device = match unit {
+            egui::MouseWheelUnit::Line | egui::MouseWheelUnit::Page => ScrollDevice::Wheel,
+            egui::MouseWheelUnit::Point => match phase {
+                egui::TouchPhase::Start => ScrollDevice::Trackpad,
+                egui::TouchPhase::End | egui::TouchPhase::Cancel => ScrollDevice::Wheel,
+                egui::TouchPhase::Move => device,
+            },
+        };
+    }
+    return device;
+}
+
+fn scroll_nav(
+    zoom_delta: f32,
+    scroll: egui::Vec2,
+    shift: bool,
+    device: ScrollDevice,
+    zoom_speed: f32,
+) -> Option<Command> {
+    if zoom_delta != 1.0 {
+        return Some(Command::Zoom { factor: zoom_delta });
+    }
+    if scroll == egui::Vec2::ZERO {
+        return None;
+    }
+    let factor = if shift {
+        ((scroll.x + scroll.y) * zoom_speed).exp()
+    } else if device == ScrollDevice::Wheel {
+        1.1_f32.powf(scroll.y / 50.0)
+    } else {
+        return Some(Command::Pan {
+            delta: [scroll.x, scroll.y],
+        });
+    };
+    if factor == 1.0 {
+        return None;
+    }
+    return Some(Command::Zoom { factor });
 }
 
 pub struct CanvasCallback {
@@ -153,18 +209,33 @@ pub fn update(
     let origin_x = panel_rect.x + offset_x;
     let origin_y = panel_rect.y + offset_y;
 
-    let primary_down = ctx.input(|i| i.pointer.primary_down());
-    let pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
-    if !primary_down {
+    ctx.input(|i| {
+        state.scroll_device = scroll_device(state.scroll_device, &i.events);
+    });
+
+    let (primary_down, middle_down, primary_pressed, middle_pressed) = ctx.input(|i| {
+        (
+            i.pointer.primary_down(),
+            i.pointer.middle_down(),
+            i.pointer.button_pressed(egui::PointerButton::Primary),
+            i.pointer.button_pressed(egui::PointerButton::Middle),
+        )
+    });
+    if !primary_down && !middle_down {
         state.drag = None;
         state.snap_guides = SnapGuides::default();
     } else if ui_visible
-        && pressed
+        && (primary_pressed || middle_pressed)
         && response.hovered()
         && let Some(pos) = response.interact_pointer_pos()
     {
         response.request_focus();
-        if doc.expanded_source_id.is_some() {
+        if middle_pressed {
+            state.drag = Some(CanvasDrag::Pan {
+                start: pos,
+                pan: doc.view.pan,
+            });
+        } else if doc.expanded_source_id.is_some() {
             state.drag = Some(CanvasDrag::Pan {
                 start: pos,
                 pan: doc.view.pan,
@@ -273,7 +344,7 @@ pub fn update(
         state.snap_guides = guides;
     }
 
-    if ui_visible && response.hovered() && !primary_down
+    if ui_visible && response.hovered() && !primary_down && !middle_down
         && let Some(pos) = response.hover_pos()
         && let Some((_, handle)) = hit_resize_handle(
             canvas,
@@ -287,11 +358,17 @@ pub fn update(
         ui.output_mut(|output| output.cursor_icon = cursor_for_handle(handle));
     }
 
+    if let Some(CanvasDrag::Pan { .. }) = &state.drag {
+        ui.output_mut(|output| output.cursor_icon = egui::CursorIcon::Grabbing);
+    }
+
     if ui_visible && response.hovered() {
-        let scroll = ctx.input(|i| i.smooth_scroll_delta).y;
-        if scroll != 0.0 {
-            let factor = 1.1_f32.powf(scroll / 50.0);
-            let _ = commands.send(Command::Zoom { factor });
+        let (zoom_delta, scroll, shift) =
+            ctx.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.modifiers.shift));
+        let zoom_speed = ctx.options(|o| o.input_options.scroll_zoom_speed);
+        let nav = scroll_nav(zoom_delta, scroll, shift, state.scroll_device, zoom_speed);
+        if let Some(command) = nav {
+            let _ = commands.send(command);
         }
     }
 
@@ -1417,6 +1494,106 @@ mod tests {
         assert_eq!(scale, base_scale * 2.0);
         assert_eq!(ox, base_ox + 10.0);
         assert_eq!(oy, base_oy + 20.0);
+    }
+
+    #[test]
+    fn scroll_nav_splits_wheel_zoom_from_trackpad_pan() {
+        let delta = egui::vec2(3.0, 40.0);
+        let speed = 1.0 / 200.0;
+
+        assert_eq!(
+            scroll_nav(1.0, delta, false, ScrollDevice::Wheel, speed),
+            Some(Command::Zoom {
+                factor: 1.1_f32.powf(40.0 / 50.0)
+            })
+        );
+        assert_eq!(
+            scroll_nav(1.0, delta, false, ScrollDevice::Trackpad, speed),
+            Some(Command::Pan {
+                delta: [3.0, 40.0]
+            })
+        );
+        assert_eq!(
+            scroll_nav(1.0, delta, true, ScrollDevice::Trackpad, speed),
+            Some(Command::Zoom {
+                factor: (43.0 * speed).exp()
+            })
+        );
+        assert_eq!(
+            scroll_nav(1.2, delta, false, ScrollDevice::Trackpad, speed),
+            Some(Command::Zoom { factor: 1.2 })
+        );
+        assert_eq!(
+            scroll_nav(1.0, egui::Vec2::ZERO, false, ScrollDevice::Trackpad, speed),
+            None
+        );
+    }
+
+    #[test]
+    fn scroll_nav_ignores_a_zoom_with_no_change() {
+        let speed = 1.0 / 200.0;
+
+        assert_eq!(
+            scroll_nav(
+                1.0,
+                egui::vec2(30.0, 0.0),
+                false,
+                ScrollDevice::Wheel,
+                speed
+            ),
+            None
+        );
+        assert_eq!(
+            scroll_nav(
+                1.0,
+                egui::vec2(30.0, -30.0),
+                true,
+                ScrollDevice::Trackpad,
+                speed
+            ),
+            None
+        );
+        assert_eq!(
+            scroll_nav(
+                1.0,
+                egui::vec2(30.0, 0.0),
+                false,
+                ScrollDevice::Trackpad,
+                speed
+            ),
+            Some(Command::Pan {
+                delta: [30.0, 0.0]
+            })
+        );
+    }
+
+    #[test]
+    fn scroll_device_follows_touch_phases() {
+        let wheel = |unit, phase| egui::Event::MouseWheel {
+            unit,
+            delta: egui::vec2(0.0, 10.0),
+            phase,
+            modifiers: egui::Modifiers::NONE,
+        };
+        let point = |phase| wheel(egui::MouseWheelUnit::Point, phase);
+
+        let mut device = scroll_device(ScrollDevice::Wheel, &[point(egui::TouchPhase::Move)]);
+        assert_eq!(device, ScrollDevice::Wheel);
+
+        device = scroll_device(device, &[point(egui::TouchPhase::Start)]);
+        assert_eq!(device, ScrollDevice::Trackpad);
+
+        device = scroll_device(device, &[point(egui::TouchPhase::Move)]);
+        assert_eq!(device, ScrollDevice::Trackpad);
+
+        device = scroll_device(device, &[point(egui::TouchPhase::End)]);
+        assert_eq!(device, ScrollDevice::Wheel);
+
+        device = scroll_device(
+            ScrollDevice::Trackpad,
+            &[wheel(egui::MouseWheelUnit::Line, egui::TouchPhase::Move)],
+        );
+        assert_eq!(device, ScrollDevice::Wheel);
     }
 
     #[test]
