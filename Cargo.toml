@@ -106,7 +106,7 @@ winit = { version = "0.30", default-features = false, features = ["wayland-dlope
 [patch.crates-io]
 # Patched fork waiting for upstream merge in openmediatransport-rs
 vmx = { path = "vendor/vmx" }
-# Forked wgpu 30.0.1: configure accepts a non-empty queue (the engine runner submits from its own thread).
+# Forked wgpu 30.0.2: configure accepts a non-empty queue (the engine runner submits from its own thread).
 # The rest of the stack follows the same checkout so the graph has one wgpu-types/wgpu-hal.
 # Drop when a wgpu release carries the upstream presentation-lock rewrite.
 wgpu-core = { path = "vendor/wgpu/wgpu-core" }

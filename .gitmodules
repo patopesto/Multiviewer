@@ -4,4 +4,4 @@
 [submodule "vendor/wgpu"]
 	path = vendor/wgpu
 	url = https://github.com/patopesto/wgpu.git
-	branch = multiviewer
+	branch = multiviewer-30.0.2
