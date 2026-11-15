@@ -61,7 +61,7 @@ pub fn draw(
     panel.sync(snapshot, ui.ctx());
     let mut out = Vec::new();
     egui::Panel::left("panel")
-        .default_size(280.0)
+        .default_size(320.0)
         .min_size(200.0)
         .max_size(400.0)
         .show(ui, |ui| {
@@ -109,6 +109,9 @@ fn draw_global_section(
                 }
                 ui.label("H");
                 if ui.add(egui::DragValue::new(&mut draft.canvas.height).range(100..=7680).update_while_editing(false)).changed() {
+                    canvas_changed = true;
+                }
+                if resolution_preset_menu(ui, 100, &mut draft.canvas.width, &mut draft.canvas.height) {
                     canvas_changed = true;
                 }
             });
@@ -642,6 +645,9 @@ fn draw_source_properties_section(
                 {
                     placement_changed = true;
                 }
+                if resolution_preset_menu(ui, 1, &mut source.width, &mut source.height) {
+                    placement_changed = true;
+                }
             });
 
             settings_row(ui, "Order", |ui| {
@@ -1036,6 +1042,38 @@ const SETTINGS_GRID_SPACING: [f32; 2] = [8.0, 4.0];
 const SETTINGS_GRID_LEFT_MIN_WIDTH: f32 = 120.0;
 const SUBSECTION_SEPARATOR_INSET: f32 = 16.0;
 
+const RESOLUTION_PRESETS: &[&[(&str, u32, u32)]] = &[
+    // 16/9 resolutions
+    &[
+        ("UHD", 3840, 2160),
+        ("QHD", 2560, 1440),
+        ("FHD", 1920, 1080),
+        ("HD",  1280, 720),
+        ("FHD /2", 960, 540),
+        ("FHD /3", 640, 360),
+        ("FHD /4", 480, 270),
+        ("FHD /5", 384, 216),
+        ("FHD /6", 320, 180),
+        ("FHD /8", 240, 135),
+        ("FHD /10", 192, 108),
+        ("FHD /12", 160, 90),
+        ("FHD /15", 128, 72),
+        ("HD /2", 640, 360),
+        ("HD /4", 320, 180),
+        ("HD /5", 256, 144),
+        ("HD /8", 160, 90),
+    ],
+    // 4/3 resolutions
+    &[
+        ("QXGA", 2048, 1536),
+        ("UXGA", 1600, 1200),
+        ("XGA",  1024, 768),
+        ("SVGA", 800, 600),
+        ("VGA",  640, 480),
+        ("QVGA", 320, 240),
+    ],
+];
+
 fn subsection_separator(ui: &mut Ui) {
     ui.add(Separator::default().shrink(SUBSECTION_SEPARATOR_INSET));
 }
@@ -1077,6 +1115,59 @@ pub fn settings_row(ui: &mut Ui, label: &str, contents: impl FnOnce(&mut Ui)) {
     ui.label(label);
     ui.with_layout(Layout::left_to_right(Align::Center), contents);
     ui.end_row();
+}
+
+fn resolution_preset_menu(
+    ui: &mut Ui,
+    min_size: u32,
+    width: &mut u32,
+    height: &mut u32,
+) -> bool {
+    let response = ui.add(
+        egui::Button::new("⏵").min_size(egui::vec2(24.0, ui.spacing().interact_size.y)),
+    );
+    let mut changed = false;
+    if let Some(popup) = egui::Popup::menu(&response)
+        .align(egui::RectAlign::RIGHT_START)
+        .show(|ui| {
+            let mut group_changed = false;
+            let mut drawn = false;
+            for group in RESOLUTION_PRESETS {
+                if drawn {
+                    ui.separator();
+                }
+                group_changed |= resolution_preset_rows(ui, group, min_size, width, height);
+                drawn = true;
+            }
+            group_changed
+        })
+    {
+        changed = popup.inner;
+    }
+    return changed;
+}
+
+fn resolution_preset_rows(
+    ui: &mut Ui,
+    presets: &[(&str, u32, u32)],
+    min_size: u32,
+    width: &mut u32,
+    height: &mut u32,
+) -> bool {
+    let mut changed = false;
+    for (label, preset_width, preset_height) in presets {
+        if *preset_width < min_size || *preset_height < min_size {
+            continue;
+        }
+        let selected = *width == *preset_width && *height == *preset_height;
+        let text = format!("{preset_width} × {preset_height} ({label})");
+        if ui.selectable_label(selected, text).clicked() {
+            *width = *preset_width;
+            *height = *preset_height;
+            changed = true;
+        }
+    }
+    return changed;
 }
 
 fn color_picker_rgba_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 4]) {
@@ -1137,6 +1228,17 @@ mod tests {
             });
             output.textures_delta.clear();
             assert!(receiver.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn resolution_presets_are_labeled_and_in_range() {
+        let mut labels = std::collections::HashSet::new();
+        for (label, width, height) in RESOLUTION_PRESETS.iter().copied().flatten() {
+            assert!(!label.is_empty());
+            assert!(labels.insert(*label), "{label} is listed twice");
+            assert!((1..=7680).contains(width), "{label}");
+            assert!((1..=7680).contains(height), "{label}");
         }
     }
 
