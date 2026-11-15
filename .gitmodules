@@ -1,6 +1,3 @@
-[submodule "vendor/vmx"]
-	path = vendor/vmx
-	url = https://github.com/patopesto/vmx-rs
 [submodule "vendor/wgpu"]
 	path = vendor/wgpu
 	url = https://github.com/patopesto/wgpu.git
