@@ -26,6 +26,7 @@ pub struct SidePanel {
     draft_revision: u64,
     initialized: bool,
     last_selected: Option<SourceId>,
+    panel_rect: Option<egui::Rect>,
 }
 
 impl Default for SidePanel {
@@ -35,13 +36,21 @@ impl Default for SidePanel {
             draft_revision: 0,
             initialized: false,
             last_selected: None,
+            panel_rect: None,
         };
     }
 }
 
 impl SidePanel {
     fn sync(&mut self, snapshot: &EngineSnapshot, ctx: &egui::Context) {
-        let interacting = ctx.text_edit_focused() || ctx.input(|input| input.pointer.any_down());
+        // Reloading the draft while one of the panel's own widgets is held reverts
+        // it mid-drag. A canvas drag holds the pointer down too, so the guard is
+        // scoped to presses inside the panel instead of the whole window.
+        let pointer_in_panel = ctx.input(|input| input.pointer.any_down())
+            && self
+                .panel_rect
+                .is_some_and(|rect| ctx.pointer_latest_pos().is_some_and(|pos| rect.contains(pos)));
+        let interacting = ctx.text_edit_focused() || pointer_in_panel;
         if !self.initialized
             || (!interacting && snapshot.state.revision != self.draft_revision)
         {
@@ -60,7 +69,7 @@ pub fn draw(
 ) {
     panel.sync(snapshot, ui.ctx());
     let mut out = Vec::new();
-    egui::Panel::left("panel")
+    let panel_response = egui::Panel::left("panel")
         .default_size(320.0)
         .min_size(200.0)
         .max_size(400.0)
@@ -86,6 +95,7 @@ pub fn draw(
                 }
             });
         });
+    panel.panel_rect = Some(panel_response.response.rect);
     for command in out {
         let _ = commands.send(command);
     }
@@ -1256,6 +1266,64 @@ mod tests {
         engine.state.revision = engine.state.revision.wrapping_add(1);
         let snapshot = engine.snapshot();
         panel.sync(&snapshot, &ctx);
+        assert_eq!(panel.draft.canvas.width, 1234);
+    }
+
+    fn pointer_button(ctx: &egui::Context, pos: egui::Pos2, pressed: bool) {
+        let mut output = ctx.run_ui(
+            egui::RawInput {
+                events: vec![egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: egui::Modifiers::default(),
+                }],
+                ..Default::default()
+            },
+            |_| {},
+        );
+        output.textures_delta.clear();
+    }
+
+    /// A canvas drag holds the primary button down for the whole gesture; the
+    /// draft must still track the engine, or the panel only updates on release.
+    #[test]
+    fn draft_refreshes_while_the_pointer_is_down_on_the_canvas() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let ctx = egui::Context::default();
+        let mut panel = SidePanel::default();
+        panel.panel_rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(320.0, 800.0),
+        ));
+        panel.sync(&engine.snapshot(), &ctx);
+
+        pointer_button(&ctx, egui::pos2(800.0, 400.0), true);
+        engine.state.cfg.canvas.width = 1234;
+        engine.state.revision = engine.state.revision.wrapping_add(1);
+        panel.sync(&engine.snapshot(), &ctx);
+        assert_eq!(panel.draft.canvas.width, 1234);
+    }
+
+    #[test]
+    fn draft_holds_still_while_a_panel_widget_is_held() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let ctx = egui::Context::default();
+        let mut panel = SidePanel::default();
+        panel.panel_rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(320.0, 800.0),
+        ));
+        panel.sync(&engine.snapshot(), &ctx);
+
+        pointer_button(&ctx, egui::pos2(100.0, 100.0), true);
+        engine.state.cfg.canvas.width = 1234;
+        engine.state.revision = engine.state.revision.wrapping_add(1);
+        panel.sync(&engine.snapshot(), &ctx);
+        assert_eq!(panel.draft.canvas.width, 1920);
+
+        pointer_button(&ctx, egui::pos2(100.0, 100.0), false);
+        panel.sync(&engine.snapshot(), &ctx);
         assert_eq!(panel.draft.canvas.width, 1234);
     }
 
