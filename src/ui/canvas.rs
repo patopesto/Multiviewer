@@ -59,6 +59,8 @@ pub struct CanvasUi {
     drag: Option<CanvasDrag>,
     snap_guides: SnapGuides,
     scroll_device: ScrollDevice,
+    /// Source under the pointer when the context menu opened
+    context_target: Option<SourceId>,
 }
 
 enum CanvasDrag {
@@ -410,6 +412,15 @@ pub fn update(
     }
 
     if ui_visible {
+        if response.secondary_clicked() {
+            let target = response
+                .interact_pointer_pos()
+                .and_then(|pos| hit_test(canvas, pos, scale, origin_x, origin_y));
+            if let Some(id) = &target {
+                let _ = commands.send(Command::SelectSource(Selector::Id(id.clone())));
+            }
+            state.context_target = target;
+        }
         response.context_menu(|ui| {
             ui.set_min_width(100.0);
             if doc.expanded_source_id.is_some() {
@@ -417,10 +428,7 @@ pub fn update(
                     let _ = commands.send(Command::ExitExpanded);
                     ui.close();
                 }
-            } else if let Some(pos) = ui.input(|i| i.pointer.latest_pos())
-                && let Some(id) = hit_test(canvas, pos, scale, origin_x, origin_y)
-            {
-                let _ = commands.send(Command::SelectSource(Selector::Id(id.clone())));
+            } else if let Some(id) = state.context_target.clone() {
                 if ui.button("Expand to full canvas").clicked() {
                     let _ = commands.send(Command::ExpandSource(Selector::Id(id)));
                     ui.close();
