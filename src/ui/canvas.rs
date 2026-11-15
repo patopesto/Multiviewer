@@ -414,7 +414,7 @@ pub fn update(
     }
 
     if ui_visible {
-        if response.secondary_clicked() {
+        if response.secondary_clicked() && doc.expanded_source_id.is_none() {
             let target = response
                 .interact_pointer_pos()
                 .and_then(|pos| hit_test(canvas, pos, scale, origin_x, origin_y));
@@ -475,7 +475,7 @@ fn source_menu(ui: &mut egui::Ui, canvas: &Canvas, id: &SourceId, commands: &Sen
         return;
     };
     let selector = Selector::Id(id.clone());
-    let (back, front) = z_bounds(canvas);
+    let (back, front) = canvas.z_bounds();
 
     if ui.button("Expand to full canvas").clicked() {
         let _ = commands.send(Command::ExpandSource(selector.clone()));
@@ -582,20 +582,14 @@ fn source_menu(ui: &mut egui::Ui, canvas: &Canvas, id: &SourceId, commands: &Sen
 
     ui.separator();
 
+    if ui.button("Duplicate source").clicked() {
+        let _ = commands.send(Command::DuplicateSource(selector.clone()));
+        ui.close();
+    }
     if ui.button("Delete source").clicked() {
         let _ = commands.send(Command::RemoveSource(selector));
         ui.close();
     }
-}
-
-/// Stacking range of the whole canvas, as `(back, front)`.
-fn z_bounds(canvas: &Canvas) -> (i32, i32) {
-    return canvas
-        .sources
-        .iter()
-        .fold((i32::MAX, i32::MIN), |(back, front), source| {
-            (back.min(source.z), front.max(source.z))
-        });
 }
 
 fn display_transform(canvas: &Canvas, zoom: f32, pan: [f32; 2], panel: &Rect) -> (f32, f32, f32) {
@@ -1432,17 +1426,6 @@ mod tests {
             placeholder_stats(&snapshot, &snapshot.state.cfg.canvas.sources[1]),
             ""
         );
-    }
-
-    #[test]
-    fn z_bounds_report_the_back_and_front_extremes() {
-        let canvas = canvas(vec![
-            source("a", 0.0, 0.0, 640, 360, 7),
-            source("b", 0.0, 0.0, 640, 360, -3),
-            source("c", 0.0, 0.0, 640, 360, 2),
-        ]);
-
-        assert_eq!(z_bounds(&canvas), (-3, 7));
     }
 
     #[test]

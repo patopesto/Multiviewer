@@ -40,6 +40,7 @@ pub enum Selector {
 #[serde(tag = "type", content = "payload", rename_all = "snake_case")]
 pub enum Command {
     AddSource,
+    DuplicateSource(Selector),
     RemoveSource(Selector),
     SelectNext,
     SelectPrevious,

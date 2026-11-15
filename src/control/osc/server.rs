@@ -19,7 +19,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// Bump when adding or removing an OSC route; the docs route table and the
 /// `documented_routes_parse` test are checked against this value.
 #[cfg(test)]
-const OSC_ROUTE_COUNT: usize = 77;
+const OSC_ROUTE_COUNT: usize = 78;
 
 /// A UDP OSC listener. Bind happens on the caller's thread so a bad address or
 /// a taken port is reported immediately; the receive loop runs on its own.
@@ -339,6 +339,8 @@ fn parse_source(rest: &[&str], args: &[OscType]) -> Option<Command> {
                 source_ref: (!name.is_empty()).then(|| name.to_string()),
             })
         }
+        // @osc path="/source/{sel}/duplicate" group="Sources" desc="Duplicate this source's placement; the copy lands on top and takes the selection."
+        "duplicate" => Some(Command::DuplicateSource(source)),
         // @osc path="/source/{sel}/remove" group="Sources" desc="Remove this source."
         "remove" => Some(Command::RemoveSource(source)),
         _ => None,

@@ -115,6 +115,18 @@ impl Default for Canvas {
     }
 }
 
+impl Canvas {
+    /// Stacking range of every placement on the canvas, as `(back, front)`.
+    pub fn z_bounds(&self) -> (i32, i32) {
+        return self
+            .sources
+            .iter()
+            .fold((i32::MAX, i32::MIN), |(back, front), source| {
+                (back.min(source.z), front.max(source.z))
+            });
+    }
+}
+
 pub type SourceId = String;
 
 pub type OutputId = String;

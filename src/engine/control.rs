@@ -46,6 +46,11 @@ impl Engine {
                 let uuid = self.add_source();
                 self.state.selected_source_id = Some(uuid);
             }
+            Command::DuplicateSource(selector) => {
+                let uuid = self.resolve_source(&selector).ok_or(ControlError::UnknownSource)?;
+                let copy = self.duplicate_source(&uuid).ok_or(ControlError::UnknownSource)?;
+                self.state.selected_source_id = Some(copy);
+            }
             Command::RemoveSource(selector) => {
                 let uuid = self.resolve_source(&selector).ok_or(ControlError::UnknownSource)?;
                 self.remove_source(&uuid);
@@ -879,6 +884,47 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_source_copies_the_placement_without_a_second_runtime() {
+        let (mut engine, id) = engine_with_source();
+        let key = engine.registry.add_test(None);
+        let source = &mut engine.state.cfg.canvas.sources[0];
+        source.source_ref = Some(key.source_ref.clone());
+        source.config = SourceConfig::Test(TestSourceConfig::default());
+        source.x = 100.0;
+        source.y = 50.0;
+        source.z = 3;
+        let runtimes = engine.snapshot().runtime.sources.len();
+
+        engine
+            .apply_command(Command::DuplicateSource(Selector::Id(id.clone())))
+            .unwrap();
+
+        let copy_id = engine.state.selected_source_id.clone().unwrap();
+        assert_ne!(copy_id, id);
+        assert!(engine.state.dirty);
+        assert_eq!(engine.state.cfg.canvas.sources.len(), 2);
+        assert_eq!(engine.state.cfg.canvas.sources[1].uuid, copy_id);
+        let copy = engine
+            .state
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .find(|source| source.uuid == copy_id)
+            .unwrap();
+        assert_eq!(copy.name, "Source copy");
+        assert_eq!((copy.x, copy.y), (132.0, 82.0));
+        assert_eq!(copy.z, 4);
+        assert_eq!(copy.source_ref, Some(key.source_ref));
+        assert_eq!(copy.config, engine.state.cfg.canvas.sources[0].config);
+        assert_eq!(
+            engine.snapshot().runtime.sources.len(),
+            runtimes,
+            "a duplicate shares its original's runtime source"
+        );
+    }
+
+    #[test]
     fn source_config_command_updates_the_placement() {
         let (mut engine, id) = engine_with_source();
         let mut config = TestSourceConfig::default();
@@ -963,6 +1009,7 @@ mod tests {
     fn new_commands_round_trip_through_json() {
         let (_engine, id) = engine_with_source();
         let commands = vec![
+            Command::DuplicateSource(Selector::Id(id.clone())),
             Command::PatchSourcePlacement {
                 source: Selector::Id(id.clone()),
                 patch: SourcePlacementPatch {

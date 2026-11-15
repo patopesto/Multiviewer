@@ -13,6 +13,7 @@ pub enum Shortcut {
     SaveProject,
     SaveProjectAs,
     AddSource,
+    DuplicateSource,
     DeleteSource,
     ExpandSource,
     ExitExpanded,
@@ -44,6 +45,7 @@ impl Shortcut {
             Shortcut::SaveProject => "Save Project",
             Shortcut::SaveProjectAs => "Save Project As...",
             Shortcut::AddSource => "Add Source",
+            Shortcut::DuplicateSource => "Duplicate Source",
             Shortcut::DeleteSource => "Delete Source",
             Shortcut::ExpandSource => "Expand Source",
             Shortcut::ExitExpanded => "Exit Expanded View",
@@ -69,6 +71,7 @@ impl Shortcut {
             Shortcut::SaveProject => format!("{MOD} + S"),
             Shortcut::SaveProjectAs => format!("{MOD} + Shift + S"),
             Shortcut::AddSource => "A".into(),
+            Shortcut::DuplicateSource => format!("{MOD} + D"),
             Shortcut::DeleteSource => "Delete".into(),
             Shortcut::ExpandSource => "F".into(),
             Shortcut::ExitExpanded => "Esc".into(),
@@ -106,6 +109,7 @@ impl Shortcut {
             | Shortcut::SaveProject
             | Shortcut::SaveProjectAs => "Project",
             Shortcut::AddSource
+            | Shortcut::DuplicateSource
             | Shortcut::DeleteSource
             | Shortcut::ExpandSource
             | Shortcut::ExitExpanded
@@ -142,6 +146,9 @@ impl Shortcut {
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::N)) {
             return Some(Shortcut::NewProject);
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::D)) {
+            return Some(Shortcut::DuplicateSource);
         }
 
         // Source selection (Ctrl/Cmd + Alt + arrow).
@@ -222,6 +229,7 @@ impl Shortcut {
             Shortcut::SaveProject,
             Shortcut::SaveProjectAs,
             Shortcut::AddSource,
+            Shortcut::DuplicateSource,
             Shortcut::DeleteSource,
             Shortcut::ExpandSource,
             Shortcut::ExitExpanded,
@@ -317,7 +325,7 @@ mod tests {
     // stays in sync with the keymap.
     #[test]
     fn all_global_lists_every_shortcut() {
-        assert_eq!(Shortcut::all_global().len(), 19);
+        assert_eq!(Shortcut::all_global().len(), 20);
         for shortcut in Shortcut::all_global() {
             assert!(!shortcut.label().is_empty());
             assert!(!shortcut.key().is_empty());

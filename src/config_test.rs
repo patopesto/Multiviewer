@@ -922,6 +922,30 @@ fn osc_feedback_round_trips() {
     assert_eq!(reloaded.control.osc.feedback_port, 9001);
 }
 
+#[test]
+fn z_bounds_report_the_back_and_front_extremes() {
+    let mut canvas = Canvas::default();
+    for (uuid, z) in [("a", 7), ("b", -3), ("c", 2)] {
+        let mut source = Source::new(
+            uuid.to_string(),
+            Protocol::Test,
+            None,
+            0.0,
+            0.0,
+            640,
+            360,
+            z,
+            TextureMode::Fit,
+            false,
+            false,
+        );
+        source.uuid = uuid.to_string();
+        canvas.sources.push(source);
+    }
+
+    assert_eq!(canvas.z_bounds(), (-3, 7));
+}
+
 /// A project from before feedback existed loads with feedback disabled.
 #[test]
 fn config_without_feedback_fields_defaults_to_disabled() {

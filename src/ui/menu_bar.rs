@@ -52,7 +52,9 @@ pub fn draw(ui: &mut egui::Ui, snapshot: &EngineSnapshot, recent: &[PathBuf]) ->
 
             menu_button(ui, "Edit", |ui| {
                 menu_item(ui, &mut actions, Shortcut::AddSource, true);
-                menu_item(ui, &mut actions, Shortcut::DeleteSource, snapshot.state.selected_source_id.is_some());
+                let placement = snapshot.state.selected_source_id.is_some() && snapshot.state.expanded_source_id.is_none();
+                menu_item(ui, &mut actions, Shortcut::DuplicateSource, placement);
+                menu_item(ui, &mut actions, Shortcut::DeleteSource, placement);
                 ui.separator();
                 menu_item(ui, &mut actions, Shortcut::ExpandSource, snapshot.state.selected_source_id.is_some() || snapshot.state.expanded_source_id.is_some());
                 menu_item(ui, &mut actions, Shortcut::ExitExpanded, snapshot.state.expanded_source_id.is_some());

@@ -812,6 +812,15 @@ fn shortcut_command(
     let selected = || snapshot.state.selected_source_id.clone().map(Selector::Id);
     return match shortcut {
         Shortcut::AddSource => Some(Command::AddSource),
+        // A duplicate created while expanded is invisible and would take the
+        // selection off the expanded source.
+        Shortcut::DuplicateSource => {
+            if snapshot.state.expanded_source_id.is_some() {
+                None
+            } else {
+                selected().map(Command::DuplicateSource)
+            }
+        }
         // Deleting while expanded would pull the view out from under the user.
         Shortcut::DeleteSource => {
             if snapshot.state.expanded_source_id.is_some() {
@@ -961,6 +970,10 @@ mod tests {
             Some(Command::AddSource)
         );
         assert_eq!(
+            shortcut_command(Shortcut::DuplicateSource, &snapshot, 1.0),
+            Some(Command::DuplicateSource(Selector::Id(uuid.clone())))
+        );
+        assert_eq!(
             shortcut_command(Shortcut::DeleteSource, &snapshot, 1.0),
             Some(Command::RemoveSource(Selector::Id(uuid)))
         );
@@ -1006,6 +1019,10 @@ mod tests {
         engine.state.expanded_source_id = Some(uuid);
         let snapshot = engine.snapshot();
 
+        assert_eq!(
+            shortcut_command(Shortcut::DuplicateSource, &snapshot, 1.0),
+            None
+        );
         assert_eq!(
             shortcut_command(Shortcut::DeleteSource, &snapshot, 1.0),
             None

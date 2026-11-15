@@ -1,5 +1,7 @@
 use std::time::{Duration, Instant};
 
+use uuid::Uuid;
+
 use super::Engine;
 use crate::config::{Source, TextureMode};
 use crate::sources::{Protocol, SourceConfig, SourceKey, SourceRegistry};
@@ -12,6 +14,8 @@ use crate::sources::{find_syphon_server, AvFoundationSourceConfig, ensure_screen
 use crate::sources::{DirectShowSourceConfig, MediaFoundationSourceConfig, SpoutSourceConfig, WindowsCaptureSourceConfig};
 
 const DISCOVERY_INTERVAL: Duration = Duration::from_millis(250);
+/// Offset applied to a duplicate so it is visibly distinct from its original.
+const DUPLICATE_OFFSET: f32 = 32.0;
 /// Liveness accounting interval. A healthy report is logged at debug; a gap
 /// longer than `SLOW_TICK`, or a late report, is logged as a warning.
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -593,6 +597,32 @@ impl Engine {
         self.state.cfg.canvas.sources.push(source);
         self.state.dirty = true;
         return uuid;
+    }
+
+    /// Copy a placement onto the same runtime source and put it on top. The
+    /// runtime is keyed by protocol + source_ref, so no second capture starts.
+    pub fn duplicate_source(&mut self, uuid: &str) -> Option<String> {
+        let index = self
+            .state
+            .cfg
+            .canvas
+            .sources
+            .iter()
+            .position(|source| source.uuid == uuid)?;
+        let mut copy = self.state.cfg.canvas.sources[index].clone();
+        copy.uuid = Uuid::new_v4().to_string();
+        copy.name = if copy.name.is_empty() {
+            "Source copy".to_string()
+        } else {
+            format!("{} copy", copy.name)
+        };
+        copy.x += DUPLICATE_OFFSET;
+        copy.y += DUPLICATE_OFFSET;
+        copy.z = self.state.cfg.canvas.z_bounds().1.saturating_add(1);
+        let copy_uuid = copy.uuid.clone();
+        self.state.cfg.canvas.sources.insert(index + 1, copy);
+        self.state.dirty = true;
+        return Some(copy_uuid);
     }
 
     pub fn remove_source(&mut self, uuid: &str) {
