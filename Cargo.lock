@@ -2300,8 +2300,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -6774,13 +6776,17 @@ dependencies = [
 
 [[package]]
 name = "vnc-rs"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b757c55558e81e08e60f1a3153ba5bcffe7196719bc885e7e620400b0d81a4d"
+checksum = "0a6306bed7ebbdcc80c44c838a1c0496b589e496bb3b3750a1ed97d4eb26f4cf"
 dependencies = [
+ "aes 0.8.4",
  "async_io_stream",
  "flate2",
  "futures",
+ "getrandom 0.2.17",
+ "md-5 0.10.6",
+ "num-bigint 0.4.8",
  "thiserror 1.0.69",
  "tokio",
  "tokio-stream",

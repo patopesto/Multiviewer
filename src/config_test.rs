@@ -561,6 +561,7 @@ fn vnc_source_config_round_trips_without_leaking_the_password() {
     source.config = SourceConfig::Vnc(VncSourceConfig {
         host: "studio.example".to_string(),
         port: 5901,
+        username: "studio".to_string(),
         password: "hunter2".to_string(),
         keep_awake: true,
     });
@@ -572,6 +573,7 @@ fn vnc_source_config_round_trips_without_leaking_the_password() {
         SourceConfig::Vnc(c) => {
             assert_eq!(c.host, "studio.example");
             assert_eq!(c.port, 5901);
+            assert_eq!(c.username, "studio");
             assert_eq!(c.password, "hunter2");
             assert!(c.keep_awake);
         }

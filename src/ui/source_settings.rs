@@ -546,6 +546,13 @@ fn vnc_settings_ui(cfg: &mut VncSourceConfig, ui: &mut egui::Ui) -> bool {
     settings_grid(ui, "vnc_settings_grid", |ui| {
         committed |= endpoint_rows(ui, "vnc", &mut cfg.host, &mut cfg.port);
 
+        settings_row(ui, "Username", |ui| {
+            let response = ui.add(
+                egui::TextEdit::singleline(&mut cfg.username).hint_text("For macOS only").desired_width(ui.available_width()),
+            );
+            committed |= commit_field_edit(ui, "vnc_username", response.changed(), response.lost_focus(), false);
+        });
+
         settings_row(ui, "Password", |ui| {
             committed |= password_row(ui, "vnc_password", &mut cfg.password);
         });

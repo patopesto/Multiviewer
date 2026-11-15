@@ -60,9 +60,14 @@ pub struct VncSourceConfig {
     // @docs label="Port" default="5900"
     /// RFB port; 5900 unless the server was moved.
     pub port: u16,
+    // @docs label="Username" default=""
+    /// The server account to sign in as. Filled, it uses Apple Remote Desktop
+    /// authentication, which reaches the desktop of that macOS account instead of
+    /// the login window. Empty, the server's VNC password is used as before.
+    pub username: String,
     // @docs label="Password" default=""
-    /// The server's VNC password, not an account password. Stored encrypted with a
-    /// key built into the app.
+    /// The server's VNC password, or the account's login password when a username
+    /// is set. Stored encrypted with a key built into the app.
     #[serde(serialize_with = "secret::serialize_encrypted", deserialize_with = "secret::deserialize_encrypted")]
     pub password: String,
     // @docs label="Keep awake"
@@ -77,6 +82,7 @@ impl Default for VncSourceConfig {
         return Self {
             host: String::new(),
             port: DEFAULT_PORT,
+            username: String::new(),
             password: String::new(),
             keep_awake: false,
         };
@@ -107,6 +113,7 @@ impl std::fmt::Debug for VncSourceConfig {
             .debug_struct("VncSourceConfig")
             .field("host", &self.host)
             .field("port", &self.port)
+            .field("username", &self.username)
             .field("password", &password)
             .field("keep_awake", &self.keep_awake)
             .finish();
@@ -393,8 +400,16 @@ async fn connect(
         }
     };
 
+    let username = config.username.trim();
+    let mut connector = VncConnector::new(stream);
+    // A username switches the handshake to Apple ARD, which signs in as that
+    // macOS account; the password callback below still covers a server that
+    // only offers the legacy VNC password.
+    if !username.is_empty() {
+        connector = connector.set_ard_credentials(username, config.password.clone());
+    }
     let password = config.password.clone();
-    let built = VncConnector::new(stream)
+    let built = connector
         .set_auth_method(async move { Ok::<String, vnc::VncError>(password) })
         .set_pixel_format(VncPixelFormat::bgra())
         // Lossless encodings only: Tight's JPEG rectangles would need a decoder.
@@ -696,10 +711,9 @@ mod tests {
         }
     }
 
-    /// End to end: TCP connect, RFB handshake, encoding negotiation, Raw decode,
-    /// framebuffer blit and publication.
-    #[test]
-    fn publishes_a_frame_from_a_real_rfb_session() {
+    /// Drive one full session against `serve_one_frame` and return the published
+    /// frame.
+    fn frame_from(username: &str) -> CpuFrame {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         std::thread::spawn(move || serve_one_frame(listener));
@@ -707,27 +721,43 @@ mod tests {
         let config = VncSourceConfig {
             host: "127.0.0.1".to_string(),
             port,
-            password: String::new(),
-            keep_awake: false,
+            username: username.to_string(),
+            ..Default::default()
         };
         let source = VncSource::spawn("VNC 1".to_string(), &config);
         let deadline = Instant::now() + Duration::from_secs(10);
-        let frame = loop {
+        loop {
             if let Some(Frame::Cpu(frame)) = source.slot.lock().unwrap().clone()
                 && frame.data.get(0..4) == Some(&[0x11, 0x22, 0x33, 0xff][..])
             {
-                break frame;
+                return frame;
             }
             assert!(
                 Instant::now() < deadline,
                 "VNC source never published the test rectangle"
             );
             std::thread::sleep(Duration::from_millis(20));
-        };
+        }
+    }
+
+    /// End to end: TCP connect, RFB handshake, encoding negotiation, Raw decode,
+    /// framebuffer blit and publication.
+    #[test]
+    fn publishes_a_frame_from_a_real_rfb_session() {
+        let frame = frame_from("");
 
         assert_eq!((frame.w, frame.h), (2, 2));
         assert_eq!(frame.fmt, PixelFormat::Bgra8);
         assert_eq!(&frame.data[0..4], &[0x11, 0x22, 0x33, 0xff]);
         assert_eq!(&frame.data[12..16], &[0xaa, 0xbb, 0xcc, 0xff]);
+    }
+
+    /// A username asks for Apple ARD; a server that does not offer it must fall
+    /// back to the legacy VNC password rather than fail.
+    #[test]
+    fn a_username_falls_back_when_ard_is_not_offered() {
+        let frame = frame_from("studio");
+
+        assert_eq!((frame.w, frame.h), (2, 2));
     }
 }

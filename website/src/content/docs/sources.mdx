@@ -93,12 +93,16 @@ On macOS, granting Screen Recording permission is required; the list of displays
 
 ### VNC
 
-VNC servers are not discovered, so a connection is made by hand: pick **+ New VNC Source** in the source list, then fill
-in the address under **Protocol Settings**.
+VNC servers are not discovered, so a connection is made by hand: pick **+ New VNC Source** in the source list, then fill in the address under **Protocol Settings**.
 
-The password is the server's own VNC password, not an account password. It is encrypted with a key built into the app, so
-it is not readable at a glance in a project file, but anyone who has the app and the file can recover it. The session is
-always shared, so connecting never disconnects another viewer.
+The connection authenticates one of two ways, depending on whether **Username** is filled in:
+
+- **Username and password**: the password is that account's login password and the session signs in as the account. This is Apple Remote Desktop authentication, which macOS Screen Sharing offers; a server that does not offer it falls back to the VNC password below.
+- **Password only**: the password is the server's own VNC password, which identifies no user.
+
+The password is encrypted with a key built into the app, so it is not readable at a glance in a project file, but
+anyone who has the app and the file can recover it. The session is always shared, so connecting never disconnects
+another viewer.
 
 Multiviewer only displays the remote screen: it never sends keystrokes or clicks, so it cannot be used to control the
 host. The one exception is **Keep awake**, described below.
@@ -115,8 +119,12 @@ it is idle. So it is off by default and worth deciding per machine.
 
 #### macOS Screen Sharing
 
-macOS shows the **login window** rather than the desktop of whoever is logged in, because the
-VNC password identifies no user. On a Mac you administer, have the built-in server attach to the console session:
+With a username and password the session is signed in as that account, so it reaches that account's desktop, including
+when the Mac sits at the login window and nobody is logged in. The credentials are encrypted on the wire; the video
+session itself is not. The Mac may also show a local prompt asking whoever is at the console to approve the connection.
+
+The password-only mode identifies no user, so macOS shows the **login window** rather than the desktop of whoever is
+logged in. On a Mac you administer, have the built-in server attach to the console session:
 
 ```sh
 sudo defaults write /Library/Preferences/com.apple.RemoteManagement VNCAlwaysStartOnConsole -bool true
