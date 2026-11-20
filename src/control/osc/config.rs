@@ -52,10 +52,7 @@ pub fn normalize_prefix(raw: &str) -> Result<String, &'static str> {
     if raw.is_empty() {
         return Ok(String::new());
     }
-    if raw
-        .chars()
-        .any(|c| (c.is_whitespace() && c != ' ') || INVALID_PREFIX_CHARS.contains(&c))
-    {
+    if raw.chars().any(|c| (c.is_whitespace() && c != ' ') || INVALID_PREFIX_CHARS.contains(&c)) {
         return Err("prefix contains an unsupported character");
     }
     let trimmed = raw.trim_end_matches('/');
@@ -81,20 +78,11 @@ mod tests {
     fn normalizes_prefixes() {
         assert_eq!(normalize_prefix(""), Ok(String::new()));
         assert_eq!(normalize_prefix("/"), Ok(String::new()));
-        assert_eq!(
-            normalize_prefix("multiviewer"),
-            Ok("/multiviewer".to_string())
-        );
+        assert_eq!(normalize_prefix("multiviewer"), Ok("/multiviewer".to_string()));
         assert_eq!(normalize_prefix("/mv/"), Ok("/mv".to_string()));
         assert_eq!(normalize_prefix(" /show/ "), Ok("/show".to_string()));
-        assert_eq!(
-            normalize_prefix("/my control"),
-            Ok("/my control".to_string())
-        );
-        assert_eq!(
-            normalize_prefix(" /my control/ "),
-            Ok("/my control".to_string())
-        );
+        assert_eq!(normalize_prefix("/my control"), Ok("/my control".to_string()));
+        assert_eq!(normalize_prefix(" /my control/ "), Ok("/my control".to_string()));
     }
 
     #[test]

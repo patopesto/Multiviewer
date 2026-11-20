@@ -7,9 +7,7 @@ use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
 use crate::compositor::Rect;
 use crate::config::Config;
 use crate::control::{FeedbackMode, HttpControlConfig, OscControlConfig};
-use crate::engine::{
-    Command, Engine, EngineSnapshot, FocusHandle, PreviewFrame, Selector,
-};
+use crate::engine::{Command, Engine, EngineSnapshot, FocusHandle, PreviewFrame, Selector};
 use crate::session::Session;
 use crate::sources::Protocol;
 use crate::ui::canvas::{self, CanvasUi};
@@ -113,13 +111,7 @@ impl Viewer {
     }
 
     /// One full UI pass. The host executes the returned actions.
-    pub fn draw(
-        &mut self,
-        ui: &mut egui::Ui,
-        snapshot: &EngineSnapshot,
-        commands: &Sender<Command>,
-        host: HostView<'_>,
-    ) -> DrawOutput {
+    pub fn draw(&mut self, ui: &mut egui::Ui, snapshot: &EngineSnapshot, commands: &Sender<Command>, host: HostView<'_>) -> DrawOutput {
         let ctx = ui.ctx().clone();
         let mut actions = Vec::new();
         let ui_visible = snapshot.state.ui_visible;
@@ -148,22 +140,10 @@ impl Viewer {
         }
 
         let canvas_rect = egui::CentralPanel::default()
-            .show(ui, |ui| {
-                canvas::update(
-                    ui,
-                    snapshot,
-                    commands,
-                    &mut self.canvas_ui,
-                    host.preview,
-                    &ctx,
-                )
-            })
+            .show(ui, |ui| canvas::update(ui, snapshot, commands, &mut self.canvas_ui, host.preview, &ctx))
             .inner;
 
-        return DrawOutput {
-            actions,
-            canvas_rect,
-        };
+        return DrawOutput { actions, canvas_rect };
     }
 
     /// Refresh after the host replaced the document.
@@ -297,21 +277,11 @@ impl Viewer {
             actions.push(HostAction::OpenDialog);
             return;
         }
-        self.path_input = snapshot
-            .state
-            .project_path
-            .as_ref()
-            .map(|path| path.display().to_string())
-            .unwrap_or_default();
+        self.path_input = snapshot.state.project_path.as_ref().map(|path| path.display().to_string()).unwrap_or_default();
         self.path_prompt = Some(PathPrompt::Open);
     }
 
-    pub fn request_open(
-        &mut self,
-        path: PathBuf,
-        snapshot: &EngineSnapshot,
-        actions: &mut Vec<HostAction>,
-    ) {
+    pub fn request_open(&mut self, path: PathBuf, snapshot: &EngineSnapshot, actions: &mut Vec<HostAction>) {
         if snapshot.state.dirty {
             self.pending_confirm = Some(Confirm::OpenPath(path));
         } else {
@@ -342,34 +312,26 @@ impl Viewer {
             Confirm::OpenPath(_) => "Open project",
         };
         let mut action = None;
-        let response = egui::Modal::new(egui::Id::new("confirm_modal"))
-            .backdrop_color(egui::Color32::from_black_alpha(175))
-            .show(ctx, |ui| {
-                ui.set_min_width(360.0);
-                ui.label(egui::RichText::new(title).heading().strong());
-                ui.add_space(12.0);
-                ui.label("You have unsaved changes. Discard them?");
-                ui.add_space(20.0);
-                ui.separator();
-                egui::Sides::new().show(
-                    ui,
-                    |_ui| {},
-                    |ui| {
-                        if ui
-                            .add(
-                                egui::Button::new("Discard")
-                                    .fill(egui::Color32::from_rgb(140, 30, 30)),
-                            )
-                            .clicked()
-                        {
-                            action = self.pending_confirm.take();
-                        }
-                        if ui.button("Cancel").clicked() {
-                            self.pending_confirm = None;
-                        }
-                    },
-                );
-            });
+        let response = egui::Modal::new(egui::Id::new("confirm_modal")).backdrop_color(egui::Color32::from_black_alpha(175)).show(ctx, |ui| {
+            ui.set_min_width(360.0);
+            ui.label(egui::RichText::new(title).heading().strong());
+            ui.add_space(12.0);
+            ui.label("You have unsaved changes. Discard them?");
+            ui.add_space(20.0);
+            ui.separator();
+            egui::Sides::new().show(
+                ui,
+                |_ui| {},
+                |ui| {
+                    if ui.add(egui::Button::new("Discard").fill(egui::Color32::from_rgb(140, 30, 30))).clicked() {
+                        action = self.pending_confirm.take();
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.pending_confirm = None;
+                    }
+                },
+            );
+        });
         if response.should_close() {
             self.pending_confirm = None;
         }
@@ -393,11 +355,7 @@ impl Viewer {
         };
         let open = centered_window(ctx, title, false, Some([520.0, 160.0]), |ui| {
             ui.label("Project path on the Multiviewer machine:");
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut self.path_input)
-                    .desired_width(f32::INFINITY)
-                    .hint_text("/shows/main.multiviewer"),
-            );
+            let response = ui.add(egui::TextEdit::singleline(&mut self.path_input).desired_width(f32::INFINITY).hint_text("/shows/main.multiviewer"));
             if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
                 submit = true;
             }
@@ -413,10 +371,7 @@ impl Viewer {
                         PathPrompt::Open => "Open",
                         PathPrompt::SaveAs => "Save",
                     };
-                    if ui
-                        .add_enabled(!self.path_input.trim().is_empty(), egui::Button::new(label))
-                        .clicked()
-                    {
+                    if ui.add_enabled(!self.path_input.trim().is_empty(), egui::Button::new(label)).clicked() {
                         submit = true;
                     }
                 },
@@ -431,20 +386,12 @@ impl Viewer {
             self.path_prompt = None;
             match prompt {
                 PathPrompt::Open => actions.push(HostAction::OpenPath(path)),
-                PathPrompt::SaveAs => actions.push(HostAction::SaveAsPath(ensure_extension(
-                    path,
-                    PROJECT_FILE_EXTENSION,
-                ))),
+                PathPrompt::SaveAs => actions.push(HostAction::SaveAsPath(ensure_extension(path, PROJECT_FILE_EXTENSION))),
             }
         }
     }
 
-    fn draw_osc_window(
-        &mut self,
-        ctx: &egui::Context,
-        snapshot: &EngineSnapshot,
-        commands: &Sender<Command>,
-    ) {
+    fn draw_osc_window(&mut self, ctx: &egui::Context, snapshot: &EngineSnapshot, commands: &Sender<Command>) {
         if !self.show_osc {
             return;
         }
@@ -453,24 +400,17 @@ impl Viewer {
         let open = centered_window(ctx, "OSC Settings", false, Some([500.0, 560.0]), |ui| {
             let osc = &mut self.osc_draft;
             ui.checkbox(&mut osc.enabled, "Enabled");
-            egui::Grid::new("control_osc_grid")
-                .num_columns(2)
-                .spacing([12.0, 6.0])
-                .show(ui, |ui| {
-                    ui.label("Bind address");
-                    ui.add(egui::TextEdit::singleline(&mut osc.bind).desired_width(160.0));
-                    ui.end_row();
-                    ui.label("Port");
-                    ui.add(egui::DragValue::new(&mut osc.port).range(1..=65535));
-                    ui.end_row();
-                    ui.label("Prefix");
-                    ui.add(
-                        egui::TextEdit::singleline(&mut osc.prefix)
-                            .hint_text("/multiviewer")
-                            .desired_width(160.0),
-                    );
-                    ui.end_row();
-                });
+            egui::Grid::new("control_osc_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+                ui.label("Bind address");
+                ui.add(egui::TextEdit::singleline(&mut osc.bind).desired_width(160.0));
+                ui.end_row();
+                ui.label("Port");
+                ui.add(egui::DragValue::new(&mut osc.port).range(1..=65535));
+                ui.end_row();
+                ui.label("Prefix");
+                ui.add(egui::TextEdit::singleline(&mut osc.prefix).hint_text("/multiviewer").desired_width(160.0));
+                ui.end_row();
+            });
             ui.weak("Leave the prefix empty to answer at the root (/source/...).");
             ui.label(status);
             ui.separator();
@@ -481,34 +421,19 @@ impl Viewer {
             ui.radio_value(mode, FeedbackMode::Senders, "Reply to senders");
             ui.radio_value(mode, FeedbackMode::Configured, "Configured target");
             ui.radio_value(mode, FeedbackMode::Both, "Senders + configured target");
-            if matches!(
-                osc.feedback_mode,
-                FeedbackMode::Configured | FeedbackMode::Both
-            ) {
-                egui::Grid::new("control_feedback_grid")
-                    .num_columns(2)
-                    .spacing([12.0, 6.0])
-                    .show(ui, |ui| {
-                        ui.label("Host");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut osc.feedback_host)
-                                .hint_text("127.0.0.1")
-                                .desired_width(160.0),
-                        );
-                        ui.end_row();
-                        ui.label("Port");
-                        ui.add(egui::DragValue::new(&mut osc.feedback_port).range(0..=65535));
-                        ui.end_row();
-                    });
+            if matches!(osc.feedback_mode, FeedbackMode::Configured | FeedbackMode::Both) {
+                egui::Grid::new("control_feedback_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+                    ui.label("Host");
+                    ui.add(egui::TextEdit::singleline(&mut osc.feedback_host).hint_text("127.0.0.1").desired_width(160.0));
+                    ui.end_row();
+                    ui.label("Port");
+                    ui.add(egui::DragValue::new(&mut osc.feedback_port).range(0..=65535));
+                    ui.end_row();
+                });
             }
 
             ui.separator();
-            apply = ui
-                .add_enabled(
-                    self.osc_draft != snapshot.state.cfg.control.osc,
-                    egui::Button::new("Apply"),
-                )
-                .clicked();
+            apply = ui.add_enabled(self.osc_draft != snapshot.state.cfg.control.osc, egui::Button::new("Apply")).clicked();
         });
         if apply {
             let mut control = snapshot.state.cfg.control.clone();
@@ -520,13 +445,7 @@ impl Viewer {
         }
     }
 
-    fn draw_http_window(
-        &mut self,
-        ctx: &egui::Context,
-        snapshot: &EngineSnapshot,
-        commands: &Sender<Command>,
-        web_status: Option<&str>,
-    ) {
+    fn draw_http_window(&mut self, ctx: &egui::Context, snapshot: &EngineSnapshot, commands: &Sender<Command>, web_status: Option<&str>) {
         if !self.show_http {
             return;
         }
@@ -546,17 +465,14 @@ impl Viewer {
         let open = centered_window(ctx, "HTTP Settings", false, Some([500.0, 320.0]), |ui| {
             let http = &mut self.http_draft;
             ui.checkbox(&mut http.enabled, "Enabled");
-            egui::Grid::new("control_http_grid")
-                .num_columns(2)
-                .spacing([12.0, 6.0])
-                .show(ui, |ui| {
-                    ui.label("Bind address");
-                    ui.add(egui::TextEdit::singleline(&mut http.bind).desired_width(160.0));
-                    ui.end_row();
-                    ui.label("Port");
-                    ui.add(egui::DragValue::new(&mut http.port).range(1..=65535));
-                    ui.end_row();
-                });
+            egui::Grid::new("control_http_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+                ui.label("Bind address");
+                ui.add(egui::TextEdit::singleline(&mut http.bind).desired_width(160.0));
+                ui.end_row();
+                ui.label("Port");
+                ui.add(egui::DragValue::new(&mut http.port).range(1..=65535));
+                ui.end_row();
+            });
             ui.label(web);
             if let Some(url) = &link_url {
                 ui.hyperlink_to("Open the web UI", url);
@@ -564,12 +480,7 @@ impl Viewer {
             ui.weak("The API is not authenticated. Bind to a trusted network only.");
 
             ui.separator();
-            apply = ui
-                .add_enabled(
-                    self.http_draft != snapshot.state.cfg.control.http,
-                    egui::Button::new("Apply"),
-                )
-                .clicked();
+            apply = ui.add_enabled(self.http_draft != snapshot.state.cfg.control.http, egui::Button::new("Apply")).clicked();
         });
         if apply {
             let mut control = snapshot.state.cfg.control.clone();
@@ -729,32 +640,23 @@ impl Viewer {
     /// remote session so both load projects with the same rules.
     pub fn run_action(&mut self, engine: &mut Engine, action: &HostAction) -> Result<(), String> {
         match action {
-            HostAction::NewProject => engine
-                .new_in_place(self.mode == UiMode::Remote)
-                .map_err(|e| e.to_string())?,
+            HostAction::NewProject => engine.new_in_place(self.mode == UiMode::Remote).map_err(|e| e.to_string())?,
             HostAction::OpenPath(path) => {
                 if self.mode == UiMode::Remote {
                     let cfg = Config::load_from(path).map_err(|e| e.to_string())?;
-                    engine
-                        .replace_project(cfg, Some(path.clone()), true)
-                        .map_err(|e| e.to_string())?;
+                    engine.replace_project(cfg, Some(path.clone()), true).map_err(|e| e.to_string())?;
                 } else {
                     engine.open_project(path).map_err(|e| e.to_string())?;
                 }
             }
-            HostAction::SaveAsPath(path) => engine
-                .save_project_as(path)
-                .map_err(|e| e.to_string())?,
+            HostAction::SaveAsPath(path) => engine.save_project_as(path).map_err(|e| e.to_string())?,
             HostAction::OpenDialog | HostAction::SaveAsDialog => {
                 return Err("dialog action cannot run in this host".to_string());
             }
         }
         self.last_error = None;
         self.recent_projects = Session::load().recent_projects;
-        if matches!(
-            action,
-            HostAction::NewProject | HostAction::OpenPath(_)
-        ) {
+        if matches!(action, HostAction::NewProject | HostAction::OpenPath(_)) {
             self.after_project_loaded(engine);
         }
         return Ok(());
@@ -767,16 +669,7 @@ pub fn selected_protocol(snapshot: &EngineSnapshot) -> Option<Protocol> {
         .state
         .selected_source_id
         .as_ref()
-        .and_then(|id| {
-            snapshot
-                .state
-                .cfg
-                .canvas
-                .sources
-                .iter()
-                .find(|source| &source.uuid == id)
-                .map(|source| source.protocol.clone())
-        });
+        .and_then(|id| snapshot.state.cfg.canvas.sources.iter().find(|source| &source.uuid == id).map(|source| source.protocol.clone()));
 }
 
 /// A centred, non-movable window with the app's modal chrome. Returns whether
@@ -804,11 +697,7 @@ fn centered_window(
 
 /// Translate a keyboard shortcut into the shared control command vocabulary.
 /// Returns `None` for actions that are UI-only (dialogs, confirmation).
-fn shortcut_command(
-    shortcut: Shortcut,
-    snapshot: &EngineSnapshot,
-    nudge_amount: f32,
-) -> Option<Command> {
+fn shortcut_command(shortcut: Shortcut, snapshot: &EngineSnapshot, nudge_amount: f32) -> Option<Command> {
     let selected = || snapshot.state.selected_source_id.clone().map(Selector::Id);
     return match shortcut {
         Shortcut::AddSource => Some(Command::AddSource),
@@ -870,10 +759,7 @@ fn shortcut_command(
         Shortcut::ZoomOut => Some(Command::Zoom { factor: 1.0 / 1.1 }),
         Shortcut::ToggleUi => Some(Command::ToggleUi),
         Shortcut::ToggleStats => Some(Command::ToggleStats),
-        Shortcut::NewProject
-        | Shortcut::OpenProject
-        | Shortcut::SaveProject
-        | Shortcut::SaveProjectAs => None,
+        Shortcut::NewProject | Shortcut::OpenProject | Shortcut::SaveProject | Shortcut::SaveProjectAs => None,
     };
 }
 
@@ -904,19 +790,13 @@ mod tests {
     #[test]
     fn ensure_extension_appends_when_missing() {
         let path = PathBuf::from("/tmp/show");
-        assert_eq!(
-            ensure_extension(path, PROJECT_FILE_EXTENSION),
-            PathBuf::from("/tmp/show.multiviewer")
-        );
+        assert_eq!(ensure_extension(path, PROJECT_FILE_EXTENSION), PathBuf::from("/tmp/show.multiviewer"));
     }
 
     #[test]
     fn ensure_extension_keeps_when_present() {
         let path = PathBuf::from("/tmp/show.multiviewer");
-        assert_eq!(
-            ensure_extension(path, PROJECT_FILE_EXTENSION),
-            PathBuf::from("/tmp/show.multiviewer")
-        );
+        assert_eq!(ensure_extension(path, PROJECT_FILE_EXTENSION), PathBuf::from("/tmp/show.multiviewer"));
     }
 
     #[test]
@@ -965,10 +845,7 @@ mod tests {
         engine.state.selected_source_id = Some(uuid.clone());
         let snapshot = engine.snapshot();
 
-        assert_eq!(
-            shortcut_command(Shortcut::AddSource, &snapshot, 1.0),
-            Some(Command::AddSource)
-        );
+        assert_eq!(shortcut_command(Shortcut::AddSource, &snapshot, 1.0), Some(Command::AddSource));
         assert_eq!(
             shortcut_command(Shortcut::DuplicateSource, &snapshot, 1.0),
             Some(Command::DuplicateSource(Selector::Id(uuid.clone())))
@@ -993,22 +870,10 @@ mod tests {
                 dy: 0.0
             })
         );
-        assert_eq!(
-            shortcut_command(Shortcut::ZoomIn, &snapshot, 1.0),
-            Some(Command::Zoom { factor: 1.1 })
-        );
-        assert_eq!(
-            shortcut_command(Shortcut::SelectNextSource, &snapshot, 1.0),
-            Some(Command::SelectNext)
-        );
-        assert_eq!(
-            shortcut_command(Shortcut::SaveProject, &snapshot, 1.0),
-            None
-        );
-        assert_eq!(
-            shortcut_command(Shortcut::NewProject, &snapshot, 1.0),
-            None
-        );
+        assert_eq!(shortcut_command(Shortcut::ZoomIn, &snapshot, 1.0), Some(Command::Zoom { factor: 1.1 }));
+        assert_eq!(shortcut_command(Shortcut::SelectNextSource, &snapshot, 1.0), Some(Command::SelectNext));
+        assert_eq!(shortcut_command(Shortcut::SaveProject, &snapshot, 1.0), None);
+        assert_eq!(shortcut_command(Shortcut::NewProject, &snapshot, 1.0), None);
     }
 
     #[test]
@@ -1019,22 +884,10 @@ mod tests {
         engine.state.expanded_source_id = Some(uuid);
         let snapshot = engine.snapshot();
 
-        assert_eq!(
-            shortcut_command(Shortcut::DuplicateSource, &snapshot, 1.0),
-            None
-        );
-        assert_eq!(
-            shortcut_command(Shortcut::DeleteSource, &snapshot, 1.0),
-            None
-        );
-        assert_eq!(
-            shortcut_command(Shortcut::ExpandSource, &snapshot, 1.0),
-            Some(Command::ExitExpanded)
-        );
-        assert_eq!(
-            shortcut_command(Shortcut::ExitExpanded, &snapshot, 1.0),
-            Some(Command::ExitExpanded)
-        );
+        assert_eq!(shortcut_command(Shortcut::DuplicateSource, &snapshot, 1.0), None);
+        assert_eq!(shortcut_command(Shortcut::DeleteSource, &snapshot, 1.0), None);
+        assert_eq!(shortcut_command(Shortcut::ExpandSource, &snapshot, 1.0), Some(Command::ExitExpanded));
+        assert_eq!(shortcut_command(Shortcut::ExitExpanded, &snapshot, 1.0), Some(Command::ExitExpanded));
     }
 
     #[test]
@@ -1044,9 +897,6 @@ mod tests {
         engine.state.selected_source_id = Some(uuid);
         let snapshot = engine.snapshot();
 
-        assert_eq!(
-            shortcut_command(Shortcut::ExitExpanded, &snapshot, 1.0),
-            Some(Command::ClearSelection)
-        );
+        assert_eq!(shortcut_command(Shortcut::ExitExpanded, &snapshot, 1.0), Some(Command::ClearSelection));
     }
 }

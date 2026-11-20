@@ -9,7 +9,9 @@ use crate::sources::DecklinkSourceConfig;
 use crate::sources::NdiSourceConfig;
 use crate::sources::OmtSourceConfig;
 #[cfg(target_os = "macos")]
-use crate::sources::{find_syphon_server, AvFoundationSourceConfig, ensure_screen_capture_access_requested, ScreenCaptureKitSourceConfig, SyphonSourceConfig};
+use crate::sources::{
+    find_syphon_server, AvFoundationSourceConfig, ensure_screen_capture_access_requested, ScreenCaptureKitSourceConfig, SyphonSourceConfig,
+};
 #[cfg(target_os = "windows")]
 use crate::sources::{DirectShowSourceConfig, MediaFoundationSourceConfig, SpoutSourceConfig, WindowsCaptureSourceConfig};
 
@@ -23,11 +25,7 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const SLOW_TICK: Duration = Duration::from_secs(1);
 
 /// Placements of `protocol` that name a source_ref with no live runtime source, paired with the key they bind to.
-fn pending_sources<'a>(
-    placements: &'a [Source],
-    registry: &SourceRegistry,
-    protocol: &Protocol,
-) -> Vec<(&'a Source, SourceKey)> {
+fn pending_sources<'a>(placements: &'a [Source], registry: &SourceRegistry, protocol: &Protocol) -> Vec<(&'a Source, SourceKey)> {
     return placements
         .iter()
         .filter(|placement| placement.protocol == *protocol)
@@ -103,13 +101,7 @@ impl Engine {
         let interval_ms = interval.as_millis() as u64;
         let worst_tick_ms = self.worst_tick_gap.as_millis() as u64;
         if self.worst_tick_gap >= SLOW_TICK || interval >= HEARTBEAT_INTERVAL * 2 {
-            tracing::warn!(
-                sources,
-                outputs,
-                interval_ms,
-                worst_tick_ms,
-                "engine tick stalled"
-            );
+            tracing::warn!(sources, outputs, interval_ms, worst_tick_ms, "engine tick stalled");
         } else {
             tracing::debug!(sources, outputs, interval_ms, worst_tick_ms, "engine tick");
         }
@@ -141,10 +133,7 @@ impl Engine {
         };
         let discovered = discovery.list();
         for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::Omt) {
-            let Some(src) = discovered
-                .iter()
-                .find(|s| s.instance_name() == key.source_ref)
-            else {
+            let Some(src) = discovered.iter().find(|s| s.instance_name() == key.source_ref) else {
                 continue;
             };
             let config = match &placement.config {
@@ -181,10 +170,7 @@ impl Engine {
         };
         let discovered = discovery.list();
         for (placement, key) in pending_sources(&self.state.cfg.canvas.sources, &self.registry, &Protocol::Syphon) {
-            let Some(info) = discovered
-                .iter()
-                .find(|s| s.display_name() == key.source_ref)
-            else {
+            let Some(info) = discovered.iter().find(|s| s.display_name() == key.source_ref) else {
                 continue;
             };
             let config = match &placement.config {
@@ -218,13 +204,7 @@ impl Engine {
     #[cfg(target_os = "macos")]
     fn reconnect_screencapturekit(&mut self) {
         // Prompt once per source creation: discovery stays blank until permission exists.
-        if self
-            .state.cfg
-            .canvas
-            .sources
-            .iter()
-            .any(|s| s.protocol == Protocol::ScreenCaptureKit)
-        {
+        if self.state.cfg.canvas.sources.iter().any(|s| s.protocol == Protocol::ScreenCaptureKit) {
             ensure_screen_capture_access_requested();
         }
         let Some(discovery) = &self.screencapturekit else {
@@ -241,11 +221,7 @@ impl Engine {
             let Some(target) = targets.iter().find(|t| t.matches(&key.source_ref, candidate)) else {
                 continue;
             };
-            self.registry.add_screencapturekit(
-                key,
-                target.to_config(),
-                target.label.clone(),
-            );
+            self.registry.add_screencapturekit(key, target.to_config(), target.label.clone());
         }
     }
 
@@ -379,7 +355,8 @@ impl Engine {
     /// Persisted config of the source placement on `protocol` that references `source_ref`
     fn source_placement_config(&self, protocol: &Protocol, source_ref: &str) -> Option<&SourceConfig> {
         return self
-            .state.cfg
+            .state
+            .cfg
             .canvas
             .sources
             .iter()
@@ -394,9 +371,7 @@ impl Engine {
         };
         let config = kind.config.clone();
         for placement in &mut self.state.cfg.canvas.sources {
-            if placement.protocol == key.protocol
-                && placement.source_ref.as_deref() == Some(key.source_ref.as_str())
-            {
+            if placement.protocol == key.protocol && placement.source_ref.as_deref() == Some(key.source_ref.as_str()) {
                 placement.config = config.clone();
             }
         }
@@ -417,9 +392,7 @@ impl Engine {
 
     /// Persist `config` to every source placement bound to `(protocol, source_ref)`.
     fn apply_config_to_placements(&mut self, protocol: &Protocol, source_ref: &str, config: SourceConfig) {
-        for placement in self.state.cfg.canvas.sources.iter_mut().filter(|s| {
-            s.protocol == *protocol && s.source_ref.as_deref() == Some(source_ref)
-        }) {
+        for placement in self.state.cfg.canvas.sources.iter_mut().filter(|s| s.protocol == *protocol && s.source_ref.as_deref() == Some(source_ref)) {
             placement.config = config.clone();
         }
     }
@@ -445,12 +418,7 @@ impl Engine {
                     Some(SourceConfig::Decklink(c)) => c.clone(),
                     _ => DecklinkSourceConfig::default(),
                 };
-                let supported_connections = self
-                    .decklink
-                    .as_ref()
-                    .and_then(|d| d.find_by_name(name))
-                    .map(|p| p.connections)
-                    .unwrap_or_default();
+                let supported_connections = self.decklink.as_ref().and_then(|d| d.find_by_name(name)).map(|p| p.connections).unwrap_or_default();
                 self.registry.add_decklink(key.clone(), config, supported_connections);
             }
             Protocol::Omt => {
@@ -488,18 +456,10 @@ impl Engine {
             }
             #[cfg(target_os = "macos")]
             Protocol::ScreenCaptureKit => {
-                if let Some(target) = self
-                    .screencapturekit
-                    .as_ref()
-                    .and_then(|d| d.list().find_by_source_ref(name))
-                {
+                if let Some(target) = self.screencapturekit.as_ref().and_then(|d| d.list().find_by_source_ref(name)) {
                     let config = target.to_config();
                     // Persist identity to every placement sharing this source (window re-match needs it).
-                    self.apply_config_to_placements(
-                        &Protocol::ScreenCaptureKit,
-                        name,
-                        SourceConfig::ScreenCaptureKit(config.clone()),
-                    );
+                    self.apply_config_to_placements(&Protocol::ScreenCaptureKit, name, SourceConfig::ScreenCaptureKit(config.clone()));
                     let label = target.label.clone();
                     self.registry.add_screencapturekit(key.clone(), config, label);
                 }
@@ -514,57 +474,35 @@ impl Engine {
             }
             #[cfg(target_os = "windows")]
             Protocol::MediaFoundation => {
-                let device = self
-                    .mediafoundation
-                    .as_ref()
-                    .and_then(|d| d.find_by_id(name));
+                let device = self.mediafoundation.as_ref().and_then(|d| d.find_by_id(name));
                 let mut config = match self.source_placement_config(&Protocol::MediaFoundation, name) {
                     Some(SourceConfig::MediaFoundation(c)) => c.clone(),
                     _ => MediaFoundationSourceConfig::default(),
                 };
-                config.device_id = device
-                    .as_ref()
-                    .map(|d| d.id.clone())
-                    .unwrap_or_else(|| name.to_string());
+                config.device_id = device.as_ref().map(|d| d.id.clone()).unwrap_or_else(|| name.to_string());
                 let label = device.map(|d| d.name).unwrap_or_else(|| name.to_string());
                 self.registry.add_mediafoundation(key.clone(), config, label);
             }
             #[cfg(target_os = "windows")]
             Protocol::DirectShow => {
-                let device = self
-                    .directshow
-                    .as_ref()
-                    .and_then(|d| d.find_by_id(name));
+                let device = self.directshow.as_ref().and_then(|d| d.find_by_id(name));
                 let mut config = match self.source_placement_config(&Protocol::DirectShow, name) {
                     Some(SourceConfig::DirectShow(c)) => c.clone(),
                     _ => DirectShowSourceConfig::default(),
                 };
-                config.device_id = device
-                    .as_ref()
-                    .map(|d| d.id.clone())
-                    .unwrap_or_else(|| name.to_string());
+                config.device_id = device.as_ref().map(|d| d.id.clone()).unwrap_or_else(|| name.to_string());
                 let label = device.map(|d| d.name).unwrap_or_else(|| name.to_string());
                 self.registry.add_directshow(key.clone(), config, label);
             }
             #[cfg(target_os = "windows")]
             Protocol::WindowsCapture => {
-                if let Some(target) = self
-                    .windowscapture
-                    .as_ref()
-                    .and_then(|d| d.list().find_by_source_ref(name))
-                {
+                if let Some(target) = self.windowscapture.as_ref().and_then(|d| d.list().find_by_source_ref(name)) {
                     let mut config = target.to_config();
                     // Discovery only supplies target identity; keep the settings already chosen for this source.
-                    if let Some(SourceConfig::WindowsCapture(existing)) =
-                        self.source_placement_config(&Protocol::WindowsCapture, name)
-                    {
+                    if let Some(SourceConfig::WindowsCapture(existing)) = self.source_placement_config(&Protocol::WindowsCapture, name) {
                         *config.settings_mut() = existing.settings().clone();
                     }
-                    self.apply_config_to_placements(
-                        &Protocol::WindowsCapture,
-                        name,
-                        SourceConfig::WindowsCapture(config.clone()),
-                    );
+                    self.apply_config_to_placements(&Protocol::WindowsCapture, name, SourceConfig::WindowsCapture(config.clone()));
                     let label = target.label.clone();
                     self.registry.add_windows_capture(key.clone(), config, label);
                 }
@@ -602,13 +540,7 @@ impl Engine {
     /// Copy a placement onto the same runtime source and put it on top. The
     /// runtime is keyed by protocol + source_ref, so no second capture starts.
     pub fn duplicate_source(&mut self, uuid: &str) -> Option<String> {
-        let index = self
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .position(|source| source.uuid == uuid)?;
+        let index = self.state.cfg.canvas.sources.iter().position(|source| source.uuid == uuid)?;
         let mut copy = self.state.cfg.canvas.sources[index].clone();
         copy.uuid = Uuid::new_v4().to_string();
         copy.name = if copy.name.is_empty() {
@@ -647,25 +579,14 @@ impl Engine {
     /// every source placement bound to the same (protocol, source_ref), so the
     /// edit is written to all of them — one runtime source, one config.
     pub fn sync_source_config(&mut self, source_uuid: &str, config: SourceConfig) {
-        let Some((protocol, source_ref)) = self
-            .state.cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|s| s.uuid == source_uuid)
-            .map(|s| (s.protocol.clone(), s.source_ref.clone()))
+        let Some((protocol, source_ref)) =
+            self.state.cfg.canvas.sources.iter().find(|s| s.uuid == source_uuid).map(|s| (s.protocol.clone(), s.source_ref.clone()))
         else {
             return;
         };
         // The edited placement always takes the config; the siblings sharing
         // its key follow through the same write the connect path uses.
-        if let Some(placement) = self
-            .state.cfg
-            .canvas
-            .sources
-            .iter_mut()
-            .find(|s| s.uuid == source_uuid)
-        {
+        if let Some(placement) = self.state.cfg.canvas.sources.iter_mut().find(|s| s.uuid == source_uuid) {
             placement.config = config.clone();
         }
         if let Some(source_ref) = &source_ref {
@@ -689,10 +610,7 @@ impl Engine {
             self.state.selected_source_id = None;
             return;
         }
-        let current = self
-            .state.selected_source_id
-            .as_ref()
-            .and_then(|uuid| self.state.cfg.canvas.sources.iter().position(|s| &s.uuid == uuid));
+        let current = self.state.selected_source_id.as_ref().and_then(|uuid| self.state.cfg.canvas.sources.iter().position(|s| &s.uuid == uuid));
         let next = match current {
             Some(i) => (i as isize + step).rem_euclid(len as isize) as usize,
             None if step < 0 => len - 1,

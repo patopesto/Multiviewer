@@ -15,4 +15,3 @@ pub fn canvas_transform(canvas: &Canvas, panel_rect: &Rect) -> (f32, f32, f32) {
         (scale, (panel_rect.width() - w) / 2.0, 0.0)
     }
 }
-

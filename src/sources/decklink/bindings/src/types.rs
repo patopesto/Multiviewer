@@ -440,12 +440,7 @@ impl DisplayMode {
     pub fn is_progressive(self) -> bool {
         return !matches!(
             self,
-            Self::Ntsc
-                | Self::Ntsc2398
-                | Self::Pal
-                | Self::Hd1080i50
-                | Self::Hd1080i5994
-                | Self::Hd1080i6000
+            Self::Ntsc | Self::Ntsc2398 | Self::Pal | Self::Hd1080i50 | Self::Hd1080i5994 | Self::Hd1080i6000
         );
     }
 
@@ -469,8 +464,7 @@ impl serde::Serialize for DisplayMode {
 impl<'de> serde::Deserialize<'de> for DisplayMode {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = u32::deserialize(deserializer)?;
-        DisplayMode::try_from(value)
-            .map_err(|_| serde::de::Error::custom(format!("unknown display mode {value}")))
+        DisplayMode::try_from(value).map_err(|_| serde::de::Error::custom(format!("unknown display mode {value}")))
     }
 }
 

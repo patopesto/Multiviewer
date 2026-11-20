@@ -10,18 +10,13 @@ use av_foundation::{
     capture_input::AVCaptureDeviceInput,
     capture_output_base::AVCaptureOutput,
     capture_session::{AVCaptureConnection, AVCaptureSession},
-    capture_video_data_output::{
-        AVCaptureVideoDataOutput, AVCaptureVideoDataOutputSampleBufferDelegate,
-    },
+    capture_video_data_output::{AVCaptureVideoDataOutput, AVCaptureVideoDataOutputSampleBufferDelegate},
 };
 use core_foundation::base::TCFType;
 use core_media::format_description::CMVideoFormatDescription;
 use core_media::sample_buffer::{CMSampleBuffer, CMSampleBufferRef};
 use core_media::time::CMTime;
-use core_video::pixel_buffer::{
-    kCVPixelBufferLock_ReadOnly, kCVPixelBufferPixelFormatTypeKey, kCVPixelFormatType_32BGRA,
-    CVPixelBuffer,
-};
+use core_video::pixel_buffer::{kCVPixelBufferLock_ReadOnly, kCVPixelBufferPixelFormatTypeKey, kCVPixelFormatType_32BGRA, CVPixelBuffer};
 use dispatch2::{DispatchQueue, DispatchQueueAttr};
 use objc2::rc::{Allocated, Retained};
 use objc2::runtime::ProtocolObject;
@@ -124,17 +119,11 @@ define_class!(
 
 impl CaptureDelegate {
     fn new(slot: Arc<Mutex<Option<Frame>>>, stats: Arc<Mutex<SourceStats>>) -> Retained<Self> {
-        let this = Self::alloc().set_ivars((
-            RefCell::new(slot),
-            RefCell::new(stats),
-            Cell::new(0),
-            RefCell::new(FramePool::new()),
-        ));
+        let this = Self::alloc().set_ivars((RefCell::new(slot), RefCell::new(stats), Cell::new(0), RefCell::new(FramePool::new())));
         let this: Option<Retained<Self>> = unsafe { msg_send![super(this), init] };
         this.expect("AVFoundation capture delegate init failed")
     }
 }
-
 
 /// One mode the device advertises: a format's dimensions at its fastest rate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -215,11 +204,7 @@ pub struct AvFoundationSource {
 }
 
 impl AvFoundationSource {
-    pub fn spawn(
-        source_ref: SourceRef,
-        cfg: &AvFoundationSourceConfig,
-        modes: Arc<Mutex<Vec<CaptureMode>>>,
-    ) -> Self {
+    pub fn spawn(source_ref: SourceRef, cfg: &AvFoundationSourceConfig, modes: Arc<Mutex<Vec<CaptureMode>>>) -> Self {
         let slot = Arc::new(Mutex::new(None::<Frame>));
         let stats = Arc::new(Mutex::new(SourceStats::new()));
 
@@ -258,7 +243,7 @@ fn run_capture(
 ) {
     let unique_id = NSString::from_str(&cfg.device_unique_id);
     let Some(device) = AVCaptureDevice::device_with_unique_id(&unique_id) else {
-        tracing::error!(source=source_ref, "AVFoundation device not found: {}", cfg.device_unique_id);
+        tracing::error!(source = source_ref, "AVFoundation device not found: {}", cfg.device_unique_id);
         return;
     };
 
@@ -268,7 +253,12 @@ fn run_capture(
     let input = match AVCaptureDeviceInput::from_device(&device) {
         Ok(i) => i,
         Err(e) => {
-            tracing::error!(source=source_ref, "AVFoundation could not create device input for {}: {}", cfg.device_unique_id, e);
+            tracing::error!(
+                source = source_ref,
+                "AVFoundation could not create device input for {}: {}",
+                cfg.device_unique_id,
+                e
+            );
             return;
         }
     };
@@ -278,15 +268,11 @@ fn run_capture(
 
     let format = NSNumber::new_u32(kCVPixelFormatType_32BGRA);
     let key: &NSString = unsafe { &*(kCVPixelBufferPixelFormatTypeKey as *const NSString) };
-    let settings = objc2_foundation::NSDictionary::from_slices(
-        &[key],
-        &[format.as_ref() as &objc2_foundation::NSObject],
-    );
+    let settings = objc2_foundation::NSDictionary::from_slices(&[key], &[format.as_ref() as &objc2_foundation::NSObject]);
     output.set_video_settings(&settings);
 
     let delegate = CaptureDelegate::new(slot, stats);
-    let delegate_obj: &ProtocolObject<dyn AVCaptureVideoDataOutputSampleBufferDelegate> =
-        ProtocolObject::from_ref(&*delegate);
+    let delegate_obj: &ProtocolObject<dyn AVCaptureVideoDataOutputSampleBufferDelegate> = ProtocolObject::from_ref(&*delegate);
     let queue = DispatchQueue::new("net.bambinito.multiviewer.avfoundation", DispatchQueueAttr::SERIAL);
     output.set_sample_buffer_delegate(delegate_obj, &queue);
 
@@ -382,7 +368,13 @@ fn lock_and_apply_mode(device: &AVCaptureDevice, cfg: &AvFoundationSourceConfig,
         } else {
             // An unsupported duration throws an ObjC exception, so leave the
             // device at its default rate for this format.
-            tracing::warn!(source = source_ref, "AVFoundation {}x{} has no {} fps rate", cfg.width, cfg.height, cfg.fps_num as f64 / cfg.fps_den as f64);
+            tracing::warn!(
+                source = source_ref,
+                "AVFoundation {}x{} has no {} fps rate",
+                cfg.width,
+                cfg.height,
+                cfg.fps_num as f64 / cfg.fps_den as f64
+            );
         }
     }
     return true;
@@ -407,17 +399,19 @@ fn log_active_format(device: &AVCaptureDevice, source_ref: &str) {
 /// Whether `format` advertises a frame-rate range containing `fps_num / fps_den`.
 fn format_supports_rate(format: &AVCaptureDeviceFormat, fps_num: u32, fps_den: u32) -> bool {
     let fps = fps_num as f64 / fps_den as f64;
-    return format.video_supported_frame_rate_ranges().iter().any(|range| {
-        fps >= range.min_frame_rate() - 0.01 && fps <= range.max_frame_rate() + 0.01
-    });
+    return format
+        .video_supported_frame_rate_ranges()
+        .iter()
+        .any(|range| fps >= range.min_frame_rate() - 0.01 && fps <= range.max_frame_rate() + 0.01);
 }
 
 impl Drop for AvFoundationSource {
     fn drop(&mut self) {
-        self.running
-            .store(false, Ordering::Relaxed);
-        if let Some(t) = self.thread.take() && let Err(e) = t.join() {
-            tracing::error!(source=self.source_ref, "Thread join failed: {:?}", e);
+        self.running.store(false, Ordering::Relaxed);
+        if let Some(t) = self.thread.take()
+            && let Err(e) = t.join()
+        {
+            tracing::error!(source = self.source_ref, "Thread join failed: {:?}", e);
         }
     }
 }
@@ -443,8 +437,7 @@ mod tests {
     /// A config saved before the tunables existed keeps low-latency defaults.
     #[test]
     fn legacy_config_defaults_new_tunables() {
-        let cfg: AvFoundationSourceConfig =
-            serde_json::from_str(r#"{"device_unique_id":"0x1"}"#).unwrap();
+        let cfg: AvFoundationSourceConfig = serde_json::from_str(r#"{"device_unique_id":"0x1"}"#).unwrap();
         assert_eq!(cfg.width, 0);
         assert_eq!(cfg.height, 0);
         assert_eq!(cfg.fps_num, 0);
@@ -468,12 +461,27 @@ mod tests {
 
     #[test]
     fn mode_label_renders_integral_and_fractional_rates() {
-        let integral = CaptureMode { width: 1280, height: 720, fps_num: 30, fps_den: 1 };
+        let integral = CaptureMode {
+            width: 1280,
+            height: 720,
+            fps_num: 30,
+            fps_den: 1,
+        };
         assert_eq!(integral.label(), "1280x720 @ 30");
-        let ntsc = CaptureMode { width: 1920, height: 1080, fps_num: 30000, fps_den: 1001 };
+        let ntsc = CaptureMode {
+            width: 1920,
+            height: 1080,
+            fps_num: 30000,
+            fps_den: 1001,
+        };
         assert_eq!(ntsc.label(), "1920x1080 @ 29.97");
         // An unreduced 30 fps ratio must still print whole.
-        let unreduced = CaptureMode { width: 1280, height: 720, fps_num: 30_000_000, fps_den: 1_000_000 };
+        let unreduced = CaptureMode {
+            width: 1280,
+            height: 720,
+            fps_num: 30_000_000,
+            fps_den: 1_000_000,
+        };
         assert_eq!(unreduced.label(), "1280x720 @ 30");
     }
 }

@@ -1,8 +1,5 @@
 use crate::config::OutputId;
-use crate::sources::{
-    DecklinkOutputPort, OutputStats, Protocol, SourceConfig, SourceKey, SourceKind,
-    SourceRuntimeConfig, SourceStats,
-};
+use crate::sources::{DecklinkOutputPort, OutputStats, Protocol, SourceConfig, SourceKey, SourceKind, SourceRuntimeConfig, SourceStats};
 
 use super::Engine;
 
@@ -78,10 +75,7 @@ pub struct PickerGroupView {
 
 impl PickerGroupView {
     pub fn flat(items: Vec<PickerItemView>) -> Self {
-        return Self {
-            header: None,
-            items,
-        };
+        return Self { header: None, items };
     }
 }
 
@@ -93,7 +87,6 @@ impl RuntimeView {
     pub fn source(&self, key: &SourceKey) -> Option<&SourceView> {
         return self.sources.iter().find(|view| view.key == *key);
     }
-
 }
 
 impl Engine {
@@ -102,11 +95,7 @@ impl Engine {
             sources: self.source_views(),
             outputs: self.output_views(),
             discoveries: self.discovery_views(focuses),
-            decklink_outputs: self
-                .decklink
-                .as_ref()
-                .map(|d| d.list_outputs())
-                .unwrap_or_default(),
+            decklink_outputs: self.decklink.as_ref().map(|d| d.list_outputs()).unwrap_or_default(),
             control: ControlView {
                 osc: self.control.status_label(),
             },
@@ -146,15 +135,7 @@ impl Engine {
 
         self.push_discovery(&mut views, Protocol::Test, Vec::new());
         let ndi = if wants(focuses, &Protocol::Ndi) {
-            self.ndi
-                .as_ref()
-                .map(|d| {
-                    d.list()
-                        .iter()
-                        .map(|source| PickerItemView::plain(&source.name))
-                        .collect()
-                })
-                .unwrap_or_default()
+            self.ndi.as_ref().map(|d| d.list().iter().map(|source| PickerItemView::plain(&source.name)).collect()).unwrap_or_default()
         } else {
             Vec::new()
         };
@@ -163,12 +144,7 @@ impl Engine {
         let omt = if wants(focuses, &Protocol::Omt) {
             self.omt
                 .as_ref()
-                .map(|d| {
-                    d.list()
-                        .iter()
-                        .map(|source| PickerItemView::plain(&source.instance_name()))
-                        .collect()
-                })
+                .map(|d| d.list().iter().map(|source| PickerItemView::plain(&source.instance_name())).collect())
                 .unwrap_or_default()
         } else {
             Vec::new()
@@ -176,15 +152,7 @@ impl Engine {
         self.push_discovery(&mut views, Protocol::Omt, flat(omt));
 
         let decklink = if wants(focuses, &Protocol::Decklink) {
-            self.decklink
-                .as_ref()
-                .map(|d| {
-                    d.list()
-                        .iter()
-                        .map(|port| PickerItemView::plain(&port.name))
-                        .collect()
-                })
-                .unwrap_or_default()
+            self.decklink.as_ref().map(|d| d.list().iter().map(|port| PickerItemView::plain(&port.name)).collect()).unwrap_or_default()
         } else {
             Vec::new()
         };
@@ -201,12 +169,7 @@ impl Engine {
                     .map(|d| {
                         d.list()
                             .iter()
-                            .map(|info| {
-                                PickerItemView::new(
-                                    info.display_name(),
-                                    &crate::sources::format_syphon_label(&info.app_name, &info.name),
-                                )
-                            })
+                            .map(|info| PickerItemView::new(info.display_name(), &crate::sources::format_syphon_label(&info.app_name, &info.name)))
                             .collect()
                     })
                     .unwrap_or_default()
@@ -218,12 +181,7 @@ impl Engine {
             let avfoundation = if wants(focuses, &Protocol::AvFoundation) {
                 self.avfoundation
                     .as_ref()
-                    .map(|d| {
-                        d.list()
-                            .iter()
-                            .map(|device| PickerItemView::plain(&device.name))
-                            .collect()
-                    })
+                    .map(|d| d.list().iter().map(|device| PickerItemView::plain(&device.name)).collect())
                     .unwrap_or_default()
             } else {
                 Vec::new()
@@ -231,10 +189,7 @@ impl Engine {
             self.push_discovery(&mut views, Protocol::AvFoundation, flat(avfoundation));
 
             let targets = if wants(focuses, &Protocol::ScreenCaptureKit) {
-                self.screencapturekit
-                    .as_ref()
-                    .map(|d| d.list())
-                    .unwrap_or_default()
+                self.screencapturekit.as_ref().map(|d| d.list()).unwrap_or_default()
             } else {
                 Default::default()
             };
@@ -248,10 +203,7 @@ impl Engine {
         #[cfg(target_os = "windows")]
         {
             let spout = if wants(focuses, &Protocol::Spout) {
-                self.spout
-                    .as_ref()
-                    .map(|d| d.list().iter().map(|name| PickerItemView::plain(name)).collect())
-                    .unwrap_or_default()
+                self.spout.as_ref().map(|d| d.list().iter().map(|name| PickerItemView::plain(name)).collect()).unwrap_or_default()
             } else {
                 Vec::new()
             };
@@ -260,12 +212,7 @@ impl Engine {
             let mediafoundation = if wants(focuses, &Protocol::MediaFoundation) {
                 self.mediafoundation
                     .as_ref()
-                    .map(|d| {
-                        d.list()
-                            .iter()
-                            .map(|device| PickerItemView::new(&device.id, &device.name))
-                            .collect()
-                    })
+                    .map(|d| d.list().iter().map(|device| PickerItemView::new(&device.id, &device.name)).collect())
                     .unwrap_or_default()
             } else {
                 Vec::new()
@@ -275,12 +222,7 @@ impl Engine {
             let directshow = if wants(focuses, &Protocol::DirectShow) {
                 self.directshow
                     .as_ref()
-                    .map(|d| {
-                        d.list()
-                            .iter()
-                            .map(|device| PickerItemView::new(&device.id, &device.name))
-                            .collect()
-                    })
+                    .map(|d| d.list().iter().map(|device| PickerItemView::new(&device.id, &device.name)).collect())
                     .unwrap_or_default()
             } else {
                 Vec::new()
@@ -288,10 +230,7 @@ impl Engine {
             self.push_discovery(&mut views, Protocol::DirectShow, flat(directshow));
 
             let targets = if wants(focuses, &Protocol::WindowsCapture) {
-                self.windowscapture
-                    .as_ref()
-                    .map(|d| d.list())
-                    .unwrap_or_default()
+                self.windowscapture.as_ref().map(|d| d.list()).unwrap_or_default()
             } else {
                 Default::default()
             };
@@ -305,12 +244,7 @@ impl Engine {
         return views;
     }
 
-    fn push_discovery(
-        &self,
-        views: &mut Vec<DiscoveryView>,
-        protocol: Protocol,
-        groups: Vec<PickerGroupView>,
-    ) {
+    fn push_discovery(&self, views: &mut Vec<DiscoveryView>, protocol: Protocol, groups: Vec<PickerGroupView>) {
         views.push(DiscoveryView {
             connected: self.connected_items(&protocol),
             protocol,
@@ -332,10 +266,7 @@ impl Engine {
 }
 
 fn wants(focuses: &[Option<Protocol>], protocol: &Protocol) -> bool {
-    return focuses
-        .iter()
-        .flatten()
-        .any(|focus| focus == protocol);
+    return focuses.iter().flatten().any(|focus| focus == protocol);
 }
 
 fn flat(items: Vec<PickerItemView>) -> Vec<PickerGroupView> {
@@ -346,10 +277,7 @@ fn flat(items: Vec<PickerItemView>) -> Vec<PickerGroupView> {
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
-fn capture_groups(
-    displays: impl Iterator<Item = PickerItemView>,
-    windows: impl Iterator<Item = PickerItemView>,
-) -> Vec<PickerGroupView> {
+fn capture_groups(displays: impl Iterator<Item = PickerItemView>, windows: impl Iterator<Item = PickerItemView>) -> Vec<PickerGroupView> {
     return vec![
         PickerGroupView {
             header: Some("Displays".to_string()),
@@ -400,11 +328,7 @@ mod tests {
 
         let view = engine.runtime_view(&[Some(Protocol::Ndi), None]);
 
-        assert_eq!(
-            view.discovery(&Protocol::Test)
-                .map(|discovery| discovery.connected.len()),
-            Some(1)
-        );
+        assert_eq!(view.discovery(&Protocol::Test).map(|discovery| discovery.connected.len()), Some(1));
         assert!(view.discovery(&Protocol::Ndi).is_some());
     }
 }

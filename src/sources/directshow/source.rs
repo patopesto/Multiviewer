@@ -8,20 +8,13 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use windows::Win32::Foundation::{FALSE, RPC_E_CHANGED_MODE, TRUE};
-use windows::Win32::Media::DirectShow::{
-    IAMStreamConfig, IBaseFilter, ICaptureGraphBuilder2, IFilterGraph2, IMediaControl,
-    VIDEO_STREAM_CONFIG_CAPS,
-};
+use windows::Win32::Media::DirectShow::{IAMStreamConfig, IBaseFilter, ICaptureGraphBuilder2, IFilterGraph2, IMediaControl, VIDEO_STREAM_CONFIG_CAPS};
 use windows::Win32::Media::MediaFoundation::{
-    AM_MEDIA_TYPE, CLSID_CaptureGraphBuilder2, CLSID_FilterGraph, FORMAT_VideoInfo,
-    FORMAT_VideoInfo2, MEDIASUBTYPE_MJPG, MEDIASUBTYPE_NV12, MEDIASUBTYPE_RGB24,
-    MEDIASUBTYPE_RGB32, MEDIASUBTYPE_UYVY, MEDIASUBTYPE_YUY2, MEDIASUBTYPE_v210, MEDIATYPE_Video,
-    PIN_CATEGORY_CAPTURE, VIDEOINFOHEADER, VIDEOINFOHEADER2,
+    AM_MEDIA_TYPE, CLSID_CaptureGraphBuilder2, CLSID_FilterGraph, FORMAT_VideoInfo, FORMAT_VideoInfo2, MEDIASUBTYPE_MJPG, MEDIASUBTYPE_NV12,
+    MEDIASUBTYPE_RGB24, MEDIASUBTYPE_RGB32, MEDIASUBTYPE_UYVY, MEDIASUBTYPE_YUY2, MEDIASUBTYPE_v210, MEDIATYPE_Video, PIN_CATEGORY_CAPTURE,
+    VIDEOINFOHEADER, VIDEOINFOHEADER2,
 };
-use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER,
-    COINIT_MULTITHREADED,
-};
+use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
 use windows::core::{w, GUID, Interface};
 
 use super::super::{Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
@@ -110,11 +103,7 @@ pub struct DirectShowSource {
 impl DirectShowSource {
     /// `modes` is filled with the device's advertised modes on open; it is read
     /// by the settings UI.
-    pub fn spawn(
-        source_ref: SourceRef,
-        cfg: &DirectShowSourceConfig,
-        modes: Arc<Mutex<Vec<CaptureMode>>>,
-    ) -> Self {
+    pub fn spawn(source_ref: SourceRef, cfg: &DirectShowSourceConfig, modes: Arc<Mutex<Vec<CaptureMode>>>) -> Self {
         let slot = Arc::new(Mutex::new(None::<Frame>));
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let running = Arc::new(AtomicBool::new(true));
@@ -246,36 +235,22 @@ fn run_capture(
 
 /// Build and start the capture graph, returning it with the negotiated format
 /// and the device's advertised modes.
-unsafe fn build_graph(
-    source_ref: &str,
-    cfg: &DirectShowSourceConfig,
-) -> Result<(Graph, ConnectedFormat, Vec<CaptureMode>), String> {
+unsafe fn build_graph(source_ref: &str, cfg: &DirectShowSourceConfig) -> Result<(Graph, ConnectedFormat, Vec<CaptureMode>), String> {
     let graph: IFilterGraph2 =
-        unsafe { CoCreateInstance(&CLSID_FilterGraph, None, CLSCTX_INPROC_SERVER) }
-            .map_err(|e| format!("CoCreateInstance(FilterGraph): {e}"))?;
-    let builder: ICaptureGraphBuilder2 = unsafe {
-        CoCreateInstance(&CLSID_CaptureGraphBuilder2, None, CLSCTX_INPROC_SERVER)
-    }
-    .map_err(|e| format!("CoCreateInstance(CaptureGraphBuilder2): {e}"))?;
+        unsafe { CoCreateInstance(&CLSID_FilterGraph, None, CLSCTX_INPROC_SERVER) }.map_err(|e| format!("CoCreateInstance(FilterGraph): {e}"))?;
+    let builder: ICaptureGraphBuilder2 = unsafe { CoCreateInstance(&CLSID_CaptureGraphBuilder2, None, CLSCTX_INPROC_SERVER) }
+        .map_err(|e| format!("CoCreateInstance(CaptureGraphBuilder2): {e}"))?;
     unsafe { builder.SetFiltergraph(&graph) }.map_err(|e| format!("SetFiltergraph: {e}"))?;
 
     let capture = unsafe { find_capture_filter(&cfg.device_id) }?;
-    unsafe { graph.AddFilter(&capture, w!("capture")) }
-        .map_err(|e| format!("AddFilter(capture): {e}"))?;
+    unsafe { graph.AddFilter(&capture, w!("capture")) }.map_err(|e| format!("AddFilter(capture): {e}"))?;
 
     let caps = unsafe { apply_and_enumerate_modes(source_ref, &builder, &capture, cfg) };
 
-    let grabber_filter: IBaseFilter = unsafe {
-        CoCreateInstance(&CLSID_SAMPLE_GRABBER, None, CLSCTX_INPROC_SERVER)
-    }
-    .map_err(|e| format!("CoCreateInstance(SampleGrabber): {e}"))?;
-    let grabber: ISampleGrabber = grabber_filter
-        .cast()
-        .map_err(|e| format!("cast ISampleGrabber: {e}"))?;
-    let target_subtype = caps
-        .selected
-        .map(|s| s.subtype)
-        .unwrap_or_else(|| subtype_for(cfg.pixel_format));
+    let grabber_filter: IBaseFilter = unsafe { CoCreateInstance(&CLSID_SAMPLE_GRABBER, None, CLSCTX_INPROC_SERVER) }
+        .map_err(|e| format!("CoCreateInstance(SampleGrabber): {e}"))?;
+    let grabber: ISampleGrabber = grabber_filter.cast().map_err(|e| format!("cast ISampleGrabber: {e}"))?;
+    let target_subtype = caps.selected.map(|s| s.subtype).unwrap_or_else(|| subtype_for(cfg.pixel_format));
     tracing::debug!(
         source = source_ref,
         subtype = %subtype_name(&target_subtype),
@@ -284,30 +259,18 @@ unsafe fn build_graph(
     );
     let media_type = partial_video_type(&target_subtype);
     unsafe { grabber.SetMediaType(&media_type) }.map_err(|e| format!("SetMediaType: {e}"))?;
-    unsafe { graph.AddFilter(&grabber_filter, w!("grabber")) }
-        .map_err(|e| format!("AddFilter(grabber): {e}"))?;
+    unsafe { graph.AddFilter(&grabber_filter, w!("grabber")) }.map_err(|e| format!("AddFilter(grabber): {e}"))?;
 
-    let null_renderer: IBaseFilter = unsafe {
-        CoCreateInstance(&CLSID_NULL_RENDERER, None, CLSCTX_INPROC_SERVER)
-    }
-    .map_err(|e| format!("CoCreateInstance(NullRenderer): {e}"))?;
-    unsafe { graph.AddFilter(&null_renderer, w!("null")) }
-        .map_err(|e| format!("AddFilter(null): {e}"))?;
+    let null_renderer: IBaseFilter =
+        unsafe { CoCreateInstance(&CLSID_NULL_RENDERER, None, CLSCTX_INPROC_SERVER) }.map_err(|e| format!("CoCreateInstance(NullRenderer): {e}"))?;
+    unsafe { graph.AddFilter(&null_renderer, w!("null")) }.map_err(|e| format!("AddFilter(null): {e}"))?;
 
     let offered = if caps.offered.is_empty() {
         "none".to_string()
     } else {
         caps.offered.join(", ")
     };
-    if let Err(e) = unsafe {
-        builder.RenderStream(
-            Some(&PIN_CATEGORY_CAPTURE),
-            &MEDIATYPE_Video,
-            &capture,
-            &grabber_filter,
-            &null_renderer,
-        )
-    } {
+    if let Err(e) = unsafe { builder.RenderStream(Some(&PIN_CATEGORY_CAPTURE), &MEDIATYPE_Video, &capture, &grabber_filter, &null_renderer) } {
         // The graph could not connect capture -> SampleGrabber -> null. The
         // offered subtypes usually explain why (e.g. 10-bit/VideoInfo2).
         tracing::error!(source = source_ref, "DirectShow: RenderStream failed: {e}; device offers [{offered}]");
@@ -315,8 +278,7 @@ unsafe fn build_graph(
     }
 
     let mut connected = AM_MEDIA_TYPE::default();
-    unsafe { grabber.GetConnectedMediaType(&mut connected) }
-        .map_err(|e| format!("GetConnectedMediaType: {e}"))?;
+    unsafe { grabber.GetConnectedMediaType(&mut connected) }.map_err(|e| format!("GetConnectedMediaType: {e}"))?;
     tracing::debug!(
         source = source_ref,
         subtype = %subtype_name(&connected.subtype),
@@ -327,8 +289,7 @@ unsafe fn build_graph(
     unsafe { free_media_type(&mut connected) };
     let fmt = fmt?;
 
-    let media_control: IMediaControl =
-        graph.cast().map_err(|e| format!("cast IMediaControl: {e}"))?;
+    let media_control: IMediaControl = graph.cast().map_err(|e| format!("cast IMediaControl: {e}"))?;
 
     Ok((
         Graph {
@@ -381,14 +342,22 @@ unsafe fn apply_and_enumerate_modes(
         Ok(pin) => pin,
         Err(e) => {
             tracing::warn!(source = source_ref, "DirectShow: no capture pin for IAMStreamConfig: {e}");
-            return ModeCaps { modes: Vec::new(), offered: Vec::new(), selected: None };
+            return ModeCaps {
+                modes: Vec::new(),
+                offered: Vec::new(),
+                selected: None,
+            };
         }
     };
     let config = match pin.cast::<IAMStreamConfig>() {
         Ok(config) => config,
         Err(e) => {
             tracing::warn!(source = source_ref, "DirectShow: capture pin has no IAMStreamConfig: {e}");
-            return ModeCaps { modes: Vec::new(), offered: Vec::new(), selected: None };
+            return ModeCaps {
+                modes: Vec::new(),
+                offered: Vec::new(),
+                selected: None,
+            };
         }
     };
 
@@ -396,7 +365,11 @@ unsafe fn apply_and_enumerate_modes(
     let mut caps_size = 0i32;
     if let Err(e) = unsafe { config.GetNumberOfCapabilities(&mut count, &mut caps_size) } {
         tracing::warn!(source = source_ref, "DirectShow: GetNumberOfCapabilities failed: {e}");
-        return ModeCaps { modes: Vec::new(), offered: Vec::new(), selected: None };
+        return ModeCaps {
+            modes: Vec::new(),
+            offered: Vec::new(),
+            selected: None,
+        };
     }
     tracing::debug!(source = source_ref, caps = count, "DirectShow: IAMStreamConfig caps");
 
@@ -411,9 +384,7 @@ unsafe fn apply_and_enumerate_modes(
     for i in 0..count {
         let mut media_type: *mut AM_MEDIA_TYPE = ptr::null_mut();
         let mut caps = vec![0u8; buf_len];
-        if unsafe { config.GetStreamCaps(i, &mut media_type, caps.as_mut_ptr()) }.is_err()
-            || media_type.is_null()
-        {
+        if unsafe { config.GetStreamCaps(i, &mut media_type, caps.as_mut_ptr()) }.is_err() || media_type.is_null() {
             continue;
         }
         let mt = unsafe { &*media_type };
@@ -465,21 +436,23 @@ unsafe fn apply_and_enumerate_modes(
 
         if mt.formattype == FORMAT_VideoInfo {
             if w > 0 && h > 0 {
-                modes.push(CaptureMode { width: w, height: h, fps_num, fps_den });
+                modes.push(CaptureMode {
+                    width: w,
+                    height: h,
+                    fps_num,
+                    fps_den,
+                });
             }
             if let Some(rank) = preference.iter().position(|g| *g == mt.subtype) {
                 let size_ok = !want || (w == cfg.width && h == cfg.height);
-                let fps_ok =
-                    cfg.fps_num == 0 || (fps_num == cfg.fps_num && fps_den == cfg.fps_den);
+                let fps_ok = cfg.fps_num == 0 || (fps_num == cfg.fps_num && fps_den == cfg.fps_den);
                 if size_ok && fps_ok && best_rank.is_none_or(|b| rank < b) {
                     match unsafe { config.SetFormat(media_type) } {
                         Ok(()) => {
                             best_rank = Some(rank);
                             selected = Some(SelectedFormat {
                                 subtype: mt.subtype,
-                                pixel_format: pixel_format_for_subtype(&mt.subtype)
-                                    .map(|(f, _)| f)
-                                    .unwrap_or(PixelFormat::Bgra8),
+                                pixel_format: pixel_format_for_subtype(&mt.subtype).map(|(f, _)| f).unwrap_or(PixelFormat::Bgra8),
                             });
                             tracing::debug!(source = source_ref, subtype = %subtype, width = w, height = h, "DirectShow: SetFormat applied");
                         }
@@ -600,7 +573,11 @@ unsafe fn interpret_connected(mt: &AM_MEDIA_TYPE) -> Result<ConnectedFormat, Str
         }
     };
     let pitch = (width * bits).div_ceil(32) * 4;
-    let rows = if pixel_format == PixelFormat::Nv12 { height + height / 2 } else { height };
+    let rows = if pixel_format == PixelFormat::Nv12 {
+        height + height / 2
+    } else {
+        height
+    };
     // DirectShow RGB/YUV is bottom-up when biHeight is positive; flip so the
     // compositor sees a top-down image.
     let flip = vih.bmiHeader.biHeight > 0;
@@ -660,12 +637,7 @@ fn preference_for(format: Option<PixelFormat>) -> Vec<GUID> {
         Some(PixelFormat::Uyvy422) => vec![MEDIASUBTYPE_UYVY],
         Some(PixelFormat::Yuy2) => vec![MEDIASUBTYPE_YUY2],
         Some(PixelFormat::Nv12) => vec![MEDIASUBTYPE_NV12],
-        None => vec![
-            MEDIASUBTYPE_RGB32,
-            MEDIASUBTYPE_UYVY,
-            MEDIASUBTYPE_YUY2,
-            MEDIASUBTYPE_NV12,
-        ],
+        None => vec![MEDIASUBTYPE_RGB32, MEDIASUBTYPE_UYVY, MEDIASUBTYPE_YUY2, MEDIASUBTYPE_NV12],
     };
 }
 
@@ -733,12 +705,7 @@ mod tests {
     fn auto_prefers_rgb32_then_uyvy() {
         assert_eq!(
             preference_for(None),
-            vec![
-                MEDIASUBTYPE_RGB32,
-                MEDIASUBTYPE_UYVY,
-                MEDIASUBTYPE_YUY2,
-                MEDIASUBTYPE_NV12,
-            ]
+            vec![MEDIASUBTYPE_RGB32, MEDIASUBTYPE_UYVY, MEDIASUBTYPE_YUY2, MEDIASUBTYPE_NV12,]
         );
     }
 
@@ -757,12 +724,27 @@ mod tests {
 
     #[test]
     fn mode_label_renders_integral_and_fractional_rates() {
-        let integral = CaptureMode { width: 1280, height: 720, fps_num: 30, fps_den: 1 };
+        let integral = CaptureMode {
+            width: 1280,
+            height: 720,
+            fps_num: 30,
+            fps_den: 1,
+        };
         assert_eq!(integral.label(), "1280x720 @ 30");
-        let ntsc = CaptureMode { width: 1920, height: 1080, fps_num: 30000, fps_den: 1001 };
+        let ntsc = CaptureMode {
+            width: 1920,
+            height: 1080,
+            fps_num: 30000,
+            fps_den: 1001,
+        };
         assert_eq!(ntsc.label(), "1920x1080 @ 29.97");
         // An unreduced 30 fps ratio must still print whole.
-        let unreduced = CaptureMode { width: 1280, height: 720, fps_num: 30_000_000, fps_den: 1_000_000 };
+        let unreduced = CaptureMode {
+            width: 1280,
+            height: 720,
+            fps_num: 30_000_000,
+            fps_den: 1_000_000,
+        };
         assert_eq!(unreduced.label(), "1280x720 @ 30");
     }
 }

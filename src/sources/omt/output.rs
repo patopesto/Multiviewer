@@ -2,17 +2,12 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use openmediatransport::{
-    ColorSpace as OmtColorSpace, Discovery, FrameType, GpuVideoContext, Sender, SenderInfo,
-    VideoFlags, VideoTextureMeta,
-};
+use openmediatransport::{ColorSpace as OmtColorSpace, Discovery, FrameType, GpuVideoContext, Sender, SenderInfo, VideoFlags, VideoTextureMeta};
 use serde::{Deserialize, Serialize};
 
 use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, OutputLiveness, VideoOutput};
-use crate::sources::{
-    ColorSpace as AppColorSpace, PixelFormat, TextureTarget, UPLOAD_TARGET_USAGE,
-};
+use crate::sources::{ColorSpace as AppColorSpace, PixelFormat, TextureTarget, UPLOAD_TARGET_USAGE};
 
 // @docs protocol="OMT" direction=output
 #[derive(Serialize, Deserialize, Clone, Default, Debug, PartialEq)]
@@ -114,19 +109,14 @@ fn run_sender(
     subscribers: Arc<AtomicUsize>,
     name: String,
 ) {
-    let mut sender = match Sender::create(sender_name.as_str(), FrameType::VIDEO | FrameType::METADATA)
-    {
+    let mut sender = match Sender::create(sender_name.as_str(), FrameType::VIDEO | FrameType::METADATA) {
         Ok(s) => s,
         Err(e) => {
-            tracing::error!(output=name, "OMT sender creation failed: {}", e);
+            tracing::error!(output = name, "OMT sender creation failed: {}", e);
             return;
         }
     };
-    sender.set_sender_info(SenderInfo::new(
-        crate::APP_NAME,
-        env!("CARGO_PKG_AUTHORS"),
-        env!("CARGO_PKG_VERSION"),
-    ));
+    sender.set_sender_info(SenderInfo::new(crate::APP_NAME, env!("CARGO_PKG_AUTHORS"), env!("CARGO_PKG_VERSION")));
     // Hold one frame in the GPU encoder so this frame's FDCT overlaps the
     // previous frame's entropy coding; the last frame is flushed on disconnect.
     sender.set_gpu_encode_pipeline(true);
@@ -134,20 +124,15 @@ fn run_sender(
     let mut discovery = match Discovery::new() {
         Ok(d) => d,
         Err(e) => {
-            tracing::error!(output=name, "OMT discovery init failed: {}", e);
+            tracing::error!(output = name, "OMT discovery init failed: {}", e);
             return;
         }
     };
     if let Err(e) = discovery.register(&sender_name, sender.port()) {
-        tracing::error!(output=name, "OMT register failed: {}", e);
+        tracing::error!(output = name, "OMT register failed: {}", e);
         return;
     }
-    tracing::info!(
-        output=name,
-        "OMT output advertised as '{}' on port {}",
-        sender_name,
-        sender.port()
-    );
+    tracing::info!(output = name, "OMT output advertised as '{}' on port {}", sender_name, sender.port());
 
     loop {
         // Accept new receivers and read their subscribe/tally metadata even when
@@ -190,7 +175,7 @@ fn run_sender(
                         }
                     }
                     if let Err(e) = result {
-                        tracing::error!(output=name, "OMT send failed: {}", e);
+                        tracing::error!(output = name, "OMT send failed: {}", e);
                     }
                 }
                 // The encoder submission is now on the queue; the texture can be
@@ -200,7 +185,7 @@ fn run_sender(
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 if let Err(e) = sender.flush_gpu_encode(&ctx) {
-                    tracing::error!(output=name, "OMT flush failed: {}", e);
+                    tracing::error!(output = name, "OMT flush failed: {}", e);
                 }
                 break;
             }
@@ -211,14 +196,7 @@ fn run_sender(
 }
 
 impl VideoOutput for OmtOutput {
-    fn present(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> bool {
+    fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
         if !self.enabled.load(Ordering::Relaxed) {
             return false;
         }
@@ -254,9 +232,7 @@ impl VideoOutput for OmtOutput {
         {
             let copy_span = tracing::debug_span!("copy");
             let _copy_guard = copy_span.entered();
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("omt-output"),
-            });
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("omt-output") });
             encoder.copy_texture_to_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture,
@@ -327,7 +303,7 @@ impl Drop for OmtOutput {
         if let Some(thread) = self.thread.lock().unwrap().take()
             && let Err(e) = thread.join()
         {
-            tracing::error!(output=self.name, "Thread join failed: {:?}", e);
+            tracing::error!(output = self.name, "Thread join failed: {:?}", e);
         }
     }
 }

@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use super::gpu::{conv_uniform, create_cell_layout, create_sampler, create_vertex_index_buffers, placeholder, render_pipeline, solid_bind_group, texture_bind_group, MAX_LAYERS, QUADS_PER_SOURCE, SHADER};
+use super::gpu::{
+    conv_uniform, create_cell_layout, create_sampler, create_vertex_index_buffers, placeholder, render_pipeline, solid_bind_group,
+    texture_bind_group, MAX_LAYERS, QUADS_PER_SOURCE, SHADER,
+};
 use super::metrics::GpuTimers;
 use super::upload::{Staging, Uploader};
 use super::{Compositor, FrameStats, Shared, Vert};
-use crate::sources::{
-    CpuFrame, PixelFormat, SourceKey, SourceStats, TextureTarget, UPLOAD_TARGET_USAGE,
-};
+use crate::sources::{CpuFrame, PixelFormat, SourceKey, SourceStats, TextureTarget, UPLOAD_TARGET_USAGE};
 
 pub(super) struct SourceTex {
     target: TextureTarget,
@@ -19,11 +20,7 @@ pub(super) struct SourceTex {
 }
 
 impl Compositor {
-    pub fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        target_format: wgpu::TextureFormat,
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, target_format: wgpu::TextureFormat) -> Self {
         let bind_layout = create_cell_layout(device);
         let sampler = create_sampler(device);
 
@@ -36,26 +33,13 @@ impl Compositor {
             bind_group_layouts: &[Some(&bind_layout)],
             immediate_size: 0,
         });
-        let pipeline = render_pipeline(
-            device,
-            &layout,
-            &shader,
-            "compositor",
-            target_format,
-            wgpu::BlendState::REPLACE,
-        );
+        let pipeline = render_pipeline(device, &layout, &shader, "compositor", target_format, wgpu::BlendState::REPLACE);
 
         let (vb, ib) = create_vertex_index_buffers(device, queue);
         let placeholder_bg = Arc::new(placeholder(device, queue, &bind_layout, &sampler));
 
         let border_color = [180, 180, 180, 255];
-        let border_bg = Arc::new(solid_bind_group(
-            device,
-            queue,
-            &bind_layout,
-            &sampler,
-            border_color,
-        ));
+        let border_bg = Arc::new(solid_bind_group(device, queue, &bind_layout, &sampler, border_color));
 
         let canvas_pipeline = render_pipeline(
             device,
@@ -72,29 +56,13 @@ impl Compositor {
             mapped_at_creation: false,
         });
 
-        let font = fontdue::Font::from_bytes(
-            epaint_default_fonts::HACK_REGULAR as &[u8],
-            fontdue::FontSettings::default(),
-        )
-        .expect("embedded font is valid");
+        let font =
+            fontdue::Font::from_bytes(epaint_default_fonts::HACK_REGULAR as &[u8], fontdue::FontSettings::default()).expect("embedded font is valid");
 
-        let text_pipeline = render_pipeline(
-            device,
-            &layout,
-            &shader,
-            "compositor-text",
-            target_format,
-            wgpu::BlendState::ALPHA_BLENDING,
-        );
+        let text_pipeline = render_pipeline(device, &layout, &shader, "compositor-text", target_format, wgpu::BlendState::ALPHA_BLENDING);
 
         let label_bg_color = [0, 0, 0, 180];
-        let label_bg_bg = Arc::new(solid_bind_group(
-            device,
-            queue,
-            &bind_layout,
-            &sampler,
-            label_bg_color,
-        ));
+        let label_bg_bg = Arc::new(solid_bind_group(device, queue, &bind_layout, &sampler, label_bg_color));
 
         Self {
             shared: Arc::new(Shared {
@@ -133,42 +101,29 @@ impl Compositor {
         stats: Option<Arc<Mutex<SourceStats>>>,
     ) -> &SourceTex {
         let layout = f.fmt.texture_layout(f.w, f.h);
-        if matches!(f.fmt, PixelFormat::Uyvy422 | PixelFormat::Yuy2 | PixelFormat::Nv12)
-            && !f.w.is_multiple_of(2)
-        {
-            tracing::warn!("compositor {}: {} frame has odd width {}, last column will be dropped", key.source_ref, f.fmt.label(), f.w);
+        if matches!(f.fmt, PixelFormat::Uyvy422 | PixelFormat::Yuy2 | PixelFormat::Nv12) && !f.w.is_multiple_of(2) {
+            tracing::warn!(
+                "compositor {}: {} frame has odd width {}, last column will be dropped",
+                key.source_ref,
+                f.fmt.label(),
+                f.w
+            );
         }
         if f.fmt == PixelFormat::Nv12 && !f.h.is_multiple_of(2) {
             tracing::warn!("compositor {}: NV12 frame has odd height {}, last row will be dropped", key.source_ref, f.h);
         }
 
-        let stale = self
-            .textures
-            .get(key)
-            .map(|t| t.target.layout != layout)
-            .unwrap_or(false);
+        let stale = self.textures.get(key).map(|t| t.target.layout != layout).unwrap_or(false);
         if stale {
             self.textures.remove(key);
         }
         let created = !self.textures.contains_key(key);
         let st = self.textures.entry(key.clone()).or_insert_with(|| {
             let mut target = None;
-            TextureTarget::ensure(
-                &mut target,
-                device,
-                layout,
-                UPLOAD_TARGET_USAGE,
-                key.source_ref.as_str(),
-            );
+            TextureTarget::ensure(&mut target, device, layout, UPLOAD_TARGET_USAGE, key.source_ref.as_str());
             let target = target.unwrap();
             let uniform = conv_uniform(device, queue, layout.conv_mode, f.w as f32, f.h as f32);
-            let bg = Arc::new(texture_bind_group(
-                device,
-                &self.bind_layout,
-                &self.sampler,
-                &target.view,
-                &uniform,
-            ));
+            let bg = Arc::new(texture_bind_group(device, &self.bind_layout, &self.sampler, &target.view, &uniform));
             SourceTex {
                 target,
                 _uniform: uniform,
@@ -197,9 +152,9 @@ impl Compositor {
             let _upload_guard = upload_span.entered();
             let t0 = Instant::now();
             self.uploader.reap(device);
-            let staging = st.staging.get_or_insert_with(|| {
-                Arc::new(Staging::new(device, key.source_ref.as_str(), layout.tex_w, row_bytes, layout.tex_h))
-            });
+            let staging = st
+                .staging
+                .get_or_insert_with(|| Arc::new(Staging::new(device, key.source_ref.as_str(), layout.tex_w, row_bytes, layout.tex_h)));
             let fallback = !staging.is_free();
             if !fallback {
                 staging.write(&f.data, pitch, row_bytes);

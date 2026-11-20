@@ -133,10 +133,7 @@ impl Engine {
         }
 
         engine.rebuild_from_config();
-        tracing::info!(
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "engine created"
-        );
+        tracing::info!(elapsed_ms = started.elapsed().as_millis() as u64, "engine created");
         return engine;
     }
 
@@ -189,7 +186,8 @@ impl Engine {
     /// config untouched (raw JSON preserved) and are written back on save.
     fn warn_unavailable_protocols(&mut self) {
         let unavailable: BTreeSet<&str> = self
-            .state.cfg
+            .state
+            .cfg
             .canvas
             .sources
             .iter()
@@ -267,25 +265,14 @@ impl Engine {
                 output.uuid = uuid::Uuid::new_v4().to_string();
                 self.state.dirty = true;
             }
-            self.output_registry.add(
-                &output.protocol,
-                output.uuid.clone(),
-                output.name.clone(),
-                &output.config,
-                output.enabled,
-            );
+            self.output_registry.add(&output.protocol, output.uuid.clone(), output.name.clone(), &output.config, output.enabled);
         }
     }
 
     /// Replace the running document in place. `preserve_control` keeps the
     /// listeners the app is already running, so a project loaded from the web
     /// UI cannot switch off the HTTP server serving that request.
-    pub fn replace_project(
-        &mut self,
-        mut cfg: Config,
-        path: Option<PathBuf>,
-        preserve_control: bool,
-    ) -> Result<(), ProjectError> {
+    pub fn replace_project(&mut self, mut cfg: Config, path: Option<PathBuf>, preserve_control: bool) -> Result<(), ProjectError> {
         let started = Instant::now();
         if preserve_control {
             cfg.control = self.state.cfg.control.clone();
@@ -364,8 +351,7 @@ impl Engine {
         return self.state.cfg.auto_save_interval > 0
             && self.state.dirty
             && self.state.project_path.is_some()
-            && now.duration_since(self.last_saved_at)
-                >= Duration::from_secs(self.state.cfg.auto_save_interval);
+            && now.duration_since(self.last_saved_at) >= Duration::from_secs(self.state.cfg.auto_save_interval);
     }
 
     pub fn auto_save(&mut self) {
@@ -382,9 +368,6 @@ impl Engine {
 impl Engine {
     /// Engine with no discovery services, for tests.
     pub fn test_instance(canvas: Canvas) -> Self {
-        return Self::new(Config {
-            canvas,
-            ..Config::default()
-        });
+        return Self::new(Config { canvas, ..Config::default() });
     }
 }

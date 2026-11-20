@@ -23,9 +23,7 @@ impl Discovery {
             .name("avfoundation-discovery".into())
             .spawn(move || {
                 loop {
-                    let list = unsafe {
-                        AVCaptureDevice::devices_with_media_type(AVMediaTypeVideo)
-                    };
+                    let list = unsafe { AVCaptureDevice::devices_with_media_type(AVMediaTypeVideo) };
                     let mut discovered = Vec::new();
                     for device in list.iter() {
                         let unique_id = device.unique_id().to_string();

@@ -3,15 +3,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
-use windows_capture::capture::{
-    CaptureControl, Context, GraphicsCaptureApiError, GraphicsCaptureApiHandler,
-};
+use windows_capture::capture::{CaptureControl, Context, GraphicsCaptureApiError, GraphicsCaptureApiHandler};
 use windows_capture::frame::Frame as WgcFrame;
 use windows_capture::graphics_capture_api::{Error as CaptureApiError, InternalCaptureControl};
 use windows_capture::monitor::Monitor;
 use windows_capture::settings::{
-    ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
-    GraphicsCaptureItemType, MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
+    ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings, GraphicsCaptureItemType, MinimumUpdateIntervalSettings,
+    SecondaryWindowSettings, Settings,
 };
 use windows_capture::window::Window;
 
@@ -168,11 +166,7 @@ impl GraphicsCaptureApiHandler for CaptureHandler {
     }
 
     #[instrument(name = "windowscapture_frame", level = "debug", skip_all)]
-    fn on_frame_arrived(
-        &mut self,
-        frame: &mut WgcFrame,
-        _capture_control: InternalCaptureControl,
-    ) -> Result<(), Self::Error> {
+    fn on_frame_arrived(&mut self, frame: &mut WgcFrame, _capture_control: InternalCaptureControl) -> Result<(), Self::Error> {
         let w = frame.width();
         let h = frame.height();
 
@@ -219,8 +213,7 @@ fn resolve_target(config: &WindowsCaptureSourceConfig) -> Result<CaptureItem, St
     return match config {
         WindowsCaptureSourceConfig::Display { device_name, .. } => {
             let name = device_name.as_str();
-            let monitors = Monitor::enumerate()
-                .map_err(|e| format!("could not enumerate monitors: {e}"))?;
+            let monitors = Monitor::enumerate().map_err(|e| format!("could not enumerate monitors: {e}"))?;
             let monitor = monitors
                 .into_iter()
                 .find(|m| m.device_name().unwrap_or_default() == name)
@@ -228,10 +221,7 @@ fn resolve_target(config: &WindowsCaptureSourceConfig) -> Result<CaptureItem, St
             Ok(CaptureItem::Monitor(monitor))
         }
         WindowsCaptureSourceConfig::Window {
-            hwnd,
-            process_name,
-            title,
-            ..
+            hwnd, process_name, title, ..
         } => {
             let window = Window::from_raw_hwnd((*hwnd as usize) as *mut c_void);
             if window.is_valid() {
@@ -242,17 +232,14 @@ fn resolve_target(config: &WindowsCaptureSourceConfig) -> Result<CaptureItem, St
                 }
             }
             // hwnd went stale or was reused: re-find by process + title.
-            let windows = Window::enumerate()
-                .map_err(|e| format!("could not enumerate windows: {e}"))?;
+            let windows = Window::enumerate().map_err(|e| format!("could not enumerate windows: {e}"))?;
             let found = windows.into_iter().find(|w| {
                 let w_title = w.title().unwrap_or_default();
                 let w_process = w.process_name().unwrap_or_default();
                 return w_process == process_name.as_str() && w_title == title.as_str();
             });
             let Some(window) = found else {
-                return Err(format!(
-                    "window {process_name} / {title} not found"
-                ));
+                return Err(format!("window {process_name} / {title} not found"));
             };
             return Ok(CaptureItem::Window(window));
         }
@@ -371,22 +358,8 @@ impl WindowsCaptureSource {
         let stats = Arc::new(Mutex::new(SourceStats::new()));
 
         let control = match resolve_target(cfg) {
-            Ok(CaptureItem::Monitor(monitor)) => start_capture(
-                &source_ref,
-                monitor,
-                cfg.settings(),
-                false,
-                slot.clone(),
-                stats.clone(),
-            ),
-            Ok(CaptureItem::Window(window)) => start_capture(
-                &source_ref,
-                window,
-                cfg.settings(),
-                true,
-                slot.clone(),
-                stats.clone(),
-            ),
+            Ok(CaptureItem::Monitor(monitor)) => start_capture(&source_ref, monitor, cfg.settings(), false, slot.clone(), stats.clone()),
+            Ok(CaptureItem::Window(window)) => start_capture(&source_ref, window, cfg.settings(), true, slot.clone(), stats.clone()),
             Err(e) => {
                 tracing::error!(source = %source_ref, "Windows Capture target not found: {e}");
                 None

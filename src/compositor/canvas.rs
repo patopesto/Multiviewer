@@ -28,16 +28,7 @@ impl Compositor {
             h: canvas.height as f32,
         };
         let transform = (1.0, 0.0, 0.0);
-        let draw = self.build(
-            device,
-            queue,
-            canvas,
-            registry,
-            &panel_rect,
-            transform,
-            expanded_source,
-            1.0,
-        );
+        let draw = self.build(device, queue, canvas, registry, &panel_rect, transform, expanded_source, 1.0);
 
         queue.write_buffer(&self.canvas_vb, 0, bytemuck::cast_slice(&draw.verts));
 
@@ -110,9 +101,6 @@ impl Compositor {
     }
 
     pub fn canvas_texture(&self) -> Option<(&wgpu::Texture, u32, u32)> {
-        return self
-            .canvas
-            .as_ref()
-            .map(|target| (&target.texture, target.layout.width, target.layout.height));
+        return self.canvas.as_ref().map(|target| (&target.texture, target.layout.width, target.layout.height));
     }
 }

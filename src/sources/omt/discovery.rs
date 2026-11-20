@@ -41,12 +41,6 @@ impl Discovery {
     }
 
     pub fn find_by_name(&self, name: &str) -> Option<OmtSourceInfo> {
-        return self
-            .sources
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|s| s.instance_name() == name)
-            .cloned();
+        return self.sources.lock().unwrap().iter().find(|s| s.instance_name() == name).cloned();
     }
 }

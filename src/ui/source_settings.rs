@@ -21,16 +21,9 @@ use crate::sources::{MediaFoundationSourceConfig, MediaFoundationMode};
 #[cfg(target_os = "windows")]
 use crate::sources::{DirectShowSourceConfig, DirectShowMode};
 #[cfg(target_os = "windows")]
-use crate::sources::{
-    WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows,
-    WindowsCaptureSourceConfig,
-};
+use crate::sources::{WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows, WindowsCaptureSourceConfig};
 
-pub fn render_source_settings_config(
-    config: &mut SourceConfig,
-    runtime: &SourceRuntimeConfig,
-    ui: &mut egui::Ui,
-) -> bool {
+pub fn render_source_settings_config(config: &mut SourceConfig, runtime: &SourceRuntimeConfig, ui: &mut egui::Ui) -> bool {
     return match config {
         SourceConfig::Test(cfg) => test_settings_ui(cfg, ui),
         SourceConfig::Ndi(cfg) => ndi_settings_ui(cfg, ui),
@@ -95,7 +88,13 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
             });
         }
 
-        if let TestPattern::Grid { cols, rows, bg_color, line_color } = &mut cfg.pattern {
+        if let TestPattern::Grid {
+            cols,
+            rows,
+            bg_color,
+            line_color,
+        } = &mut cfg.pattern
+        {
             settings_row(ui, "Grid", |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Cols");
@@ -109,7 +108,14 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
             color_picker_row(ui, "Background", bg_color);
         }
 
-        if let TestPattern::Radar { width, speed, direction, bg_color, line_color } = &mut cfg.pattern {
+        if let TestPattern::Radar {
+            width,
+            speed,
+            direction,
+            bg_color,
+            line_color,
+        } = &mut cfg.pattern
+        {
             settings_row(ui, "Width", |ui| {
                 ui.add(egui::DragValue::new(width).range(1..=cfg.width));
             });
@@ -228,11 +234,7 @@ fn omt_settings_ui(cfg: &mut OmtSourceConfig, ui: &mut egui::Ui) -> bool {
     return *cfg != old;
 }
 
-fn decklink_settings_ui(
-    cfg: &mut DecklinkSourceConfig,
-    runtime: &SourceRuntimeConfig,
-    ui: &mut egui::Ui,
-) -> bool {
+fn decklink_settings_ui(cfg: &mut DecklinkSourceConfig, runtime: &SourceRuntimeConfig, ui: &mut egui::Ui) -> bool {
     let old = cfg.clone();
     // The connection mask lives in runtime data (discovered on connect), not
     // in the persisted config; absent a live source, offer every connection.
@@ -271,7 +273,12 @@ fn syphon_settings_ui(_cfg: &mut SyphonSourceConfig, _ui: &mut egui::Ui) -> bool
 #[cfg(target_os = "macos")]
 impl ModeChoice for AvFoundationMode {
     fn from_dims(width: u32, height: u32, fps_num: u32, fps_den: u32) -> Self {
-        return Self { width, height, fps_num, fps_den };
+        return Self {
+            width,
+            height,
+            fps_num,
+            fps_den,
+        };
     }
 
     fn dims(self) -> (u32, u32, u32, u32) {
@@ -284,11 +291,7 @@ impl ModeChoice for AvFoundationMode {
 }
 
 #[cfg(target_os = "macos")]
-fn avfoundation_settings_ui(
-    cfg: &mut AvFoundationSourceConfig,
-    runtime: &SourceRuntimeConfig,
-    ui: &mut egui::Ui,
-) -> bool {
+fn avfoundation_settings_ui(cfg: &mut AvFoundationSourceConfig, runtime: &SourceRuntimeConfig, ui: &mut egui::Ui) -> bool {
     // modes are enumerated by the capture thread on open; absent a live source
     // (or before enumeration finishes) only "Auto" is offered.
     let mut modes = match runtime {
@@ -348,7 +351,12 @@ fn spout_settings_ui(_cfg: &mut SpoutSourceConfig, _ui: &mut egui::Ui) -> bool {
 #[cfg(target_os = "windows")]
 impl ModeChoice for MediaFoundationMode {
     fn from_dims(width: u32, height: u32, fps_num: u32, fps_den: u32) -> Self {
-        return Self { width, height, fps_num, fps_den };
+        return Self {
+            width,
+            height,
+            fps_num,
+            fps_den,
+        };
     }
 
     fn dims(self) -> (u32, u32, u32, u32) {
@@ -425,7 +433,12 @@ fn pixel_format_label(format: Option<PixelFormat>) -> &'static str {
 #[cfg(target_os = "windows")]
 impl ModeChoice for DirectShowMode {
     fn from_dims(width: u32, height: u32, fps_num: u32, fps_den: u32) -> Self {
-        return Self { width, height, fps_num, fps_den };
+        return Self {
+            width,
+            height,
+            fps_num,
+            fps_den,
+        };
     }
 
     fn dims(self) -> (u32, u32, u32, u32) {
@@ -451,12 +464,7 @@ fn directshow_settings_ui(cfg: &mut DirectShowSourceConfig, runtime: &SourceRunt
 
     settings_grid(ui, "directshow_settings_grid", |ui| {
         settings_row(ui, "Mode", |ui| {
-            mode_row(
-                ui,
-                "directshow_mode",
-                [&mut cfg.width, &mut cfg.height, &mut cfg.fps_num, &mut cfg.fps_den],
-                &modes,
-            );
+            mode_row(ui, "directshow_mode", [&mut cfg.width, &mut cfg.height, &mut cfg.fps_num, &mut cfg.fps_den], &modes);
         });
 
         settings_row(ui, "Pixel Format", |ui| {
@@ -488,11 +496,7 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
                 .width(ui.available_width())
                 .selected_text(settings.cursor.label())
                 .show_ui(ui, |ui| {
-                    for value in [
-                        WindowsCaptureCursor::Default,
-                        WindowsCaptureCursor::Show,
-                        WindowsCaptureCursor::Hide,
-                    ] {
+                    for value in [WindowsCaptureCursor::Default, WindowsCaptureCursor::Show, WindowsCaptureCursor::Hide] {
                         ui.selectable_value(&mut settings.cursor, value, value.label());
                     }
                 });
@@ -503,11 +507,7 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
                 .width(ui.available_width())
                 .selected_text(settings.border.label())
                 .show_ui(ui, |ui| {
-                    for value in [
-                        WindowsCaptureBorder::Default,
-                        WindowsCaptureBorder::Show,
-                        WindowsCaptureBorder::Hide,
-                    ] {
+                    for value in [WindowsCaptureBorder::Default, WindowsCaptureBorder::Show, WindowsCaptureBorder::Hide] {
                         ui.selectable_value(&mut settings.border, value, value.label());
                     }
                 });
@@ -525,11 +525,7 @@ fn windowscapture_settings_ui(cfg: &mut WindowsCaptureSourceConfig, ui: &mut egu
                             WindowsCaptureSecondaryWindows::Include,
                             WindowsCaptureSecondaryWindows::Exclude,
                         ] {
-                            ui.selectable_value(
-                                &mut settings.secondary_windows,
-                                value,
-                                value.label(),
-                            );
+                            ui.selectable_value(&mut settings.secondary_windows, value, value.label());
                         }
                     });
             });
@@ -547,9 +543,7 @@ fn vnc_settings_ui(cfg: &mut VncSourceConfig, ui: &mut egui::Ui) -> bool {
         committed |= endpoint_rows(ui, "vnc", &mut cfg.host, &mut cfg.port);
 
         settings_row(ui, "Username", |ui| {
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut cfg.username).hint_text("For macOS only").desired_width(ui.available_width()),
-            );
+            let response = ui.add(egui::TextEdit::singleline(&mut cfg.username).hint_text("For macOS only").desired_width(ui.available_width()));
             committed |= commit_field_edit(ui, "vnc_username", response.changed(), response.lost_focus(), false);
         });
 
@@ -570,20 +564,12 @@ fn rdp_settings_ui(cfg: &mut RdpSourceConfig, ui: &mut egui::Ui) -> bool {
         committed |= endpoint_rows(ui, "rdp", &mut cfg.host, &mut cfg.port);
 
         settings_row(ui, "Username", |ui| {
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut cfg.username)
-                    .hint_text("user or user@domain")
-                    .desired_width(ui.available_width()),
-            );
+            let response = ui.add(egui::TextEdit::singleline(&mut cfg.username).hint_text("user or user@domain").desired_width(ui.available_width()));
             committed |= commit_field_edit(ui, "rdp_username", response.changed(), response.lost_focus(), false);
         });
 
         settings_row(ui, "Domain", |ui| {
-            let response = ui.add(
-                egui::TextEdit::singleline(&mut cfg.domain)
-                    .hint_text("optional")
-                    .desired_width(ui.available_width()),
-            );
+            let response = ui.add(egui::TextEdit::singleline(&mut cfg.domain).hint_text("optional").desired_width(ui.available_width()));
             committed |= commit_field_edit(ui, "rdp_domain", response.changed(), response.lost_focus(), false);
         });
 
@@ -614,9 +600,7 @@ fn rdp_settings_ui(cfg: &mut RdpSourceConfig, ui: &mut egui::Ui) -> bool {
                 .selected_text(cfg.color_depth.label())
                 .show_ui(ui, |ui| {
                     for depth in [RdpColorDepth::Bpp16, RdpColorDepth::Bpp32] {
-                        committed |= ui
-                            .selectable_value(&mut cfg.color_depth, depth, depth.label())
-                            .changed();
+                        committed |= ui.selectable_value(&mut cfg.color_depth, depth, depth.label()).changed();
                     }
                 });
         });
@@ -647,10 +631,7 @@ fn mode_row<M: ModeChoice>(ui: &mut egui::Ui, id_salt: &str, fields: [&mut u32; 
     } else {
         None
     };
-    let text = current
-        .as_ref()
-        .map(|mode| mode.text())
-        .unwrap_or_else(|| AUTO_MODE_LABEL.to_string());
+    let text = current.as_ref().map(|mode| mode.text()).unwrap_or_else(|| AUTO_MODE_LABEL.to_string());
 
     egui::ComboBox::from_id_salt(id_salt)
         .width(ui.available_width())
@@ -683,35 +664,15 @@ fn mode_row<M: ModeChoice>(ui: &mut egui::Ui, id_salt: &str, fields: [&mut u32; 
 fn endpoint_rows(ui: &mut egui::Ui, id_prefix: &str, host: &mut String, port: &mut u16) -> bool {
     let mut committed = false;
     settings_row(ui, "Host", |ui| {
-        let response = ui.add(
-            egui::TextEdit::singleline(host)
-                .hint_text("hostname or IP")
-                .desired_width(ui.available_width()),
-        );
-        committed |= commit_field_edit(
-            ui,
-            &format!("{id_prefix}_host"),
-            response.changed(),
-            response.lost_focus(),
-            false,
-        );
+        let response = ui.add(egui::TextEdit::singleline(host).hint_text("hostname or IP").desired_width(ui.available_width()));
+        committed |= commit_field_edit(ui, &format!("{id_prefix}_host"), response.changed(), response.lost_focus(), false);
     });
 
     settings_row(ui, "Port", |ui| {
         // The value only lands in the config when the edit finishes, so a
         // half-typed port is never dialled.
-        let response = ui.add(
-            egui::DragValue::new(port)
-                .range(1..=65535)
-                .update_while_editing(false),
-        );
-        committed |= commit_field_edit(
-            ui,
-            &format!("{id_prefix}_port"),
-            response.changed(),
-            response.lost_focus(),
-            response.drag_stopped(),
-        );
+        let response = ui.add(egui::DragValue::new(port).range(1..=65535).update_while_editing(false));
+        committed |= commit_field_edit(ui, &format!("{id_prefix}_port"), response.changed(), response.lost_focus(), response.drag_stopped());
     });
 
     return committed;
@@ -719,17 +680,9 @@ fn endpoint_rows(ui: &mut egui::Ui, id_prefix: &str, host: &mut String, port: &m
 
 fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
     settings_row(ui, label, |ui| {
-        let mut color_f32 = [
-            color[0] as f32 / 255.0,
-            color[1] as f32 / 255.0,
-            color[2] as f32 / 255.0,
-        ];
+        let mut color_f32 = [color[0] as f32 / 255.0, color[1] as f32 / 255.0, color[2] as f32 / 255.0];
         if ui.color_edit_button_rgb(&mut color_f32).changed() {
-            *color = [
-                (color_f32[0] * 255.0) as u8,
-                (color_f32[1] * 255.0) as u8,
-                (color_f32[2] * 255.0) as u8,
-            ];
+            *color = [(color_f32[0] * 255.0) as u8, (color_f32[1] * 255.0) as u8, (color_f32[2] * 255.0) as u8];
         }
     });
 }
@@ -763,13 +716,7 @@ fn edit_committed(dirty: bool, lost_focus: bool, drag_stopped: bool) -> bool {
 }
 
 /// Applies an edit to a field only when it is committed: Enter, clicking away or the end of a drag
-fn commit_field_edit(
-    ui: &mut egui::Ui,
-    id: &str,
-    changed: bool,
-    lost_focus: bool,
-    drag_stopped: bool,
-) -> bool {
+fn commit_field_edit(ui: &mut egui::Ui, id: &str, changed: bool, lost_focus: bool, drag_stopped: bool) -> bool {
     let state_id = ui.make_persistent_id(id);
     let mut dirty = ui.data_mut(|data| *data.get_temp_mut_or_default::<bool>(state_id));
     if changed {
@@ -790,11 +737,7 @@ fn password_row(ui: &mut egui::Ui, id: &str, password: &mut String) -> bool {
     let revealed_id = ui.make_persistent_id((id, "revealed"));
     let revealed = ui.data_mut(|data| *data.get_temp_mut_or_default::<bool>(revealed_id));
     let width = (ui.available_width() - 30.0).max(60.0);
-    let response = ui.add(
-        egui::TextEdit::singleline(password)
-            .password(!revealed)
-            .desired_width(width),
-    );
+    let response = ui.add(egui::TextEdit::singleline(password).password(!revealed).desired_width(width));
     let committed = commit_field_edit(ui, id, response.changed(), response.lost_focus(), false);
     let icon = if revealed { "\u{1f648}" } else { "\u{1f441}" };
     let hint = if revealed { "Hide password" } else { "Show password" };
@@ -803,7 +746,6 @@ fn password_row(ui: &mut egui::Ui, id: &str, password: &mut String) -> bool {
     }
     return committed;
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -21,9 +21,7 @@ use super::protocol::{self, Frame, InputEvent};
 use super::server::Status;
 use crate::config::Config;
 use crate::control::Command;
-use crate::engine::{
-    ControlError, Engine, EngineSnapshot, EngineState, ProjectError, SnapshotSlot, publish_state,
-};
+use crate::engine::{ControlError, Engine, EngineSnapshot, EngineState, ProjectError, SnapshotSlot, publish_state};
 use crate::sources::SourceKey;
 use crate::APP_NAME;
 
@@ -53,11 +51,7 @@ struct ApiState {
 const HTTP_ROUTE_COUNT: usize = 10;
 
 pub fn router(handles: ApiHandles, status: Arc<Mutex<Status>>, bind: String) -> Router {
-    let state = ApiState {
-        handles,
-        status,
-        bind,
-    };
+    let state = ApiState { handles, status, bind };
     return Router::new()
         // @http method="GET" path="/" group="Web UI" desc="Web UI. Add `?view=1` for read-only."
         .route("/", get(index))
@@ -80,30 +74,20 @@ pub fn router(handles: ApiHandles, status: Arc<Mutex<Status>>, bind: String) -> 
         // @http method="GET" path="/ws" group="Web UI" desc="Browser socket."
         .route("/ws", get(ws))
         .layer(DefaultBodyLimit::max(MAX_PROJECT_BYTES))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            check_origin,
-        ))
+        .layer(middleware::from_fn_with_state(state.clone(), check_origin))
         .with_state(state);
 }
 
 /// Reject browser requests that do not come from this listener. This is not
 /// authentication: requests without an Origin (curl, native clients) still
 /// work, and the web UI is same-origin.
-async fn check_origin(
-    State(state): State<ApiState>,
-    request: Request,
-    next: Next,
-) -> Response {
+async fn check_origin(State(state): State<ApiState>, request: Request, next: Next) -> Response {
     let path = request.uri().path();
     if path != "/ws" && !path.starts_with("/api/") {
         return next.run(request).await;
     }
     let headers = request.headers();
-    let host = headers
-        .get(HOST)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or("");
+    let host = headers.get(HOST).and_then(|value| value.to_str().ok()).unwrap_or("");
     let forwarded = headers
         .get("x-forwarded-host")
         .and_then(|value| value.to_str().ok())
@@ -111,9 +95,7 @@ async fn check_origin(
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let effective_host = forwarded.unwrap_or(host);
-    if !host_allowed(host, &state.bind)
-        && !forwarded.is_some_and(|forwarded| forwarded.eq_ignore_ascii_case(host))
-    {
+    if !host_allowed(host, &state.bind) && !forwarded.is_some_and(|forwarded| forwarded.eq_ignore_ascii_case(host)) {
         return StatusCode::FORBIDDEN.into_response();
     }
     if let Some(origin) = headers.get(ORIGIN) {
@@ -142,12 +124,8 @@ fn same_authority(origin: &str, host: &str) -> bool {
         "https" => ":443",
         _ => return false,
     };
-    return authority
-        .strip_suffix(default_port)
-        .is_some_and(|stripped| stripped.eq_ignore_ascii_case(host))
-        || host
-            .strip_suffix(default_port)
-            .is_some_and(|stripped| stripped.eq_ignore_ascii_case(authority));
+    return authority.strip_suffix(default_port).is_some_and(|stripped| stripped.eq_ignore_ascii_case(host))
+        || host.strip_suffix(default_port).is_some_and(|stripped| stripped.eq_ignore_ascii_case(authority));
 }
 
 /// A browser request must target this machine: loopback, an IP literal, or the
@@ -178,9 +156,7 @@ fn authority_host(authority: &str) -> Option<&str> {
         return rest.find(']').map(|end| &rest[..end]);
     }
     return match authority.rsplit_once(':') {
-        Some((host, port)) if port.chars().all(|character| character.is_ascii_digit()) => {
-            Some(host)
-        }
+        Some((host, port)) if port.chars().all(|character| character.is_ascii_digit()) => Some(host),
         _ => Some(authority),
     };
 }
@@ -190,17 +166,8 @@ async fn index() -> Html<&'static str> {
 }
 
 async fn favicon() -> impl IntoResponse {
-    let icon: &'static [u8] = include_bytes!(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/assets/appicon/linux/128x128.png"
-    ));
-    return (
-        [
-            (CONTENT_TYPE, "image/png"),
-            (CACHE_CONTROL, "public, max-age=604800"),
-        ],
-        icon,
-    );
+    let icon: &'static [u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/appicon/linux/128x128.png"));
+    return ([(CONTENT_TYPE, "image/png"), (CACHE_CONTROL, "public, max-age=604800")], icon);
 }
 
 async fn state_handler(State(state): State<ApiState>) -> Result<Json<EngineState>, ApiError> {
@@ -279,11 +246,10 @@ async fn status_handler(State(state): State<ApiState>) -> Result<Json<StatusResp
         .sources
         .iter()
         .map(|source| {
-            let runtime = source.source_ref.as_ref().and_then(|source_ref| {
-                snapshot
-                    .runtime
-                    .source(&SourceKey::new(source.protocol.clone(), source_ref.clone()))
-            });
+            let runtime = source
+                .source_ref
+                .as_ref()
+                .and_then(|source_ref| snapshot.runtime.source(&SourceKey::new(source.protocol.clone(), source_ref.clone())));
             return SourceStatus {
                 id: source.uuid.clone(),
                 name: source.name.clone(),
@@ -307,11 +273,7 @@ async fn status_handler(State(state): State<ApiState>) -> Result<Json<StatusResp
         .outputs
         .iter()
         .map(|output| {
-            let runtime = snapshot
-                .runtime
-                .outputs
-                .iter()
-                .find(|view| view.id == output.uuid);
+            let runtime = snapshot.runtime.outputs.iter().find(|view| view.id == output.uuid);
             return OutputStatus {
                 id: output.uuid.clone(),
                 name: output.name.clone(),
@@ -332,11 +294,7 @@ async fn status_handler(State(state): State<ApiState>) -> Result<Json<StatusResp
         app: APP_NAME,
         version: env!("CARGO_PKG_VERSION"),
         revision: snapshot.state.revision,
-        project_path: snapshot
-            .state
-            .project_path
-            .as_ref()
-            .map(|path| path.display().to_string()),
+        project_path: snapshot.state.project_path.as_ref().map(|path| path.display().to_string()),
         dirty: snapshot.state.dirty,
         canvas: CanvasStatus {
             width: canvas.width,
@@ -365,8 +323,7 @@ struct ProjectQuery {
 
 async fn get_project(State(state): State<ApiState>) -> Result<Response, ApiError> {
     let snapshot = snapshot(&state)?;
-    let body = serde_json::to_vec_pretty(&snapshot.state.cfg)
-        .map_err(|error| ApiError::internal(error.to_string()))?;
+    let body = serde_json::to_vec_pretty(&snapshot.state.cfg).map_err(|error| ApiError::internal(error.to_string()))?;
     let name = snapshot
         .state
         .project_path
@@ -377,25 +334,16 @@ async fn get_project(State(state): State<ApiState>) -> Result<Response, ApiError
     let name = sanitize_filename(&name);
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
-    headers.insert(
-        CONTENT_DISPOSITION,
-        format!("attachment; filename=\"{name}\"").parse().unwrap(),
-    );
+    headers.insert(CONTENT_DISPOSITION, format!("attachment; filename=\"{name}\"").parse().unwrap());
     return Ok((headers, body).into_response());
 }
 
-async fn put_project(
-    State(state): State<ApiState>,
-    Query(query): Query<ProjectQuery>,
-    body: Bytes,
-) -> Result<Json<Value>, ApiError> {
+async fn put_project(State(state): State<ApiState>, Query(query): Query<ProjectQuery>, body: Bytes) -> Result<Json<Value>, ApiError> {
     let cfg: Config = serde_json::from_slice(&body).map_err(ApiError::bad_request)?;
     let path = query.path.clone();
     let preserve_control = !query.control.unwrap_or(false);
     let (revision, warnings) = with_engine(&state, move |engine| {
-        engine
-            .replace_project(cfg, None, preserve_control)
-            .map_err(ApiError::project)?;
+        engine.replace_project(cfg, None, preserve_control).map_err(ApiError::project)?;
         if let Some(path) = path {
             engine.save_project_as(path).map_err(ApiError::project)?;
         }
@@ -409,10 +357,7 @@ async fn put_project(
 }
 
 async fn save_project(State(state): State<ApiState>) -> Result<Json<Value>, ApiError> {
-    let has_path = snapshot(&state)?
-        .state
-        .project_path
-        .is_some();
+    let has_path = snapshot(&state)?.state.project_path.is_some();
     if !has_path {
         return Err(ApiError::conflict("no project path; use PUT /api/v1/project?path=..."));
     }
@@ -431,15 +376,10 @@ struct OpenRequest {
     control: bool,
 }
 
-async fn open_project(
-    State(state): State<ApiState>,
-    Json(request): Json<OpenRequest>,
-) -> Result<Json<Value>, ApiError> {
+async fn open_project(State(state): State<ApiState>, Json(request): Json<OpenRequest>) -> Result<Json<Value>, ApiError> {
     let revision = with_engine(&state, move |engine| {
         let cfg = Config::load_from(&request.path).map_err(ApiError::bad_request)?;
-        engine
-            .replace_project(cfg, Some(request.path), !request.control)
-            .map_err(ApiError::project)?;
+        engine.replace_project(cfg, Some(request.path), !request.control).map_err(ApiError::project)?;
         return Ok(engine.state.revision);
     })
     .await?;
@@ -451,10 +391,7 @@ struct NewQuery {
     control: Option<bool>,
 }
 
-async fn new_project(
-    State(state): State<ApiState>,
-    Query(query): Query<NewQuery>,
-) -> Result<Json<Value>, ApiError> {
+async fn new_project(State(state): State<ApiState>, Query(query): Query<NewQuery>) -> Result<Json<Value>, ApiError> {
     let preserve_control = !query.control.unwrap_or(false);
     let revision = with_engine(&state, move |engine| {
         engine.new_in_place(preserve_control).map_err(ApiError::project)?;
@@ -464,10 +401,7 @@ async fn new_project(
     return Ok(Json(json!({"revision": revision})));
 }
 
-async fn run_command(
-    State(state): State<ApiState>,
-    Json(command): Json<Command>,
-) -> Result<Json<Value>, ApiError> {
+async fn run_command(State(state): State<ApiState>, Json(command): Json<Command>) -> Result<Json<Value>, ApiError> {
     let revision = with_engine(&state, move |engine| {
         engine.apply_command(command).map_err(ApiError::control)?;
         return Ok(engine.state.revision);
@@ -481,11 +415,7 @@ struct WsQuery {
     view: Option<String>,
 }
 
-async fn ws(
-    ws: WebSocketUpgrade,
-    State(state): State<ApiState>,
-    Query(query): Query<WsQuery>,
-) -> impl IntoResponse {
+async fn ws(ws: WebSocketUpgrade, State(state): State<ApiState>, Query(query): Query<WsQuery>) -> impl IntoResponse {
     let read_only = query.view.as_deref() == Some("1");
     return ws.on_upgrade(move |socket| serve_ws(socket, state, read_only));
 }
@@ -539,13 +469,7 @@ async fn serve_ws(mut socket: WebSocket, state: ApiState, read_only: bool) {
 }
 
 fn snapshot(state: &ApiState) -> Result<Arc<EngineSnapshot>, ApiError> {
-    return state
-        .handles
-        .snapshots
-        .lock()
-        .unwrap()
-        .clone()
-        .ok_or_else(|| ApiError::unavailable("engine is not ready"));
+    return state.handles.snapshots.lock().unwrap().clone().ok_or_else(|| ApiError::unavailable("engine is not ready"));
 }
 
 async fn with_engine<T, F>(state: &ApiState, work: F) -> Result<T, ApiError>
@@ -604,15 +528,9 @@ impl ApiError {
 
     fn control(error: ControlError) -> Self {
         return match error {
-            ControlError::UnknownSource => {
-                Self::new(StatusCode::NOT_FOUND, "unknown source")
-            }
-            ControlError::UnknownOutput => {
-                Self::new(StatusCode::NOT_FOUND, "unknown output")
-            }
-            ControlError::InvalidArgument => {
-                Self::new(StatusCode::BAD_REQUEST, "invalid argument")
-            }
+            ControlError::UnknownSource => Self::new(StatusCode::NOT_FOUND, "unknown source"),
+            ControlError::UnknownOutput => Self::new(StatusCode::NOT_FOUND, "unknown output"),
+            ControlError::InvalidArgument => Self::new(StatusCode::BAD_REQUEST, "invalid argument"),
             ControlError::Project(error) => Self::project(error),
         };
     }
@@ -676,11 +594,7 @@ mod tests {
 
     fn request_bytes(addr: std::net::SocketAddr, path: &str) -> Vec<u8> {
         let mut stream = TcpStream::connect(addr).unwrap();
-        write!(
-            stream,
-            "GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
-        )
-        .unwrap();
+        write!(stream, "GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n").unwrap();
         let mut response = Vec::new();
         stream.read_to_end(&mut response).unwrap();
         return response;
@@ -695,12 +609,8 @@ mod tests {
         forwarded: Option<&str>,
     ) -> String {
         let mut stream = TcpStream::connect(addr).unwrap();
-        let origin = origin
-            .map(|origin| format!("Origin: {origin}\r\n"))
-            .unwrap_or_default();
-        let forwarded = forwarded
-            .map(|forwarded| format!("X-Forwarded-Host: {forwarded}\r\n"))
-            .unwrap_or_default();
+        let origin = origin.map(|origin| format!("Origin: {origin}\r\n")).unwrap_or_default();
+        let forwarded = forwarded.map(|forwarded| format!("X-Forwarded-Host: {forwarded}\r\n")).unwrap_or_default();
         write!(
             stream,
             "{method} {path} HTTP/1.1\r\nHost: {host}\r\n{origin}{forwarded}Content-Length: 0\r\nConnection: close\r\n\r\n"
@@ -733,25 +643,15 @@ mod tests {
 
     #[test]
     fn documented_routes_parse() {
-        let source = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/src/control/http/api.rs"
-        ))
-        .expect("read the HTTP source");
-        let routes: Vec<&str> = source
-            .lines()
-            .filter_map(|line| line.trim().strip_prefix("// @http "))
-            .collect();
+        let source = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/control/http/api.rs")).expect("read the HTTP source");
+        let routes: Vec<&str> = source.lines().filter_map(|line| line.trim().strip_prefix("// @http ")).collect();
         assert_eq!(routes.len(), HTTP_ROUTE_COUNT);
         let mut keys = std::collections::HashSet::new();
         for route in routes {
             let method = directive_value(route, "method").expect("method");
             let path = directive_value(route, "path").expect("path");
             assert!(!directive_value(route, "desc").unwrap_or("").is_empty());
-            assert!(
-                keys.insert(format!("{method} {path}")),
-                "duplicate route: {method} {path}"
-            );
+            assert!(keys.insert(format!("{method} {path}")), "duplicate route: {method} {path}");
         }
     }
 
@@ -770,65 +670,33 @@ mod tests {
         let host = addr.to_string();
         let same_origin = format!("http://{host}");
         assert_eq!(
-            request_with_headers(addr, "GET", "/api/v1/state", &host, Some(&same_origin), None)
-                .split(' ')
-                .nth(1),
+            request_with_headers(addr, "GET", "/api/v1/state", &host, Some(&same_origin), None).split(' ').nth(1),
             Some("200")
         );
         assert_eq!(
-            request_with_headers(
-                addr,
-                "GET",
-                "/api/v1/state",
-                &host,
-                Some("http://evil.example"),
-                None
-            )
-            .split(' ')
-            .nth(1),
+            request_with_headers(addr, "GET", "/api/v1/state", &host, Some("http://evil.example"), None).split(' ').nth(1),
             Some("403")
         );
         assert_eq!(
-            request_with_headers(addr, "GET", "/api/v1/state", "evil.example", None, None)
-                .split(' ')
-                .nth(1),
+            request_with_headers(addr, "GET", "/api/v1/state", "evil.example", None, None).split(' ').nth(1),
             Some("403")
         );
-        assert_eq!(
-            request_with_headers(addr, "GET", "/api/v1/state", &host, None, None)
-                .split(' ')
-                .nth(1),
-            Some("200")
-        );
+        assert_eq!(request_with_headers(addr, "GET", "/api/v1/state", &host, None, None).split(' ').nth(1), Some("200"));
         // A reverse proxy may keep the upstream Host and forward the public
         // host; the Origin is compared to the forwarded host.
         let public = "multiviewer.lan:8090";
         assert_eq!(
-            request_with_headers(
-                addr,
-                "GET",
-                "/api/v1/state",
-                &host,
-                Some("http://multiviewer.lan:8090"),
-                Some(public),
-            )
-            .split(' ')
-            .nth(1),
+            request_with_headers(addr, "GET", "/api/v1/state", &host, Some("http://multiviewer.lan:8090"), Some(public),)
+                .split(' ')
+                .nth(1),
             Some("200")
         );
         // A proxy that forwards the default TLS port still matches the
         // browser's Origin, which omits it.
         assert_eq!(
-            request_with_headers(
-                addr,
-                "GET",
-                "/api/v1/state",
-                &host,
-                Some("https://multiviewer.lan"),
-                Some("multiviewer.lan:443"),
-            )
-            .split(' ')
-            .nth(1),
+            request_with_headers(addr, "GET", "/api/v1/state", &host, Some("https://multiviewer.lan"), Some("multiviewer.lan:443"),)
+                .split(' ')
+                .nth(1),
             Some("200")
         );
     }
@@ -838,11 +706,7 @@ mod tests {
         let (server, _) = start();
         let response = request_bytes(addr(&server), "/favicon.png");
         assert!(response.starts_with(b"HTTP/1.1 200"), "{response:?}");
-        let body = response
-            .windows(4)
-            .position(|window| window == b"\r\n\r\n")
-            .map(|index| index + 4)
-            .expect("response headers");
+        let body = response.windows(4).position(|window| window == b"\r\n\r\n").map(|index| index + 4).expect("response headers");
         let headers = String::from_utf8_lossy(&response[..body]).to_ascii_lowercase();
         assert!(headers.contains("content-type: image/png"), "{headers}");
         assert_eq!(&response[body..body + 8], b"\x89PNG\r\n\x1a\n");
@@ -857,12 +721,7 @@ mod tests {
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
         assert!(response.contains("\"canvas\""), "{response}");
 
-        let response = request(
-            addr,
-            "POST",
-            "/api/v1/commands",
-            r#"{"type":"add_source"}"#,
-        );
+        let response = request(addr, "POST", "/api/v1/commands", r#"{"type":"add_source"}"#);
         assert!(response.starts_with("HTTP/1.1 200"), "{response}");
         assert!(response.contains("\"revision\":1"), "{response}");
         assert_eq!(engine.lock().unwrap().state.cfg.canvas.sources.len(), 1);

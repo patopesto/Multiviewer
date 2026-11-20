@@ -156,10 +156,7 @@ impl GpuTimers {
 
     /// A slot whose previous readback has landed.
     pub fn free_slot(&self) -> Option<usize> {
-        return self
-            .slots
-            .iter()
-            .position(|slot| matches!(slot.state, SlotState::Idle));
+        return self.slots.iter().position(|slot| matches!(slot.state, SlotState::Idle));
     }
 
     pub fn writes(&self, slot: usize) -> wgpu::RenderPassTimestampWrites<'_> {
@@ -176,13 +173,7 @@ impl GpuTimers {
     pub fn encode_readback(&self, encoder: &mut wgpu::CommandEncoder, slot: usize) {
         let (range, offset) = slot_range(slot);
         encoder.resolve_query_set(&self.set, range, &self.resolve, offset);
-        encoder.copy_buffer_to_buffer(
-            &self.resolve,
-            offset,
-            &self.slots[slot].buffer,
-            0,
-            QUERIES_PER_SLOT as u64 * 8,
-        );
+        encoder.copy_buffer_to_buffer(&self.resolve, offset, &self.slots[slot].buffer, 0, QUERIES_PER_SLOT as u64 * 8);
     }
 
     /// Start the map for `slot`; call after the submission that copies into it.
@@ -192,12 +183,9 @@ impl GpuTimers {
             return;
         }
         let (tx, rx) = mpsc::channel();
-        self.slots[slot]
-            .buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                let _ = tx.send(result);
-            });
+        self.slots[slot].buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
         self.slots[slot].state = SlotState::Pending(rx, Instant::now());
     }
 

@@ -11,24 +11,17 @@ use core_foundation::dictionary::CFDictionary;
 use core_foundation::number::CFNumber;
 use core_graphics2::display::CGDisplay;
 use core_graphics2::geometry::CGRect;
-use core_graphics2::window::{
-    copy_window_info, preflight_screen_capture_access, CGWindowListOption, kCGWindowNumber,
-};
+use core_graphics2::window::{copy_window_info, preflight_screen_capture_access, CGWindowListOption, kCGWindowNumber};
 use core_media::sample_buffer::{CMSampleBuffer, CMSampleBufferRef};
 use core_media::time::CMTime;
-use core_video::pixel_buffer::{
-    kCVPixelBufferLock_ReadOnly, kCVPixelFormatType_32BGRA, CVPixelBuffer,
-};
+use core_video::pixel_buffer::{kCVPixelBufferLock_ReadOnly, kCVPixelFormatType_32BGRA, CVPixelBuffer};
 use dispatch2::{DispatchQueue, DispatchQueueAttr};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{define_class, msg_send, AnyThread, DefinedClass};
 use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol};
 use screen_capture_kit::shareable_content::SCShareableContent;
-use screen_capture_kit::stream::{
-    SCContentFilter, SCStream, SCStreamConfiguration, SCStreamDelegate, SCStreamOutput,
-    SCStreamOutputType,
-};
+use screen_capture_kit::stream::{SCContentFilter, SCStream, SCStreamConfiguration, SCStreamDelegate, SCStreamOutput, SCStreamOutputType};
 
 use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
 use super::discovery::fetch_content;
@@ -125,12 +118,7 @@ define_class!(
 
 impl StreamDelegate {
     fn new(slot: Arc<Mutex<Option<Frame>>>, stats: Arc<Mutex<SourceStats>>) -> Retained<Self> {
-        let this = Self::alloc().set_ivars((
-            RefCell::new(slot),
-            RefCell::new(stats),
-            Cell::new(0),
-            RefCell::new(FramePool::new()),
-        ));
+        let this = Self::alloc().set_ivars((RefCell::new(slot), RefCell::new(stats), Cell::new(0), RefCell::new(FramePool::new())));
         let this: Option<Retained<Self>> = unsafe { msg_send![super(this), init] };
         this.expect("ScreenCaptureKit stream delegate init failed")
     }
@@ -263,10 +251,7 @@ fn run_capture(
     stats: Arc<Mutex<SourceStats>>,
     running: Arc<AtomicBool>,
 ) {
-    let queue = DispatchQueue::new(
-        "net.bambinito.multiviewer.screencapturekit",
-        DispatchQueueAttr::SERIAL,
-    );
+    let queue = DispatchQueue::new("net.bambinito.multiviewer.screencapturekit", DispatchQueueAttr::SERIAL);
     let mut active: Option<ActiveStream> = None;
     // The poll repeats every second, so each distinct error logs once.
     let mut last_error: Option<String> = None;
@@ -289,17 +274,7 @@ fn run_capture(
                     if let Some(a) = active.take() {
                         stop_stream(&a.stream, &source_ref);
                     }
-                    match start_stream(
-                        &source_ref,
-                        key,
-                        filter,
-                        out_w,
-                        out_h,
-                        &slot,
-                        &stats,
-                        &queue,
-                        config.settings(),
-                    ) {
+                    match start_stream(&source_ref, key, filter, out_w, out_h, &slot, &stats, &queue, config.settings()) {
                         Ok(stream) => active = Some(stream),
                         Err(e) => {
                             note_error(&mut last_error, e, &source_ref);
@@ -330,8 +305,10 @@ fn run_capture(
 impl Drop for ScreenCaptureKitSource {
     fn drop(&mut self) {
         self.running.store(false, Ordering::Relaxed);
-        if let Some(t) = self.thread.take() && let Err(e) = t.join() {
-            tracing::error!(source=self.source_ref, "Thread join failed: {:?}", e);
+        if let Some(t) = self.thread.take()
+            && let Err(e) = t.join()
+        {
+            tracing::error!(source = self.source_ref, "Thread join failed: {:?}", e);
         }
     }
 }
@@ -357,23 +334,16 @@ fn resolve_target(
 ) -> Result<(StreamKey, Retained<SCContentFilter>, usize, usize), String> {
     let (key, filter, out_w, out_h) = match config {
         ScreenCaptureKitSourceConfig::Window {
-            window_id,
-            bundle_id,
-            title,
-            ..
+            window_id, bundle_id, title, ..
         } => {
             let windows = content.windows();
-            let window = windows
-                .iter()
-                .find(|w| w.window_id() == *window_id)
-                .or_else(|| {
-                    // Window id went stale (app relaunched): re-find by app + title.
-                    windows.iter().find(|w| {
-                        w.owning_application()
-                            .is_some_and(|a| a.bundle_identifier().to_string() == *bundle_id)
-                            && w.title().is_some_and(|t| t.to_string() == *title)
-                    })
-                });
+            let window = windows.iter().find(|w| w.window_id() == *window_id).or_else(|| {
+                // Window id went stale (app relaunched): re-find by app + title.
+                windows.iter().find(|w| {
+                    w.owning_application().is_some_and(|a| a.bundle_identifier().to_string() == *bundle_id)
+                        && w.title().is_some_and(|t| t.to_string() == *title)
+                })
+            });
             let Some(window) = window else {
                 return Err(format!("window {window_id} not found"));
             };
@@ -382,10 +352,7 @@ fn resolve_target(
                 return Err(format!("window {window_id} is not on a visible desktop"));
             }
             let (w, h) = window_output_size(content, &window.frame());
-            let filter = SCContentFilter::init_with_desktop_independent_window(
-                SCContentFilter::alloc(),
-                &window,
-            );
+            let filter = SCContentFilter::init_with_desktop_independent_window(SCContentFilter::alloc(), &window);
             let key = StreamKey::Window {
                 window_id: window.window_id(),
                 w,
@@ -395,17 +362,10 @@ fn resolve_target(
         }
         ScreenCaptureKitSourceConfig::Display { display_id, .. } => {
             let displays = content.displays();
-            let Some(display) = displays
-                .iter()
-                .find(|d| d.display_id().to_string() == *display_id)
-            else {
+            let Some(display) = displays.iter().find(|d| d.display_id().to_string() == *display_id) else {
                 return Err(format!("display {display_id} not found"));
             };
-            let filter = SCContentFilter::init_with_display_exclude_windows(
-                SCContentFilter::alloc(),
-                &display,
-                &NSArray::new(),
-            );
+            let filter = SCContentFilter::init_with_display_exclude_windows(SCContentFilter::alloc(), &display, &NSArray::new());
             let (w, h) = (display.width() as usize, display.height() as usize);
             let key = StreamKey::Display {
                 display_id: display_id.clone(),
@@ -459,8 +419,7 @@ fn window_on_screen(window_id: u32) -> bool {
     // Untyped CFDictionary: only form with the downcast bound; key matched by CFEqual.
     let key: *const c_void = unsafe { kCGWindowNumber as *const c_void };
     for item in list.iter() {
-        let Some(dict) = unsafe { CFType::wrap_under_get_rule(*item) }.downcast::<CFDictionary>()
-        else {
+        let Some(dict) = unsafe { CFType::wrap_under_get_rule(*item) }.downcast::<CFDictionary>() else {
             continue;
         };
         let Some(value) = dict.find(key) else {
@@ -510,30 +469,17 @@ fn start_stream(
 
     let delegate = StreamDelegate::new(slot.clone(), stats.clone());
     let output: &ProtocolObject<dyn SCStreamOutput> = ProtocolObject::from_ref(&*delegate);
-    let stream_delegate: &ProtocolObject<dyn SCStreamDelegate> =
-        ProtocolObject::from_ref(&*delegate);
-    let stream = SCStream::init_with_filter(
-        SCStream::alloc(),
-        &filter,
-        &configuration,
-        stream_delegate,
-    );
+    let stream_delegate: &ProtocolObject<dyn SCStreamDelegate> = ProtocolObject::from_ref(&*delegate);
+    let stream = SCStream::init_with_filter(SCStream::alloc(), &filter, &configuration, stream_delegate);
 
     if let Err(e) = stream.add_stream_output(output, SCStreamOutputType::Screen, queue) {
-        return Err(format!(
-            "could not add stream output: {}",
-            e.localizedDescription()
-        ));
+        return Err(format!("could not add stream output: {}", e.localizedDescription()));
     }
 
     let start_ref = source_ref.to_string();
     stream.start_capture(move |error| {
         if let Some(error) = error {
-            tracing::error!(
-                source = start_ref,
-                "ScreenCaptureKit start capture failed: {}",
-                error.localizedDescription()
-            );
+            tracing::error!(source = start_ref, "ScreenCaptureKit start capture failed: {}", error.localizedDescription());
         }
     });
 
@@ -550,11 +496,9 @@ fn stop_stream(stream: &SCStream, source_ref: &str) {
         let _ = stop_tx.send(error);
     });
     match stop_rx.recv_timeout(Duration::from_secs(5)) {
-        Ok(Some(error)) => tracing::error!(
-            source = source_ref,
-            "ScreenCaptureKit stop capture failed: {}",
-            error.localizedDescription()
-        ),
+        Ok(Some(error)) => {
+            tracing::error!(source = source_ref, "ScreenCaptureKit stop capture failed: {}", error.localizedDescription())
+        }
         Ok(None) => {}
         Err(_) => {
             tracing::warn!(source = source_ref, "ScreenCaptureKit stop capture timed out");
@@ -590,19 +534,55 @@ mod tests {
 
     #[test]
     fn stream_key_detects_target_change() {
-        let a = StreamKey::Window { window_id: 1, w: 800, h: 600 };
+        let a = StreamKey::Window {
+            window_id: 1,
+            w: 800,
+            h: 600,
+        };
         // Same window and size: no restart.
-        assert_eq!(a, StreamKey::Window { window_id: 1, w: 800, h: 600 });
+        assert_eq!(
+            a,
+            StreamKey::Window {
+                window_id: 1,
+                w: 800,
+                h: 600
+            }
+        );
         // Resized: restart.
-        assert_ne!(a, StreamKey::Window { window_id: 1, w: 1024, h: 768 });
+        assert_ne!(
+            a,
+            StreamKey::Window {
+                window_id: 1,
+                w: 1024,
+                h: 768
+            }
+        );
         // Moved to another display with a different scale: restart.
-        assert_ne!(a, StreamKey::Window { window_id: 1, w: 1600, h: 1200 });
+        assert_ne!(
+            a,
+            StreamKey::Window {
+                window_id: 1,
+                w: 1600,
+                h: 1200
+            }
+        );
         // A different window: restart.
-        assert_ne!(a, StreamKey::Window { window_id: 2, w: 800, h: 600 });
+        assert_ne!(
+            a,
+            StreamKey::Window {
+                window_id: 2,
+                w: 800,
+                h: 600
+            }
+        );
         // Display vs window: restart.
         assert_ne!(
             a,
-            StreamKey::Display { display_id: "1".into(), w: 800, h: 600 }
+            StreamKey::Display {
+                display_id: "1".into(),
+                w: 800,
+                h: 600
+            }
         );
     }
 

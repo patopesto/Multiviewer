@@ -166,13 +166,25 @@ impl PixelFormat {
         return match self {
             PixelFormat::Rgba8 | PixelFormat::Bgra8 => ConvMode::Passthrough,
             PixelFormat::Uyvy422 => {
-                if color.is_bt709() { ConvMode::UyvyBt709 } else { ConvMode::UyvyBt601 }
+                if color.is_bt709() {
+                    ConvMode::UyvyBt709
+                } else {
+                    ConvMode::UyvyBt601
+                }
             }
             PixelFormat::Yuy2 => {
-                if color.is_bt709() { ConvMode::Yuy2Bt709 } else { ConvMode::Yuy2Bt601 }
+                if color.is_bt709() {
+                    ConvMode::Yuy2Bt709
+                } else {
+                    ConvMode::Yuy2Bt601
+                }
             }
             PixelFormat::Nv12 => {
-                if color.is_bt709() { ConvMode::Nv12Bt709 } else { ConvMode::Nv12Bt601 }
+                if color.is_bt709() {
+                    ConvMode::Nv12Bt709
+                } else {
+                    ConvMode::Nv12Bt601
+                }
             }
         };
     }
@@ -183,12 +195,8 @@ impl PixelFormat {
         let (texture_format, tex_w, tex_h) = match self {
             PixelFormat::Rgba8 => (wgpu::TextureFormat::Rgba8Unorm, width, height),
             PixelFormat::Bgra8 => (wgpu::TextureFormat::Bgra8Unorm, width, height),
-            PixelFormat::Uyvy422 | PixelFormat::Yuy2 => {
-                (wgpu::TextureFormat::Rgba8Unorm, width / 2, height)
-            }
-            PixelFormat::Nv12 => {
-                (wgpu::TextureFormat::R8Unorm, width, height + height / 2)
-            }
+            PixelFormat::Uyvy422 | PixelFormat::Yuy2 => (wgpu::TextureFormat::Rgba8Unorm, width / 2, height),
+            PixelFormat::Nv12 => (wgpu::TextureFormat::R8Unorm, width, height + height / 2),
         };
         return TextureLayout {
             width,
@@ -305,27 +313,16 @@ pub struct TextureTarget {
 }
 
 /// Render target that is also readable and copyable to a readback buffer.
-pub const RENDER_TARGET_USAGE: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT
-    .union(wgpu::TextureUsages::TEXTURE_BINDING)
-    .union(wgpu::TextureUsages::COPY_SRC);
+pub const RENDER_TARGET_USAGE: wgpu::TextureUsages =
+    wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::TEXTURE_BINDING).union(wgpu::TextureUsages::COPY_SRC);
 
 /// Upload target sampled by a bind group.
-pub const UPLOAD_TARGET_USAGE: wgpu::TextureUsages =
-    wgpu::TextureUsages::TEXTURE_BINDING.union(wgpu::TextureUsages::COPY_DST);
+pub const UPLOAD_TARGET_USAGE: wgpu::TextureUsages = wgpu::TextureUsages::TEXTURE_BINDING.union(wgpu::TextureUsages::COPY_DST);
 
 impl TextureTarget {
     /// Recreate the target when its layout or usage changes.
-    pub fn ensure(
-        slot: &mut Option<Self>,
-        device: &wgpu::Device,
-        layout: TextureLayout,
-        usage: wgpu::TextureUsages,
-        label: &str,
-    ) {
-        if slot
-            .as_ref()
-            .is_some_and(|target| target.layout == layout && target.usage == usage)
-        {
+    pub fn ensure(slot: &mut Option<Self>, device: &wgpu::Device, layout: TextureLayout, usage: wgpu::TextureUsages, label: &str) {
+        if slot.as_ref().is_some_and(|target| target.layout == layout && target.usage == usage) {
             return;
         }
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -352,12 +349,7 @@ impl TextureTarget {
     }
 
     /// Wrap an externally-created texture, such as a CV IOSurface.
-    pub fn from_parts(
-        texture: wgpu::Texture,
-        view: wgpu::TextureView,
-        layout: TextureLayout,
-        usage: wgpu::TextureUsages,
-    ) -> Self {
+    pub fn from_parts(texture: wgpu::Texture, view: wgpu::TextureView, layout: TextureLayout, usage: wgpu::TextureUsages) -> Self {
         return Self {
             texture,
             view,
@@ -547,21 +539,9 @@ impl Framebuffer {
     /// (`dst_x`, `dst_y`), the RFB CopyRect operation. Overlapping regions are
     /// handled: rows are copied in the direction that avoids clobbering a row
     /// before it is read.
-    pub fn copy_rect(
-        &mut self,
-        dst_x: u32,
-        dst_y: u32,
-        src_x: u32,
-        src_y: u32,
-        width: u32,
-        height: u32,
-    ) {
-        let width = width
-            .min(self.width.saturating_sub(src_x))
-            .min(self.width.saturating_sub(dst_x));
-        let height = height
-            .min(self.height.saturating_sub(src_y))
-            .min(self.height.saturating_sub(dst_y));
+    pub fn copy_rect(&mut self, dst_x: u32, dst_y: u32, src_x: u32, src_y: u32, width: u32, height: u32) {
+        let width = width.min(self.width.saturating_sub(src_x)).min(self.width.saturating_sub(dst_x));
+        let height = height.min(self.height.saturating_sub(src_y)).min(self.height.saturating_sub(dst_y));
         if width == 0 || height == 0 {
             return;
         }
@@ -747,9 +727,15 @@ mod tests {
     fn blit_clips_to_the_framebuffer() {
         let mut fb = Framebuffer::new(4, 4);
         // A 3x3 rect at (3,3) keeps only its top-left pixel.
-        fb.blit(3, 3, 3, 3, &[1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
-                             4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6,
-                             7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9]);
+        fb.blit(
+            3,
+            3,
+            3,
+            3,
+            &[
+                1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9,
+            ],
+        );
         assert_eq!(pixel(&fb, 3, 3), [1, 1, 1, 1]);
     }
 

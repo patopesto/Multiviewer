@@ -191,13 +191,7 @@ pub(super) fn render_pipeline(
 }
 
 /// Uniform block consumed by the fragment shader for one texture.
-pub(super) fn conv_uniform(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    mode: ConvMode,
-    width: f32,
-    height: f32,
-) -> wgpu::Buffer {
+pub(super) fn conv_uniform(device: &wgpu::Device, queue: &wgpu::Queue, mode: ConvMode, width: f32, height: f32) -> wgpu::Buffer {
     let uniform = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("conv"),
         size: std::mem::size_of::<ConvUniform>() as u64,
@@ -267,12 +261,7 @@ pub(super) fn solid_texture(device: &wgpu::Device, label: &str) -> wgpu::Texture
 }
 
 /// 1x1 passthrough bind group used before a source's first frame exists.
-pub(super) fn placeholder(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    layout: &wgpu::BindGroupLayout,
-    sampler: &wgpu::Sampler,
-) -> wgpu::BindGroup {
+pub(super) fn placeholder(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout, sampler: &wgpu::Sampler) -> wgpu::BindGroup {
     let tex = solid_texture(device, "placeholder");
     let view = tex.create_view(&Default::default());
     let uniform = conv_uniform(device, queue, ConvMode::Passthrough, 1.0, 1.0);
@@ -315,10 +304,7 @@ pub(super) fn solid_bind_group(
 pub(super) const QUADS_PER_SOURCE: usize = 7;
 
 /// Shared vertex + index buffers sized for `MAX_LAYERS` quads.
-pub(super) fn create_vertex_index_buffers(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-) -> (wgpu::Buffer, wgpu::Buffer) {
+pub(super) fn create_vertex_index_buffers(device: &wgpu::Device, queue: &wgpu::Queue) -> (wgpu::Buffer, wgpu::Buffer) {
     let vb = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("cells-vb"),
         size: (MAX_LAYERS * QUADS_PER_SOURCE * 4 * std::mem::size_of::<Vert>()) as u64,

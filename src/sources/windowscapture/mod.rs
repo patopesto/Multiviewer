@@ -5,7 +5,5 @@ pub use discovery::Discovery as WindowsCaptureDiscovery;
 pub use discovery::Target as WindowsCaptureTarget;
 pub use source::{WindowsCaptureSource, WindowsCaptureSourceConfig};
 pub use source::{
-    CaptureBorder as WindowsCaptureBorder,
-    CaptureCursor as WindowsCaptureCursor,
-    CaptureSecondaryWindows as WindowsCaptureSecondaryWindows,
+    CaptureBorder as WindowsCaptureBorder, CaptureCursor as WindowsCaptureCursor, CaptureSecondaryWindows as WindowsCaptureSecondaryWindows,
 };

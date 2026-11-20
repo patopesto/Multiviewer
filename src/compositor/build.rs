@@ -22,13 +22,7 @@ pub(super) struct Placement {
 }
 
 impl Placement {
-    pub(super) fn compute(
-        source: &Source,
-        expanded: bool,
-        canvas: (f32, f32, f32, f32),
-        scale: f32,
-        panel: &Rect,
-    ) -> Self {
+    pub(super) fn compute(source: &Source, expanded: bool, canvas: (f32, f32, f32, f32), scale: f32, panel: &Rect) -> Self {
         let (cx, cy, cw, ch) = canvas;
         let (lx, ly, lw, lh) = if expanded {
             (cx, cy, cw, ch)
@@ -57,10 +51,7 @@ impl Placement {
 
 /// Canvas point -> normalized clip coords.
 pub(super) fn clip(panel: &Rect, x: f32, y: f32) -> [f32; 2] {
-    return [
-        (x - panel.x) / panel.width() * 2.0 - 1.0,
-        1.0 - (y - panel.y) / panel.height() * 2.0,
-    ];
+    return [(x - panel.x) / panel.width() * 2.0 - 1.0, 1.0 - (y - panel.y) / panel.height() * 2.0];
 }
 
 /// Texture scale `(sx, sy)` and UV rect `[u0, v0, u1, v1]` for a `TextureMode`,
@@ -104,32 +95,14 @@ pub(super) struct Frame<'a> {
 
 impl Frame<'_> {
     /// Push one axis-aligned textured quad and its draw call.
-    pub(super) fn quad(
-        &mut self,
-        rect: [f32; 4],
-        uv: [f32; 4],
-        bg: Arc<wgpu::BindGroup>,
-        pipeline: Pipeline,
-    ) {
+    pub(super) fn quad(&mut self, rect: [f32; 4], uv: [f32; 4], bg: Arc<wgpu::BindGroup>, pipeline: Pipeline) {
         let [x0, y0, x1, y1] = rect;
         let [u0, v0, u1, v1] = uv;
         self.verts.extend_from_slice(&[
-            Vert {
-                pos: [x0, y0],
-                uv: [u0, v0],
-            },
-            Vert {
-                pos: [x1, y0],
-                uv: [u1, v0],
-            },
-            Vert {
-                pos: [x1, y1],
-                uv: [u1, v1],
-            },
-            Vert {
-                pos: [x0, y1],
-                uv: [u0, v1],
-            },
+            Vert { pos: [x0, y0], uv: [u0, v0] },
+            Vert { pos: [x1, y0], uv: [u1, v0] },
+            Vert { pos: [x1, y1], uv: [u1, v1] },
+            Vert { pos: [x0, y1], uv: [u0, v1] },
         ]);
         self.draws.push(DrawCall {
             first_index: self.next_index,
@@ -143,8 +116,7 @@ impl Frame<'_> {
     fn push_source(&mut self, source: &Source, place: &Placement) {
         let entry = source.source_ref.as_deref().and_then(|source_ref| {
             let key = SourceKey::new(source.protocol.clone(), source_ref.to_string());
-            self.comp
-                .resolve_source(&key, self.registry, self.device, self.queue)
+            self.comp.resolve_source(&key, self.registry, self.device, self.queue)
         });
         let (bg, aspect, src_flip_h, src_flip_v) = match entry {
             Some(e) => e,
@@ -162,12 +134,7 @@ impl Frame<'_> {
         let cy = (place.y0 + place.y1) / 2.0;
         let hx = (place.x1 - place.x0) / 2.0 * sx;
         let hy = (place.y0 - place.y1) / 2.0 * sy;
-        self.quad(
-            [cx - hx, cy + hy, cx + hx, cy - hy],
-            [u0, v0, u1, v1],
-            bg,
-            Pipeline::Main,
-        );
+        self.quad([cx - hx, cy + hy, cx + hx, cy - hy], [u0, v0, u1, v1], bg, Pipeline::Main);
     }
 
     /// Emit the four inside-edge quads when this source shows a border.
@@ -178,9 +145,7 @@ impl Frame<'_> {
         let visible = match source.border_visibility {
             SourceBorderVisibility::Show => true,
             SourceBorderVisibility::Hide => false,
-            SourceBorderVisibility::Inherit => {
-                canvas.border.visibility == BorderVisibility::Show
-            }
+            SourceBorderVisibility::Inherit => canvas.border.visibility == BorderVisibility::Show,
         };
         if !visible {
             return;
@@ -238,13 +203,7 @@ impl Compositor {
     }
 
     /// Pull a source once per frame.
-    fn resolve_source(
-        &mut self,
-        key: &SourceKey,
-        registry: &SourceRegistry,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> ResolvedSource {
+    fn resolve_source(&mut self, key: &SourceKey, registry: &SourceRegistry, device: &wgpu::Device, queue: &wgpu::Queue) -> ResolvedSource {
         if let Some(cached) = self.pulls.get(key) {
             return cached.clone();
         }
@@ -267,9 +226,7 @@ impl Compositor {
                     let st = self.ensure_texture(device, queue, key, &f, Some(stats));
                     Some((st.bg.clone(), f.w as f32 / f.h as f32, false, false))
                 }
-                SourceFrame::Gpu(f) => {
-                    Some((f.bg.clone(), f.w as f32 / f.h as f32, false, f.flip_v))
-                }
+                SourceFrame::Gpu(f) => Some((f.bg.clone(), f.w as f32 / f.h as f32, false, f.flip_v)),
             }
         })();
         self.pulls.insert(key.clone(), resolved.clone());
@@ -309,13 +266,7 @@ impl Compositor {
 
         if self.border_color != canvas.border.color {
             self.border_color = canvas.border.color;
-            self.border_bg = Arc::new(solid_bind_group(
-                device,
-                queue,
-                &self.bind_layout,
-                &self.sampler,
-                self.border_color,
-            ));
+            self.border_bg = Arc::new(solid_bind_group(device, queue, &self.bind_layout, &self.sampler, self.border_color));
         }
 
         let mut sources: Vec<_> = canvas.sources.iter().collect();

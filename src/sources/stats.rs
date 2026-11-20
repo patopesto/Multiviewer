@@ -24,11 +24,7 @@ fn fps_of(instants: &VecDeque<Instant>) -> f64 {
     if instants.len() < 2 {
         return 0.0;
     }
-    let secs = instants
-        .back()
-        .unwrap()
-        .duration_since(*instants.front().unwrap())
-        .as_secs_f64();
+    let secs = instants.back().unwrap().duration_since(*instants.front().unwrap()).as_secs_f64();
     if secs <= 0.0 {
         return 0.0;
     }
@@ -67,14 +63,20 @@ pub struct SourceStats {
     pub computed_fps: f64,
     pub frames_received: u64,
     pub frames_dropped: u64,
-    pub frames_consumed: u64, /// Distinct frames the compositor has seen; the gap to `frames_received` is what nobody pulled.
-    pub receive_time_ms: f32, /// Main-thread cost of `latest()`
+    pub frames_consumed: u64,
+    /// Distinct frames the compositor has seen; the gap to `frames_received` is what nobody pulled.
+    pub receive_time_ms: f32,
+    /// Main-thread cost of `latest()`
     pub copy_time_ms: f32,
     pub upload_time_ms: f32,
-    pub upload_mbps: f32, /// CPU->GPU bandwidth over the FPS window; 0 for GPU-direct sources.
-    pub network_mbps: f32, /// Wire bandwidth over the FPS window; only GPU-direct sources report it.
-    pub decode_ms: f32,    /// Session-average decode time reported by the source SDK.
-    pub gpu_direct: bool,  /// Delivers GPU textures directly: no CPU copy or upload to report.
+    pub upload_mbps: f32,
+    /// CPU->GPU bandwidth over the FPS window; 0 for GPU-direct sources.
+    pub network_mbps: f32,
+    /// Wire bandwidth over the FPS window; only GPU-direct sources report it.
+    pub decode_ms: f32,
+    /// Session-average decode time reported by the source SDK.
+    pub gpu_direct: bool,
+    /// Delivers GPU textures directly: no CPU copy or upload to report.
     pub off_screen: bool, // For screencapturekit
     recent_frames: VecDeque<Instant>,
     receive_times: VecDeque<f32>,

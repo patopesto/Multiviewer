@@ -30,7 +30,7 @@ pub enum TestPattern {
         red: bool,
         green: bool,
         blue: bool,
-        rotation: f32
+        rotation: f32,
     },
     Grid {
         cols: u32,
@@ -51,9 +51,25 @@ impl TestPattern {
     pub const ALL: [TestPattern; 5] = [
         TestPattern::Smpte(SmpteType::Smpte1978),
         TestPattern::Smpte(SmpteType::Smpte2022),
-        TestPattern::UvGradient { red: true, green: true, blue: false, rotation: 0.0 },
-        TestPattern::Grid { cols: 19, rows: 9, line_color: [255, 255, 255], bg_color: [0, 0, 0] },
-        TestPattern::Radar { width: 200, speed: 10.0, direction: RadarDirection::Right, line_color: [255, 255, 255], bg_color: [0, 0, 0] },
+        TestPattern::UvGradient {
+            red: true,
+            green: true,
+            blue: false,
+            rotation: 0.0,
+        },
+        TestPattern::Grid {
+            cols: 19,
+            rows: 9,
+            line_color: [255, 255, 255],
+            bg_color: [0, 0, 0],
+        },
+        TestPattern::Radar {
+            width: 200,
+            speed: 10.0,
+            direction: RadarDirection::Right,
+            line_color: [255, 255, 255],
+            bg_color: [0, 0, 0],
+        },
     ];
 
     pub fn label(&self) -> &'static str {
@@ -159,7 +175,13 @@ impl TestSource {
                 run_capture(width, height, fps, pattern, cursor, slot2, stats2, running2);
             })
             .expect("spawn test source");
-        Self { slot, stats, source_ref, running, thread: Some(thread) }
+        Self {
+            slot,
+            stats,
+            source_ref,
+            running,
+            thread: Some(thread),
+        }
     }
 }
 
@@ -197,7 +219,13 @@ fn run_capture(
             let mut back = pool.take(size);
             let t0 = Instant::now();
             match &pattern {
-                TestPattern::Radar { width, speed, direction, line_color, bg_color } => {
+                TestPattern::Radar {
+                    width,
+                    speed,
+                    direction,
+                    line_color,
+                    bg_color,
+                } => {
                     generate_radar(&mut back, w, h, *width, *speed, seq, direction, *line_color, *bg_color);
                 }
                 _ => {
@@ -238,11 +266,7 @@ fn run_capture(
 /// Next fixed-grid deadline: advance from the previous deadline, not the actual
 /// wake, so `thread::sleep` overshoot does not stretch every frame period.
 fn advance_deadline(prev: Instant, now: Instant, interval: Duration) -> Instant {
-    return if now >= prev + interval {
-        now + interval
-    } else {
-        prev + interval
-    };
+    return if now >= prev + interval { now + interval } else { prev + interval };
 }
 
 impl Drop for TestSource {
@@ -251,7 +275,7 @@ impl Drop for TestSource {
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
-            tracing::error!(source=self.source_ref, "Thread join failed: {:?}", e);
+            tracing::error!(source = self.source_ref, "Thread join failed: {:?}", e);
         }
     }
 }
@@ -274,7 +298,12 @@ fn generate_base(buf: &mut [u8], w: u32, h: u32, pattern: &TestPattern) {
     match pattern {
         TestPattern::Smpte(t) => generate_smpte(buf, w, h, t),
         TestPattern::UvGradient { red, green, blue, rotation } => generate_uv_gradient(buf, w, h, *red, *green, *blue, *rotation),
-        TestPattern::Grid { cols, rows, line_color, bg_color } => generate_grid(buf, w, h, *cols, *rows, *line_color, *bg_color),
+        TestPattern::Grid {
+            cols,
+            rows,
+            line_color,
+            bg_color,
+        } => generate_grid(buf, w, h, *cols, *rows, *line_color, *bg_color),
         // Radar is fully dynamic; the base is left black and generated per-frame.
         TestPattern::Radar { .. } => buf.fill(0),
     }
@@ -331,8 +360,7 @@ fn yuv_to_rgb_studio(y: f32, u: f32, v: f32, cs: ColorSpace) -> [u8; 3] {
     let dv = (v - 128.0) * chroma_scale;
 
     let r = y + 2.0 * (1.0 - kr) * dv;
-    let g = y - 2.0 * kb * (1.0 - kb) / kg * du
-        - 2.0 * kr * (1.0 - kr) / kg * dv;
+    let g = y - 2.0 * kb * (1.0 - kb) / kg * du - 2.0 * kr * (1.0 - kr) / kg * dv;
     let b = y + 2.0 * (1.0 - kb) * du;
 
     [
@@ -597,7 +625,17 @@ fn generate_grid(buf: &mut [u8], w: u32, h: u32, cols: u32, rows: u32, line_colo
 }
 
 #[allow(clippy::too_many_arguments)]
-fn generate_radar(buf: &mut [u8], w: u32, h: u32, width: u32, speed: f32, seq: u64, direction: &RadarDirection, line_color: [u8; 3], bg_color: [u8; 3]) {
+fn generate_radar(
+    buf: &mut [u8],
+    w: u32,
+    h: u32,
+    width: u32,
+    speed: f32,
+    seq: u64,
+    direction: &RadarDirection,
+    line_color: [u8; 3],
+    bg_color: [u8; 3],
+) {
     let (dim_main, is_horizontal, reverse) = match direction {
         RadarDirection::Right => (w, true, false),
         RadarDirection::Left => (w, true, true),
@@ -612,11 +650,7 @@ fn generate_radar(buf: &mut [u8], w: u32, h: u32, width: u32, speed: f32, seq: u
     for y in 0..h {
         for x in 0..w {
             let raw_coord = if is_horizontal { x as i32 } else { y as i32 };
-            let coord = if reverse {
-                (dim_main - 1) as i32 - raw_coord
-            } else {
-                raw_coord
-            };
+            let coord = if reverse { (dim_main - 1) as i32 - raw_coord } else { raw_coord };
 
             let intensity = if coord == edge_pos {
                 1.0
@@ -645,17 +679,13 @@ fn lerp_u8(a: u8, b: u8, t: f32) -> u8 {
 mod tests {
     use super::*;
 
-
     /// A sleep that wakes early costs a full interval; one that wakes late
     /// resyncs to now, so overshoot does not stretch the following period.
     #[test]
     fn deadline_advances_on_a_fixed_grid() {
         let interval = Duration::from_millis(16);
         let deadline = Instant::now() + interval;
-        assert_eq!(
-            advance_deadline(deadline, deadline - Duration::from_millis(2), interval),
-            deadline + interval
-        );
+        assert_eq!(advance_deadline(deadline, deadline - Duration::from_millis(2), interval), deadline + interval);
         assert_eq!(
             advance_deadline(deadline, deadline + Duration::from_millis(100), interval),
             deadline + Duration::from_millis(116)

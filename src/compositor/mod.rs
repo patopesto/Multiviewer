@@ -17,9 +17,9 @@ mod label;
 mod layout;
 mod metrics;
 mod resources;
-mod upload;
 #[cfg(test)]
 mod tests;
+mod upload;
 
 /// A simple rectangle, replacing the previous egui::Rect dependency.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

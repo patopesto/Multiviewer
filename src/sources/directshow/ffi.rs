@@ -58,12 +58,7 @@ impl ISampleGrabberCB_Impl for Grabber_Impl {
         return Err(windows::Win32::Foundation::E_NOTIMPL.into());
     }
 
-    unsafe fn BufferCB(
-        &self,
-        _sampletime: f64,
-        buffer: *mut u8,
-        length: i32,
-    ) -> windows::core::Result<()> {
+    unsafe fn BufferCB(&self, _sampletime: f64, buffer: *mut u8, length: i32) -> windows::core::Result<()> {
         if buffer.is_null() || length <= 0 {
             return Ok(());
         }

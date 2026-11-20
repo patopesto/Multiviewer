@@ -2,15 +2,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use openmediatransport::{
-    ColorSpace, FrameType, GpuVideoContext, Quality, ReceiverConfig, ReceiverSession, SessionState,
-};
+use openmediatransport::{ColorSpace, FrameType, GpuVideoContext, Quality, ReceiverConfig, ReceiverSession, SessionState};
 use serde::{Deserialize, Serialize};
 
 use super::OmtSourceInfo;
-use super::super::{
-    ConvUniform, Frame, GpuFrame, PixelFormat, SourceRef, SourceStats, VideoSource,
-};
+use super::super::{ConvUniform, Frame, GpuFrame, PixelFormat, SourceRef, SourceStats, VideoSource};
 
 // @docs protocol="OMT" direction=input
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -169,12 +165,12 @@ fn run_capture(
         let session = match ReceiverSession::connect(discovered.to_url(), receiver_config) {
             Ok(s) => s,
             Err(e) => {
-                tracing::warn!(source=source_ref, "OMT connect failed: {}", e);
+                tracing::warn!(source = source_ref, "OMT connect failed: {}", e);
                 std::thread::sleep(Duration::from_secs(1));
                 continue;
             }
         };
-        tracing::info!(source=source_ref, "OMT connected");
+        tracing::info!(source = source_ref, "OMT connected");
 
         let mut format: Option<FeedFormat> = None;
         let mut last_frame_at = Instant::now();
@@ -184,7 +180,7 @@ fn run_capture(
             let _frame_guard = frame_span.entered();
             let Some(frame) = session.recv_video_gpu_timeout(POLL_TIMEOUT) else {
                 if feed_stalled(last_frame_at.elapsed(), session.state()) {
-                    tracing::warn!(source=source_ref, "OMT feed stalled, restarting decoder");
+                    tracing::warn!(source = source_ref, "OMT feed stalled, restarting decoder");
                     break;
                 }
                 continue;
@@ -198,7 +194,7 @@ fn run_capture(
                 color_space: frame.color_space,
             };
             if feed_changed(format, received) {
-                tracing::info!(source=source_ref, "OMT feed format changed, restarting decoder");
+                tracing::info!(source = source_ref, "OMT feed format changed, restarting decoder");
                 break;
             }
             format = Some(received);
@@ -210,8 +206,7 @@ fn run_capture(
             let delta_bytes = session_stats.bytes_received.saturating_sub(last_bytes);
             last_bytes = session_stats.bytes_received;
             let decode_ms = if session_stats.frames_decoded > 0 {
-                session_stats.codec_time_ns as f32 / 1_000_000.0
-                    / session_stats.frames_decoded as f32
+                session_stats.codec_time_ns as f32 / 1_000_000.0 / session_stats.frames_decoded as f32
             } else {
                 0.0
             };
@@ -226,13 +221,7 @@ fn run_capture(
                 s.record_network(delta_bytes);
                 s.set_decode_ms(decode_ms);
             }
-            let bg = Arc::new(framebuffer_bind_group(
-                &ctx.device,
-                &layout,
-                &sampler,
-                &uniform,
-                &frame.texture,
-            ));
+            let bg = Arc::new(framebuffer_bind_group(&ctx.device, &layout, &sampler, &uniform, &frame.texture));
             let old = slot.lock().unwrap().replace(Frame::Gpu(GpuFrame {
                 bg,
                 w,
@@ -351,7 +340,7 @@ impl Drop for OmtSource {
         if let Some(t) = self.thread.lock().unwrap().take()
             && let Err(e) = t.join()
         {
-            tracing::error!(source=self.source_ref, "Thread join failed: {:?}", e);
+            tracing::error!(source = self.source_ref, "Thread join failed: {:?}", e);
         }
     }
 }

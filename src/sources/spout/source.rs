@@ -69,11 +69,7 @@ impl SpoutSource {
 }
 
 /// Open the Spout receiver sharing wgpu's D3D12 device and command queue.
-fn open_receiver(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    sender_name: &str,
-) -> Result<spout2::dx12::Receiver, String> {
+fn open_receiver(device: &wgpu::Device, queue: &wgpu::Queue, sender_name: &str) -> Result<spout2::dx12::Receiver, String> {
     // Safety: device/queue outlive the receiver; the app owns both for its lifetime.
     unsafe {
         let Some(hal_device) = device.as_hal::<Dx12Api>() else {
@@ -84,8 +80,7 @@ fn open_receiver(
         };
         let device_ptr = hal_device.raw_device().as_raw();
         let mut queue_ptr = hal_queue.as_raw().as_raw();
-        spout2::dx12::Receiver::with_device(Some(sender_name), device_ptr, &mut queue_ptr)
-            .map_err(|e| e.to_string())
+        spout2::dx12::Receiver::with_device(Some(sender_name), device_ptr, &mut queue_ptr).map_err(|e| e.to_string())
     }
 }
 
@@ -116,9 +111,7 @@ fn wgpu_format(dxgi: u32) -> Option<wgpu::TextureFormat> {
 
 fn format_label(dxgi: u32) -> &'static str {
     match wgpu_format(dxgi) {
-        Some(wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb) => {
-            PixelFormat::Bgra8.label()
-        }
+        Some(wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb) => PixelFormat::Bgra8.label(),
         Some(_) => PixelFormat::Rgba8.label(),
         None => "unknown",
     }
@@ -131,13 +124,13 @@ impl VideoSource for SpoutSource {
         if receiver_guard.is_none() {
             match open_receiver(device, queue, &self.source_ref) {
                 Ok(receiver) => {
-                    tracing::info!(source=self.source_ref, "Spout receiver opened");
+                    tracing::info!(source = self.source_ref, "Spout receiver opened");
                     *receiver_guard = Some(SpoutReceiver(receiver));
                 }
                 Err(e) => {
                     // Retried every frame; log the first failure only.
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
-                        tracing::error!(source=self.source_ref, "Spout receiver open failed: {}", e);
+                        tracing::error!(source = self.source_ref, "Spout receiver open failed: {}", e);
                     }
                     return None;
                 }
@@ -159,7 +152,7 @@ impl VideoSource for SpoutSource {
             if w > 0 && h > 0 {
                 let Some(format) = wgpu_format(receiver.sender_format()) else {
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
-                        tracing::warn!(source=self.source_ref, "Spout sender uses unsupported DXGI format {}", receiver.sender_format());
+                        tracing::warn!(source = self.source_ref, "Spout sender uses unsupported DXGI format {}", receiver.sender_format());
                     }
                     return None;
                 };
@@ -174,8 +167,7 @@ impl VideoSource for SpoutSource {
                     sample_count: 1,
                     dimension: wgpu::TextureDimension::D2,
                     format,
-                    usage: wgpu::TextureUsages::TEXTURE_BINDING
-                        | wgpu::TextureUsages::COPY_DST,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
                     view_formats: &[],
                 });
                 *self.dims.lock().unwrap() = (w, h);
@@ -191,7 +183,7 @@ impl VideoSource for SpoutSource {
                 match texture_ptr(texture) {
                     Ok(ptr) => raw_slot = ptr,
                     Err(e) => {
-                        tracing::error!(source=self.source_ref, "Error on texture pointer: {}", e);
+                        tracing::error!(source = self.source_ref, "Error on texture pointer: {}", e);
                         return None;
                     }
                 }
@@ -203,7 +195,7 @@ impl VideoSource for SpoutSource {
             // Not connected to a sender yet.
             Ok(false) => return self.cached(),
             Err(e) => {
-                tracing::debug!(source=self.source_ref, "Spout receive failed: {}", e);
+                tracing::debug!(source = self.source_ref, "Spout receive failed: {}", e);
                 return self.cached();
             }
         }

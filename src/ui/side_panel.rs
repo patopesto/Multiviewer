@@ -4,18 +4,10 @@ use egui::{Align, Grid, InnerResponse, Layout, ScrollArea, Separator, Ui};
 
 use crate::APP_NAME;
 use crate::ui::source_settings;
-use crate::config::{
-    BorderVisibility, Config, LabelPosition, LabelVisibility, SourceBorderVisibility,
-    SourceId, SourceLabelVisibility, TextureMode,
-};
-use crate::engine::{
-    Command, EngineSnapshot, PickerGroupView, PickerItemView, Selector, SourcePlacementPatch,
-};
+use crate::config::{BorderVisibility, Config, LabelPosition, LabelVisibility, SourceBorderVisibility, SourceId, SourceLabelVisibility, TextureMode};
+use crate::engine::{Command, EngineSnapshot, PickerGroupView, PickerItemView, Selector, SourcePlacementPatch};
 use crate::sources::{Protocol, SourceKey, SourceRef, SourceStats, OutputConfig};
-use crate::sources::{
-    DecklinkMode, DecklinkOutputConfig, DecklinkOutputMode, DecklinkOutputPort, NdiOutputConfig,
-    OmtOutputConfig,
-};
+use crate::sources::{DecklinkMode, DecklinkOutputConfig, DecklinkOutputMode, DecklinkOutputPort, NdiOutputConfig, OmtOutputConfig};
 #[cfg(target_os = "macos")]
 use crate::sources::SyphonOutputConfig;
 #[cfg(target_os = "windows")]
@@ -47,13 +39,9 @@ impl SidePanel {
         // it mid-drag. A canvas drag holds the pointer down too, so the guard is
         // scoped to presses inside the panel instead of the whole window.
         let pointer_in_panel = ctx.input(|input| input.pointer.any_down())
-            && self
-                .panel_rect
-                .is_some_and(|rect| ctx.pointer_latest_pos().is_some_and(|pos| rect.contains(pos)));
+            && self.panel_rect.is_some_and(|rect| ctx.pointer_latest_pos().is_some_and(|pos| rect.contains(pos)));
         let interacting = ctx.text_edit_focused() || pointer_in_panel;
-        if !self.initialized
-            || (!interacting && snapshot.state.revision != self.draft_revision)
-        {
+        if !self.initialized || (!interacting && snapshot.state.revision != self.draft_revision) {
             self.draft = snapshot.state.cfg.clone();
             self.draft_revision = snapshot.state.revision;
             self.initialized = true;
@@ -61,52 +49,32 @@ impl SidePanel {
     }
 }
 
-pub fn draw(
-    ui: &mut egui::Ui,
-    snapshot: &EngineSnapshot,
-    panel: &mut SidePanel,
-    commands: &Sender<Command>,
-) {
+pub fn draw(ui: &mut egui::Ui, snapshot: &EngineSnapshot, panel: &mut SidePanel, commands: &Sender<Command>) {
     panel.sync(snapshot, ui.ctx());
     let mut out = Vec::new();
-    let panel_response = egui::Panel::left("panel")
-        .default_size(320.0)
-        .min_size(200.0)
-        .max_size(400.0)
-        .show(ui, |ui| {
-            ScrollArea::vertical().show(ui, |ui| {
-                collapsable_section(ui, "Global Settings", true, true, |ui| {
-                    draw_global_section(ui, snapshot, &mut panel.draft, &mut out);
-                });
-
-                ui.separator();
-                collapsable_section(ui, "Sources", true, true, |ui| {
-                    draw_sources_section(ui, snapshot, &mut panel.last_selected, &mut out);
-                });
-
-                if let Some(selected_uuid) = snapshot.state.selected_source_id.clone() {
-                    draw_source_properties_section(
-                        ui,
-                        snapshot,
-                        &mut panel.draft,
-                        &selected_uuid,
-                        &mut out,
-                    );
-                }
+    let panel_response = egui::Panel::left("panel").default_size(320.0).min_size(200.0).max_size(400.0).show(ui, |ui| {
+        ScrollArea::vertical().show(ui, |ui| {
+            collapsable_section(ui, "Global Settings", true, true, |ui| {
+                draw_global_section(ui, snapshot, &mut panel.draft, &mut out);
             });
+
+            ui.separator();
+            collapsable_section(ui, "Sources", true, true, |ui| {
+                draw_sources_section(ui, snapshot, &mut panel.last_selected, &mut out);
+            });
+
+            if let Some(selected_uuid) = snapshot.state.selected_source_id.clone() {
+                draw_source_properties_section(ui, snapshot, &mut panel.draft, &selected_uuid, &mut out);
+            }
         });
+    });
     panel.panel_rect = Some(panel_response.response.rect);
     for command in out {
         let _ = commands.send(command);
     }
 }
 
-fn draw_global_section(
-    ui: &mut egui::Ui,
-    snapshot: &EngineSnapshot,
-    draft: &mut Config,
-    out: &mut Vec<Command>,
-) {
+fn draw_global_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, draft: &mut Config, out: &mut Vec<Command>) {
     let mut canvas_changed = false;
     let mut output_config_changed: Option<usize> = None;
 
@@ -135,17 +103,17 @@ fn draw_global_section(
         let background_color = label.background_color;
         settings_grid(ui, "labels_grid", |ui| {
             settings_row(ui, "Visibility", |ui| {
-                egui::ComboBox::from_id_salt("label_visibility")
-                    .width(ui.available_width())
-                    .selected_text(label.visibility.label())
-                    .show_ui(ui, |ui| {
+                egui::ComboBox::from_id_salt("label_visibility").width(ui.available_width()).selected_text(label.visibility.label()).show_ui(
+                    ui,
+                    |ui| {
                         if ui.selectable_value(&mut label.visibility, LabelVisibility::Show, "Show").changed() {
                             canvas_changed = true;
                         }
                         if ui.selectable_value(&mut label.visibility, LabelVisibility::Hide, "Hide").changed() {
                             canvas_changed = true;
                         }
-                    });
+                    },
+                );
             });
 
             settings_row(ui, "Size", |ui| {
@@ -160,10 +128,7 @@ fn draw_global_section(
                     .selected_text(label.position.label())
                     .show_ui(ui, |ui| {
                         for position in LabelPosition::all() {
-                            if ui
-                                .selectable_value(&mut label.position, *position, position.label())
-                                .changed()
-                            {
+                            if ui.selectable_value(&mut label.position, *position, position.label()).changed() {
                                 canvas_changed = true;
                             }
                         }
@@ -250,9 +215,7 @@ fn draw_global_section(
                 })
             });
 
-            output_enable_row(ui, snapshot, out, Protocol::Decklink, |_| {
-                OutputConfig::Decklink(DecklinkOutputConfig::default())
-            });
+            output_enable_row(ui, snapshot, out, Protocol::Decklink, |_| OutputConfig::Decklink(DecklinkOutputConfig::default()));
 
             // Worker errors (device busy, driver missing) sit next to the toggle
             // so a silently dead output is visible.
@@ -269,12 +232,7 @@ fn draw_global_section(
             }
 
             // Device / mode selection only when a DeckLink output exists.
-            if let Some(idx) = draft
-                .canvas
-                .outputs
-                .iter()
-                .position(|output| output.protocol == Protocol::Decklink)
-            {
+            if let Some(idx) = draft.canvas.outputs.iter().position(|output| output.protocol == Protocol::Decklink) {
                 let outputs = &snapshot.runtime.decklink_outputs;
 
                 let (current_device, current_mode) = match &draft.canvas.outputs[idx].config {
@@ -292,13 +250,8 @@ fn draw_global_section(
                         })
                         .show_ui(ui, |ui| {
                             for port in outputs {
-                                if ui
-                                    .selectable_label(current_device == port.name, &port.name)
-                                    .clicked()
-                                {
-                                    if let OutputConfig::Decklink(config) =
-                                        &mut draft.canvas.outputs[idx].config
-                                    {
+                                if ui.selectable_label(current_device == port.name, &port.name).clicked() {
+                                    if let OutputConfig::Decklink(config) = &mut draft.canvas.outputs[idx].config {
                                         config.device_name = port.name.clone();
                                         if let Some(mode) = preferred_output_mode(port, config.display_mode) {
                                             config.display_mode = mode.mode;
@@ -318,11 +271,7 @@ fn draw_global_section(
                     }
                 });
 
-                let modes = outputs
-                    .iter()
-                    .find(|port| port.name == current_device)
-                    .map(|port| port.modes.clone())
-                    .unwrap_or_default();
+                let modes = outputs.iter().find(|port| port.name == current_device).map(|port| port.modes.clone()).unwrap_or_default();
                 let selected_label = if current_device.is_empty() {
                     "Select device".to_string()
                 } else {
@@ -335,16 +284,13 @@ fn draw_global_section(
 
                 settings_row(ui, "Decklink Mode", |ui| {
                     ui.add_enabled_ui(!current_device.is_empty(), |ui| {
-                        egui::ComboBox::from_id_salt("decklink_output_mode")
-                            .width(ui.available_width())
-                            .selected_text(selected_label)
-                            .show_ui(ui, |ui| {
+                        egui::ComboBox::from_id_salt("decklink_output_mode").width(ui.available_width()).selected_text(selected_label).show_ui(
+                            ui,
+                            |ui| {
                                 for mode in &modes {
                                     let label = mode.name.to_string();
                                     if ui.selectable_label(current_mode == mode.mode, label).clicked() {
-                                        if let OutputConfig::Decklink(config) =
-                                            &mut draft.canvas.outputs[idx].config
-                                        {
+                                        if let OutputConfig::Decklink(config) = &mut draft.canvas.outputs[idx].config {
                                             config.display_mode = mode.mode;
                                             config.width = mode.width;
                                             config.height = mode.height;
@@ -353,7 +299,8 @@ fn draw_global_section(
                                         output_config_changed = Some(idx);
                                     }
                                 }
-                            });
+                            },
+                        );
                     });
                 });
             }
@@ -366,9 +313,7 @@ fn draw_global_section(
                         settings_row(ui, &format!("{} Stats", output.protocol.label()), |ui| {
                             let mut line = format!(
                                 "{} sent \u{2022} {} dropped \u{2022} {:.1} fps",
-                                output.stats.frames_sent,
-                                output.stats.frames_dropped,
-                                output.stats.computed_fps
+                                output.stats.frames_sent, output.stats.frames_dropped, output.stats.computed_fps
                             );
                             if let Some(error) = &output.stats.error {
                                 line.push_str(" \u{2022} ");
@@ -399,12 +344,7 @@ fn draw_global_section(
     }
 }
 
-fn draw_sources_section(
-    ui: &mut egui::Ui,
-    snapshot: &EngineSnapshot,
-    last_selected: &mut Option<SourceId>,
-    out: &mut Vec<Command>,
-) {
+fn draw_sources_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, last_selected: &mut Option<SourceId>, out: &mut Vec<Command>) {
     // Sources list with drag-and-drop reordering.
     let rows: Vec<(usize, String, String)> = snapshot
         .state
@@ -421,109 +361,82 @@ fn draw_sources_section(
 
     const MAX_VISIBLE_SOURCE_ROWS: f32 = 18.0;
     let row_height = ui.spacing().interact_size.y;
-    egui::ScrollArea::vertical()
-        .max_height(row_height * MAX_VISIBLE_SOURCE_ROWS)
-        .show(ui, |ui| {
-            let mut selected_row_rect: Option<egui::Rect> = None;
+    egui::ScrollArea::vertical().max_height(row_height * MAX_VISIBLE_SOURCE_ROWS).show(ui, |ui| {
+        let mut selected_row_rect: Option<egui::Rect> = None;
 
-            for (index, uuid, name) in rows {
-                // Use a plain frame as the drop zone so egui doesn't tint other rows while dragging.
-                let drop_zone_response = egui::Frame::new().show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        // Custom drag handle (drawn, not a font glyph) so it always renders.
-                        ui.dnd_drag_source(
-                            egui::Id::new("source_drag").with(&uuid),
-                            uuid.clone(),
-                            |ui| {
-                                let size = egui::vec2(12.0, 16.0);
-                                let (rect, response) =
-                                    ui.allocate_exact_size(size, egui::Sense::hover());
-                                let painter = ui.painter();
-                                let color = ui.visuals().text_color();
-                                let center_y = rect.center().y;
-                                for dy in [-3.0_f32, 0.0, 3.0] {
-                                    let y = center_y + dy;
-                                    let x_range = rect.x_range().shrink(2.0);
-                                    painter.hline(x_range, y, egui::Stroke::new(1.5, color));
-                                }
-                                response.on_hover_cursor(egui::CursorIcon::Grab)
-                            },
-                        );
-
-                        // Full-width, left-aligned selectable label.
-                        let selected = snapshot.state.selected_source_id.as_deref() == Some(&uuid);
-                        let available_width = ui.available_width();
-                        let label = egui::Button::selectable(selected, name.to_string())
-                            .min_size(egui::vec2(available_width, 0.0))
-                            .right_text("")
-                            .truncate();
-                        let row_response = ui.add(label);
-                        if row_response.clicked() {
-                            out.push(Command::SelectSource(Selector::Id(uuid.clone())));
+        for (index, uuid, name) in rows {
+            // Use a plain frame as the drop zone so egui doesn't tint other rows while dragging.
+            let drop_zone_response = egui::Frame::new().show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // Custom drag handle (drawn, not a font glyph) so it always renders.
+                    ui.dnd_drag_source(egui::Id::new("source_drag").with(&uuid), uuid.clone(), |ui| {
+                        let size = egui::vec2(12.0, 16.0);
+                        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::hover());
+                        let painter = ui.painter();
+                        let color = ui.visuals().text_color();
+                        let center_y = rect.center().y;
+                        for dy in [-3.0_f32, 0.0, 3.0] {
+                            let y = center_y + dy;
+                            let x_range = rect.x_range().shrink(2.0);
+                            painter.hline(x_range, y, egui::Stroke::new(1.5, color));
                         }
-                        if selected {
-                            selected_row_rect = Some(row_response.rect);
-                        }
+                        response.on_hover_cursor(egui::CursorIcon::Grab)
                     });
+
+                    // Full-width, left-aligned selectable label.
+                    let selected = snapshot.state.selected_source_id.as_deref() == Some(&uuid);
+                    let available_width = ui.available_width();
+                    let label =
+                        egui::Button::selectable(selected, name.to_string()).min_size(egui::vec2(available_width, 0.0)).right_text("").truncate();
+                    let row_response = ui.add(label);
+                    if row_response.clicked() {
+                        out.push(Command::SelectSource(Selector::Id(uuid.clone())));
+                    }
+                    if selected {
+                        selected_row_rect = Some(row_response.rect);
+                    }
                 });
+            });
 
-                let dropped = drop_zone_response.response.dnd_release_payload::<String>();
-                let row_rect = drop_zone_response.response.rect;
+            let dropped = drop_zone_response.response.dnd_release_payload::<String>();
+            let row_rect = drop_zone_response.response.rect;
 
-                // Drop-line indicator while dragging over this row.
-                if let Some(pointer_pos) = ui.ctx().pointer_interact_pos()
-                    && row_rect.contains(pointer_pos)
-                    && let Some(payload) = egui::DragAndDrop::payload::<String>(ui.ctx())
-                    && payload.as_ref() != &uuid
-                {
-                    let line_y = if pointer_pos.y < row_rect.center().y {
-                        row_rect.top()
-                    } else {
-                        row_rect.bottom()
-                    };
-                    ui.painter().hline(
-                        row_rect.x_range(),
-                        line_y,
-                        egui::Stroke::new(2.0, ui.visuals().selection.bg_fill),
-                    );
-                }
-
-                if let Some(payload) = dropped
-                    && payload.as_ref() != &uuid
-                    && let Some(from_index) = snapshot
-                        .state
-                        .cfg
-                        .canvas
-                        .sources
-                        .iter()
-                        .position(|source| source.uuid == *payload)
-                {
-                    let pointer_y = ui
-                        .ctx()
-                        .pointer_interact_pos()
-                        .map(|p| p.y)
-                        .unwrap_or(row_rect.center().y);
-                    let to_index = if pointer_y < row_rect.center().y {
-                        if from_index < index {
-                            index.saturating_sub(1)
-                        } else {
-                            index
-                        }
-                    } else {
-                        if from_index < index { index } else { index + 1 }
-                    };
-                    out.push(Command::MoveSource {
-                        from: from_index,
-                        to: to_index,
-                    });
-                }
+            // Drop-line indicator while dragging over this row.
+            if let Some(pointer_pos) = ui.ctx().pointer_interact_pos()
+                && row_rect.contains(pointer_pos)
+                && let Some(payload) = egui::DragAndDrop::payload::<String>(ui.ctx())
+                && payload.as_ref() != &uuid
+            {
+                let line_y = if pointer_pos.y < row_rect.center().y {
+                    row_rect.top()
+                } else {
+                    row_rect.bottom()
+                };
+                ui.painter().hline(row_rect.x_range(), line_y, egui::Stroke::new(2.0, ui.visuals().selection.bg_fill));
             }
 
-            // Keep the selected row visible when selection changes (e.g. via global shortcuts).
-            if selection_changed && let Some(rect) = selected_row_rect {
-                ui.scroll_to_rect(rect, None);
+            if let Some(payload) = dropped
+                && payload.as_ref() != &uuid
+                && let Some(from_index) = snapshot.state.cfg.canvas.sources.iter().position(|source| source.uuid == *payload)
+            {
+                let pointer_y = ui.ctx().pointer_interact_pos().map(|p| p.y).unwrap_or(row_rect.center().y);
+                let to_index = if pointer_y < row_rect.center().y {
+                    if from_index < index { index.saturating_sub(1) } else { index }
+                } else {
+                    if from_index < index { index } else { index + 1 }
+                };
+                out.push(Command::MoveSource {
+                    from: from_index,
+                    to: to_index,
+                });
             }
-        });
+        }
+
+        // Keep the selected row visible when selection changes (e.g. via global shortcuts).
+        if selection_changed && let Some(rect) = selected_row_rect {
+            ui.scroll_to_rect(rect, None);
+        }
+    });
 
     ui.horizontal(|ui| {
         if ui.button("+ Add Source").clicked() {
@@ -538,13 +451,7 @@ fn draw_sources_section(
     });
 }
 
-fn draw_source_properties_section(
-    ui: &mut egui::Ui,
-    snapshot: &EngineSnapshot,
-    draft: &mut Config,
-    selected_uuid: &str,
-    out: &mut Vec<Command>,
-) {
+fn draw_source_properties_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, draft: &mut Config, selected_uuid: &str, out: &mut Vec<Command>) {
     let mut placement_changed = false;
     let mut protocol_changed = false;
     let mut binding_changed = false;
@@ -552,12 +459,7 @@ fn draw_source_properties_section(
     let mut new_source: Option<Protocol> = None;
     let mut refresh: Option<Protocol> = None;
 
-    let Some(source) = draft
-        .canvas
-        .sources
-        .iter_mut()
-        .find(|source| source.uuid == selected_uuid)
-    else {
+    let Some(source) = draft.canvas.sources.iter_mut().find(|source| source.uuid == selected_uuid) else {
         return;
     };
 
@@ -565,28 +467,24 @@ fn draw_source_properties_section(
     collapsable_section(ui, "Properties", true, true, |ui| {
         settings_grid(ui, "source_properties_grid", |ui| {
             settings_row(ui, "Name", |ui| {
-                let text_edit = egui::TextEdit::singleline(&mut source.name)
-                    .desired_width(ui.available_width());
+                let text_edit = egui::TextEdit::singleline(&mut source.name).desired_width(ui.available_width());
                 if ui.add(text_edit).changed() {
                     placement_changed = true;
                 }
             });
 
             settings_row(ui, "Protocol", |ui| {
-                egui::ComboBox::from_id_salt("source_protocol")
-                    .width(ui.available_width())
-                    .selected_text(source.protocol.label())
-                    .show_ui(ui, |ui| {
+                egui::ComboBox::from_id_salt("source_protocol").width(ui.available_width()).selected_text(source.protocol.label()).show_ui(
+                    ui,
+                    |ui| {
                         for protocol in all_protocols() {
-                            if ui
-                                .selectable_value(&mut source.protocol, protocol.clone(), protocol.label())
-                                .clicked()
-                            {
+                            if ui.selectable_value(&mut source.protocol, protocol.clone(), protocol.label()).clicked() {
                                 protocol_changed = true;
                                 refresh = Some(protocol);
                             }
                         }
-                    });
+                    },
+                );
             });
 
             settings_row(ui, "Source", |ui| {
@@ -603,19 +501,8 @@ fn draw_source_properties_section(
                         Protocol::Rdp => Some("+ New RDP Source".to_string()),
                         _ => None,
                     };
-                    let scanning = !matches!(
-                        source.protocol,
-                        Protocol::Test | Protocol::Vnc | Protocol::Rdp
-                    );
-                    let picker = source_picker(
-                        ui,
-                        &picker_id(&source.protocol),
-                        current,
-                        connected,
-                        groups,
-                        new_entry,
-                        scanning,
-                    );
+                    let scanning = !matches!(source.protocol, Protocol::Test | Protocol::Vnc | Protocol::Rdp);
+                    let picker = source_picker(ui, &picker_id(&source.protocol), current, connected, groups, new_entry, scanning);
                     if let Some(selected) = picker.selected {
                         source.source_ref = Some(selected);
                         binding_changed = true;
@@ -642,17 +529,11 @@ fn draw_source_properties_section(
 
             settings_row(ui, "Size", |ui| {
                 ui.label("W");
-                if ui
-                    .add(egui::DragValue::new(&mut source.width).range(1..=7680))
-                    .changed()
-                {
+                if ui.add(egui::DragValue::new(&mut source.width).range(1..=7680)).changed() {
                     placement_changed = true;
                 }
                 ui.label("H");
-                if ui
-                    .add(egui::DragValue::new(&mut source.height).range(1..=7680))
-                    .changed()
-                {
+                if ui.add(egui::DragValue::new(&mut source.height).range(1..=7680)).changed() {
                     placement_changed = true;
                 }
                 if resolution_preset_menu(ui, 1, &mut source.width, &mut source.height) {
@@ -668,20 +549,17 @@ fn draw_source_properties_section(
             });
 
             settings_row(ui, "Mode", |ui| {
-                egui::ComboBox::from_id_salt("tex_mode")
-                    .width(ui.available_width())
-                    .selected_text(source.mode.label())
-                    .show_ui(ui, |ui| {
-                        if ui.selectable_value(&mut source.mode, TextureMode::Fit, "Fit").changed() {
-                            placement_changed = true;
-                        }
-                        if ui.selectable_value(&mut source.mode, TextureMode::Fill, "Fill").changed() {
-                            placement_changed = true;
-                        }
-                        if ui.selectable_value(&mut source.mode, TextureMode::Stretch, "Stretch").changed() {
-                            placement_changed = true;
-                        }
-                    });
+                egui::ComboBox::from_id_salt("tex_mode").width(ui.available_width()).selected_text(source.mode.label()).show_ui(ui, |ui| {
+                    if ui.selectable_value(&mut source.mode, TextureMode::Fit, "Fit").changed() {
+                        placement_changed = true;
+                    }
+                    if ui.selectable_value(&mut source.mode, TextureMode::Fill, "Fill").changed() {
+                        placement_changed = true;
+                    }
+                    if ui.selectable_value(&mut source.mode, TextureMode::Stretch, "Stretch").changed() {
+                        placement_changed = true;
+                    }
+                });
             });
 
             settings_row(ui, "Flip", |ui| {
@@ -730,10 +608,7 @@ fn draw_source_properties_section(
             });
         });
 
-        let settings_key = source
-            .source_ref
-            .clone()
-            .map(|source_ref| SourceKey::new(source.protocol.clone(), source_ref));
+        let settings_key = source.source_ref.clone().map(|source_ref| SourceKey::new(source.protocol.clone(), source_ref));
         if let Some(key) = settings_key
             && let Some(runtime) = snapshot.runtime.source(&key)
         {
@@ -745,11 +620,7 @@ fn draw_source_properties_section(
 
             subsection_separator(ui);
             collapsable_section(ui, "Protocol Settings", false, true, |ui| {
-                if source_settings::render_source_settings_config(
-                    &mut source.config,
-                    &runtime.runtime,
-                    ui,
-                ) {
+                if source_settings::render_source_settings_config(&mut source.config, &runtime.runtime, ui) {
                     config_changed = true;
                 }
             });
@@ -814,12 +685,7 @@ fn draw_source_properties_section(
 }
 
 fn all_protocols() -> Vec<Protocol> {
-    let mut protocols = vec![
-        Protocol::Test,
-        Protocol::Ndi,
-        Protocol::Omt,
-        Protocol::Decklink,
-    ];
+    let mut protocols = vec![Protocol::Test, Protocol::Ndi, Protocol::Omt, Protocol::Decklink];
     #[cfg(target_os = "macos")]
     {
         protocols.push(Protocol::Syphon);
@@ -842,10 +708,7 @@ fn picker_id(protocol: &Protocol) -> String {
     return format!("{}_source", protocol.name().to_lowercase());
 }
 
-fn preferred_output_mode(
-    port: &DecklinkOutputPort,
-    current: DecklinkMode,
-) -> Option<&DecklinkOutputMode> {
+fn preferred_output_mode(port: &DecklinkOutputPort, current: DecklinkMode) -> Option<&DecklinkOutputMode> {
     if let Some(mode) = port.modes.iter().find(|mode| mode.mode == current) {
         return Some(mode);
     }
@@ -860,7 +723,6 @@ fn preferred_output_mode(
     return port.modes.first();
 }
 
-
 /// Global output toggle for one protocol. Enabling it with no output yet
 /// creates one from `make_config`.
 fn output_enable_row(
@@ -872,13 +734,7 @@ fn output_enable_row(
 ) {
     let label = protocol.label();
     settings_row(ui, &format!("{label} Output"), |ui| {
-        let existing = snapshot
-            .state
-            .cfg
-            .canvas
-            .outputs
-            .iter()
-            .find(|output| output.protocol == protocol);
+        let existing = snapshot.state.cfg.canvas.outputs.iter().find(|output| output.protocol == protocol);
         let registry_id = existing.map(|output| output.uuid.clone());
         let mut enabled = existing.map(|output| output.enabled).unwrap_or(false);
 
@@ -942,11 +798,7 @@ fn source_picker(
                 }
             }
             for group in groups {
-                let pending: Vec<&PickerItemView> = group
-                    .items
-                    .iter()
-                    .filter(|item| !connected.iter().any(|c| c.id == item.id))
-                    .collect();
+                let pending: Vec<&PickerItemView> = group.items.iter().filter(|item| !connected.iter().any(|c| c.id == item.id)).collect();
                 if pending.is_empty() {
                     continue;
                 }
@@ -976,18 +828,12 @@ fn draw_source_stats_section(stats: &SourceStats, ui: &mut egui::Ui) {
     settings_grid(ui, "source_stats_grid", |ui| {
         if stats.off_screen {
             settings_row(ui, "Status", |ui| {
-                ui.colored_label(
-                    egui::Color32::YELLOW,
-                    "Off-screen \u{2014} holding last frame",
-                );
+                ui.colored_label(egui::Color32::YELLOW, "Off-screen \u{2014} holding last frame");
             });
         }
 
         settings_row(ui, "Resolution", |ui| {
-            ui.label(format!(
-                "{}x{} {}",
-                stats.width, stats.height, stats.pixel_format
-            ));
+            ui.label(format!("{}x{} {}", stats.width, stats.height, stats.pixel_format));
         });
 
         settings_row(ui, "FPS Nominal", |ui| {
@@ -1058,7 +904,7 @@ const RESOLUTION_PRESETS: &[&[(&str, u32, u32)]] = &[
         ("UHD", 3840, 2160),
         ("QHD", 2560, 1440),
         ("FHD", 1920, 1080),
-        ("HD",  1280, 720),
+        ("HD", 1280, 720),
         ("FHD /2", 960, 540),
         ("FHD /3", 640, 360),
         ("FHD /4", 480, 270),
@@ -1077,9 +923,9 @@ const RESOLUTION_PRESETS: &[&[(&str, u32, u32)]] = &[
     &[
         ("QXGA", 2048, 1536),
         ("UXGA", 1600, 1200),
-        ("XGA",  1024, 768),
+        ("XGA", 1024, 768),
         ("SVGA", 800, 600),
-        ("VGA",  640, 480),
+        ("VGA", 640, 480),
         ("QVGA", 320, 240),
     ],
 ];
@@ -1088,36 +934,21 @@ fn subsection_separator(ui: &mut Ui) {
     ui.add(Separator::default().shrink(SUBSECTION_SEPARATOR_INSET));
 }
 
-pub fn collapsable_section<R>(
-    ui: &mut Ui,
-    title: &str,
-    heading: bool,
-    default_open: bool,
-    contents: impl FnOnce(&mut Ui) -> R,
-) {
+pub fn collapsable_section<R>(ui: &mut Ui, title: &str, heading: bool, default_open: bool, contents: impl FnOnce(&mut Ui) -> R) {
     let id = ui.make_persistent_id(title);
     egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open)
         .show_header(ui, |ui| {
             if heading {
                 ui.heading(title);
-            }
-            else {
+            } else {
                 ui.label(title);
             }
         })
         .body_unindented(contents);
 }
 
-pub fn settings_grid<R>(
-    ui: &mut Ui,
-    id: &str,
-    contents: impl FnOnce(&mut Ui) -> R,
-) -> InnerResponse<R> {
-    Grid::new(id)
-        .num_columns(2)
-        .spacing(SETTINGS_GRID_SPACING)
-        .min_col_width(SETTINGS_GRID_LEFT_MIN_WIDTH)
-        .show(ui, contents)
+pub fn settings_grid<R>(ui: &mut Ui, id: &str, contents: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
+    Grid::new(id).num_columns(2).spacing(SETTINGS_GRID_SPACING).min_col_width(SETTINGS_GRID_LEFT_MIN_WIDTH).show(ui, contents)
 }
 
 /// One label/value row of a [`settings_grid`].
@@ -1127,43 +958,27 @@ pub fn settings_row(ui: &mut Ui, label: &str, contents: impl FnOnce(&mut Ui)) {
     ui.end_row();
 }
 
-fn resolution_preset_menu(
-    ui: &mut Ui,
-    min_size: u32,
-    width: &mut u32,
-    height: &mut u32,
-) -> bool {
-    let response = ui.add(
-        egui::Button::new("⏵").min_size(egui::vec2(24.0, ui.spacing().interact_size.y)),
-    );
+fn resolution_preset_menu(ui: &mut Ui, min_size: u32, width: &mut u32, height: &mut u32) -> bool {
+    let response = ui.add(egui::Button::new("⏵").min_size(egui::vec2(24.0, ui.spacing().interact_size.y)));
     let mut changed = false;
-    if let Some(popup) = egui::Popup::menu(&response)
-        .align(egui::RectAlign::RIGHT_START)
-        .show(|ui| {
-            let mut group_changed = false;
-            let mut drawn = false;
-            for group in RESOLUTION_PRESETS {
-                if drawn {
-                    ui.separator();
-                }
-                group_changed |= resolution_preset_rows(ui, group, min_size, width, height);
-                drawn = true;
+    if let Some(popup) = egui::Popup::menu(&response).align(egui::RectAlign::RIGHT_START).show(|ui| {
+        let mut group_changed = false;
+        let mut drawn = false;
+        for group in RESOLUTION_PRESETS {
+            if drawn {
+                ui.separator();
             }
-            group_changed
-        })
-    {
+            group_changed |= resolution_preset_rows(ui, group, min_size, width, height);
+            drawn = true;
+        }
+        group_changed
+    }) {
         changed = popup.inner;
     }
     return changed;
 }
 
-fn resolution_preset_rows(
-    ui: &mut Ui,
-    presets: &[(&str, u32, u32)],
-    min_size: u32,
-    width: &mut u32,
-    height: &mut u32,
-) -> bool {
+fn resolution_preset_rows(ui: &mut Ui, presets: &[(&str, u32, u32)], min_size: u32, width: &mut u32, height: &mut u32) -> bool {
     let mut changed = false;
     for (label, preset_width, preset_height) in presets {
         if *preset_width < min_size || *preset_height < min_size {
@@ -1287,10 +1102,7 @@ mod tests {
 
     fn panel_with_rect() -> SidePanel {
         return SidePanel {
-            panel_rect: Some(egui::Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(320.0, 800.0),
-            )),
+            panel_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(320.0, 800.0))),
             ..Default::default()
         };
     }

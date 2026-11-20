@@ -2,12 +2,8 @@ use super::Engine;
 use super::transform::{MAX_ZOOM, MIN_ZOOM};
 use super::project::ProjectError;
 use crate::config::{BorderVisibility, LabelVisibility, Source};
-use crate::control::{
-    Command, Selector, feedback_values, normalize_prefix,
-};
-use crate::sources::{
-    Protocol, RdpSourceConfig, SourceConfig, SourceKey, VncSourceConfig,
-};
+use crate::control::{Command, Selector, feedback_values, normalize_prefix};
+use crate::sources::{Protocol, RdpSourceConfig, SourceConfig, SourceKey, VncSourceConfig};
 
 #[derive(Debug)]
 pub enum ControlError {
@@ -71,12 +67,7 @@ impl Engine {
                 let dx = finite(dx)?;
                 let dy = finite(dy)?;
                 if self.state.expanded_source_id.is_none() {
-                    let selector = source.or_else(|| {
-                        self.state
-                            .selected_source_id
-                            .clone()
-                            .map(Selector::Id)
-                    });
+                    let selector = source.or_else(|| self.state.selected_source_id.clone().map(Selector::Id));
                     if let Some(selector) = selector {
                         self.update_source(&selector, |source| {
                             source.x += dx;
@@ -85,13 +76,7 @@ impl Engine {
                     }
                 }
             }
-            Command::SetSourceRect {
-                source,
-                x,
-                y,
-                width,
-                height,
-            } => {
+            Command::SetSourceRect { source, x, y, width, height } => {
                 let x = finite(x)?;
                 let y = finite(y)?;
                 self.update_source(&source, |source| {
@@ -153,14 +138,8 @@ impl Engine {
             }
             Command::SetSourceProtocol { source, protocol } => {
                 let uuid = self.resolve_source(&source).ok_or(ControlError::UnknownSource)?;
-                let placement = self
-                    .state
-                    .cfg
-                    .canvas
-                    .sources
-                    .iter_mut()
-                    .find(|placement| placement.uuid == uuid)
-                    .ok_or(ControlError::UnknownSource)?;
+                let placement =
+                    self.state.cfg.canvas.sources.iter_mut().find(|placement| placement.uuid == uuid).ok_or(ControlError::UnknownSource)?;
                 placement.protocol = protocol;
                 placement.source_ref = None;
                 placement.config = SourceConfig::for_protocol(&placement.protocol);
@@ -177,14 +156,7 @@ impl Engine {
                     .find(|placement| placement.uuid == uuid)
                     .map(|placement| placement.protocol.clone())
                     .ok_or(ControlError::UnknownSource)?;
-                if let Some(placement) = self
-                    .state
-                    .cfg
-                    .canvas
-                    .sources
-                    .iter_mut()
-                    .find(|placement| placement.uuid == uuid)
-                {
+                if let Some(placement) = self.state.cfg.canvas.sources.iter_mut().find(|placement| placement.uuid == uuid) {
                     placement.source_ref = source_ref.clone();
                 }
                 self.state.dirty = true;
@@ -195,10 +167,7 @@ impl Engine {
             Command::NewSource { source, protocol } => {
                 let uuid = self.resolve_source(&source).ok_or(ControlError::UnknownSource)?;
                 let (source_ref, config) = match protocol {
-                    Protocol::Test => (
-                        self.registry.add_test(None).source_ref,
-                        Some(SourceConfig::for_protocol(&Protocol::Test)),
-                    ),
+                    Protocol::Test => (self.registry.add_test(None).source_ref, Some(SourceConfig::for_protocol(&Protocol::Test))),
                     Protocol::Vnc => {
                         let config = VncSourceConfig::default();
                         let key = self.registry.add_vnc(config.clone());
@@ -211,14 +180,8 @@ impl Engine {
                     }
                     _ => return Err(ControlError::InvalidArgument),
                 };
-                let placement = self
-                    .state
-                    .cfg
-                    .canvas
-                    .sources
-                    .iter_mut()
-                    .find(|placement| placement.uuid == uuid)
-                    .ok_or(ControlError::UnknownSource)?;
+                let placement =
+                    self.state.cfg.canvas.sources.iter_mut().find(|placement| placement.uuid == uuid).ok_or(ControlError::UnknownSource)?;
                 placement.source_ref = Some(source_ref);
                 if let Some(config) = config {
                     placement.config = config;
@@ -240,11 +203,7 @@ impl Engine {
             Command::SetSourceHeight { source, value } => {
                 self.update_source(&source, |source| source.height = value.max(1))?;
             }
-            Command::SetSourceSize {
-                source,
-                width,
-                height,
-            } => {
+            Command::SetSourceSize { source, width, height } => {
                 self.update_source(&source, |source| {
                     source.width = width.max(1);
                     source.height = height.max(1);
@@ -277,19 +236,11 @@ impl Engine {
                 self.state.dirty = true;
             }
             Command::SetCanvasLabelVisibility { enabled } => {
-                self.state.cfg.canvas.label.visibility = if enabled {
-                    LabelVisibility::Show
-                } else {
-                    LabelVisibility::Hide
-                };
+                self.state.cfg.canvas.label.visibility = if enabled { LabelVisibility::Show } else { LabelVisibility::Hide };
                 self.state.dirty = true;
             }
             Command::SetCanvasBorderVisibility { enabled } => {
-                self.state.cfg.canvas.border.visibility = if enabled {
-                    BorderVisibility::Show
-                } else {
-                    BorderVisibility::Hide
-                };
+                self.state.cfg.canvas.border.visibility = if enabled { BorderVisibility::Show } else { BorderVisibility::Hide };
                 self.state.dirty = true;
             }
             Command::PatchCanvas {
@@ -317,10 +268,7 @@ impl Engine {
                 self.state.view.zoom(&self.state.cfg.canvas, &rect, factor);
             }
             Command::Pan { delta } => {
-                self.state.view.pan = [
-                    self.state.view.pan[0] + finite(delta[0])?,
-                    self.state.view.pan[1] + finite(delta[1])?,
-                ];
+                self.state.view.pan = [self.state.view.pan[0] + finite(delta[0])?, self.state.view.pan[1] + finite(delta[1])?];
             }
             Command::RecenterView => {
                 let rect = self.canvas_rect;
@@ -342,14 +290,8 @@ impl Engine {
             }
             Command::SetOutputConfig { output, config } => {
                 let uuid = self.resolve_output(&output).ok_or(ControlError::UnknownOutput)?;
-                let placement = self
-                    .state
-                    .cfg
-                    .canvas
-                    .outputs
-                    .iter_mut()
-                    .find(|placement| placement.uuid == uuid)
-                    .ok_or(ControlError::UnknownOutput)?;
+                let placement =
+                    self.state.cfg.canvas.outputs.iter_mut().find(|placement| placement.uuid == uuid).ok_or(ControlError::UnknownOutput)?;
                 placement.config = config;
                 self.state.dirty = true;
                 self.restart_output(&uuid);
@@ -401,19 +343,9 @@ impl Engine {
         );
     }
 
-    fn update_source(
-        &mut self,
-        selector: &Selector,
-        update: impl FnOnce(&mut Source),
-    ) -> Result<(), ControlError> {
+    fn update_source(&mut self, selector: &Selector, update: impl FnOnce(&mut Source)) -> Result<(), ControlError> {
         let uuid = self.resolve_source(selector).ok_or(ControlError::UnknownSource)?;
-        let source = self
-            .state.cfg
-            .canvas
-            .sources
-            .iter_mut()
-            .find(|source| source.uuid == uuid)
-            .ok_or(ControlError::UnknownSource)?;
+        let source = self.state.cfg.canvas.sources.iter_mut().find(|source| source.uuid == uuid).ok_or(ControlError::UnknownSource)?;
         update(source);
         self.state.dirty = true;
         return Ok(());
@@ -453,10 +385,7 @@ impl Engine {
         return source
             .source_ref
             .as_ref()
-            .is_some_and(|source_ref| {
-                self.registry
-                    .is_live(&SourceKey::new(source.protocol.clone(), source_ref.clone()))
-            });
+            .is_some_and(|source_ref| self.registry.is_live(&SourceKey::new(source.protocol.clone(), source_ref.clone())));
     }
 
     /// Publish OSC feedback for any state that changed since the last frame.
@@ -471,21 +400,10 @@ impl Engine {
 }
 
 /// Resolve a selector against a canvas list: 1-based index, then name, then uuid.
-fn resolve<T>(
-    items: &[T],
-    selector: &Selector,
-    name: fn(&T) -> &str,
-    uuid: fn(&T) -> &str,
-) -> Option<String> {
+fn resolve<T>(items: &[T], selector: &Selector, name: fn(&T) -> &str, uuid: fn(&T) -> &str) -> Option<String> {
     return match selector {
-        Selector::Id(id) => items
-            .iter()
-            .any(|item| uuid(item) == id.as_str())
-            .then(|| id.clone()),
-        Selector::Index(index) => index
-            .checked_sub(1)
-            .and_then(|index| items.get(index))
-            .map(|item| uuid(item).to_string()),
+        Selector::Id(id) => items.iter().any(|item| uuid(item) == id.as_str()).then(|| id.clone()),
+        Selector::Index(index) => index.checked_sub(1).and_then(|index| items.get(index)).map(|item| uuid(item).to_string()),
         Selector::Key(key) => items
             .iter()
             .find(|item| name(item) == key)
@@ -506,30 +424,13 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use crate::config::{
-        BorderVisibility, Canvas, LabelVisibility, Source, SourceBorderVisibility,
-        SourceLabelVisibility, TextureMode,
-    };
+    use crate::config::{BorderVisibility, Canvas, LabelVisibility, Source, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
     use crate::engine::state::EngineState;
     use crate::engine::SourcePlacementPatch;
-    use crate::sources::{
-        NdiOutputConfig, OutputConfig, Protocol, SourceConfig, SourceKey, TestSourceConfig,
-    };
+    use crate::sources::{NdiOutputConfig, OutputConfig, Protocol, SourceConfig, SourceKey, TestSourceConfig};
 
     fn engine_with_source() -> (Engine, String) {
-        let source = Source::new(
-            "Source".into(),
-            Protocol::Test,
-            None,
-            0.0,
-            0.0,
-            640,
-            360,
-            0,
-            TextureMode::Fit,
-            false,
-            false,
-        );
+        let source = Source::new("Source".into(), Protocol::Test, None, 0.0, 0.0, 640, 360, 0, TextureMode::Fit, false, false);
         let id = source.uuid.clone();
         let mut canvas = Canvas::default();
         canvas.sources.push(source);
@@ -549,46 +450,24 @@ mod tests {
                 height: 450,
             })
             .unwrap();
-        engine
-            .apply_command(Command::SelectSource(Selector::Id(id.clone())))
-            .unwrap();
+        engine.apply_command(Command::SelectSource(Selector::Id(id.clone()))).unwrap();
 
         let snapshot = engine.snapshot();
-        let source = snapshot
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == id)
-            .unwrap();
+        let source = snapshot.state.cfg.canvas.sources.iter().find(|source| source.uuid == id).unwrap();
         assert_eq!((source.x, source.y), (10.0, 20.0));
         assert_eq!((source.width, source.height), (800, 450));
-        assert_eq!(
-            snapshot.state.selected_source_id.as_deref(),
-            Some(id.as_str())
-        );
+        assert_eq!(snapshot.state.selected_source_id.as_deref(), Some(id.as_str()));
         assert_eq!(snapshot.state.revision, 2);
     }
 
     #[test]
     fn view_and_expand_commands_update_the_snapshot() {
         let (mut engine, id) = engine_with_source();
-        engine
-            .apply_command(Command::ExpandSource(Selector::Id(id.clone())))
-            .unwrap();
-        engine
-            .apply_command(Command::SetView {
-                zoom: 2.0,
-                pan: [4.0, 6.0],
-            })
-            .unwrap();
+        engine.apply_command(Command::ExpandSource(Selector::Id(id.clone()))).unwrap();
+        engine.apply_command(Command::SetView { zoom: 2.0, pan: [4.0, 6.0] }).unwrap();
 
         let snapshot = engine.snapshot();
-        assert_eq!(
-            snapshot.state.expanded_source_id.as_deref(),
-            Some(id.as_str())
-        );
+        assert_eq!(snapshot.state.expanded_source_id.as_deref(), Some(id.as_str()));
         assert_eq!(snapshot.state.view.zoom, 2.0);
         assert_eq!(snapshot.state.view.pan, [4.0, 6.0]);
     }
@@ -596,9 +475,7 @@ mod tests {
     #[test]
     fn remove_source_command_prunes_the_placement() {
         let (mut engine, id) = engine_with_source();
-        engine
-            .apply_command(Command::RemoveSource(Selector::Id(id)))
-            .unwrap();
+        engine.apply_command(Command::RemoveSource(Selector::Id(id))).unwrap();
 
         let snapshot = engine.snapshot();
         assert!(snapshot.state.cfg.canvas.sources.is_empty());
@@ -662,14 +539,7 @@ mod tests {
             })
             .unwrap();
 
-        let source = engine
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == id)
-            .unwrap();
+        let source = engine.state.cfg.canvas.sources.iter().find(|source| source.uuid == id).unwrap();
         assert_eq!(source.name, "Renamed");
         assert_eq!((source.x, source.y), (5.0, 6.0));
         assert_eq!((source.width, source.height), (100, 50));
@@ -703,14 +573,7 @@ mod tests {
             })
             .unwrap();
 
-        let source = engine
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == id)
-            .unwrap();
+        let source = engine.state.cfg.canvas.sources.iter().find(|source| source.uuid == id).unwrap();
         assert_eq!(source.name, "Cam A");
         assert_eq!(source.label_visibility, SourceLabelVisibility::Show);
         assert_eq!(source.border_visibility, SourceBorderVisibility::Hide);
@@ -720,12 +583,8 @@ mod tests {
     #[test]
     fn canvas_visibility_commands_toggle_label_and_border() {
         let (mut engine, _id) = engine_with_source();
-        engine
-            .apply_command(Command::SetCanvasLabelVisibility { enabled: true })
-            .unwrap();
-        engine
-            .apply_command(Command::SetCanvasBorderVisibility { enabled: false })
-            .unwrap();
+        engine.apply_command(Command::SetCanvasLabelVisibility { enabled: true }).unwrap();
+        engine.apply_command(Command::SetCanvasBorderVisibility { enabled: false }).unwrap();
 
         assert_eq!(engine.state.cfg.canvas.label.visibility, LabelVisibility::Show);
         assert_eq!(engine.state.cfg.canvas.border.visibility, BorderVisibility::Hide);
@@ -735,14 +594,7 @@ mod tests {
     fn nudge_targets_the_selection_or_an_explicit_source() {
         let (mut engine, id) = engine_with_source();
         let position = |engine: &Engine| {
-            let source = engine
-                .state
-                .cfg
-                .canvas
-                .sources
-                .iter()
-                .find(|source| source.uuid == id)
-                .unwrap();
+            let source = engine.state.cfg.canvas.sources.iter().find(|source| source.uuid == id).unwrap();
             (source.x, source.y)
         };
 
@@ -775,9 +627,7 @@ mod tests {
             .unwrap();
         assert_eq!(position(&engine), (4.0, -1.0));
 
-        engine
-            .apply_command(Command::ExpandSource(Selector::Id(id.clone())))
-            .unwrap();
+        engine.apply_command(Command::ExpandSource(Selector::Id(id.clone()))).unwrap();
         engine
             .apply_command(Command::Nudge {
                 source: Some(Selector::Index(1)),
@@ -819,14 +669,7 @@ mod tests {
             .unwrap();
 
         let snapshot = engine.snapshot();
-        let source = snapshot
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == id)
-            .unwrap();
+        let source = snapshot.state.cfg.canvas.sources.iter().find(|source| source.uuid == id).unwrap();
         assert!(source.source_ref.is_some());
         assert_eq!(snapshot.runtime.sources.len(), 1);
         assert!(snapshot.runtime.discovery(&Protocol::Test).is_some());
@@ -868,18 +711,9 @@ mod tests {
         engine.apply_command(Command::AddSource).unwrap();
         let second = engine.state.selected_source_id.clone().unwrap();
 
-        engine
-            .apply_command(Command::MoveSource { from: 1, to: 0 })
-            .unwrap();
+        engine.apply_command(Command::MoveSource { from: 1, to: 0 }).unwrap();
 
-        let order: Vec<_> = engine
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .map(|source| source.uuid.clone())
-            .collect();
+        let order: Vec<_> = engine.state.cfg.canvas.sources.iter().map(|source| source.uuid.clone()).collect();
         assert_eq!(order, vec![second, first]);
     }
 
@@ -895,23 +729,14 @@ mod tests {
         source.z = 3;
         let runtimes = engine.snapshot().runtime.sources.len();
 
-        engine
-            .apply_command(Command::DuplicateSource(Selector::Id(id.clone())))
-            .unwrap();
+        engine.apply_command(Command::DuplicateSource(Selector::Id(id.clone()))).unwrap();
 
         let copy_id = engine.state.selected_source_id.clone().unwrap();
         assert_ne!(copy_id, id);
         assert!(engine.state.dirty);
         assert_eq!(engine.state.cfg.canvas.sources.len(), 2);
         assert_eq!(engine.state.cfg.canvas.sources[1].uuid, copy_id);
-        let copy = engine
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == copy_id)
-            .unwrap();
+        let copy = engine.state.cfg.canvas.sources.iter().find(|source| source.uuid == copy_id).unwrap();
         assert_eq!(copy.name, "Source copy");
         assert_eq!((copy.x, copy.y), (132.0, 82.0));
         assert_eq!(copy.z, 4);
@@ -950,15 +775,8 @@ mod tests {
         let (mut engine, _) = engine_with_source();
         engine.apply_command(Command::AddSource).unwrap();
         let id = engine.state.selected_source_id.clone().unwrap();
-        let source_ref = engine
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == id)
-            .and_then(|source| source.source_ref.clone())
-            .unwrap();
+        let source_ref =
+            engine.state.cfg.canvas.sources.iter().find(|source| source.uuid == id).and_then(|source| source.source_ref.clone()).unwrap();
         let key = SourceKey::new(Protocol::Test, source_ref);
         let running = engine.registry.get(&key).unwrap().stats();
 
@@ -979,15 +797,8 @@ mod tests {
         let (mut engine, _) = engine_with_source();
         engine.apply_command(Command::AddSource).unwrap();
         let id = engine.state.selected_source_id.clone().unwrap();
-        let source_ref = engine
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == id)
-            .and_then(|source| source.source_ref.clone())
-            .unwrap();
+        let source_ref =
+            engine.state.cfg.canvas.sources.iter().find(|source| source.uuid == id).and_then(|source| source.source_ref.clone()).unwrap();
         let key = SourceKey::new(Protocol::Test, source_ref);
         let running = engine.registry.get(&key).unwrap().stats();
 
@@ -1041,9 +852,7 @@ mod tests {
                 source_ref: Some("ref".into()),
             },
             Command::MoveSource { from: 0, to: 1 },
-            Command::RefreshDiscovery {
-                protocol: Protocol::Ndi,
-            },
+            Command::RefreshDiscovery { protocol: Protocol::Ndi },
             Command::AddOutput {
                 protocol: Protocol::Ndi,
                 config: OutputConfig::Ndi(NdiOutputConfig::default()),
@@ -1066,9 +875,7 @@ mod tests {
             h: 1000.0,
         };
 
-        engine
-            .apply_command(Command::Zoom { factor: 2.0 })
-            .unwrap();
+        engine.apply_command(Command::Zoom { factor: 2.0 }).unwrap();
         assert!(engine.state.view.zoom > 1.0);
         assert!(engine.state.view.pan[0].is_finite());
         assert!(engine.state.view.pan[1].is_finite());
@@ -1081,14 +888,8 @@ mod tests {
     fn pan_command_accumulates_the_offset() {
         let (mut engine, _id) = engine_with_source();
 
-        engine
-            .apply_command(Command::Pan {
-                delta: [10.0, -4.0],
-            })
-            .unwrap();
-        engine
-            .apply_command(Command::Pan { delta: [5.0, 4.0] })
-            .unwrap();
+        engine.apply_command(Command::Pan { delta: [10.0, -4.0] }).unwrap();
+        engine.apply_command(Command::Pan { delta: [5.0, 4.0] }).unwrap();
 
         assert_eq!(engine.state.view.pan, [15.0, 0.0]);
     }
@@ -1097,13 +898,7 @@ mod tests {
     fn pan_command_rejects_non_finite_deltas() {
         let (mut engine, _id) = engine_with_source();
 
-        assert!(
-            engine
-                .apply_command(Command::Pan {
-                    delta: [f32::NAN, 0.0]
-                })
-                .is_err()
-        );
+        assert!(engine.apply_command(Command::Pan { delta: [f32::NAN, 0.0] }).is_err());
         assert_eq!(engine.state.view.pan, [0.0, 0.0]);
     }
 
@@ -1134,10 +929,7 @@ mod tests {
         });
 
         assert!(result.is_err());
-        assert!(matches!(
-            engine.state.cfg.canvas.sources[0].config,
-            SourceConfig::Unknown(_)
-        ));
+        assert!(matches!(engine.state.cfg.canvas.sources[0].config, SourceConfig::Unknown(_)));
         assert_eq!(engine.state.revision, 0);
     }
 
@@ -1151,14 +943,7 @@ mod tests {
             })
             .unwrap();
 
-        let source = engine
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == id)
-            .unwrap();
+        let source = engine.state.cfg.canvas.sources.iter().find(|source| source.uuid == id).unwrap();
         assert!(source.source_ref.is_some());
         assert!(matches!(source.config, SourceConfig::Test(_)));
     }
@@ -1198,14 +983,7 @@ mod tests {
             })
             .unwrap();
 
-        let second = engine
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == second_id)
-            .unwrap();
+        let second = engine.state.cfg.canvas.sources.iter().find(|source| source.uuid == second_id).unwrap();
         assert!(matches!(&second.config, SourceConfig::Test(config) if config.width == 320));
     }
 }

@@ -3,13 +3,10 @@ use std::time::Duration;
 
 use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
 use windows::Win32::Media::DirectShow::{IBaseFilter, ICreateDevEnum};
-use windows::Win32::Media::MediaFoundation::{
-    CLSID_SystemDeviceEnum, CLSID_VideoInputDeviceCategory,
-};
+use windows::Win32::Media::MediaFoundation::{CLSID_SystemDeviceEnum, CLSID_VideoInputDeviceCategory};
 use windows::Win32::System::Com::StructuredStorage::IPropertyBag;
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoTaskMemFree, IBindCtx, IEnumMoniker, IMoniker,
-    CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+    CoCreateInstance, CoInitializeEx, CoTaskMemFree, IBindCtx, IEnumMoniker, IMoniker, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
 };
 use windows::Win32::System::Variant::{VariantClear, VARIANT, VT_BSTR};
 use windows::core::{BSTR, PCWSTR};
@@ -60,21 +57,14 @@ impl Discovery {
     }
 
     pub fn find_by_id(&self, id: &str) -> Option<Device> {
-        self.devices
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|d| d.id == id)
-            .cloned()
+        self.devices.lock().unwrap().iter().find(|d| d.id == id).cloned()
     }
 }
 
 /// Enumerate DirectShow video input devices. Returns an empty list on any
 /// failure — the discovery loop retries.
 unsafe fn enumerate_devices() -> Vec<Device> {
-    let Ok(dev_enum) = (unsafe {
-        CoCreateInstance::<_, ICreateDevEnum>(&CLSID_SystemDeviceEnum, None, CLSCTX_INPROC_SERVER)
-    }) else {
+    let Ok(dev_enum) = (unsafe { CoCreateInstance::<_, ICreateDevEnum>(&CLSID_SystemDeviceEnum, None, CLSCTX_INPROC_SERVER) }) else {
         tracing::warn!("DirectShow discovery: CoCreateInstance(SystemDeviceEnum) failed");
         return Vec::new();
     };
@@ -82,11 +72,7 @@ unsafe fn enumerate_devices() -> Vec<Device> {
     let mut enum_moniker: Option<IEnumMoniker> = None;
     // An empty category yields S_FALSE, which `is_err()` treats as success with
     // a null enumerator: no devices, not an error.
-    if unsafe {
-        dev_enum.CreateClassEnumerator(&CLSID_VideoInputDeviceCategory, &mut enum_moniker, 0)
-    }
-    .is_err()
-    {
+    if unsafe { dev_enum.CreateClassEnumerator(&CLSID_VideoInputDeviceCategory, &mut enum_moniker, 0) }.is_err() {
         return Vec::new();
     }
     let Some(enum_moniker) = enum_moniker else {
@@ -103,9 +89,7 @@ unsafe fn enumerate_devices() -> Vec<Device> {
         let Some(moniker) = moniker[0].take() else {
             break;
         };
-        let Ok(bag) = (unsafe {
-            moniker.BindToStorage::<_, _, IPropertyBag>(None::<&IBindCtx>, None::<&IMoniker>)
-        }) else {
+        let Ok(bag) = (unsafe { moniker.BindToStorage::<_, _, IPropertyBag>(None::<&IBindCtx>, None::<&IMoniker>) }) else {
             continue;
         };
         let Some((id, name)) = (unsafe { moniker_identity(&moniker, &bag) }) else {
@@ -119,10 +103,8 @@ unsafe fn enumerate_devices() -> Vec<Device> {
 
 /// Bind the DirectShow capture filter whose resolved id is `device_id`.
 pub(super) unsafe fn find_capture_filter(device_id: &str) -> Result<IBaseFilter, String> {
-    let dev_enum = unsafe {
-        CoCreateInstance::<_, ICreateDevEnum>(&CLSID_SystemDeviceEnum, None, CLSCTX_INPROC_SERVER)
-    }
-    .map_err(|e| format!("CoCreateInstance(SystemDeviceEnum): {e}"))?;
+    let dev_enum = unsafe { CoCreateInstance::<_, ICreateDevEnum>(&CLSID_SystemDeviceEnum, None, CLSCTX_INPROC_SERVER) }
+        .map_err(|e| format!("CoCreateInstance(SystemDeviceEnum): {e}"))?;
 
     let mut enum_moniker: Option<IEnumMoniker> = None;
     unsafe { dev_enum.CreateClassEnumerator(&CLSID_VideoInputDeviceCategory, &mut enum_moniker, 0) }
@@ -139,9 +121,7 @@ pub(super) unsafe fn find_capture_filter(device_id: &str) -> Result<IBaseFilter,
         let Some(moniker) = moniker[0].take() else {
             break;
         };
-        let Ok(bag) = (unsafe {
-            moniker.BindToStorage::<_, _, IPropertyBag>(None::<&IBindCtx>, None::<&IMoniker>)
-        }) else {
+        let Ok(bag) = (unsafe { moniker.BindToStorage::<_, _, IPropertyBag>(None::<&IBindCtx>, None::<&IMoniker>) }) else {
             continue;
         };
         let Some((id, _)) = (unsafe { moniker_identity(&moniker, &bag) }) else {
@@ -150,10 +130,7 @@ pub(super) unsafe fn find_capture_filter(device_id: &str) -> Result<IBaseFilter,
         if id != device_id {
             continue;
         }
-        return unsafe {
-            moniker.BindToObject::<_, _, IBaseFilter>(None::<&IBindCtx>, None::<&IMoniker>)
-        }
-        .map_err(|e| format!("BindToObject: {e}"));
+        return unsafe { moniker.BindToObject::<_, _, IBaseFilter>(None::<&IBindCtx>, None::<&IMoniker>) }.map_err(|e| format!("BindToObject: {e}"));
     }
     Err(format!("no DirectShow device matches {device_id:?}"))
 }
@@ -169,11 +146,7 @@ unsafe fn moniker_identity(moniker: &IMoniker, bag: &IPropertyBag) -> Option<(St
 }
 
 /// Pure identity fallback ordering, kept separate so it is testable without COM.
-fn choose_identity(
-    device_path: Option<String>,
-    display: Option<String>,
-    friendly: Option<String>,
-) -> Option<(String, String)> {
+fn choose_identity(device_path: Option<String>, display: Option<String>, friendly: Option<String>) -> Option<(String, String)> {
     let id = device_path.or(display).or_else(|| friendly.clone())?;
     let name = friendly.unwrap_or_else(|| id.clone());
     return Some((id, name));
@@ -181,10 +154,7 @@ fn choose_identity(
 
 /// `IMoniker::GetDisplayName`, freed into an owned `String`.
 unsafe fn moniker_display_name(moniker: &IMoniker) -> Option<String> {
-    let name = unsafe {
-        moniker.GetDisplayName(None::<&IBindCtx>, None::<&IMoniker>)
-    }
-    .ok()?;
+    let name = unsafe { moniker.GetDisplayName(None::<&IBindCtx>, None::<&IMoniker>) }.ok()?;
     if name.is_null() {
         return None;
     }
@@ -226,12 +196,7 @@ mod tests {
 
     #[test]
     fn device_path_is_the_preferred_id() {
-        let (id, name) = choose_identity(
-            Some("path".to_string()),
-            Some("display".to_string()),
-            Some("Friendly".to_string()),
-        )
-        .unwrap();
+        let (id, name) = choose_identity(Some("path".to_string()), Some("display".to_string()), Some("Friendly".to_string())).unwrap();
         assert_eq!(id, "path");
         assert_eq!(name, "Friendly");
     }
@@ -240,16 +205,14 @@ mod tests {
     /// keeps them listed and uniquely identifiable.
     #[test]
     fn display_name_is_used_when_device_path_is_missing() {
-        let (id, name) =
-            choose_identity(None, Some("display".to_string()), Some("OBS".to_string())).unwrap();
+        let (id, name) = choose_identity(None, Some("display".to_string()), Some("OBS".to_string())).unwrap();
         assert_eq!(id, "display");
         assert_eq!(name, "OBS");
     }
 
     #[test]
     fn friendly_name_is_the_last_resort() {
-        let (id, name) =
-            choose_identity(None, None, Some("OBS Virtual Camera".to_string())).unwrap();
+        let (id, name) = choose_identity(None, None, Some("OBS Virtual Camera".to_string())).unwrap();
         assert_eq!(id, "OBS Virtual Camera");
         assert_eq!(name, "OBS Virtual Camera");
     }

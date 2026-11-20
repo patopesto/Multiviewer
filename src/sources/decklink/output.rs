@@ -7,19 +7,15 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use multiviewer_decklink::{
-    decklink_output_free, decklink_output_new, decklink_output_present_frame,
-    decklink_output_completion_available, decklink_output_pixel_format, decklink_output_start,
-    decklink_output_stop, decklink_output_take_completed, DecklinkOutputHandle, DisplayMode,
+    decklink_output_free, decklink_output_new, decklink_output_present_frame, decklink_output_completion_available, decklink_output_pixel_format,
+    decklink_output_start, decklink_output_stop, decklink_output_take_completed, DecklinkOutputHandle, DisplayMode,
 };
 
 #[cfg(target_os = "macos")]
 use std::ffi::c_void;
 
 #[cfg(target_os = "macos")]
-use multiviewer_decklink::{
-    decklink_cv_buffer_iosurface, decklink_cv_buffer_new, decklink_cv_buffer_release,
-    decklink_output_present_cv,
-};
+use multiviewer_decklink::{decklink_cv_buffer_iosurface, decklink_cv_buffer_new, decklink_cv_buffer_release, decklink_output_present_cv};
 
 #[cfg(target_os = "macos")]
 use crate::platform::texture_from_iosurface;
@@ -27,9 +23,7 @@ use crate::platform::texture_from_iosurface;
 use super::super::{OutputStats, Protocol};
 use super::super::output::{OutputId, OutputLiveness, ReadbackPool, VideoOutput};
 use super::pixel_format_from_raw;
-use crate::sources::{
-    ColorRange, ColorSpace, PixelFormat, RENDER_TARGET_USAGE, TextureTarget, YuvConverter,
-};
+use crate::sources::{ColorRange, ColorSpace, PixelFormat, RENDER_TARGET_USAGE, TextureTarget, YuvConverter};
 
 const SCALE_SHADER: &str = r#"
 struct VertexOutput {
@@ -111,7 +105,10 @@ enum OutputFrame {
         height: u32,
     },
     #[cfg(target_os = "macos")]
-    Cv { cv: CvPtr, index: usize },
+    Cv {
+        cv: CvPtr,
+        index: usize,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -172,12 +169,7 @@ impl CvSurface {
         };
         let view = texture.create_view(&Default::default());
         let layout = PixelFormat::Bgra8.texture_layout(width, height);
-        let target = TextureTarget::from_parts(
-            texture,
-            view,
-            layout,
-            wgpu::TextureUsages::RENDER_ATTACHMENT,
-        );
+        let target = TextureTarget::from_parts(texture, view, layout, wgpu::TextureUsages::RENDER_ATTACHMENT);
         return Some(Self {
             cv: CvPtr(cv),
             target,
@@ -209,10 +201,7 @@ impl CvRing {
     }
 
     fn acquire(&mut self) -> Option<usize> {
-        return self
-            .surfaces
-            .iter()
-            .position(|s| matches!(s.state, CvState::Free));
+        return self.surfaces.iter().position(|s| matches!(s.state, CvState::Free));
     }
 
     fn mark_rendering(&mut self, index: usize, submission: wgpu::SubmissionIndex) {
@@ -239,10 +228,7 @@ impl CvRing {
     }
 
     fn ready(&self) -> Option<usize> {
-        return self
-            .surfaces
-            .iter()
-            .position(|s| matches!(s.state, CvState::Ready));
+        return self.surfaces.iter().position(|s| matches!(s.state, CvState::Ready));
     }
 
     fn mark_queued(&mut self, index: usize) {
@@ -422,13 +408,13 @@ impl DecklinkOutput {
                 let device_name = thread_config.device_name.clone();
                 let mode_id: u32 = thread_config.display_mode.into();
                 let Ok(device_name_c) = CString::new(device_name) else {
-                    tracing::error!(output=thread_name, "DeckLink output device name contains null");
+                    tracing::error!(output = thread_name, "DeckLink output device name contains null");
                     return;
                 };
 
                 let output = unsafe { decklink_output_new(device_name_c.as_ptr()) };
                 if output.is_null() {
-                    tracing::error!(output=thread_name, "DeckLink output failed to create output handle");
+                    tracing::error!(output = thread_name, "DeckLink output failed to create output handle");
                     return;
                 }
 
@@ -451,48 +437,29 @@ impl DecklinkOutput {
                 let cv_completed_arg: Option<&Arc<Mutex<Vec<usize>>>> = None;
                 loop {
                     let frame = match frame_rx.recv_timeout(DRAIN_INTERVAL) {
-                        Ok(frame) => {
-                            Some(frame)
-                        }
+                        Ok(frame) => Some(frame),
                         Err(mpsc::RecvTimeoutError::Timeout) => None,
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     };
                     drain_completed(output, &mut in_flight, cv_completed_arg, Some(&pinned_completed_worker));
 
                     if !started {
-                        if enabled_worker.load(Ordering::Relaxed)
-                            && !thread_config.device_name.is_empty()
-                            && Instant::now() >= next_start
-                        {
+                        if enabled_worker.load(Ordering::Relaxed) && !thread_config.device_name.is_empty() && Instant::now() >= next_start {
                             if unsafe { decklink_output_start(output, mode_id) } {
                                 started = true;
                                 start_logged = false;
                                 start_failures = 0;
                                 stats_clone.lock().unwrap().error = None;
-                                completion_ok_worker.store(
-                                    unsafe { decklink_output_completion_available(output) },
-                                    Ordering::Relaxed,
-                                );
+                                completion_ok_worker.store(unsafe { decklink_output_completion_available(output) }, Ordering::Relaxed);
                                 let format = unsafe { decklink_output_pixel_format(output) };
                                 output_format_worker.store(format, Ordering::Release);
-                                let label = pixel_format_from_raw(format)
-                                    .map(|format| format.label())
-                                    .unwrap_or("unknown");
-                                tracing::info!(
-                                    output=thread_name,
-                                    "DeckLink output started on {} ({})",
-                                    thread_config.display_mode.name(),
-                                    label
-                                );
+                                let label = pixel_format_from_raw(format).map(|format| format.label()).unwrap_or("unknown");
+                                tracing::info!(output = thread_name, "DeckLink output started on {} ({})", thread_config.display_mode.name(), label);
                             } else {
-                                stats_clone.lock().unwrap().error =
-                                    Some("device busy or unavailable".to_string());
+                                stats_clone.lock().unwrap().error = Some("device busy or unavailable".to_string());
                                 start_failures = start_failures.saturating_add(1);
                                 if !start_logged {
-                                    tracing::error!(
-                                        output=thread_name,
-                                        "DeckLink output start failed; retrying"
-                                    );
+                                    tracing::error!(output = thread_name, "DeckLink output start failed; retrying");
                                     start_logged = true;
                                 }
                                 let retry = if start_failures <= 5 {
@@ -510,10 +477,7 @@ impl DecklinkOutput {
                                 }
                                 #[cfg(target_os = "macos")]
                                 OutputFrame::Cv { index, .. } => {
-                                    cv_completed_worker
-                                        .lock()
-                                        .unwrap()
-                                        .push(index);
+                                    cv_completed_worker.lock().unwrap().push(index);
                                 }
                                 OutputFrame::Cpu(_) => {}
                             }
@@ -521,7 +485,9 @@ impl DecklinkOutput {
                         continue;
                     }
 
-                    let Some(frame) = frame else { continue; };
+                    let Some(frame) = frame else {
+                        continue;
+                    };
                     {
                         let pacing_span = tracing::debug_span!("decklink_pacing");
                         let _pacing_guard = pacing_span.entered();
@@ -545,18 +511,10 @@ impl DecklinkOutput {
                             if buffer.len() < 16 {
                                 continue;
                             }
-                            let frame_w = u32::from_le_bytes([
-                                buffer[0], buffer[1], buffer[2], buffer[3],
-                            ]);
-                            let frame_h = u32::from_le_bytes([
-                                buffer[4], buffer[5], buffer[6], buffer[7],
-                            ]);
-                            let format_raw = u32::from_le_bytes([
-                                buffer[12], buffer[13], buffer[14], buffer[15],
-                            ]);
-                            let bpp = pixel_format_from_raw(format_raw)
-                                .map(|format| format.bpp())
-                                .unwrap_or(4);
+                            let frame_w = u32::from_le_bytes([buffer[0], buffer[1], buffer[2], buffer[3]]);
+                            let frame_h = u32::from_le_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
+                            let format_raw = u32::from_le_bytes([buffer[12], buffer[13], buffer[14], buffer[15]]);
+                            let bpp = pixel_format_from_raw(format_raw).map(|format| format.bpp()).unwrap_or(4);
                             let expected = (frame_w * frame_h * bpp) as usize;
                             if buffer.len() < expected + 16 {
                                 continue;
@@ -601,21 +559,14 @@ impl DecklinkOutput {
                                 in_flight.push_back((token, buffer));
                             }
                         }
-                        OutputFrame::Pinned {
-                            ptr,
-                            index,
-                            width,
-                            height,
-                        } => {
+                        OutputFrame::Pinned { ptr, index, width, height } => {
                             if !completion_ok_worker.load(Ordering::Relaxed) {
                                 pinned_completed_worker.lock().unwrap().push(index);
                                 stats_clone.lock().unwrap().frames_dropped += 1;
                                 continue;
                             }
                             let format_raw = output_format_worker.load(Ordering::Acquire);
-                            let bpp = pixel_format_from_raw(format_raw)
-                                .map(|format| format.bpp())
-                                .unwrap_or(4);
+                            let bpp = pixel_format_from_raw(format_raw).map(|format| format.bpp()).unwrap_or(4);
                             let row_bytes = ((width * bpp + 255) & !255) as i32;
                             let token = PINNED_TOKEN_BIT | index as u64;
                             let send_span = tracing::debug_span!("decklink_send");
@@ -623,15 +574,7 @@ impl DecklinkOutput {
                             let start = Instant::now();
                             let mut token_queued = false;
                             let ok = unsafe {
-                                decklink_output_present_frame(
-                                    output,
-                                    ptr.0,
-                                    width as i32,
-                                    height as i32,
-                                    row_bytes,
-                                    token,
-                                    &mut token_queued,
-                                )
+                                decklink_output_present_frame(output, ptr.0, width as i32, height as i32, row_bytes, token, &mut token_queued)
                             };
 
                             {
@@ -655,9 +598,7 @@ impl DecklinkOutput {
                             let send_span = tracing::debug_span!("decklink_send");
                             let _send_guard = send_span.entered();
                             let start = Instant::now();
-                            let ok = unsafe {
-                                decklink_output_present_cv(output, cv.0, token)
-                            };
+                            let ok = unsafe { decklink_output_present_cv(output, cv.0, token) };
 
                             {
                                 let mut s = stats_clone.lock().unwrap();
@@ -672,10 +613,7 @@ impl DecklinkOutput {
                             }
                             if !ok {
                                 cv_failed_worker.store(true, Ordering::Relaxed);
-                                cv_completed_worker
-                                    .lock()
-                                    .unwrap()
-                                    .push(index);
+                                cv_completed_worker.lock().unwrap().push(index);
                             }
                         }
                     }
@@ -697,7 +635,7 @@ impl DecklinkOutput {
                 }
                 if !in_flight.is_empty() {
                     tracing::warn!(
-                        output=thread_name,
+                        output = thread_name,
                         "DeckLink output still holds {} frames at shutdown; leaking their buffers",
                         in_flight.len()
                     );
@@ -740,10 +678,7 @@ impl DecklinkOutput {
             #[cfg(target_os = "macos")]
             cv_starved: AtomicU32::new(0),
             pinned_completed,
-            use_pinned: AtomicBool::new(cfg!(any(
-                target_os = "windows",
-                target_os = "linux"
-            ))),
+            use_pinned: AtomicBool::new(cfg!(any(target_os = "windows", target_os = "linux"))),
             completion_ok,
         }
     }
@@ -846,13 +781,7 @@ impl DecklinkOutput {
         });
     }
 
-    fn ensure_scale_bind_group(
-        &self,
-        device: &wgpu::Device,
-        src_w: u32,
-        src_h: u32,
-        texture: &wgpu::Texture,
-    ) {
+    fn ensure_scale_bind_group(&self, device: &wgpu::Device, src_w: u32, src_h: u32, texture: &wgpu::Texture) {
         let mut source_dims = self.scale_source_dims.lock().unwrap();
         if *source_dims == (src_w, src_h) {
             return;
@@ -863,15 +792,11 @@ impl DecklinkOutput {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(
-                        &texture.create_view(&Default::default()),
-                    ),
+                    resource: wgpu::BindingResource::TextureView(&texture.create_view(&Default::default())),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::Sampler(
-                        self.scale_sampler.get().unwrap(),
-                    ),
+                    resource: wgpu::BindingResource::Sampler(self.scale_sampler.get().unwrap()),
                 },
             ],
         });
@@ -974,10 +899,7 @@ impl DecklinkOutput {
             rpass.set_viewport(0.0, 0.0, out_w as f32, out_h as f32, 0.0, 1.0);
             rpass.set_pipeline(self.scale_pipeline.get().unwrap());
             rpass.set_vertex_buffer(0, self.scale_vb.get().unwrap().slice(..));
-            rpass.set_index_buffer(
-                self.scale_ib.get().unwrap().slice(..),
-                wgpu::IndexFormat::Uint16,
-            );
+            rpass.set_index_buffer(self.scale_ib.get().unwrap().slice(..), wgpu::IndexFormat::Uint16);
             rpass.set_bind_group(0, bind_group, &[]);
             rpass.draw_indexed(0..6, 0, 0..1);
         }
@@ -990,14 +912,7 @@ impl DecklinkOutput {
     }
 
     #[cfg(target_os = "macos")]
-    fn present_cv(
-        &self,
-        texture: &wgpu::Texture,
-        src_w: u32,
-        src_h: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> Option<bool> {
+    fn present_cv(&self, texture: &wgpu::Texture, src_w: u32, src_h: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<bool> {
         let out_w = self.config.width;
         let out_h = self.config.height;
 
@@ -1086,14 +1001,7 @@ impl DecklinkOutput {
 }
 
 impl VideoOutput for DecklinkOutput {
-    fn present(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> bool {
+    fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
         {
             let completed: Vec<usize> = std::mem::take(&mut *self.pinned_completed.lock().unwrap());
             if !completed.is_empty() {
@@ -1150,12 +1058,7 @@ impl VideoOutput for DecklinkOutput {
         let aligned_bytes_per_row = (bytes_per_row + 255) & !255;
         let buffer_size = u64::from(aligned_bytes_per_row) * u64::from(target_layout.tex_h) + 16;
         let mut readback = self.readback.lock().unwrap();
-        readback.ensure_with_slots(
-            device,
-            "decklink-output-readback",
-            buffer_size,
-            MAX_IN_FLIGHT,
-        );
+        readback.ensure_with_slots(device, "decklink-output-readback", buffer_size, MAX_IN_FLIGHT);
         let Some(slot) = readback.free() else {
             return false;
         };
@@ -1174,13 +1077,7 @@ impl VideoOutput for DecklinkOutput {
         // The CV surface is BGRA-only; YUV uses the readback path.
         let mut converted = self.converted.lock().unwrap();
         let readback_target = if pixel_format == PixelFormat::Uyvy422 {
-            TextureTarget::ensure(
-                &mut converted,
-                device,
-                target_layout,
-                RENDER_TARGET_USAGE,
-                "decklink-uyvy",
-            );
+            TextureTarget::ensure(&mut converted, device, target_layout, RENDER_TARGET_USAGE, "decklink-uyvy");
             let target = converted.as_ref().unwrap();
             let converter = self.converter.get_or_init(|| YuvConverter::new(device, queue));
             converter.convert(

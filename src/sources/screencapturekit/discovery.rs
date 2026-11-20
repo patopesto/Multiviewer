@@ -13,14 +13,8 @@ const INCLUDE_UNTITLED_WINDOWS: bool = false;
 
 #[derive(Clone, Debug)]
 enum TargetKind {
-    Display {
-        display_id: String,
-    },
-    Window {
-        window_id: u32,
-        bundle_id: String,
-        title: String,
-    },
+    Display { display_id: String },
+    Window { window_id: u32, bundle_id: String, title: String },
 }
 
 /// A display or window target; `source_ref` is namespaced per kind (`display:…`, `window:…`).
@@ -53,11 +47,7 @@ impl Target {
         };
         return Self {
             label,
-            kind: TargetKind::Window {
-                window_id,
-                bundle_id,
-                title,
-            },
+            kind: TargetKind::Window { window_id, bundle_id, title },
             source_ref,
         };
     }
@@ -88,11 +78,7 @@ impl Target {
                 display_id: display_id.clone(),
                 settings: ScreenCaptureKitSettings::default(),
             },
-            TargetKind::Window {
-                window_id,
-                bundle_id,
-                title,
-            } => ScreenCaptureKitSourceConfig::Window {
+            TargetKind::Window { window_id, bundle_id, title } => ScreenCaptureKitSourceConfig::Window {
                 window_id: *window_id,
                 bundle_id: bundle_id.clone(),
                 title: title.clone(),
@@ -127,19 +113,13 @@ impl Targets {
 pub(super) fn fetch_content() -> Result<Retained<SCShareableContent>, String> {
     let (tx, rx) = mpsc::channel();
     // onScreenWindowsOnly = NO: other-Space windows stay listed; the capture loop checks visibility.
-    SCShareableContent::get_shareable_content_excluding_desktop_windows(
-        true,
-        false,
-        move |content, error| {
-            let result = match content {
-                Some(content) => Ok(content),
-                None => Err(error
-                    .map(|e| e.localizedDescription().to_string())
-                    .unwrap_or_else(|| "no shareable content".to_string())),
-            };
-            let _ = tx.send(result);
-        },
-    );
+    SCShareableContent::get_shareable_content_excluding_desktop_windows(true, false, move |content, error| {
+        let result = match content {
+            Some(content) => Ok(content),
+            None => Err(error.map(|e| e.localizedDescription().to_string()).unwrap_or_else(|| "no shareable content".to_string())),
+        };
+        let _ = tx.send(result);
+    });
     return rx.recv().map_err(|_| "shareable content request dropped".to_string())?;
 }
 
@@ -176,17 +156,10 @@ fn fetch_targets() -> Result<Targets, String> {
 
     let mut targets = Targets::default();
     for display in content.displays().iter() {
-        targets
-            .displays
-            .push(Target::display(display.display_id(), display.width() as u32, display.height() as u32));
+        targets.displays.push(Target::display(display.display_id(), display.width() as u32, display.height() as u32));
     }
     for (window_id, bundle_id, app_name, title) in windows {
-        targets.windows.push(Target::window(
-            window_id,
-            bundle_id,
-            app_name,
-            title,
-        ));
+        targets.windows.push(Target::window(window_id, bundle_id, app_name, title));
     }
     return Ok(targets);
 }
@@ -194,11 +167,7 @@ fn fetch_targets() -> Result<Targets, String> {
 /// Order windows by app name, then title (both case-insensitive)
 fn sort_windows(windows: &mut [(u32, String, String, String)]) {
     windows.sort_by(|a, b| {
-        return a
-            .2
-            .to_lowercase()
-            .cmp(&b.2.to_lowercase())
-            .then_with(|| a.3.to_lowercase().cmp(&b.3.to_lowercase()));
+        return a.2.to_lowercase().cmp(&b.2.to_lowercase()).then_with(|| a.3.to_lowercase().cmp(&b.3.to_lowercase()));
     });
 }
 
@@ -291,18 +260,10 @@ mod tests {
         ];
         sort_windows(&mut windows);
 
-        let labels: Vec<(&str, &str)> = windows
-            .iter()
-            .map(|(_, _, app, title)| (app.as_str(), title.as_str()))
-            .collect();
+        let labels: Vec<(&str, &str)> = windows.iter().map(|(_, _, app, title)| (app.as_str(), title.as_str())).collect();
         assert_eq!(
             labels,
-            vec![
-                ("Safari", "apple"),
-                ("Safari", "Tabs"),
-                ("TextEdit", "Notes"),
-                ("TextEdit", "untitled"),
-            ]
+            vec![("Safari", "apple"), ("Safari", "Tabs"), ("TextEdit", "Notes"), ("TextEdit", "untitled"),]
         );
     }
 }

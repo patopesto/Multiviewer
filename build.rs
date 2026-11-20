@@ -61,10 +61,7 @@ fn packager_field(manifest_dir: &Path, key: &str) -> String {
 }
 
 fn git_commit(manifest_dir: &Path) -> String {
-    let output = Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .current_dir(manifest_dir)
-        .output();
+    let output = Command::new("git").args(["rev-parse", "--short", "HEAD"]).current_dir(manifest_dir).output();
     let commit = match output {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
         _ => "unknown".to_string(),
@@ -85,10 +82,7 @@ fn git_commit(manifest_dir: &Path) -> String {
 }
 
 fn build_date() -> String {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let days = (secs / 86400) as i64;
     let seconds_of_day = secs % 86400;
     let (year, month, day) = civil_from_days(days);
@@ -121,10 +115,7 @@ fn ndi_sdk_dir(manifest_dir: &Path) -> PathBuf {
     let sdk = manifest_dir.join("vendor/ndi/windows/sdk");
 
     if !sdk.join("include/Processing.NDI.Lib.h").is_file() {
-        panic!(
-            "NDI SDK not found at {}; run `task setup` to download it",
-            sdk.display()
-        );
+        panic!("NDI SDK not found at {}; run `task setup` to download it", sdk.display());
     }
 
     return sdk;
@@ -161,8 +152,7 @@ fn setup_linux(manifest_dir: &Path) {
     // the one matching our target to link against. Emitting a rpath for every
     // directory that exists keeps this arch-agnostic and costs nothing at runtime.
     let lib_root = sdk.join("lib");
-    let entries = std::fs::read_dir(&lib_root)
-        .unwrap_or_else(|e| panic!("NDI library directory not found at {}: {e}", lib_root.display()));
+    let entries = std::fs::read_dir(&lib_root).unwrap_or_else(|e| panic!("NDI library directory not found at {}: {e}", lib_root.display()));
     for entry in entries.flatten() {
         if entry.path().is_dir() {
             println!("cargo:rustc-link-arg=-Wl,-rpath,{}", entry.path().display());
@@ -184,9 +174,7 @@ fn setup_windows(manifest_dir: &Path, out_dir: &Path) {
     let icon_path = manifest_dir.join("assets/appicon/windows/AppIcon.ico");
     println!("cargo:rerun-if-changed={}", icon_path.display());
     let rc_path = write_windows_rc(manifest_dir, out_dir, &icon_path);
-    embed_resource::compile(&rc_path, embed_resource::NONE)
-        .manifest_optional()
-        .expect("failed to compile Windows resources");
+    embed_resource::compile(&rc_path, embed_resource::NONE).manifest_optional().expect("failed to compile Windows resources");
 
     let sdk = ndi_sdk_dir(manifest_dir);
 
@@ -281,9 +269,5 @@ END
 #[cfg(target_os = "windows")]
 fn version_triple(version: &str) -> (u16, u16, u16) {
     let mut parts = version.split('.').map(|p| p.parse::<u16>().unwrap_or(0));
-    return (
-        parts.next().unwrap_or(0),
-        parts.next().unwrap_or(0),
-        parts.next().unwrap_or(0),
-    );
+    return (parts.next().unwrap_or(0), parts.next().unwrap_or(0), parts.next().unwrap_or(0));
 }

@@ -5,11 +5,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use multiviewer_decklink::{DecklinkPixelFormat, VideoConnection};
-use multiviewer_decklink::{decklink_source_new, decklink_source_free, decklink_source_set_connection, decklink_source_start, decklink_source_stop, decklink_source_poll_frame};
+use multiviewer_decklink::{
+    decklink_source_new, decklink_source_free, decklink_source_set_connection, decklink_source_start, decklink_source_stop,
+    decklink_source_poll_frame,
+};
 use multiviewer_decklink::{decklink_source_frame_generation, decklink_source_wait_frame};
 use multiviewer_decklink::{
-    decklink_source_disable_pinned, decklink_source_enable_pinned,
-    decklink_source_pinned_available, decklink_source_poll_pinned_frame,
+    decklink_source_disable_pinned, decklink_source_enable_pinned, decklink_source_pinned_available, decklink_source_poll_pinned_frame,
     decklink_source_return_buffer, decklink_source_set_capture_buffers,
 };
 
@@ -19,8 +21,7 @@ use std::ffi::c_void;
 use std::ptr::null_mut;
 #[cfg(target_os = "macos")]
 use multiviewer_decklink::{
-    decklink_cv_buffer_iosurface, decklink_cv_frame_release, decklink_source_is_bgra,
-    decklink_source_poll_cv_frame, decklink_source_set_gpu_mode,
+    decklink_cv_buffer_iosurface, decklink_cv_frame_release, decklink_source_is_bgra, decklink_source_poll_cv_frame, decklink_source_set_gpu_mode,
     decklink_source_take_cpu_fallback,
 };
 
@@ -62,13 +63,7 @@ struct PinnedState {
 }
 
 impl PinnedState {
-    fn new(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        width: u32,
-        height: u32,
-        fmt: u32,
-    ) -> Option<(Self, PinnedRequest)> {
+    fn new(device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: u32, fmt: u32) -> Option<(Self, PinnedRequest)> {
         let pixel_format = DecklinkPixelFormat::try_from(fmt).map(pixel_format).unwrap_or(PixelFormat::Rgba8);
         if !matches!(pixel_format, PixelFormat::Bgra8 | PixelFormat::Uyvy422) {
             return None;
@@ -103,10 +98,7 @@ impl PinnedState {
                 }
             });
             let deadline = Instant::now() + Duration::from_millis(100);
-            while !mapped.load(Ordering::Acquire)
-                && !map_failed.load(Ordering::Acquire)
-                && Instant::now() < deadline
-            {
+            while !mapped.load(Ordering::Acquire) && !map_failed.load(Ordering::Acquire) && Instant::now() < deadline {
                 let _ = device.poll(wgpu::PollType::Wait {
                     submission_index: None,
                     timeout: Some(Duration::from_millis(10)),
@@ -366,7 +358,9 @@ impl DecklinkSource {
         if self.desired_pinned.load(Ordering::Relaxed) || self.pinned.lock().unwrap().is_some() {
             return;
         }
-        let Some((w, h, fmt)) = *self.info.lock().unwrap() else { return; };
+        let Some((w, h, fmt)) = *self.info.lock().unwrap() else {
+            return;
+        };
         if self.pinned_attempted.swap(true, Ordering::Relaxed) {
             return;
         }
@@ -384,12 +378,7 @@ impl DecklinkSource {
         }
     }
 
-    fn copy_pinned(
-        &self,
-        pending: PinnedFrame,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> Option<Frame> {
+    fn copy_pinned(&self, pending: PinnedFrame, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Frame> {
         let mut pinned = self.pinned.lock().unwrap();
         let state = pinned.as_mut()?;
         if (state.layout.width, state.layout.height) != (pending.w, pending.h) || state.fmt != pending.fmt {
@@ -443,13 +432,13 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
         let display_name_c = match CString::new(device_name) {
             Ok(c) => c,
             Err(_) => {
-                tracing::error!(source=source_ref, "DeckLink display name contains null");
+                tracing::error!(source = source_ref, "DeckLink display name contains null");
                 return;
             }
         };
         let src = decklink_source_new(display_name_c.as_ptr());
         if src.is_null() {
-            tracing::error!(source=source_ref, "DeckLink source creation failed");
+            tracing::error!(source = source_ref, "DeckLink source creation failed");
             return;
         }
         if !matches!(connection, VideoConnection::Unspecified) {
@@ -458,7 +447,7 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
         #[cfg(target_os = "macos")]
         decklink_source_set_gpu_mode(src, shared.gpu.load(Ordering::Relaxed));
         if !decklink_source_start(src) {
-            tracing::error!(source=source_ref, "DeckLink source start failed");
+            tracing::error!(source = source_ref, "DeckLink source start failed");
             decklink_source_free(src);
             return;
         }
@@ -482,10 +471,7 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
                     "DeckLink produced no frames for 3s; restarting the input"
                 );
                 #[cfg(not(target_os = "macos"))]
-                tracing::warn!(
-                    source = source_ref,
-                    "DeckLink produced no frames for 3s; restarting the input"
-                );
+                tracing::warn!(source = source_ref, "DeckLink produced no frames for 3s; restarting the input");
                 decklink_source_stop(src);
                 if decklink_source_start(src) {
                     last_published = Instant::now();
@@ -505,19 +491,15 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
                 if want_pinned && !shim_pinned {
                     if let Some(request) = shared.pinned_request.lock().unwrap().take() {
                         let mut pointers = request.pointers;
-                        let ok = decklink_source_set_capture_buffers(
-                            src,
-                            pointers.as_mut_ptr(),
-                            request.sizes.as_ptr(),
-                            request.sizes.len() as u32,
-                        ) && decklink_source_pinned_available(src)
+                        let ok = decklink_source_set_capture_buffers(src, pointers.as_mut_ptr(), request.sizes.as_ptr(), request.sizes.len() as u32)
+                            && decklink_source_pinned_available(src)
                             && decklink_source_enable_pinned(src);
                         if ok {
                             shim_pinned = true;
-                            tracing::info!(source=source_ref, "DeckLink capture uses caller buffers");
+                            tracing::info!(source = source_ref, "DeckLink capture uses caller buffers");
                         } else {
                             shared.desired_pinned.store(false, Ordering::Relaxed);
-                            tracing::warn!(source=source_ref, "DeckLink caller buffers unavailable; using the CPU path");
+                            tracing::warn!(source = source_ref, "DeckLink caller buffers unavailable; using the CPU path");
                         }
                     }
                 } else if !want_pinned && shim_pinned {
@@ -533,26 +515,13 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
                     let mut seq = 0u64;
                     let mut fmt = 0u32;
                     let mut nominal_fps = 0.0f64;
-                    if decklink_source_poll_pinned_frame(
-                        src,
-                        &mut index,
-                        &mut w,
-                        &mut h,
-                        &mut seq,
-                        &mut fmt,
-                        &mut nominal_fps,
-                    ) {
+                    if decklink_source_poll_pinned_frame(src, &mut index, &mut w, &mut h, &mut seq, &mut fmt, &mut nominal_fps) {
                         let frame_span = tracing::debug_span!("decklink_frame");
                         let _frame_guard = frame_span.entered();
                         {
                             let mut s = shared.stats.lock().unwrap();
                             let pixel_format = DecklinkPixelFormat::try_from(fmt).map(pixel_format).unwrap_or(PixelFormat::Rgba8);
-                            s.record_frame(
-                                w as u32,
-                                h as u32,
-                                pixel_format.label(),
-                                nominal_fps,
-                            );
+                            s.record_frame(w as u32, h as u32, pixel_format.label(), nominal_fps);
                             s.record_copy_time(0.0);
                             s.set_gpu_direct();
                         }
@@ -591,39 +560,18 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
                     let mut seq = 0u64;
                     let mut fmt = 0u32;
                     let mut nominal_fps = 0.0f64;
-                    if decklink_source_poll_cv_frame(
-                        src,
-                        &mut cv,
-                        &mut w,
-                        &mut h,
-                        &mut seq,
-                        &mut fmt,
-                        &mut nominal_fps,
-                    ) {
+                    if decklink_source_poll_cv_frame(src, &mut cv, &mut w, &mut h, &mut seq, &mut fmt, &mut nominal_fps) {
                         let frame_span = tracing::debug_span!("decklink_frame");
                         let _frame_guard = frame_span.entered();
                         let pixel_format = DecklinkPixelFormat::try_from(fmt).map(pixel_format).unwrap_or(PixelFormat::Rgba8);
                         {
                             let mut s = shared.stats.lock().unwrap();
-                            s.record_frame(
-                                w as u32,
-                                h as u32,
-                                pixel_format.label(),
-                                nominal_fps,
-                            );
+                            s.record_frame(w as u32, h as u32, pixel_format.label(), nominal_fps);
                             s.record_copy_time(0.0);
                             s.set_gpu_direct();
                         }
                         let iosurface = decklink_cv_buffer_iosurface(cv);
-                        let frame = CvFrame::new(
-                            cv,
-                            iosurface,
-                            w as u32,
-                            h as u32,
-                            seq,
-                            pixel_format,
-                            decklink_cv_frame_release,
-                        );
+                        let frame = CvFrame::new(cv, iosurface, w as u32, h as u32, seq, pixel_format, decklink_cv_frame_release);
                         let old = shared.cv_slot.lock().unwrap().replace(frame);
                         drop(old);
                         last_published = Instant::now();
@@ -645,16 +593,7 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
             let mut fmt = 0u32;
             let mut nominal_fps = 0.0f64;
             let t0 = Instant::now();
-            let got = decklink_source_poll_frame(
-                src,
-                buf.as_mut_ptr(),
-                buf.len(),
-                &mut w,
-                &mut h,
-                &mut seq,
-                &mut fmt,
-                &mut nominal_fps,
-            );
+            let got = decklink_source_poll_frame(src, buf.as_mut_ptr(), buf.len(), &mut w, &mut h, &mut seq, &mut fmt, &mut nominal_fps);
             if got && seq != last_seq {
                 let frame_span = tracing::debug_span!("decklink_frame");
                 let _frame_guard = frame_span.entered();
@@ -665,12 +604,7 @@ fn run_capture(source_ref: SourceRef, connection: VideoConnection, shared: Captu
 
                 {
                     let mut s = shared.stats.lock().unwrap();
-                    s.record_frame(
-                        w as u32,
-                        h as u32,
-                        pixel_format.label(),
-                        nominal_fps,
-                    );
+                    s.record_frame(w as u32, h as u32, pixel_format.label(), nominal_fps);
                     s.record_copy_time(copy_ms);
                 }
                 last_seq = seq;
@@ -706,7 +640,7 @@ impl Drop for DecklinkSource {
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
-            tracing::error!(source=self.source_ref, "DeckLink thread join failed: {:?}", e);
+            tracing::error!(source = self.source_ref, "DeckLink thread join failed: {:?}", e);
         }
     }
 }
@@ -716,52 +650,46 @@ impl VideoSource for DecklinkSource {
         #[cfg(target_os = "macos")]
         {
             let macos = (|| -> Option<Frame> {
-            if self.gpu.load(Ordering::Relaxed) {
-                let pending = self.cv_slot.lock().unwrap().take();
-                if let Some(cv) = pending {
-                    let mut pipeline = self.pipeline.lock().unwrap();
-                    if pipeline.is_none() {
-                        *pipeline = CvFramePipeline::new(device, queue);
-                    }
-                    match pipeline.as_mut() {
-                        Some(p) => match p.frame(device, queue, cv) {
-                            Some(frame) => {
-                                *self.gpu_frame.lock().unwrap() = Some(frame);
-                            }
+                if self.gpu.load(Ordering::Relaxed) {
+                    let pending = self.cv_slot.lock().unwrap().take();
+                    if let Some(cv) = pending {
+                        let mut pipeline = self.pipeline.lock().unwrap();
+                        if pipeline.is_none() {
+                            *pipeline = CvFramePipeline::new(device, queue);
+                        }
+                        match pipeline.as_mut() {
+                            Some(p) => match p.frame(device, queue, cv) {
+                                Some(frame) => {
+                                    *self.gpu_frame.lock().unwrap() = Some(frame);
+                                }
+                                None => {
+                                    tracing::warn!(source = self.source_ref, "DeckLink IOSurface import failed; using the CPU path");
+                                    self.gpu.store(false, Ordering::Relaxed);
+                                }
+                            },
                             None => {
-                                tracing::warn!(
-                                    source = self.source_ref,
-                                    "DeckLink IOSurface import failed; using the CPU path"
-                                );
+                                tracing::warn!(source = self.source_ref, "DeckLink has no Metal device; using the CPU path");
                                 self.gpu.store(false, Ordering::Relaxed);
                             }
-                        },
-                        None => {
-                            tracing::warn!(
-                                source = self.source_ref,
-                                "DeckLink has no Metal device; using the CPU path"
-                            );
-                            self.gpu.store(false, Ordering::Relaxed);
                         }
                     }
+                    if let Some(frame) = self.gpu_frame.lock().unwrap().clone() {
+                        let cpu = self.slot.lock().unwrap().clone();
+                        let chosen = if cpu.as_ref().is_some_and(|c| c.seq() > frame.seq()) {
+                            cpu
+                        } else {
+                            Some(frame)
+                        };
+                        *self.last_frame.lock().unwrap() = chosen.clone();
+                        return chosen;
+                    }
                 }
-                if let Some(frame) = self.gpu_frame.lock().unwrap().clone() {
-                    let cpu = self.slot.lock().unwrap().clone();
-                    let chosen = if cpu.as_ref().is_some_and(|c| c.seq() > frame.seq()) {
-                        cpu
-                    } else {
-                        Some(frame)
-                    };
-                    *self.last_frame.lock().unwrap() = chosen.clone();
-                    return chosen;
+                let cpu = self.slot.lock().unwrap().clone();
+                if cpu.is_some() {
+                    *self.last_frame.lock().unwrap() = cpu.clone();
+                    return cpu;
                 }
-            }
-            let cpu = self.slot.lock().unwrap().clone();
-            if cpu.is_some() {
-                *self.last_frame.lock().unwrap() = cpu.clone();
-                return cpu;
-            }
-            return self.last_frame.lock().unwrap().clone();
+                return self.last_frame.lock().unwrap().clone();
             })();
             if macos.is_some() {
                 return macos;

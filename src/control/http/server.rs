@@ -46,14 +46,10 @@ pub struct Server {
 
 impl Server {
     pub fn start(config: &HttpControlConfig, handles: ApiHandles) -> Result<Self, String> {
-        let listener = TcpListener::bind((config.bind.trim(), config.port))
-            .map_err(|error| format!("bind {}:{}: {error}", config.bind.trim(), config.port))?;
-        let addr = listener
-            .local_addr()
-            .map_err(|error| format!("listener address: {error}"))?;
-        listener
-            .set_nonblocking(true)
-            .map_err(|error| format!("listener nonblocking: {error}"))?;
+        let listener =
+            TcpListener::bind((config.bind.trim(), config.port)).map_err(|error| format!("bind {}:{}: {error}", config.bind.trim(), config.port))?;
+        let addr = listener.local_addr().map_err(|error| format!("listener address: {error}"))?;
+        listener.set_nonblocking(true).map_err(|error| format!("listener nonblocking: {error}"))?;
 
         let clients = handles.clients.clone();
         let status = Arc::new(Mutex::new(Status {
@@ -65,10 +61,7 @@ impl Server {
         let thread = thread::Builder::new()
             .name("http-control".to_string())
             .spawn(move || {
-                let runtime = match tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                {
+                let runtime = match tokio::runtime::Builder::new_current_thread().enable_all().build() {
                     Ok(runtime) => runtime,
                     Err(error) => {
                         tracing::error!("HTTP control runtime: {error}");

@@ -23,10 +23,7 @@ impl Discovery {
                         return;
                     }
                 };
-                let finder = match Finder::new(
-                    &ndi,
-                    &FinderOptions::builder().show_local_sources(true).build(),
-                ) {
+                let finder = match Finder::new(&ndi, &FinderOptions::builder().show_local_sources(true).build()) {
                     Ok(f) => f,
                     Err(e) => {
                         tracing::error!("NDI Finder creation failed: {}", e);
@@ -54,11 +51,6 @@ impl Discovery {
 
     #[allow(dead_code)]
     pub fn find_by_name(&self, name: &str) -> Option<NdiSourceInfo> {
-        self.sources
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|s| s.name == name)
-            .cloned()
+        self.sources.lock().unwrap().iter().find(|s| s.name == name).cloned()
     }
 }

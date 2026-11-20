@@ -52,6 +52,7 @@ tasks:
       - task: check:version
       - task: ndi:check
       - cargo check
+      - cargo fmt --check
 
   check:version:
     desc: Verify versions are consistent

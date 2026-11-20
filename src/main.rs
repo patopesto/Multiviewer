@@ -72,10 +72,7 @@ mod tests {
     fn parses_exit_after_and_project() {
         let parsed = cli(&["--exit-after", "2.5", "show.multiviewer"]);
         assert_eq!(parsed.exit_after, Some(Duration::from_secs_f32(2.5)));
-        assert_eq!(
-            parsed.project,
-            Some(std::path::PathBuf::from("show.multiviewer"))
-        );
+        assert_eq!(parsed.project, Some(std::path::PathBuf::from("show.multiviewer")));
     }
 
     #[test]

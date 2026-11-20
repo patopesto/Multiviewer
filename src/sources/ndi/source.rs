@@ -112,7 +112,13 @@ impl NdiSource {
                 run_capture(source, bandwidth, color_format, slot2, stats2, running2, trace_ref);
             })
             .expect("spawn ndi-recv");
-        Self { slot, stats, source_ref, running, thread: Some(thread) }
+        Self {
+            slot,
+            stats,
+            source_ref,
+            running,
+            thread: Some(thread),
+        }
     }
 }
 
@@ -130,19 +136,15 @@ fn run_capture(
     let ndi = match NDI::new() {
         Ok(n) => n,
         Err(e) => {
-            tracing::error!(source=source_ref, "NDI init failed: {}", e);
+            tracing::error!(source = source_ref, "NDI init failed: {}", e);
             return;
         }
     };
-    let options = ReceiverOptions::builder(source)
-        .color(color_format)
-        .bandwidth(bandwidth)
-        .name(APP_NAME)
-        .build();
+    let options = ReceiverOptions::builder(source).color(color_format).bandwidth(bandwidth).name(APP_NAME).build();
     let receiver = match Receiver::new(&ndi, &options) {
         Ok(r) => r,
         Err(e) => {
-            tracing::error!(source=source_ref, "NDI Receiver creation failed: {}", e);
+            tracing::error!(source = source_ref, "NDI Receiver creation failed: {}", e);
             return;
         }
     };
@@ -159,15 +161,11 @@ fn run_capture(
                 let h = frame.height() as u32;
                 let fmt = match frame.pixel_format() {
                     grafton_ndi::PixelFormat::UYVY => PixelFormat::Uyvy422,
-                    grafton_ndi::PixelFormat::RGBA | grafton_ndi::PixelFormat::RGBX => {
-                        PixelFormat::Rgba8
-                    }
-                    grafton_ndi::PixelFormat::BGRA | grafton_ndi::PixelFormat::BGRX => {
-                        PixelFormat::Bgra8
-                    }
+                    grafton_ndi::PixelFormat::RGBA | grafton_ndi::PixelFormat::RGBX => PixelFormat::Rgba8,
+                    grafton_ndi::PixelFormat::BGRA | grafton_ndi::PixelFormat::BGRX => PixelFormat::Bgra8,
                     pf => {
                         if warned_formats.insert(pf as u32) {
-                            tracing::warn!(source=source_ref, "NDI Unsupported pixel format {pf:?}, frame dropped");
+                            tracing::warn!(source = source_ref, "NDI Unsupported pixel format {pf:?}, frame dropped");
                         }
                         continue;
                     }
@@ -201,7 +199,7 @@ fn run_capture(
             // No frame within the timeout, wait
             Ok(None) => std::thread::sleep(Duration::from_millis(10)),
             Err(e) => {
-                tracing::warn!(source=source_ref, "NDI capture timeout: {}", e);
+                tracing::warn!(source = source_ref, "NDI capture timeout: {}", e);
             }
         }
     }
@@ -213,7 +211,7 @@ impl Drop for NdiSource {
         if let Some(t) = self.thread.take()
             && let Err(e) = t.join()
         {
-            tracing::error!(source=self.source_ref, "Thread join failed: {:?}", e);
+            tracing::error!(source = self.source_ref, "Thread join failed: {:?}", e);
         }
     }
 }

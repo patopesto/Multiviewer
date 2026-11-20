@@ -2,7 +2,10 @@ use super::*;
 use crate::compositor::{self, Rect};
 use crate::config::{Canvas, Config, Output, Source, TextureMode, CONFIG_VERSION};
 use crate::control::{Command, Selector};
-use crate::sources::{Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection, NdiReceiverBandwidth, NdiReceiverColorFormat};
+use crate::sources::{
+    Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection,
+    NdiReceiverBandwidth, NdiReceiverColorFormat,
+};
 use crate::sources::VncSourceConfig;
 use std::time::{Duration, Instant};
 
@@ -11,12 +14,7 @@ fn test_engine(canvas: Canvas) -> Engine {
 }
 
 fn display_transform(engine: &Engine, panel: &Rect) -> (f32, f32, f32) {
-    return super::transform::display_transform(
-        &engine.state.view,
-        &engine.state.cfg.canvas,
-        panel,
-        engine.state.ui_visible,
-    );
+    return super::transform::display_transform(&engine.state.view, &engine.state.cfg.canvas, panel, engine.state.ui_visible);
 }
 
 /// A project authored where unavailable protocols exist (Syphon on
@@ -70,13 +68,9 @@ fn load_project_with_unavailable_protocol_warns_and_skips_runtime() {
     // Only the Test source gets a runtime instance. The unavailable placement's
     // key is distinct from any live source that happens to share its ref.
     assert_eq!(engine.registry.iter().count(), 1);
-    let unavailable_key =
-        SourceKey::new(Protocol::Unknown("fake".to_string()), "Spout1".to_string());
+    let unavailable_key = SourceKey::new(Protocol::Unknown("fake".to_string()), "Spout1".to_string());
     assert!(engine.registry.get(&unavailable_key).is_none());
-    let test_key = SourceKey::new(
-        Protocol::Test,
-        engine.state.cfg.canvas.sources[1].source_ref.clone().unwrap(),
-    );
+    let test_key = SourceKey::new(Protocol::Test, engine.state.cfg.canvas.sources[1].source_ref.clone().unwrap());
     assert!(engine.registry.get(&test_key).is_some());
 
     // The status bar picks this up from load_warnings.
@@ -174,10 +168,7 @@ fn active_source_keys_dedupes_shared_refs_and_skips_unbound() {
         ));
     }
     let engine = test_engine(canvas);
-    assert_eq!(
-        engine.active_source_keys(),
-        vec![SourceKey::new(Protocol::Test, "Test A".into())]
-    );
+    assert_eq!(engine.active_source_keys(), vec![SourceKey::new(Protocol::Test, "Test A".into())]);
 }
 
 #[test]
@@ -206,8 +197,7 @@ fn display_transform_is_base_at_default_zoom() {
         h: 600.0,
     };
     let (scale, ox, oy) = display_transform(&engine, &panel);
-    let (base_scale, base_ox, base_oy) =
-        compositor::canvas_transform(&engine.state.cfg.canvas, &panel);
+    let (base_scale, base_ox, base_oy) = compositor::canvas_transform(&engine.state.cfg.canvas, &panel);
     assert!((scale - base_scale).abs() < 1e-3);
     assert!((ox - base_ox).abs() < 1e-3);
     assert!((oy - base_oy).abs() < 1e-3);
@@ -226,8 +216,7 @@ fn display_transform_applies_view_when_ui_is_visible() {
         h: 600.0,
     };
     let (scale, ox, oy) = display_transform(&engine, &panel);
-    let (base_scale, base_ox, base_oy) =
-        compositor::canvas_transform(&engine.state.cfg.canvas, &panel);
+    let (base_scale, base_ox, base_oy) = compositor::canvas_transform(&engine.state.cfg.canvas, &panel);
     assert!((scale - base_scale * 2.0).abs() < 1e-3);
     assert!((ox - (base_ox + 10.0)).abs() < 1e-3);
     assert!((oy - (base_oy + 20.0)).abs() < 1e-3);
@@ -247,8 +236,7 @@ fn display_transform_ignores_view_when_ui_is_hidden() {
         h: 600.0,
     };
     let (scale, ox, oy) = display_transform(&engine, &panel);
-    let (base_scale, base_ox, base_oy) =
-        compositor::canvas_transform(&engine.state.cfg.canvas, &panel);
+    let (base_scale, base_ox, base_oy) = compositor::canvas_transform(&engine.state.cfg.canvas, &panel);
     assert!((scale - base_scale).abs() < 1e-3);
     assert!((ox - base_ox).abs() < 1e-3);
     assert!((oy - base_oy).abs() < 1e-3);
@@ -287,7 +275,6 @@ fn recenter_expands_to_include_sources() {
         ..Default::default()
     };
     canvas.sources.push(Source::new(
-
         "L1".into(),
         Protocol::Test,
         None,
@@ -338,14 +325,30 @@ fn select_source_cycles_forward_and_wraps() {
         ..Default::default()
     };
     canvas.sources.push(Source::new(
-        "L1".into(), Protocol::Test, None,
-        0.0, 0.0, 100, 100, 0,
-        TextureMode::Fit, false, false,
+        "L1".into(),
+        Protocol::Test,
+        None,
+        0.0,
+        0.0,
+        100,
+        100,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
     ));
     canvas.sources.push(Source::new(
-        "L2".into(), Protocol::Test, None,
-        100.0, 0.0, 100, 100, 1,
-        TextureMode::Fit, false, false,
+        "L2".into(),
+        Protocol::Test,
+        None,
+        100.0,
+        0.0,
+        100,
+        100,
+        1,
+        TextureMode::Fit,
+        false,
+        false,
     ));
     let mut engine = test_engine(canvas);
     let uuids: Vec<String> = engine.state.cfg.canvas.sources.iter().map(|s| s.uuid.clone()).collect();
@@ -371,14 +374,30 @@ fn select_source_cycles_backward_and_wraps() {
         ..Default::default()
     };
     canvas.sources.push(Source::new(
-        "L1".into(), Protocol::Test, None,
-        0.0, 0.0, 100, 100, 0,
-        TextureMode::Fit, false, false,
+        "L1".into(),
+        Protocol::Test,
+        None,
+        0.0,
+        0.0,
+        100,
+        100,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
     ));
     canvas.sources.push(Source::new(
-        "L2".into(), Protocol::Test, None,
-        100.0, 0.0, 100, 100, 1,
-        TextureMode::Fit, false, false,
+        "L2".into(),
+        Protocol::Test,
+        None,
+        100.0,
+        0.0,
+        100,
+        100,
+        1,
+        TextureMode::Fit,
+        false,
+        false,
     ));
     let mut engine = test_engine(canvas);
     let uuids: Vec<String> = engine.state.cfg.canvas.sources.iter().map(|s| s.uuid.clone()).collect();
@@ -401,15 +420,29 @@ fn nudge_command_moves_by_delta() {
         ..Default::default()
     };
     canvas.sources.push(Source::new(
-        "L1".into(), Protocol::Test, None,
-        10.0, 20.0, 100, 100, 0,
-        TextureMode::Fit, false, false,
+        "L1".into(),
+        Protocol::Test,
+        None,
+        10.0,
+        20.0,
+        100,
+        100,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
     ));
     let mut engine = test_engine(canvas);
     let uuid = engine.state.cfg.canvas.sources[0].uuid.clone();
 
     engine.state.selected_source_id = Some(uuid.clone());
-    engine.apply_command(Command::Nudge { source: None, dx: 3.0, dy: -5.0 }).unwrap();
+    engine
+        .apply_command(Command::Nudge {
+            source: None,
+            dx: 3.0,
+            dy: -5.0,
+        })
+        .unwrap();
     let source = &engine.state.cfg.canvas.sources[0];
     assert_eq!(source.x, 13.0);
     assert_eq!(source.y, 15.0);
@@ -426,16 +459,30 @@ fn nudge_command_ignores_when_expanded() {
         ..Default::default()
     };
     canvas.sources.push(Source::new(
-        "L1".into(), Protocol::Test, None,
-        10.0, 20.0, 100, 100, 0,
-        TextureMode::Fit, false, false,
+        "L1".into(),
+        Protocol::Test,
+        None,
+        10.0,
+        20.0,
+        100,
+        100,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
     ));
     let mut engine = test_engine(canvas);
     let uuid = engine.state.cfg.canvas.sources[0].uuid.clone();
 
     engine.state.selected_source_id = Some(uuid.clone());
     engine.expand_source(uuid.clone());
-    engine.apply_command(Command::Nudge { source: None, dx: 3.0, dy: -5.0 }).unwrap();
+    engine
+        .apply_command(Command::Nudge {
+            source: None,
+            dx: 3.0,
+            dy: -5.0,
+        })
+        .unwrap();
     let source = &engine.state.cfg.canvas.sources[0];
     assert_eq!(source.x, 10.0);
     assert_eq!(source.y, 20.0);
@@ -534,7 +581,14 @@ fn an_unconfigured_manual_source_is_registered() {
         "Remote".into(),
         Protocol::Vnc,
         Some("VNC 1".into()),
-        0.0, 0.0, 640, 360, 0, TextureMode::Fit, false, false,
+        0.0,
+        0.0,
+        640,
+        360,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
     );
     placement.config = SourceConfig::Vnc(VncSourceConfig::default());
     let mut engine = test_engine(Canvas {
@@ -581,31 +635,69 @@ fn sync_source_config_updates_quads_sharing_the_key() {
         outputs: Vec::new(),
         ..Default::default()
     };
-    let ndi = |bw| SourceConfig::Ndi(NdiSourceConfig {
-        bandwidth: bw,
-        color_format: NdiReceiverColorFormat::UYVY_RGBA,
-    });
+    let ndi = |bw| {
+        SourceConfig::Ndi(NdiSourceConfig {
+            bandwidth: bw,
+            color_format: NdiReceiverColorFormat::UYVY_RGBA,
+        })
+    };
     let highest = NdiReceiverBandwidth::Highest;
     let lowest = NdiReceiverBandwidth::Lowest;
 
     let mut quad_a = Source::new(
-        "Quad A".into(), Protocol::Ndi, Some("Cam (1)".into()),
-        0.0, 0.0, 960, 540, 0, TextureMode::Fit, false, false,
+        "Quad A".into(),
+        Protocol::Ndi,
+        Some("Cam (1)".into()),
+        0.0,
+        0.0,
+        960,
+        540,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
     );
     quad_a.config = ndi(highest);
     let mut quad_b = Source::new(
-        "Quad B".into(), Protocol::Ndi, Some("Cam (1)".into()),
-        960.0, 0.0, 960, 540, 1, TextureMode::Fit, false, false,
+        "Quad B".into(),
+        Protocol::Ndi,
+        Some("Cam (1)".into()),
+        960.0,
+        0.0,
+        960,
+        540,
+        1,
+        TextureMode::Fit,
+        false,
+        false,
     );
     quad_b.config = ndi(highest);
     let mut quad_c = Source::new(
-        "Quad C".into(), Protocol::Ndi, Some("Other Cam".into()),
-        0.0, 540.0, 960, 540, 2, TextureMode::Fit, false, false,
+        "Quad C".into(),
+        Protocol::Ndi,
+        Some("Other Cam".into()),
+        0.0,
+        540.0,
+        960,
+        540,
+        2,
+        TextureMode::Fit,
+        false,
+        false,
     );
     quad_c.config = ndi(highest);
     let mut quad_d = Source::new(
-        "Quad D".into(), Protocol::Decklink, Some("Cam (1)".into()),
-        960.0, 540.0, 960, 540, 3, TextureMode::Fit, false, false,
+        "Quad D".into(),
+        Protocol::Decklink,
+        Some("Cam (1)".into()),
+        960.0,
+        540.0,
+        960,
+        540,
+        3,
+        TextureMode::Fit,
+        false,
+        false,
     );
     quad_d.config = SourceConfig::Decklink(DecklinkSourceConfig {
         connection: DecklinkVideoConnection::Hdmi,
@@ -666,10 +758,7 @@ fn control_commands_mutate_the_canvas() {
     let mut engine = test_engine(Canvas::default());
 
     engine.apply_command(Command::AddSource).unwrap();
-    let uuid = engine
-        .state.selected_source_id
-        .clone()
-        .expect("added source is selected");
+    let uuid = engine.state.selected_source_id.clone().expect("added source is selected");
 
     engine
         .apply_command(Command::SetSourceX {
@@ -704,11 +793,7 @@ fn control_commands_mutate_the_canvas() {
 fn control_rejects_unknown_targets_and_bad_values() {
     let mut engine = test_engine(Canvas::default());
 
-    assert!(
-        engine
-            .apply_command(Command::RemoveSource(Selector::Index(99)))
-            .is_err()
-    );
+    assert!(engine.apply_command(Command::RemoveSource(Selector::Index(99))).is_err());
     assert!(
         engine
             .apply_command(Command::SetSourceX {
@@ -717,11 +802,7 @@ fn control_rejects_unknown_targets_and_bad_values() {
             })
             .is_err()
     );
-    assert!(
-        engine
-            .apply_command(Command::Zoom { factor: 0.0 })
-            .is_err()
-    );
+    assert!(engine.apply_command(Command::Zoom { factor: 0.0 }).is_err());
 }
 
 #[test]

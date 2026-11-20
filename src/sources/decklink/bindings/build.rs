@@ -68,9 +68,7 @@ fn setup_linux(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
 
 fn setup_windows(build: &mut cc::Build, manifest_dir: &std::path::Path) -> bool {
     if !std::env::var("HOST").unwrap_or_default().contains("-windows") {
-        println!(
-            "cargo:warning=DeckLink Windows shim skipped: compiling it requires a Windows host"
-        );
+        println!("cargo:warning=DeckLink Windows shim skipped: compiling it requires a Windows host");
         return false;
     }
 

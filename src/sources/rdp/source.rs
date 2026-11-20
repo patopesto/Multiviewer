@@ -10,10 +10,7 @@ use tokio::sync::mpsc;
 
 use crate::secret;
 use crate::APP_NAME;
-use super::super::{
-    CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource,
-    publish_due, sleep_while_running,
-};
+use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource, publish_due, sleep_while_running};
 
 /// Default RDP port.
 const DEFAULT_PORT: u16 = 3389;
@@ -124,9 +121,7 @@ impl RdpSourceConfig {
     /// Whether enough is configured to open a connection. The engine rejects a
     /// session without credentials, so those are part of the answer.
     pub fn is_configured(&self) -> bool {
-        return !self.host.trim().is_empty()
-            && !self.username.is_empty()
-            && !self.password.is_empty();
+        return !self.host.trim().is_empty() && !self.username.is_empty() && !self.password.is_empty();
     }
 
     /// Label for source lists: `host:port`, or the source's own name while no

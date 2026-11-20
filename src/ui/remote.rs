@@ -8,10 +8,7 @@ use std::time::{Duration, Instant};
 use egui::epaint::ImageData;
 use tokio::sync::broadcast;
 
-use crate::control::{
-    ApiHandles, Command, Frame, HttpControlConfig, InputEvent, PointerButton, Server, Status,
-    TextureUpload, encode_frame, texture_key,
-};
+use crate::control::{ApiHandles, Command, Frame, HttpControlConfig, InputEvent, PointerButton, Server, Status, TextureUpload, encode_frame, texture_key};
 use crate::engine::{Engine, FocusHandle, PreviewFrame, SnapshotSlot, publish_state};
 use crate::ui::viewer::{HostView, UiMode, Viewer};
 
@@ -44,12 +41,7 @@ struct Running {
 }
 
 impl RemoteHost {
-    pub fn new(
-        engine: Arc<Mutex<Engine>>,
-        snapshots: SnapshotSlot,
-        commands: Sender<Command>,
-        focus: FocusHandle,
-    ) -> Self {
+    pub fn new(engine: Arc<Mutex<Engine>>, snapshots: SnapshotSlot, commands: Sender<Command>, focus: FocusHandle) -> Self {
         return Self {
             engine,
             snapshots,
@@ -81,15 +73,9 @@ impl RemoteHost {
             }
         }
 
-        self.retiring.retain(|(_, done)| {
-            matches!(done.try_recv(), Err(mpsc::TryRecvError::Empty))
-        });
+        self.retiring.retain(|(_, done)| matches!(done.try_recv(), Err(mpsc::TryRecvError::Empty)));
         let previous = self.applied.clone();
-        let wait_for_port = desired.enabled
-            && self.running.is_some()
-            && previous
-                .as_ref()
-                .is_some_and(|old| old.port == desired.port);
+        let wait_for_port = desired.enabled && self.running.is_some() && previous.as_ref().is_some_and(|old| old.port == desired.port);
         if let Some(running) = self.running.take() {
             if wait_for_port {
                 drop(running);
@@ -140,10 +126,7 @@ impl RemoteHost {
             clients,
             status,
         });
-        return Ok(Running {
-            server,
-            _session: session,
-        });
+        return Ok(Running { server, _session: session });
     }
 
     pub fn stop(&mut self) {
@@ -190,12 +173,10 @@ impl Drop for RemoteHost {
 /// signals when the old listener is fully gone.
 fn shutdown_in_background(running: Running) -> Option<Receiver<()>> {
     let (done_tx, done) = mpsc::channel();
-    match thread::Builder::new()
-        .name("http-shutdown".to_string())
-        .spawn(move || {
-            drop(running);
-            let _ = done_tx.send(());
-        }) {
+    match thread::Builder::new().name("http-shutdown".to_string()).spawn(move || {
+        drop(running);
+        let _ = done_tx.send(());
+    }) {
         Ok(_) => Some(done),
         Err(error) => {
             tracing::warn!("HTTP shutdown thread: {error}");
@@ -225,12 +206,10 @@ impl Session {
         let stop = Arc::new(AtomicBool::new(false));
         let (done_tx, done) = mpsc::channel();
         let thread_stop = stop.clone();
-        let spawned = thread::Builder::new()
-            .name("web-session".to_string())
-            .spawn(move || {
-                run_session(config, thread_stop);
-                let _ = done_tx.send(());
-            });
+        let spawned = thread::Builder::new().name("web-session".to_string()).spawn(move || {
+            run_session(config, thread_stop);
+            let _ = done_tx.send(());
+        });
         if let Err(error) = spawned {
             tracing::error!("web session thread: {error}");
         }
@@ -287,16 +266,7 @@ impl InputState {
 
     fn handle(&mut self, event: InputEvent) {
         match event {
-            InputEvent::Hello {
-                width,
-                height,
-                dpr,
-            }
-            | InputEvent::Resize {
-                width,
-                height,
-                dpr,
-            } => {
+            InputEvent::Hello { width, height, dpr } | InputEvent::Resize { width, height, dpr } => {
                 self.size = egui::vec2(width.max(1.0), height.max(1.0));
                 self.dpr = dpr.clamp(0.5, 4.0);
             }
@@ -304,12 +274,7 @@ impl InputState {
                 self.pointer = egui::pos2(x, y);
                 self.events.push(egui::Event::PointerMoved(self.pointer));
             }
-            InputEvent::PointerButton {
-                button,
-                pressed,
-                x,
-                y,
-            } => {
+            InputEvent::PointerButton { button, pressed, x, y } => {
                 self.pointer = egui::pos2(x, y);
                 let index = match button {
                     PointerButton::Primary => 0,
@@ -339,8 +304,7 @@ impl InputState {
                     mac_cmd: command,
                     command,
                 };
-                self.events
-                    .push(egui::Event::ModifiersChanged(self.modifiers));
+                self.events.push(egui::Event::ModifiersChanged(self.modifiers));
                 self.events.push(egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
                     delta: egui::vec2(dx, dy),
@@ -454,10 +418,7 @@ fn run_session(config: SessionConfig, stop: Arc<AtomicBool>) {
         };
 
         let events = std::mem::take(&mut input.events);
-        let screen = egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::vec2(input.size.x.max(1.0), input.size.y.max(1.0)),
-        );
+        let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(input.size.x.max(1.0), input.size.y.max(1.0)));
         let mut viewports = egui::ViewportIdMap::default();
         viewports.insert(
             egui::ViewportId::ROOT,
@@ -482,11 +443,7 @@ fn run_session(config: SessionConfig, stop: Arc<AtomicBool>) {
 
         let keyframe = input.keyframe;
         input.keyframe = false;
-        let web_status = config
-            .status
-            .lock()
-            .unwrap()
-            .label(config.clients.load(Ordering::Relaxed));
+        let web_status = config.status.lock().unwrap().label(config.clients.load(Ordering::Relaxed));
         let mut actions = Vec::new();
         let mut output = ctx.run_ui(raw_input, |ui| {
             let host = HostView {
@@ -525,11 +482,7 @@ fn run_session(config: SessionConfig, stop: Arc<AtomicBool>) {
         if keyframe {
             uploads = textures.full_uploads();
         }
-        let free: Vec<u32> = textures_delta
-            .free
-            .iter()
-            .map(|id| texture_key(*id))
-            .collect();
+        let free: Vec<u32> = textures_delta.free.iter().map(|id| texture_key(*id)).collect();
         textures_delta.clear();
         let frame = encode_frame(&primitives, &uploads, &free);
         let _ = config.frames.send(frame);
@@ -551,11 +504,7 @@ impl TextureCache {
     fn apply(&mut self, id: egui::TextureId, delta: &egui::epaint::ImageDelta, uploads: &mut Vec<TextureUpload>) {
         let ImageData::Color(image) = &delta.image;
         let size = [image.size[0] as u16, image.size[1] as u16];
-        let pixels: Vec<u8> = image
-            .pixels
-            .iter()
-            .flat_map(|color| [color.r(), color.g(), color.b(), color.a()])
-            .collect();
+        let pixels: Vec<u8> = image.pixels.iter().flat_map(|color| [color.r(), color.g(), color.b(), color.a()]).collect();
         let key = texture_key(id);
         match delta.pos {
             None => {
@@ -585,8 +534,7 @@ impl TextureCache {
                     let destination = ((pos[1] + row) * width + pos[0]) * 4;
                     let end = destination + patch_width * 4;
                     if end <= cached.pixels.len() && source + patch_width * 4 <= pixels.len() {
-                        cached.pixels[destination..end]
-                            .copy_from_slice(&pixels[source..source + patch_width * 4]);
+                        cached.pixels[destination..end].copy_from_slice(&pixels[source..source + patch_width * 4]);
                     }
                 }
                 uploads.push(TextureUpload {
@@ -629,10 +577,7 @@ mod tests {
         let mut cache = TextureCache::default();
         let mut uploads = Vec::new();
         let full = egui::epaint::ImageDelta::full(
-            egui::epaint::ImageData::Color(std::sync::Arc::new(egui::ColorImage::new(
-                [2, 2],
-                vec![egui::Color32::RED; 4],
-            ))),
+            egui::epaint::ImageData::Color(std::sync::Arc::new(egui::ColorImage::new([2, 2], vec![egui::Color32::RED; 4]))),
             egui::TextureOptions::LINEAR,
         );
         cache.apply(egui::TextureId::Managed(0), &full, &mut uploads);
@@ -642,10 +587,7 @@ mod tests {
 
         uploads.clear();
         let patch = egui::epaint::ImageDelta {
-            image: egui::epaint::ImageData::Color(std::sync::Arc::new(egui::ColorImage::new(
-                [1, 1],
-                vec![egui::Color32::BLUE],
-            ))),
+            image: egui::epaint::ImageData::Color(std::sync::Arc::new(egui::ColorImage::new([1, 1], vec![egui::Color32::BLUE]))),
             options: egui::TextureOptions::LINEAR,
             pos: Some([1, 0]),
         };
@@ -683,10 +625,7 @@ mod tests {
             let mut actions = Vec::new();
             let mut output = ctx.run_ui(
                 egui::RawInput {
-                    screen_rect: Some(egui::Rect::from_min_size(
-                        egui::Pos2::ZERO,
-                        egui::vec2(1200.0, 800.0),
-                    )),
+                    screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 800.0))),
                     ..Default::default()
                 },
                 |ui| {
@@ -709,10 +648,7 @@ mod tests {
             let primitives = ctx.tessellate(output.shapes, output.pixels_per_point);
             let mut textures = std::mem::take(&mut output.textures_delta);
             assert!(
-                primitives.iter().any(|primitive| matches!(
-                    primitive.primitive,
-                    egui::epaint::Primitive::Mesh(_)
-                )),
+                primitives.iter().any(|primitive| matches!(primitive.primitive, egui::epaint::Primitive::Mesh(_))),
                 "the remote viewer produced no meshes"
             );
             let frame = encode_frame(&primitives, &[], &[]);

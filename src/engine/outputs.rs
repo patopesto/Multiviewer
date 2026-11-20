@@ -38,13 +38,7 @@ impl Engine {
             None => return,
         };
 
-        self.output_registry.restart(
-            &output.protocol,
-            uuid.to_string(),
-            output.name.clone(),
-            &output.config,
-            output.enabled,
-        );
+        self.output_registry.restart(&output.protocol, uuid.to_string(), output.name.clone(), &output.config, output.enabled);
 
         self.state.dirty = true;
     }

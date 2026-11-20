@@ -251,9 +251,7 @@ impl YuvConverter {
             ],
         });
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("yuv-convert"),
-        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("yuv-convert") });
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("yuv-convert"),
@@ -313,26 +311,15 @@ mod tests {
         let u = u8 - 128.0 / 255.0;
         let v = v8 - 128.0 / 255.0;
         let (r, g, b) = if rec601 {
-            (
-                1.164 * y + 1.596 * v,
-                1.164 * y - 0.391 * u - 0.813 * v,
-                1.164 * y + 2.018 * u,
-            )
+            (1.164 * y + 1.596 * v, 1.164 * y - 0.391 * u - 0.813 * v, 1.164 * y + 2.018 * u)
         } else {
-            (
-                1.164 * y + 1.793 * v,
-                1.164 * y - 0.213 * u - 0.533 * v,
-                1.164 * y + 2.112 * u,
-            )
+            (1.164 * y + 1.793 * v, 1.164 * y - 0.213 * u - 0.533 * v, 1.164 * y + 2.112 * u)
         };
         return (r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0));
     }
 
     fn assert_close(actual: (f32, f32, f32), expected: (f32, f32, f32)) {
-        let error = (actual.0 - expected.0)
-            .abs()
-            .max((actual.1 - expected.1).abs())
-            .max((actual.2 - expected.2).abs());
+        let error = (actual.0 - expected.0).abs().max((actual.1 - expected.1).abs()).max((actual.2 - expected.2).abs());
         assert!(error < 0.01, "actual {actual:?}, expected {expected:?}, error {error}");
     }
 
@@ -352,10 +339,7 @@ mod tests {
     #[test]
     fn shader_parses_and_validates() {
         let module = wgpu::naga::front::wgsl::parse_str(SHADER).expect("WGSL failed to parse");
-        let mut validator = wgpu::naga::valid::Validator::new(
-            wgpu::naga::valid::ValidationFlags::all(),
-            wgpu::naga::valid::Capabilities::all(),
-        );
+        let mut validator = wgpu::naga::valid::Validator::new(wgpu::naga::valid::ValidationFlags::all(), wgpu::naga::valid::Capabilities::all());
         validator.validate(&module).expect("WGSL failed to validate");
     }
 }

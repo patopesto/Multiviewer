@@ -14,7 +14,6 @@ use super::syphon;
 #[cfg(target_os = "windows")]
 use super::spout;
 
-
 pub type OutputId = String;
 
 /// A release slower than this would have blocked the engine lock for its whole
@@ -23,14 +22,7 @@ const SLOW_TEARDOWN: Duration = Duration::from_millis(100);
 
 /// Runtime video output. Implemented by NDI, Syphon, and DeckLink.
 pub trait VideoOutput: Send {
-    fn present(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> bool;
+    fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> bool;
     fn finish(&self) {}
     fn name(&self) -> &str;
     fn enabled(&self) -> bool;
@@ -39,7 +31,8 @@ pub trait VideoOutput: Send {
     fn protocol(&self) -> Protocol;
     /// Stop the runtime before a replacement is constructed.
     fn shutdown(&mut self) {}
-    fn busy(&self) -> bool { // overriden by VideoOutputs. true if consumer hasn't taken previous frame
+    fn busy(&self) -> bool {
+        // overriden by VideoOutputs. true if consumer hasn't taken previous frame
         return false;
     }
 }
@@ -248,9 +241,7 @@ pub struct OutputRegistry {
 
 impl OutputRegistry {
     pub fn new() -> Self {
-        Self {
-            outputs: HashMap::new(),
-        }
+        Self { outputs: HashMap::new() }
     }
 
     /// Register the runtime output for `id`, unless one is already live.
@@ -330,10 +321,7 @@ impl OutputRegistry {
         // NDI/OMT/DeckLink releases join their worker, which every caller of
         // `clear` would otherwise wait for while holding the engine lock.
         tracing::debug!(outputs = drained.len(), "releasing outputs in background");
-        std::thread::Builder::new()
-            .name("output-teardown".into())
-            .spawn(move || release_outputs(drained))
-            .ok();
+        std::thread::Builder::new().name("output-teardown".into()).spawn(move || release_outputs(drained)).ok();
     }
 }
 
@@ -346,12 +334,7 @@ fn release_outputs(outputs: Vec<(OutputId, OutputKind)>) {
         drop(kind);
         let elapsed = item_started.elapsed();
         if elapsed >= SLOW_TEARDOWN {
-            tracing::warn!(
-                output = name,
-                id = id,
-                elapsed_ms = elapsed.as_millis() as u64,
-                "output teardown is slow"
-            );
+            tracing::warn!(output = name, id = id, elapsed_ms = elapsed.as_millis() as u64, "output teardown is slow");
         }
     }
     let elapsed = started.elapsed();
@@ -367,7 +350,6 @@ impl Drop for OutputRegistry {
         self.clear();
     }
 }
-
 
 /// Ring of GPU->CPU readback buffers for one output.
 pub struct ReadbackPool {
@@ -392,10 +374,7 @@ const STUCK_MAP: Duration = Duration::from_secs(1);
 
 impl ReadbackPool {
     pub fn new() -> Self {
-        return Self {
-            size: 0,
-            slots: Vec::new(),
-        };
+        return Self { size: 0, slots: Vec::new() };
     }
 
     /// (Re)create the ring when the readback size or slot count changes.
@@ -404,13 +383,7 @@ impl ReadbackPool {
     }
 
     /// (Re)create the ring with a protocol-specific in-flight depth.
-    pub fn ensure_with_slots(
-        &mut self,
-        device: &wgpu::Device,
-        label: &str,
-        size: u64,
-        slots: usize,
-    ) {
+    pub fn ensure_with_slots(&mut self, device: &wgpu::Device, label: &str, size: u64, slots: usize) {
         if self.size == size && self.slots.len() == slots && !self.slots.is_empty() {
             return;
         }
@@ -438,10 +411,7 @@ impl ReadbackPool {
 
     /// A slot that is neither in flight nor mapped.
     pub fn free(&self) -> Option<usize> {
-        return self
-            .slots
-            .iter()
-            .position(|s| s.pending.is_none() && !s.mapped);
+        return self.slots.iter().position(|s| s.pending.is_none() && !s.mapped);
     }
 
     pub fn buffer(&self, slot: usize) -> &wgpu::Buffer {
@@ -466,12 +436,9 @@ impl ReadbackPool {
         let (tx, rx) = mpsc::channel();
         self.slots[slot].width = width;
         self.slots[slot].height = height;
-        self.slots[slot]
-            .buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                let _ = tx.send(result);
-            });
+        self.slots[slot].buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
+            let _ = tx.send(result);
+        });
         self.slots[slot].pending = Some(rx);
         self.slots[slot].pending_since = Some(Instant::now());
     }
@@ -503,9 +470,7 @@ impl ReadbackPool {
                     self.recover_slot(i, "readback map lost");
                 }
                 Err(mpsc::TryRecvError::Empty) => {
-                    let stuck = self.slots[i]
-                        .pending_since
-                        .is_some_and(|since| now.duration_since(since) >= STUCK_MAP);
+                    let stuck = self.slots[i].pending_since.is_some_and(|since| now.duration_since(since) >= STUCK_MAP);
                     if stuck {
                         self.recover_slot(i, "readback map stalled");
                     } else {
@@ -537,7 +502,6 @@ impl ReadbackPool {
         self.slots[slot].mapped = false;
     }
 }
-
 
 /// How long a frame may sit unconsumed before the worker is treated as stuck
 const STALL_TIMEOUT: Duration = Duration::from_secs(2);

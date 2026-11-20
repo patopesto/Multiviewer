@@ -56,13 +56,15 @@ impl SyphonSource {
     fn cached(&self) -> Option<Frame> {
         let dims = self.dims.lock().unwrap();
         let bg = self.bg.lock().unwrap();
-        (*bg).as_ref().map(|bind_group| Frame::Gpu(GpuFrame {
-            bg: bind_group.clone(),
-            w: dims.0,
-            h: dims.1,
-            seq: self.seq.load(Ordering::Relaxed),
-            flip_v: true,
-        }))
+        (*bg).as_ref().map(|bind_group| {
+            Frame::Gpu(GpuFrame {
+                bg: bind_group.clone(),
+                w: dims.0,
+                h: dims.1,
+                seq: self.seq.load(Ordering::Relaxed),
+                flip_v: true,
+            })
+        })
     }
 }
 
@@ -91,9 +93,7 @@ impl VideoSource for SyphonSource {
             // The stored info carries the UUID the source was added with; a
             // relaunched server has a new one, so prefer the current one.
             let info = find_by_display_name(&self.source_ref).unwrap_or_else(|| self.info.clone());
-            let connected = input
-                .connect_by_info(&info)
-                .or_else(|_| input.connect(&self.source_ref));
+            let connected = input.connect_by_info(&info).or_else(|_| input.connect(&self.source_ref));
             match connected {
                 Ok(()) => {
                     tracing::info!(source = self.source_ref, "Syphon connected");

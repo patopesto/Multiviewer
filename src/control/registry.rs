@@ -87,10 +87,7 @@ impl ControlRegistry {
             }
         };
         self.feedback_mode = osc.feedback_mode;
-        if matches!(
-            osc.feedback_mode,
-            FeedbackMode::Configured | FeedbackMode::Both
-        ) {
+        if matches!(osc.feedback_mode, FeedbackMode::Configured | FeedbackMode::Both) {
             let configured = !osc.feedback_host.trim().is_empty() && osc.feedback_port != 0;
             self.feedback_target = resolve_feedback_target(&osc.feedback_host, osc.feedback_port);
             if configured && self.feedback_target.is_none() {
@@ -109,9 +106,7 @@ impl ControlRegistry {
                 if let Some(target) = self.feedback_target
                     && is_self_target(target, addr)
                 {
-                    tracing::warn!(
-                        "OSC feedback target {target} points at the listener itself; feedback is disabled"
-                    );
+                    tracing::warn!("OSC feedback target {target} points at the listener itself; feedback is disabled");
                     self.feedback_target = None;
                 }
                 tracing::info!("OSC control listening on {addr}");
@@ -238,12 +233,7 @@ impl ControlRegistry {
 
     fn recent_senders(&self) -> Vec<SocketAddr> {
         let now = Instant::now();
-        return self
-            .senders
-            .iter()
-            .filter(|(_, seen)| now.duration_since(**seen) <= FEEDBACK_TTL)
-            .map(|(address, _)| *address)
-            .collect();
+        return self.senders.iter().filter(|(_, seen)| now.duration_since(**seen) <= FEEDBACK_TTL).map(|(address, _)| *address).collect();
     }
 
     fn remember_sender(&mut self, from: SocketAddr) {
@@ -255,14 +245,9 @@ impl ControlRegistry {
             self.pending_full.insert(from);
         }
         self.senders.insert(from, now);
-        self.senders
-            .retain(|_, seen| now.duration_since(*seen) <= FEEDBACK_TTL);
+        self.senders.retain(|_, seen| now.duration_since(*seen) <= FEEDBACK_TTL);
         while self.senders.len() > MAX_FEEDBACK_SENDERS {
-            let oldest = self
-                .senders
-                .iter()
-                .min_by_key(|(_, seen)| *seen)
-                .map(|(address, _)| *address);
+            let oldest = self.senders.iter().min_by_key(|(_, seen)| *seen).map(|(address, _)| *address);
             let Some(address) = oldest else {
                 break;
             };
@@ -288,20 +273,13 @@ fn is_self_target(target: SocketAddr, listener: SocketAddr) -> bool {
     if target.port() != listener.port() {
         return false;
     }
-    return target.ip().is_loopback()
-        || (target.ip().is_unspecified() && listener.ip().is_unspecified());
+    return target.ip().is_loopback() || (target.ip().is_unspecified() && listener.ip().is_unspecified());
 }
 
 /// Addresses that changed, plus resets for addresses that disappeared.
-fn diff(
-    previous: &HashMap<String, FeedbackValue>,
-    current: &[(String, FeedbackValue)],
-) -> Vec<(String, FeedbackValue)> {
+fn diff(previous: &HashMap<String, FeedbackValue>, current: &[(String, FeedbackValue)]) -> Vec<(String, FeedbackValue)> {
     let mut changes = Vec::new();
-    let current_addresses: HashSet<&str> = current
-        .iter()
-        .map(|(address, _)| address.as_str())
-        .collect();
+    let current_addresses: HashSet<&str> = current.iter().map(|(address, _)| address.as_str()).collect();
     for (address, value) in current {
         if previous.get(address) != Some(value) {
             changes.push((address.clone(), value.clone()));
@@ -356,16 +334,10 @@ mod tests {
             ("/a".to_string(), FeedbackValue::Int(2)),
             ("/b".to_string(), FeedbackValue::String("x".to_string())),
         ];
-        assert_eq!(
-            diff(&previous, &changed),
-            vec![("/a".to_string(), FeedbackValue::Int(2))]
-        );
+        assert_eq!(diff(&previous, &changed), vec![("/a".to_string(), FeedbackValue::Int(2))]);
 
         let removed = vec![("/b".to_string(), FeedbackValue::String("x".to_string()))];
-        assert_eq!(
-            diff(&previous, &removed),
-            vec![("/a".to_string(), FeedbackValue::Int(0))]
-        );
+        assert_eq!(diff(&previous, &removed), vec![("/a".to_string(), FeedbackValue::Int(0))]);
     }
 
     #[test]
@@ -421,27 +393,14 @@ mod tests {
         registry.feedback_target = Some(target);
         registry.remember_sender(target);
 
-        assert_eq!(
-            registry
-                .feedback_targets()
-                .iter()
-                .filter(|address| **address == target)
-                .count(),
-            1
-        );
+        assert_eq!(registry.feedback_targets().iter().filter(|address| **address == target).count(), 1);
     }
 
     #[test]
     fn a_target_on_the_listener_port_is_self() {
         let listener: SocketAddr = "127.0.0.1:9000".parse().unwrap();
         assert!(is_self_target(listener, listener));
-        assert!(is_self_target(
-            "127.0.0.2:9000".parse().unwrap(),
-            listener
-        ));
-        assert!(!is_self_target(
-            "192.168.1.20:9001".parse().unwrap(),
-            listener
-        ));
+        assert!(is_self_target("127.0.0.2:9000".parse().unwrap(), listener));
+        assert!(!is_self_target("192.168.1.20:9001".parse().unwrap(), listener));
     }
 }

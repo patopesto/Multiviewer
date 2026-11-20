@@ -104,6 +104,7 @@ impl Shortcut {
     /// Menu this shortcut belongs to, used to group the shortcut reference.
     pub fn category(&self) -> &'static str {
         match self {
+            #[rustfmt::skip]
             Shortcut::NewProject
             | Shortcut::OpenProject
             | Shortcut::SaveProject
@@ -191,9 +192,7 @@ impl Shortcut {
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::A)) {
             return Some(Shortcut::AddSource);
         }
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete))
-            || ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Backspace))
-        {
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete)) || ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Backspace)) {
             return Some(Shortcut::DeleteSource);
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F)) {
@@ -205,9 +204,7 @@ impl Shortcut {
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Num0)) {
             return Some(Shortcut::RecenterView);
         }
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Plus))
-            || ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Equals))
-        {
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Plus)) || ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Equals)) {
             return Some(Shortcut::ZoomIn);
         }
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Minus)) {
@@ -315,10 +312,7 @@ mod tests {
 
         let grouped: Vec<&'static str> = groups.iter().map(|(c, _)| *c).collect();
         assert_eq!(grouped, distinct);
-        assert_eq!(
-            Shortcut::all_global().len(),
-            groups.iter().map(|(_, items)| items.len()).sum::<usize>()
-        );
+        assert_eq!(Shortcut::all_global().len(), groups.iter().map(|(_, items)| items.len()).sum::<usize>());
     }
 
     // Tripwire: bump this when adding a shortcut, so the reference window

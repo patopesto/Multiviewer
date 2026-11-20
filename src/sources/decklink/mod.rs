@@ -8,19 +8,12 @@ use multiviewer_decklink::{decklink_api_version, DecklinkPixelFormat};
 
 use crate::sources::PixelFormat;
 
-pub use discovery::{
-    Discovery as DecklinkDiscovery, OutputMode as DecklinkOutputMode,
-    OutputPort as DecklinkOutputPort,
-};
+pub use discovery::{Discovery as DecklinkDiscovery, OutputMode as DecklinkOutputMode, OutputPort as DecklinkOutputPort};
 pub use source::{DecklinkSource, DecklinkSourceConfig};
 pub use output::{DecklinkOutput, DecklinkOutputConfig};
 
 // external crate re-exports
-pub use multiviewer_decklink::{
-    VideoConnection as DecklinkVideoConnection,
-    VideoConnections as DecklinkVideoConnections,
-    DisplayMode as DecklinkMode,
-};
+pub use multiviewer_decklink::{VideoConnection as DecklinkVideoConnection, VideoConnections as DecklinkVideoConnections, DisplayMode as DecklinkMode};
 
 /// Map a DeckLink capture pixel format to the app's format.
 pub(crate) fn pixel_format(fmt: DecklinkPixelFormat) -> PixelFormat {

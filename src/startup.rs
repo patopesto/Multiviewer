@@ -4,10 +4,7 @@ use std::time::{Duration, Instant};
 
 use eframe::egui_wgpu::WgpuSetup;
 use tracing_subscriber::prelude::*;
-use wgpu::{
-    Backend, Backends, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
-    PowerPreference,
-};
+use wgpu::{Backend, Backends, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits, PowerPreference};
 
 use crate::APP_NAME;
 use crate::Cli;
@@ -45,9 +42,7 @@ fn run_native(
     let icon = eframe::icon_data::from_png_bytes(include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/appicon/AppIcon.png")))
         .expect("failed to decode app icon");
     let mut options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1600.0, 900.0])
-            .with_icon(Arc::new(icon)),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1600.0, 900.0]).with_icon(Arc::new(icon)),
         renderer: eframe::Renderer::Wgpu,
         centered: true,
         ..Default::default()
@@ -76,22 +71,10 @@ fn run_headless(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let gpu = create_headless_device(platform::headless_backends()).map_err(std::io::Error::other)?;
     let info = gpu.adapter.get_info();
-    tracing::info!(
-        "headless wgpu backend {:?}, adapter '{}' ({:?})",
-        info.backend,
-        info.name,
-        info.device_type
-    );
+    tracing::info!("headless wgpu backend {:?}, adapter '{}' ({:?})", info.backend, info.name, info.device_type);
 
-    let mut runtime = EngineRuntime::start(
-        startup_path,
-        gpu.device.clone(),
-        gpu.queue.clone(),
-        wgpu::TextureFormat::Bgra8Unorm,
-        false,
-        None,
-    )
-    .map_err(std::io::Error::other)?;
+    let mut runtime = EngineRuntime::start(startup_path, gpu.device.clone(), gpu.queue.clone(), wgpu::TextureFormat::Bgra8Unorm, false, None)
+        .map_err(std::io::Error::other)?;
 
     match &runtime.startup_error {
         Some(StartupError::Missing(message)) => tracing::warn!("{message}"),
@@ -182,8 +165,8 @@ fn create_headless_device(backends: Backends) -> Result<HeadlessGpu, String> {
         ..Default::default()
     }))
     .map_err(|e| format!("no headless wgpu adapter: {e}"))?;
-    let (device, queue) = pollster::block_on(adapter.request_device(&device_descriptor(&adapter)))
-        .map_err(|e| format!("headless wgpu device: {e}"))?;
+    let (device, queue) =
+        pollster::block_on(adapter.request_device(&device_descriptor(&adapter))).map_err(|e| format!("headless wgpu device: {e}"))?;
     return Ok(HeadlessGpu {
         _instance: instance,
         adapter,
@@ -195,8 +178,7 @@ fn create_headless_device(backends: Backends) -> Result<HeadlessGpu, String> {
 /// Chrome/Perfetto trace export when `--trace <file>.json` is passed.
 fn init_tracing(trace_path: Option<PathBuf>) -> Option<tracing_chrome::FlushGuard> {
     // Console logging, controlled by RUST_LOG
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| "Multiviewer=info".into());
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "Multiviewer=info".into());
     let fmt_layer = tracing_subscriber::fmt::layer().with_filter(filter);
 
     let Some(trace_path) = trace_path else {
@@ -211,20 +193,12 @@ fn init_tracing(trace_path: Option<PathBuf>) -> Option<tracing_chrome::FlushGuar
             return None;
         }
     };
-    let (chrome_layer, guard) = tracing_chrome::ChromeLayerBuilder::new()
-        .writer(writer)
-        .include_args(true)
-        .build();
+    let (chrome_layer, guard) = tracing_chrome::ChromeLayerBuilder::new().writer(writer).include_args(true).build();
 
     // Filter out external lib traces
-    let chrome_layer = chrome_layer.with_filter(
-        tracing_subscriber::filter::Targets::new()
-            .with_target(env!("CARGO_CRATE_NAME"), tracing::Level::DEBUG),
-    );
-    tracing_subscriber::registry()
-        .with(fmt_layer)
-        .with(chrome_layer)
-        .init();
+    let chrome_layer =
+        chrome_layer.with_filter(tracing_subscriber::filter::Targets::new().with_target(env!("CARGO_CRATE_NAME"), tracing::Level::DEBUG));
+    tracing_subscriber::registry().with(fmt_layer).with(chrome_layer).init();
     tracing::info!("writing trace to {}", trace_path.display());
     return Some(guard);
 }
@@ -233,12 +207,7 @@ fn log_wgpu_backend(cc: &eframe::CreationContext<'_>) {
     match &cc.wgpu_render_state {
         Some(render_state) => {
             let info = render_state.adapter.get_info();
-            tracing::info!(
-                "wgpu backend {:?}, adapter '{}' ({:?})",
-                info.backend,
-                info.name,
-                info.device_type
-            );
+            tracing::info!("wgpu backend {:?}, adapter '{}' ({:?})", info.backend, info.name, info.device_type);
         }
         None => tracing::info!("wgpu renderer not in use"),
     }

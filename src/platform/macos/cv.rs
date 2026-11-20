@@ -2,10 +2,7 @@ use std::ffi::c_void;
 use std::sync::Arc;
 
 use objc2_io_surface::IOSurfaceRef;
-use objc2_metal::{
-    MTLDevice, MTLPixelFormat, MTLStorageMode, MTLTextureDescriptor, MTLTextureType,
-    MTLTextureUsage,
-};
+use objc2_metal::{MTLDevice, MTLPixelFormat, MTLStorageMode, MTLTextureDescriptor, MTLTextureType, MTLTextureUsage};
 use wgpu::hal::api::Metal as MetalApi;
 
 use crate::sources::{ConvUniform, Frame, GpuFrame, PixelFormat};
@@ -119,26 +116,13 @@ impl CvFramePipeline {
                 _pad: 0.0,
             }]),
         );
-        return Some(Self {
-            layout,
-            sampler,
-            uniform,
-        });
+        return Some(Self { layout, sampler, uniform });
     }
 
-    pub fn frame(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        cv: CvFrame,
-    ) -> Option<Frame> {
+    pub fn frame(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, cv: CvFrame) -> Option<Frame> {
         let (format, tex_w, mode) = match cv.fmt {
             PixelFormat::Bgra8 => (wgpu::TextureFormat::Bgra8Unorm, cv.w, 0u32),
-            PixelFormat::Uyvy422 => (
-                wgpu::TextureFormat::Rg8Unorm,
-                cv.w,
-                if cv.h > 576 { 8 } else { 7 },
-            ),
+            PixelFormat::Uyvy422 => (wgpu::TextureFormat::Rg8Unorm, cv.w, if cv.h > 576 { 8 } else { 7 }),
             _ => return None,
         };
         let texture = texture_from_iosurface(
@@ -216,12 +200,7 @@ pub fn texture_from_iosurface(
         _ => return None,
     };
     let desc = unsafe {
-        MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(
-            mtl_format,
-            width as usize,
-            height as usize,
-            false,
-        )
+        MTLTextureDescriptor::texture2DDescriptorWithPixelFormat_width_height_mipmapped(mtl_format, width as usize, height as usize, false)
     };
     let mut mtl_usage = MTLTextureUsage::ShaderRead;
     if usage.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
@@ -232,19 +211,7 @@ pub fn texture_from_iosurface(
     let iosurface = unsafe { &*iosurface.cast::<IOSurfaceRef>() };
     let raw = mtl_device.newTextureWithDescriptor_iosurface_plane(&desc, iosurface, 0)?;
     let hal_texture = unsafe {
-        wgpu::hal::metal::Device::texture_from_raw(
-            raw,
-            format,
-            MTLTextureType::Type2D,
-            1,
-            1,
-            wgpu::hal::CopyExtent {
-                width,
-                height,
-                depth: 1,
-            },
-            None,
-        )
+        wgpu::hal::metal::Device::texture_from_raw(raw, format, MTLTextureType::Type2D, 1, 1, wgpu::hal::CopyExtent { width, height, depth: 1 }, None)
     };
     let texture_desc = wgpu::TextureDescriptor {
         label: Some("decklink-iosurface"),
@@ -262,8 +229,6 @@ pub fn texture_from_iosurface(
     };
     // SAFETY: the hal texture wraps the IOSurface-backed Metal texture; wgpu
     // owns it from here and the desktop video frame owns the CV buffer.
-    let texture = unsafe {
-        device.create_texture_from_hal::<MetalApi>(hal_texture, &texture_desc, hal_usage)
-    };
+    let texture = unsafe { device.create_texture_from_hal::<MetalApi>(hal_texture, &texture_desc, hal_usage) };
     return Some(texture);
 }

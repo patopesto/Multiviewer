@@ -4,14 +4,10 @@ use std::time::Duration;
 
 use windows::Win32::Foundation::RPC_E_CHANGED_MODE;
 use windows::Win32::Media::MediaFoundation::{
-    IMFActivate, MFCreateAttributes, MFEnumDeviceSources, MFStartup, MFSTARTUP_LITE, MF_VERSION,
-    MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
-    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
+    IMFActivate, MFCreateAttributes, MFEnumDeviceSources, MFStartup, MFSTARTUP_LITE, MF_VERSION, MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
 };
-use windows::Win32::System::Com::{
-    CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED,
-};
+use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED};
 use windows::core::PWSTR;
 
 use super::source::probe_activate;
@@ -73,12 +69,7 @@ impl Discovery {
     }
 
     pub fn find_by_id(&self, id: &str) -> Option<Device> {
-        self.devices
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|d| d.id == id)
-            .cloned()
+        self.devices.lock().unwrap().iter().find(|d| d.id == id).cloned()
     }
 }
 
@@ -86,10 +77,7 @@ impl Discovery {
 /// devices that negotiate a compositor-supported output type are published, so
 /// a WDM-only device Media Foundation cannot open is hidden. Returns an empty
 /// list on any failure — the discovery loop retries.
-unsafe fn enumerate_devices(
-    cache: &mut HashMap<String, bool>,
-    logged: &mut HashSet<String>,
-) -> Vec<Device> {
+unsafe fn enumerate_devices(cache: &mut HashMap<String, bool>, logged: &mut HashSet<String>) -> Vec<Device> {
     let mut attributes = None;
     if let Err(e) = unsafe { MFCreateAttributes(&mut attributes, 1) } {
         tracing::warn!("MediaFoundation discovery: MFCreateAttributes failed: {e}");
@@ -99,12 +87,7 @@ unsafe fn enumerate_devices(
         tracing::warn!("MediaFoundation discovery: MFCreateAttributes returned null");
         return Vec::new();
     };
-    if let Err(e) = unsafe {
-        attributes.SetGUID(
-            &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-            &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
-        )
-    } {
+    if let Err(e) = unsafe { attributes.SetGUID(&MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID) } {
         tracing::warn!("MediaFoundation discovery: SetGUID(source type) failed: {e}");
         return Vec::new();
     }
@@ -119,16 +102,10 @@ unsafe fn enumerate_devices(
 
     let mut candidates: Vec<(String, String)> = Vec::with_capacity(count as usize);
     for activate in activate_slice.iter().flatten() {
-        let Some(id) = (unsafe {
-            allocate_string(
-                activate,
-                &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
-            )
-        }) else {
+        let Some(id) = (unsafe { allocate_string(activate, &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK) }) else {
             continue;
         };
-        let name = unsafe { allocate_string(activate, &MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME) }
-            .unwrap_or_else(|| id.clone());
+        let name = unsafe { allocate_string(activate, &MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME) }.unwrap_or_else(|| id.clone());
         if !cache.contains_key(&id) {
             let usable = unsafe { probe_activate(activate) };
             cache.insert(id.clone(), usable);
@@ -149,11 +126,7 @@ unsafe fn enumerate_devices(
 /// Keep only cached-usable devices, log first-time rejections, and evict cache
 /// entries for devices no longer enumerated (so a reappearing device is probed
 /// again). Pure, so the filtering is testable without hardware.
-fn filter_devices(
-    candidates: Vec<(String, String)>,
-    cache: &mut HashMap<String, bool>,
-    logged: &mut HashSet<String>,
-) -> Vec<Device> {
+fn filter_devices(candidates: Vec<(String, String)>, cache: &mut HashMap<String, bool>, logged: &mut HashSet<String>) -> Vec<Device> {
     let present: HashSet<&str> = candidates.iter().map(|(id, _)| id.as_str()).collect();
     cache.retain(|id, _| present.contains(id.as_str()));
     logged.retain(|id| present.contains(id.as_str()));
@@ -180,10 +153,7 @@ fn filter_devices(
 /// # Safety
 /// `raw` must point to `count` consecutive, initialized `Option<IMFActivate>`
 /// values allocated by `MFEnumDeviceSources`, or be null.
-pub(super) unsafe fn activate_array<'a>(
-    raw: *const Option<IMFActivate>,
-    count: u32,
-) -> &'a [Option<IMFActivate>] {
+pub(super) unsafe fn activate_array<'a>(raw: *const Option<IMFActivate>, count: u32) -> &'a [Option<IMFActivate>] {
     if raw.is_null() || count == 0 {
         return &[];
     }
@@ -227,10 +197,7 @@ mod tests {
             ("usb#cam".to_string(), "Webcam".to_string()),
             ("wdm#decklink".to_string(), "DeckLink".to_string()),
         ];
-        let mut cache = HashMap::from([
-            ("usb#cam".to_string(), true),
-            ("wdm#decklink".to_string(), false),
-        ]);
+        let mut cache = HashMap::from([("usb#cam".to_string(), true), ("wdm#decklink".to_string(), false)]);
         let mut logged = HashSet::new();
 
         let devices = filter_devices(candidates, &mut cache, &mut logged);
@@ -243,10 +210,7 @@ mod tests {
     /// device gets probed again.
     #[test]
     fn filter_evicts_absent_devices_from_cache() {
-        let mut cache = HashMap::from([
-            ("gone".to_string(), true),
-            ("here".to_string(), true),
-        ]);
+        let mut cache = HashMap::from([("gone".to_string(), true), ("here".to_string(), true)]);
         let mut logged = HashSet::from(["gone".to_string()]);
 
         let candidates = vec![("here".to_string(), "Here".to_string())];

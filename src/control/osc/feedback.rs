@@ -42,35 +42,17 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
     };
 
     // @osc path="/app" kind="feedback" args="value:string" group="Global" desc="Application name."
-    push(
-        "/app",
-        FeedbackValue::String(APP_NAME.to_string())
-    );
+    push("/app", FeedbackValue::String(APP_NAME.to_string()));
     // @osc path="/version" kind="feedback" args="value:string" group="Global" desc="Application version."
-    push(
-        "/version",
-        FeedbackValue::String(env!("CARGO_PKG_VERSION").to_string()),
-    );
+    push("/version", FeedbackValue::String(env!("CARGO_PKG_VERSION").to_string()));
     // @osc path="/canvas/width" kind="feedback" args="value:int" group="Global" desc="Canvas width in pixels."
-    push(
-        "/canvas/width",
-        FeedbackValue::Int(canvas.width as i32),
-    );
+    push("/canvas/width", FeedbackValue::Int(canvas.width as i32));
     // @osc path="/canvas/height" kind="feedback" args="value:int" group="Global" desc="Canvas height in pixels."
-    push(
-        "/canvas/height",
-        FeedbackValue::Int(canvas.height as i32),
-    );
+    push("/canvas/height", FeedbackValue::Int(canvas.height as i32));
     // @osc path="/ui/visible" kind="feedback" args="value:0|1" group="Global" desc="Whether the editor UI is visible."
-    push(
-        "/ui/visible",
-        FeedbackValue::Int(engine.state.ui_visible as i32),
-    );
+    push("/ui/visible", FeedbackValue::Int(engine.state.ui_visible as i32));
     // @osc path="/ui/stats/visible" kind="feedback" args="value:0|1" group="Global" desc="Whether the source stats overlay is shown."
-    push(
-        "/ui/stats/visible",
-        FeedbackValue::Int(engine.state.show_stats as i32),
-    );
+    push("/ui/stats/visible", FeedbackValue::Int(engine.state.show_stats as i32));
     // @osc path="/canvas/label/visible" kind="feedback" args="value:0|1" group="Global" desc="Whether source labels are drawn."
     push(
         "/canvas/label/visible",
@@ -84,23 +66,15 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
     // @osc path="/view/zoom" kind="feedback" args="value:float" group="Global" desc="Current zoom level."
     push("/view/zoom", FeedbackValue::Float(engine.state.view.zoom));
     // @osc path="/view/pan_x" kind="feedback" args="value:float" group="Global" desc="Horizontal pan offset."
-    push(
-        "/view/pan_x",
-        FeedbackValue::Float(engine.state.view.pan[0]),
-    );
+    push("/view/pan_x", FeedbackValue::Float(engine.state.view.pan[0]));
     // @osc path="/view/pan_y" kind="feedback" args="value:float" group="Global" desc="Vertical pan offset."
-    push(
-        "/view/pan_y",
-        FeedbackValue::Float(engine.state.view.pan[1]),
-    );
+    push("/view/pan_y", FeedbackValue::Float(engine.state.view.pan[1]));
     // @osc path="/project/auto_save_interval" kind="feedback" args="value:int" group="Global" desc="Seconds between auto-saves; 0 when auto-save is off."
-    push(
-        "/project/auto_save_interval",
-        FeedbackValue::Int(engine.state.cfg.auto_save_interval as i32),
-    );
+    push("/project/auto_save_interval", FeedbackValue::Int(engine.state.cfg.auto_save_interval as i32));
 
     let selected_index = engine
-        .state.selected_source_id
+        .state
+        .selected_source_id
         .as_ref()
         .and_then(|uuid| canvas.sources.iter().position(|source| &source.uuid == uuid))
         .map(|index| index as i32 + 1)
@@ -108,20 +82,11 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
     // @osc path="/selected/index" kind="feedback" args="value:int" group="Global" desc="Selected source index, 0 when nothing is selected."
     push("/selected/index", FeedbackValue::Int(selected_index));
     // @osc path="/selected/uuid" kind="feedback" args="value:string" group="Global" desc="Selected source uuid, empty when nothing is selected."
-    push(
-        "/selected/uuid",
-        FeedbackValue::String(engine.state.selected_source_id.clone().unwrap_or_default()),
-    );
+    push("/selected/uuid", FeedbackValue::String(engine.state.selected_source_id.clone().unwrap_or_default()));
     // @osc path="/source/count" kind="feedback" args="value:int" group="Global" desc="Number of sources."
-    push(
-        "/source/count",
-        FeedbackValue::Int(canvas.sources.len() as i32),
-    );
+    push("/source/count", FeedbackValue::Int(canvas.sources.len() as i32));
     // @osc path="/output/count" kind="feedback" args="value:int" group="Global" desc="Number of outputs."
-    push(
-        "/output/count",
-        FeedbackValue::Int(canvas.outputs.len() as i32),
-    );
+    push("/output/count", FeedbackValue::Int(canvas.outputs.len() as i32));
 
     for (index, source) in canvas.sources.iter().enumerate() {
         let i = index + 1;
@@ -131,85 +96,37 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
         // @osc path="/source/{i}/exists" kind="feedback" args="value:0|1" group="Sources" desc="Whether a source exists at this index."
         push(&format!("/source/{i}/exists"), FeedbackValue::Int(1));
         // @osc path="/source/{i}/name" kind="feedback" args="value:string" group="Sources" desc="Source name."
-        push(
-            &format!("/source/{i}/name"),
-            FeedbackValue::String(source.name.clone()),
-        );
+        push(&format!("/source/{i}/name"), FeedbackValue::String(source.name.clone()));
         // @osc path="/source/{i}/uuid" kind="feedback" args="value:string" group="Sources" desc="Source uuid."
-        push(
-            &format!("/source/{i}/uuid"),
-            FeedbackValue::String(source.uuid.clone()),
-        );
+        push(&format!("/source/{i}/uuid"), FeedbackValue::String(source.uuid.clone()));
         // @osc path="/source/{i}/protocol" kind="feedback" args="value:string" group="Sources" desc="Source protocol."
-        push(
-            &format!("/source/{i}/protocol"),
-            FeedbackValue::String(source.protocol.name().to_string()),
-        );
+        push(&format!("/source/{i}/protocol"), FeedbackValue::String(source.protocol.name().to_string()));
         // @osc path="/source/{i}/connected" kind="feedback" args="value:0|1" group="Sources" desc="Whether the runtime source is live."
-        push(
-            &format!("/source/{i}/connected"),
-            FeedbackValue::Int(engine.is_source_connected(source) as i32),
-        );
+        push(&format!("/source/{i}/connected"), FeedbackValue::Int(engine.is_source_connected(source) as i32));
         // @osc path="/source/{i}/selected" kind="feedback" args="value:0|1" group="Sources" desc="Whether this source is selected."
-        push(
-            &format!("/source/{i}/selected"),
-            FeedbackValue::Int(selected as i32),
-        );
+        push(&format!("/source/{i}/selected"), FeedbackValue::Int(selected as i32));
         // @osc path="/source/{i}/expanded" kind="feedback" args="value:0|1" group="Sources" desc="Whether this source is shown full-canvas."
-        push(
-            &format!("/source/{i}/expanded"),
-            FeedbackValue::Int(expanded as i32),
-        );
+        push(&format!("/source/{i}/expanded"), FeedbackValue::Int(expanded as i32));
         // @osc path="/source/{i}/x" kind="feedback" args="value:float" group="Sources" desc="Horizontal position in canvas pixels."
-        push(
-            &format!("/source/{i}/x"),
-            FeedbackValue::Float(source.x),
-        );
+        push(&format!("/source/{i}/x"), FeedbackValue::Float(source.x));
         // @osc path="/source/{i}/y" kind="feedback" args="value:float" group="Sources" desc="Vertical position in canvas pixels."
-        push(
-            &format!("/source/{i}/y"),
-            FeedbackValue::Float(source.y),
-        );
+        push(&format!("/source/{i}/y"), FeedbackValue::Float(source.y));
         // @osc path="/source/{i}/width" kind="feedback" args="value:int" group="Sources" desc="Placement width in pixels."
-        push(
-            &format!("/source/{i}/width"),
-            FeedbackValue::Int(source.width as i32),
-        );
+        push(&format!("/source/{i}/width"), FeedbackValue::Int(source.width as i32));
         // @osc path="/source/{i}/height" kind="feedback" args="value:int" group="Sources" desc="Placement height in pixels."
-        push(
-            &format!("/source/{i}/height"),
-            FeedbackValue::Int(source.height as i32),
-        );
+        push(&format!("/source/{i}/height"), FeedbackValue::Int(source.height as i32));
         // @osc path="/source/{i}/z" kind="feedback" args="value:int" group="Sources" desc="Stacking order."
-        push(
-            &format!("/source/{i}/z"),
-            FeedbackValue::Int(source.z),
-        );
+        push(&format!("/source/{i}/z"), FeedbackValue::Int(source.z));
         // @osc path="/source/{i}/mode" kind="feedback" args="value:string" group="Sources" desc="Placement mode."
-        push(
-            &format!("/source/{i}/mode"),
-            FeedbackValue::String(source.mode.label().to_string()),
-        );
+        push(&format!("/source/{i}/mode"), FeedbackValue::String(source.mode.label().to_string()));
         // @osc path="/source/{i}/flip_h" kind="feedback" args="value:0|1" group="Sources" desc="Whether the source is mirrored horizontally."
-        push(
-            &format!("/source/{i}/flip_h"),
-            FeedbackValue::Int(source.flip_h as i32),
-        );
+        push(&format!("/source/{i}/flip_h"), FeedbackValue::Int(source.flip_h as i32));
         // @osc path="/source/{i}/flip_v" kind="feedback" args="value:0|1" group="Sources" desc="Whether the source is mirrored vertically."
-        push(
-            &format!("/source/{i}/flip_v"),
-            FeedbackValue::Int(source.flip_v as i32),
-        );
+        push(&format!("/source/{i}/flip_v"), FeedbackValue::Int(source.flip_v as i32));
         // @osc path="/source/{i}/label" kind="feedback" args="value:string" group="Sources" desc="Label override: Inherit, Always show or Always hide."
-        push(
-            &format!("/source/{i}/label"),
-            FeedbackValue::String(source.label_visibility.label().to_string()),
-        );
+        push(&format!("/source/{i}/label"), FeedbackValue::String(source.label_visibility.label().to_string()));
         // @osc path="/source/{i}/border" kind="feedback" args="value:string" group="Sources" desc="Border override: Inherit, Always show or Always hide."
-        push(
-            &format!("/source/{i}/border"),
-            FeedbackValue::String(source.border_visibility.label().to_string()),
-        );
+        push(&format!("/source/{i}/border"), FeedbackValue::String(source.border_visibility.label().to_string()));
     }
 
     for (index, output) in canvas.outputs.iter().enumerate() {
@@ -217,25 +134,13 @@ pub fn values(engine: &Engine, prefix: &str) -> Vec<(String, FeedbackValue)> {
         // @osc path="/output/{i}/exists" kind="feedback" args="value:0|1" group="Outputs" desc="Whether an output exists at this index."
         push(&format!("/output/{i}/exists"), FeedbackValue::Int(1));
         // @osc path="/output/{i}/name" kind="feedback" args="value:string" group="Outputs" desc="Output name."
-        push(
-            &format!("/output/{i}/name"),
-            FeedbackValue::String(output.name.clone()),
-        );
+        push(&format!("/output/{i}/name"), FeedbackValue::String(output.name.clone()));
         // @osc path="/output/{i}/uuid" kind="feedback" args="value:string" group="Outputs" desc="Output uuid."
-        push(
-            &format!("/output/{i}/uuid"),
-            FeedbackValue::String(output.uuid.clone()),
-        );
+        push(&format!("/output/{i}/uuid"), FeedbackValue::String(output.uuid.clone()));
         // @osc path="/output/{i}/protocol" kind="feedback" args="value:string" group="Outputs" desc="Output protocol."
-        push(
-            &format!("/output/{i}/protocol"),
-            FeedbackValue::String(output.protocol.label()),
-        );
+        push(&format!("/output/{i}/protocol"), FeedbackValue::String(output.protocol.label()));
         // @osc path="/output/{i}/enabled" kind="feedback" args="value:0|1" group="Outputs" desc="Whether the output is enabled."
-        push(
-            &format!("/output/{i}/enabled"),
-            FeedbackValue::Int(output.enabled as i32),
-        );
+        push(&format!("/output/{i}/enabled"), FeedbackValue::Int(output.enabled as i32));
     }
 
     values.sort_by(|a, b| a.0.cmp(&b.0));
@@ -256,48 +161,23 @@ mod tests {
         engine.state.expanded_source_id = Some(uuid);
         engine.state.cfg.auto_save_interval = 300;
         engine.state.show_stats = true;
-        engine.state.cfg.canvas.outputs.push(Output::new(
-            "Program".to_string(),
-            Protocol::Ndi,
-            true,
-            OutputConfig::default(),
-        ));
+        engine.state.cfg.canvas.outputs.push(Output::new("Program".to_string(), Protocol::Ndi, true, OutputConfig::default()));
 
         let values = values(&engine, "");
-        let get = |path: &str| {
-            values
-                .iter()
-                .find(|(address, _)| address == path)
-                .map(|(_, value)| value.clone())
-        };
+        let get = |path: &str| values.iter().find(|(address, _)| address == path).map(|(_, value)| value.clone());
 
         assert_eq!(get("/source/count"), Some(FeedbackValue::Int(1)));
-        assert_eq!(
-            get("/source/1/name"),
-            Some(FeedbackValue::String("Source 1".to_string()))
-        );
+        assert_eq!(get("/source/1/name"), Some(FeedbackValue::String("Source 1".to_string())));
         assert_eq!(get("/source/1/selected"), Some(FeedbackValue::Int(1)));
         assert_eq!(get("/source/1/expanded"), Some(FeedbackValue::Int(1)));
         assert_eq!(get("/source/1/exists"), Some(FeedbackValue::Int(1)));
         assert_eq!(get("/output/count"), Some(FeedbackValue::Int(1)));
-        assert_eq!(
-            get("/output/1/name"),
-            Some(FeedbackValue::String("Program".to_string()))
-        );
+        assert_eq!(get("/output/1/name"), Some(FeedbackValue::String("Program".to_string())));
         assert_eq!(get("/output/1/enabled"), Some(FeedbackValue::Int(1)));
         assert_eq!(get("/selected/index"), Some(FeedbackValue::Int(1)));
-        assert_eq!(
-            get("/project/auto_save_interval"),
-            Some(FeedbackValue::Int(300))
-        );
-        assert_eq!(
-            get("/source/1/label"),
-            Some(FeedbackValue::String("Inherit".to_string()))
-        );
-        assert_eq!(
-            get("/source/1/border"),
-            Some(FeedbackValue::String("Inherit".to_string()))
-        );
+        assert_eq!(get("/project/auto_save_interval"), Some(FeedbackValue::Int(300)));
+        assert_eq!(get("/source/1/label"), Some(FeedbackValue::String("Inherit".to_string())));
+        assert_eq!(get("/source/1/border"), Some(FeedbackValue::String("Inherit".to_string())));
         assert_eq!(get("/canvas/label/visible"), Some(FeedbackValue::Int(0)));
         assert_eq!(get("/canvas/border/visible"), Some(FeedbackValue::Int(1)));
         assert_eq!(get("/ui/stats/visible"), Some(FeedbackValue::Int(1)));
@@ -308,10 +188,6 @@ mod tests {
         let engine = Engine::test_instance(Canvas::default());
         let values = values(&engine, "/my control");
 
-        assert!(
-            values
-                .iter()
-                .any(|(address, _)| address == "/my control/app")
-        );
+        assert!(values.iter().any(|(address, _)| address == "/my control/app"));
     }
 }

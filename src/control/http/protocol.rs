@@ -103,11 +103,7 @@ pub fn texture_key(id: egui::TextureId) -> u32 {
 }
 
 /// Encode tessellated egui meshes plus texture uploads into one binary frame.
-pub fn encode_frame(
-    primitives: &[ClippedPrimitive],
-    textures: &[TextureUpload],
-    free: &[u32],
-) -> Frame {
+pub fn encode_frame(primitives: &[ClippedPrimitive], textures: &[TextureUpload], free: &[u32]) -> Frame {
     let mut indices: Vec<u32> = Vec::new();
     let mut vertices: Vec<u8> = Vec::new();
     let mut meshes: Vec<(u32, [f32; 4], u32, u32)> = Vec::new();

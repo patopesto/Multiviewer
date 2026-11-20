@@ -30,21 +30,14 @@ pub struct OscServer {
 }
 
 impl OscServer {
-    pub fn start(
-        bind: &str,
-        port: u16,
-        prefix: String,
-        tx: Sender<ControlMessage>,
-    ) -> Result<(Self, SocketAddr), std::io::Error> {
+    pub fn start(bind: &str, port: u16, prefix: String, tx: Sender<ControlMessage>) -> Result<(Self, SocketAddr), std::io::Error> {
         let socket = UdpSocket::bind((bind, port))?;
         socket.set_read_timeout(Some(POLL_INTERVAL))?;
         let addr = socket.local_addr()?;
         let sender = socket.try_clone()?;
         let running = Arc::new(AtomicBool::new(true));
         let thread_running = running.clone();
-        let thread = thread::Builder::new()
-            .name("osc-control".to_string())
-            .spawn(move || run_server(socket, tx, prefix, thread_running))?;
+        let thread = thread::Builder::new().name("osc-control".to_string()).spawn(move || run_server(socket, tx, prefix, thread_running))?;
         return Ok((
             Self {
                 sender,
@@ -79,12 +72,7 @@ impl Drop for OscServer {
     }
 }
 
-fn run_server(
-    socket: UdpSocket,
-    tx: Sender<ControlMessage>,
-    prefix: String,
-    running: Arc<AtomicBool>,
-) {
+fn run_server(socket: UdpSocket, tx: Sender<ControlMessage>, prefix: String, running: Arc<AtomicBool>) {
     let mut buffer = [0u8; 65535];
     while running.load(Ordering::Acquire) {
         let (len, from) = match socket.recv_from(&mut buffer) {
@@ -108,12 +96,7 @@ fn run_server(
     }
 }
 
-fn handle_packet(
-    packet: OscPacket,
-    from: SocketAddr,
-    tx: &Sender<ControlMessage>,
-    prefix: &str,
-) {
+fn handle_packet(packet: OscPacket, from: SocketAddr, tx: &Sender<ControlMessage>, prefix: &str) {
     match packet {
         OscPacket::Message(message) => handle_message(message, from, tx, prefix),
         OscPacket::Bundle(bundle) => {
@@ -124,12 +107,7 @@ fn handle_packet(
     }
 }
 
-fn handle_message(
-    message: OscMessage,
-    from: SocketAddr,
-    tx: &Sender<ControlMessage>,
-    prefix: &str,
-) {
+fn handle_message(message: OscMessage, from: SocketAddr, tx: &Sender<ControlMessage>, prefix: &str) {
     let Some(address) = strip_prefix(&message.addr, prefix) else {
         tracing::debug!(
             from = %from,
@@ -169,17 +147,13 @@ fn parse_message(addr: &str, args: &[OscType]) -> Option<Command> {
             height: arg_u32(args.get(1)?)?,
         }),
         // @osc path="/canvas/label/visibility" args="enabled:0|1" group="Canvas & view" desc="Draw or hide source labels on the whole canvas."
-        "canvas" if parts.get(1) == Some(&"label") && parts.get(2) == Some(&"visibility") => {
-            Some(Command::SetCanvasLabelVisibility {
-                enabled: arg_bool(args.first()?)?,
-            })
-        }
+        "canvas" if parts.get(1) == Some(&"label") && parts.get(2) == Some(&"visibility") => Some(Command::SetCanvasLabelVisibility {
+            enabled: arg_bool(args.first()?)?,
+        }),
         // @osc path="/canvas/border/visibility" args="enabled:0|1" group="Canvas & view" desc="Draw or hide source borders on the whole canvas."
-        "canvas" if parts.get(1) == Some(&"border") && parts.get(2) == Some(&"visibility") => {
-            Some(Command::SetCanvasBorderVisibility {
-                enabled: arg_bool(args.first()?)?,
-            })
-        }
+        "canvas" if parts.get(1) == Some(&"border") && parts.get(2) == Some(&"visibility") => Some(Command::SetCanvasBorderVisibility {
+            enabled: arg_bool(args.first()?)?,
+        }),
         "view" => match *parts.get(1)? {
             // @osc path="/view/zoom" args="factor:float" group="Canvas & view" desc="Multiply the current zoom level."
             "zoom" => Some(Command::Zoom {
@@ -202,9 +176,7 @@ fn parse_message(addr: &str, args: &[OscType]) -> Option<Command> {
         // @osc path="/project/save" group="Project" desc="Save the project in place."
         "project" if parts.get(1) == Some(&"save") => Some(Command::SaveProject),
         // @osc path="/project/auto_save_interval" args="seconds:uint" group="Project" desc="Seconds between auto-saves; 0 disables auto-save."
-        "project" if parts.get(1) == Some(&"auto_save_interval") => {
-            Some(Command::SetAutoSaveInterval(arg_u32(args.first()?)? as u64))
-        }
+        "project" if parts.get(1) == Some(&"auto_save_interval") => Some(Command::SetAutoSaveInterval(arg_u32(args.first()?)? as u64)),
         _ => None,
     };
 }
@@ -500,20 +472,14 @@ mod tests {
     #[test]
     fn parses_named_selector_and_mode() {
         assert_eq!(
-            parse_message(
-                "/source/Mini 3/mode",
-                &[OscType::String("Fill".to_string())],
-            ),
+            parse_message("/source/Mini 3/mode", &[OscType::String("Fill".to_string())],),
             Some(Command::SetSourceMode {
                 source: Selector::Key("Mini 3".to_string()),
                 mode: TextureMode::Fill,
             })
         );
         assert_eq!(
-            parse_message(
-                "/source/Mini 3/expand",
-                &[OscType::Int(1)],
-            ),
+            parse_message("/source/Mini 3/expand", &[OscType::Int(1)],),
             Some(Command::ExpandSource(Selector::Key("Mini 3".to_string())))
         );
     }
@@ -521,18 +487,9 @@ mod tests {
     #[test]
     fn parses_source_actions() {
         assert_eq!(parse_message("/source/add", &[]), Some(Command::AddSource));
-        assert_eq!(
-            parse_message("/source/next", &[]),
-            Some(Command::SelectNext)
-        );
-        assert_eq!(
-            parse_message("/source/prev", &[]),
-            Some(Command::SelectPrevious)
-        );
-        assert_eq!(
-            parse_message("/source/previous", &[]),
-            Some(Command::SelectPrevious)
-        );
+        assert_eq!(parse_message("/source/next", &[]), Some(Command::SelectNext));
+        assert_eq!(parse_message("/source/prev", &[]), Some(Command::SelectPrevious));
+        assert_eq!(parse_message("/source/previous", &[]), Some(Command::SelectPrevious));
         assert_eq!(
             parse_message("/source/1/width", &[OscType::Int(640)]),
             Some(Command::SetSourceWidth {
@@ -551,22 +508,13 @@ mod tests {
             parse_message("/source/select", &[OscType::String("CamA".to_string())]),
             Some(Command::SelectSource(Selector::Key("CamA".to_string())))
         );
-        assert_eq!(
-            parse_message("/source/1/remove", &[]),
-            Some(Command::RemoveSource(Selector::Index(1)))
-        );
-        assert_eq!(
-            parse_message("/source/deselect", &[]),
-            Some(Command::ClearSelection)
-        );
+        assert_eq!(parse_message("/source/1/remove", &[]), Some(Command::RemoveSource(Selector::Index(1))));
+        assert_eq!(parse_message("/source/deselect", &[]), Some(Command::ClearSelection));
         assert_eq!(
             parse_message("/source/2/expand", &[OscType::Int(1)]),
             Some(Command::ExpandSource(Selector::Index(2)))
         );
-        assert_eq!(
-            parse_message("/source/2/expand", &[OscType::Int(0)]),
-            Some(Command::ExitExpanded)
-        );
+        assert_eq!(parse_message("/source/2/expand", &[OscType::Int(0)]), Some(Command::ExitExpanded));
     }
 
     #[test]
@@ -578,18 +526,12 @@ mod tests {
                 enabled: false,
             })
         );
-        assert_eq!(
-            parse_message("/view/recenter", &[]),
-            Some(Command::RecenterView)
-        );
+        assert_eq!(parse_message("/view/recenter", &[]), Some(Command::RecenterView));
         assert_eq!(
             parse_message("/project/auto_save_interval", &[OscType::Int(300)]),
             Some(Command::SetAutoSaveInterval(300))
         );
-        assert_eq!(
-            parse_message("/project/auto_save_interval", &[OscType::Int(-1)]),
-            None
-        );
+        assert_eq!(parse_message("/project/auto_save_interval", &[OscType::Int(-1)]), None);
     }
 
     #[test]
@@ -597,18 +539,9 @@ mod tests {
         assert_eq!(parse_message("/nope", &[]), None);
         assert_eq!(parse_message("/source/1/x", &[OscType::String("x".into())]), None);
         assert_eq!(parse_message("source/1/x", &[OscType::Float(1.0)]), None);
-        assert_eq!(
-            parse_message("/source/move", &[OscType::Int(0), OscType::Int(1)]),
-            None
-        );
-        assert_eq!(
-            parse_message("/source/nudge", &[OscType::String("x".into())]),
-            None
-        );
-        assert_eq!(
-            parse_message("/discovery/refresh", &[OscType::String("Ndi".into())]),
-            None
-        );
+        assert_eq!(parse_message("/source/move", &[OscType::Int(0), OscType::Int(1)]), None);
+        assert_eq!(parse_message("/source/nudge", &[OscType::String("x".into())]), None);
+        assert_eq!(parse_message("/discovery/refresh", &[OscType::String("Ndi".into())]), None);
     }
 
     #[test]
@@ -628,10 +561,7 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_message(
-                "/source/1/label",
-                &[OscType::String("Always hide".to_string())],
-            ),
+            parse_message("/source/1/label", &[OscType::String("Always hide".to_string())],),
             Some(Command::SetSourceLabelVisibility {
                 source: Selector::Index(1),
                 value: SourceLabelVisibility::Hide,
@@ -652,10 +582,7 @@ mod tests {
             parse_message("/canvas/border/visibility", &[OscType::Int(1)]),
             Some(Command::SetCanvasBorderVisibility { enabled: true })
         );
-        assert_eq!(
-            parse_message("/source/1/label", &[OscType::String("always".to_string())]),
-            None
-        );
+        assert_eq!(parse_message("/source/1/label", &[OscType::String("always".to_string())]), None);
     }
 
     #[test]
@@ -663,12 +590,7 @@ mod tests {
         assert_eq!(
             parse_message(
                 "/source/2/rect",
-                &[
-                    OscType::Float(10.0),
-                    OscType::Float(20.0),
-                    OscType::Int(640),
-                    OscType::Int(360),
-                ],
+                &[OscType::Float(10.0), OscType::Float(20.0), OscType::Int(640), OscType::Int(360),],
             ),
             Some(Command::SetSourceRect {
                 source: Selector::Index(2),
@@ -687,14 +609,11 @@ mod tests {
             Some(Command::Nudge {
                 source: None,
                 dx: 3.0,
-                dy: -4.0,
+                dy: -4.0
             })
         );
         assert_eq!(
-            parse_message(
-                "/source/2/nudge",
-                &[OscType::Float(-5.0), OscType::Int(6)],
-            ),
+            parse_message("/source/2/nudge", &[OscType::Float(-5.0), OscType::Int(6)],),
             Some(Command::Nudge {
                 source: Some(Selector::Index(2)),
                 dx: -5.0,
@@ -702,23 +621,13 @@ mod tests {
             })
         );
         assert_eq!(
-            parse_message(
-                "/view/set",
-                &[
-                    OscType::Float(1.5),
-                    OscType::Float(10.0),
-                    OscType::Float(-5.0),
-                ],
-            ),
+            parse_message("/view/set", &[OscType::Float(1.5), OscType::Float(10.0), OscType::Float(-5.0),],),
             Some(Command::SetView {
                 zoom: 1.5,
-                pan: [10.0, -5.0],
+                pan: [10.0, -5.0]
             })
         );
-        assert_eq!(
-            parse_message("/output/1/remove", &[]),
-            Some(Command::RemoveOutput(Selector::Index(1)))
-        );
+        assert_eq!(parse_message("/output/1/remove", &[]), Some(Command::RemoveOutput(Selector::Index(1))));
         assert_eq!(
             parse_message("/source/1/bind", &[OscType::String("Cam A".to_string())]),
             Some(Command::SetSourceBinding {
@@ -739,35 +648,17 @@ mod tests {
     fn output_add_needs_a_protocol_that_has_an_output() {
         assert!(matches!(
             parse_message("/output/add", &[OscType::String("ndi".to_string())]),
-            Some(Command::AddOutput {
-                protocol: Protocol::Ndi,
-                ..
-            })
+            Some(Command::AddOutput { protocol: Protocol::Ndi, .. })
         ));
-        assert_eq!(
-            parse_message("/output/add", &[OscType::String("Test".to_string())]),
-            None
-        );
-        assert_eq!(
-            parse_message("/output/add", &[OscType::String("Bogus".to_string())]),
-            None
-        );
+        assert_eq!(parse_message("/output/add", &[OscType::String("Test".to_string())]), None);
+        assert_eq!(parse_message("/output/add", &[OscType::String("Bogus".to_string())]), None);
     }
 
     #[test]
     fn strips_a_configured_prefix() {
-        assert_eq!(
-            strip_prefix("/multiviewer/source/1/x", "/multiviewer"),
-            Some("/source/1/x")
-        );
-        assert_eq!(
-            strip_prefix("/multiviewer/source/1/x", ""),
-            Some("/multiviewer/source/1/x")
-        );
-        assert_eq!(
-            strip_prefix("/my control/source/Mini 3/expand", "/my control"),
-            Some("/source/Mini 3/expand")
-        );
+        assert_eq!(strip_prefix("/multiviewer/source/1/x", "/multiviewer"), Some("/source/1/x"));
+        assert_eq!(strip_prefix("/multiviewer/source/1/x", ""), Some("/multiviewer/source/1/x"));
+        assert_eq!(strip_prefix("/my control/source/Mini 3/expand", "/my control"), Some("/source/Mini 3/expand"));
         assert_eq!(strip_prefix("/mvx/source/1/x", "/mv"), None);
         assert_eq!(strip_prefix("/other/source/1/x", "/mv"), None);
     }
@@ -776,17 +667,14 @@ mod tests {
     #[test]
     fn listener_decodes_a_datagram_into_a_command() {
         let (tx, rx) = mpsc::channel();
-        let (_server, addr) =
-            OscServer::start("127.0.0.1", 0, "/multiviewer".to_string(), tx).unwrap();
+        let (_server, addr) = OscServer::start("127.0.0.1", 0, "/multiviewer".to_string(), tx).unwrap();
 
         let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
         let packet = OscPacket::Message(OscMessage {
             addr: "/multiviewer/source/1/x".to_string(),
             args: vec![OscType::Float(42.0)],
         });
-        sender
-            .send_to(&encoder::encode(&packet).unwrap(), addr)
-            .unwrap();
+        sender.send_to(&encoder::encode(&packet).unwrap(), addr).unwrap();
 
         let command = next_command(&rx);
         assert_eq!(
@@ -802,23 +690,17 @@ mod tests {
     #[test]
     fn listener_decodes_a_prefix_and_name_with_spaces() {
         let (tx, rx) = mpsc::channel();
-        let (_server, addr) =
-            OscServer::start("127.0.0.1", 0, "/my control".to_string(), tx).unwrap();
+        let (_server, addr) = OscServer::start("127.0.0.1", 0, "/my control".to_string(), tx).unwrap();
 
         let sender = UdpSocket::bind("127.0.0.1:0").unwrap();
         let packet = OscPacket::Message(OscMessage {
             addr: "/my control/source/Mini 3/expand".to_string(),
             args: vec![OscType::Int(1)],
         });
-        sender
-            .send_to(&encoder::encode(&packet).unwrap(), addr)
-            .unwrap();
+        sender.send_to(&encoder::encode(&packet).unwrap(), addr).unwrap();
 
         let command = next_command(&rx);
-        assert_eq!(
-            command,
-            Command::ExpandSource(Selector::Key("Mini 3".to_string()))
-        );
+        assert_eq!(command, Command::ExpandSource(Selector::Key("Mini 3".to_string())));
     }
 
     fn next_command(rx: &mpsc::Receiver<ControlMessage>) -> Command {
@@ -836,14 +718,8 @@ mod tests {
         let (server, _addr) = OscServer::start("127.0.0.1", 0, String::new(), tx).unwrap();
 
         let receiver = UdpSocket::bind("127.0.0.1:0").unwrap();
-        receiver
-            .set_read_timeout(Some(Duration::from_secs(2)))
-            .unwrap();
-        server.send_to(
-            receiver.local_addr().unwrap(),
-            "/app",
-            &FeedbackValue::String("Multiviewer".to_string()),
-        );
+        receiver.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        server.send_to(receiver.local_addr().unwrap(), "/app", &FeedbackValue::String("Multiviewer".to_string()));
 
         let mut buffer = [0u8; 1024];
         let (len, _) = receiver.recv_from(&mut buffer).unwrap();
@@ -852,10 +728,7 @@ mod tests {
             panic!("expected a message")
         };
         assert_eq!(message.addr, "/app");
-        assert_eq!(
-            message.args,
-            vec![OscType::String("Multiviewer".to_string())]
-        );
+        assert_eq!(message.args, vec![OscType::String("Multiviewer".to_string())]);
     }
 
     /// Every `// @osc` route in the server and feedback modules must be
@@ -867,12 +740,7 @@ mod tests {
         for file in ["server.rs", "feedback.rs"] {
             let path = format!("{}/src/control/osc/{file}", env!("CARGO_MANIFEST_DIR"));
             let source = std::fs::read_to_string(path).expect("read the OSC source");
-            routes.extend(
-                source
-                    .lines()
-                    .filter_map(|line| line.trim().strip_prefix("// @osc "))
-                    .map(str::to_string),
-            );
+            routes.extend(source.lines().filter_map(|line| line.trim().strip_prefix("// @osc ")).map(str::to_string));
         }
         assert_eq!(routes.len(), OSC_ROUTE_COUNT);
 
@@ -885,10 +753,7 @@ mod tests {
             }
             let args = sample_args(directive_value(route, "args").unwrap_or(""));
             let path = path.replace("{sel}", "1");
-            assert!(
-                parse_message(&path, &args).is_some(),
-                "documented route does not parse: {path}"
-            );
+            assert!(parse_message(&path, &args).is_some(), "documented route does not parse: {path}");
         }
     }
 

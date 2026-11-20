@@ -17,13 +17,7 @@ pub(super) struct Staging {
 }
 
 impl Staging {
-    pub(super) fn new(
-        device: &wgpu::Device,
-        label: &str,
-        width: u32,
-        row_bytes: u32,
-        rows: u32,
-    ) -> Self {
+    pub(super) fn new(device: &wgpu::Device, label: &str, width: u32, row_bytes: u32, rows: u32) -> Self {
         let pitch = row_bytes.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
         let size = pitch as u64 * rows as u64;
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -61,8 +55,7 @@ impl Staging {
         for row in 0..self.rows as usize {
             let src = row * source_pitch as usize;
             let dst = row * self.pitch as usize;
-            view.slice(dst..dst + row_bytes as usize)
-                .copy_from_slice(&data[src..src + row_bytes as usize]);
+            view.slice(dst..dst + row_bytes as usize).copy_from_slice(&data[src..src + row_bytes as usize]);
         }
     }
 
@@ -123,17 +116,8 @@ impl Uploader {
     }
 
     /// Queue a copy from `staging` into `texture`; submitted by `flush`.
-    pub(super) fn copy(
-        &mut self,
-        device: &wgpu::Device,
-        staging: Arc<Staging>,
-        texture: &wgpu::Texture,
-    ) {
-        let encoder = self.encoder.get_or_insert_with(|| {
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("uploads"),
-            })
-        });
+    pub(super) fn copy(&mut self, device: &wgpu::Device, staging: Arc<Staging>, texture: &wgpu::Texture) {
+        let encoder = self.encoder.get_or_insert_with(|| device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("uploads") }));
         staging.record_copy(encoder, texture);
         self.batch.push(staging);
         self.recorded = true;
@@ -155,12 +139,9 @@ impl Uploader {
         for staging in self.batch.drain(..) {
             let free = staging.free.clone();
             free.store(false, Ordering::Release);
-            staging
-                .buffer
-                .slice(..)
-                .map_async(wgpu::MapMode::Write, move |result| {
-                    free.store(result.is_ok(), Ordering::Release);
-                });
+            staging.buffer.slice(..).map_async(wgpu::MapMode::Write, move |result| {
+                free.store(result.is_ok(), Ordering::Release);
+            });
             self.inflight.push(staging);
         }
     }

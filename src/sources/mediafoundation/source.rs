@@ -5,22 +5,15 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use windows::Win32::Foundation::{E_ACCESSDENIED, RPC_E_CHANGED_MODE};
 use windows::Win32::Media::MediaFoundation::{
-    IMFActivate, IMFMediaSource, IMFMediaType, IMFSourceReader, MFCreateAttributes,
-    MFCreateMediaType, MFCreateSourceReaderFromMediaSource, MFEnumDeviceSources,
-    MFStartup, MFSTARTUP_LITE, MF_VERSION, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
-    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, MF_E_HW_MFT_FAILED_START_STREAMING,
-    MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE, MF_MT_FRAME_RATE_RANGE_MAX,
-    MF_MT_FRAME_RATE_RANGE_MIN, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE,
-    MFMediaType_Video, MFVideoFormat_MJPG, MFVideoFormat_NV12, MFVideoFormat_RGB32,
-    MFVideoFormat_UYVY, MFVideoFormat_YUY2, MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN,
-    MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING,
-    MF_SOURCE_READER_FIRST_VIDEO_STREAM, MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED,
-    MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR,
+    IMFActivate, IMFMediaSource, IMFMediaType, IMFSourceReader, MFCreateAttributes, MFCreateMediaType, MFCreateSourceReaderFromMediaSource,
+    MFEnumDeviceSources, MFStartup, MFSTARTUP_LITE, MF_VERSION, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
+    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK, MF_E_HW_MFT_FAILED_START_STREAMING, MF_MT_DEFAULT_STRIDE, MF_MT_FRAME_RATE,
+    MF_MT_FRAME_RATE_RANGE_MAX, MF_MT_FRAME_RATE_RANGE_MIN, MF_MT_FRAME_SIZE, MF_MT_MAJOR_TYPE, MF_MT_SUBTYPE, MFMediaType_Video, MFVideoFormat_MJPG,
+    MFVideoFormat_NV12, MFVideoFormat_RGB32, MFVideoFormat_UYVY, MFVideoFormat_YUY2, MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN,
+    MF_SOURCE_READER_ENABLE_ADVANCED_VIDEO_PROCESSING, MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING, MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+    MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED, MF_SOURCE_READERF_ENDOFSTREAM, MF_SOURCE_READERF_ERROR,
 };
-use windows::Win32::System::Com::{
-    CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED,
-};
+use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED};
 use windows::core::{Error, GUID, PWSTR};
 
 use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
@@ -94,11 +87,7 @@ pub struct MediaFoundationSource {
 impl MediaFoundationSource {
     /// `modes` is filled with the device's advertised modes on open; it is read
     /// by the settings UI.
-    pub fn spawn(
-        source_ref: SourceRef,
-        cfg: &MediaFoundationSourceConfig,
-        modes: Arc<Mutex<Vec<CaptureMode>>>,
-    ) -> Self {
+    pub fn spawn(source_ref: SourceRef, cfg: &MediaFoundationSourceConfig, modes: Arc<Mutex<Vec<CaptureMode>>>) -> Self {
         let slot = Arc::new(Mutex::new(None::<Frame>));
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let running = Arc::new(AtomicBool::new(true));
@@ -221,16 +210,15 @@ fn run_capture(
         let stats = stats.clone();
         let running = running.clone();
         let source_ref = source_ref.clone();
-        let _ = std::thread::Builder::new()
-            .name(format!("mediafoundation-watchdog-{source_ref}"))
-            .spawn(move || {
-                std::thread::sleep(Duration::from_secs(3));
-                if running.load(Ordering::Relaxed)
-                    && stats.lock().unwrap().frames_received == 0
-                {
-                    tracing::warn!(source = source_ref, "MediaFoundation: no frames 3s after opening — reader opened but ReadSample yields nothing");
-                }
-            });
+        let _ = std::thread::Builder::new().name(format!("mediafoundation-watchdog-{source_ref}")).spawn(move || {
+            std::thread::sleep(Duration::from_secs(3));
+            if running.load(Ordering::Relaxed) && stats.lock().unwrap().frames_received == 0 {
+                tracing::warn!(
+                    source = source_ref,
+                    "MediaFoundation: no frames 3s after opening — reader opened but ReadSample yields nothing"
+                );
+            }
+        });
     }
 
     capture_frames(&source_ref, &reader, &slot, &stats, &running, pixel_format, bpp);
@@ -256,15 +244,16 @@ fn log_negotiated_format(source_ref: &str, reader: &IMFSourceReader) {
         .map(|g| format!("{g:?}"))
         .unwrap_or_else(|| "unknown".to_string());
     let fps = if den == 0 { 0.0 } else { num as f64 / den as f64 };
-    tracing::info!(source = source_ref, "MediaFoundation opened: {w}x{h} stride={stride} ~{fps:.0}fps subtype={subtype}");
+    tracing::info!(
+        source = source_ref,
+        "MediaFoundation opened: {w}x{h} stride={stride} ~{fps:.0}fps subtype={subtype}"
+    );
 }
 
 /// Map an MF HRESULT to a message, calling out the common device failures.
 fn mf_err(context: &str, e: Error) -> String {
     if e.code() == E_ACCESSDENIED {
-        return format!(
-            "{context}: access denied — check Windows Settings > Privacy & security > Camera [{e}]"
-        );
+        return format!("{context}: access denied — check Windows Settings > Privacy & security > Camera [{e}]");
     }
     if e.code() == MF_E_HW_MFT_FAILED_START_STREAMING {
         return format!(
@@ -285,8 +274,7 @@ unsafe fn shutdown() {
 /// negotiate an output subtype the compositor can render.
 unsafe fn open_reader(cfg: &MediaFoundationSourceConfig) -> Result<IMFSourceReader, String> {
     let activate = unsafe { find_activate(&cfg.device_id)? };
-    let source: IMFMediaSource =
-        unsafe { activate.ActivateObject() }.map_err(|e| mf_err("ActivateObject", e))?;
+    let source: IMFMediaSource = unsafe { activate.ActivateObject() }.map_err(|e| mf_err("ActivateObject", e))?;
 
     // Output subtypes we can feed the compositor, from the requested format
     // (or the full fallback chain for Auto).
@@ -321,10 +309,7 @@ unsafe fn open_reader(cfg: &MediaFoundationSourceConfig) -> Result<IMFSourceRead
 
     // Report what the device actually advertises so a device that exposes
     // neither RGB32 nor UYVY (e.g. YUY2/NV12 only) is obvious in the log.
-    let offered = enum_reader
-        .as_ref()
-        .map(|r| unsafe { advertised_subtypes(r) })
-        .unwrap_or_default();
+    let offered = enum_reader.as_ref().map(|r| unsafe { advertised_subtypes(r) }).unwrap_or_default();
     return Err(format!("no supported output format ({last_err}); device offers [{}]", offered.join(", ")));
 }
 
@@ -366,24 +351,16 @@ unsafe fn create_reader(source: &IMFMediaSource, advanced: bool) -> Result<IMFSo
         &MF_SOURCE_READER_ENABLE_VIDEO_PROCESSING
     };
     unsafe { attributes.SetUINT32(flag, 1) }.map_err(|e| mf_err("enable video processing", e))?;
-    unsafe { attributes.SetUINT32(&MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN, 1) }
-        .map_err(|e| mf_err("disconnect on shutdown", e))?;
+    unsafe { attributes.SetUINT32(&MF_SOURCE_READER_DISCONNECT_MEDIASOURCE_ON_SHUTDOWN, 1) }.map_err(|e| mf_err("disconnect on shutdown", e))?;
 
-    let reader = unsafe { MFCreateSourceReaderFromMediaSource(source, &attributes) }
-        .map_err(|e| mf_err("create source reader", e))?;
+    let reader = unsafe { MFCreateSourceReaderFromMediaSource(source, &attributes) }.map_err(|e| mf_err("create source reader", e))?;
     return Ok(reader);
 }
 
-unsafe fn set_output_type(
-    reader: &IMFSourceReader,
-    cfg: &MediaFoundationSourceConfig,
-    subtype: &GUID,
-) -> Result<(), String> {
+unsafe fn set_output_type(reader: &IMFSourceReader, cfg: &MediaFoundationSourceConfig, subtype: &GUID) -> Result<(), String> {
     let target = unsafe { build_output_type(cfg, subtype) }?;
-    unsafe {
-        reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, None, &target)
-    }
-    .map_err(|e| mf_err("select output type", e))?;
+    unsafe { reader.SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, None, &target) }
+        .map_err(|e| mf_err("select output type", e))?;
     // Drop any samples the reader buffered before the output type was set, so
     // the first delivered frames are the negotiated layout rather than the
     // device's pre-negotiation format (which the compositor would mis-decode).
@@ -397,13 +374,7 @@ unsafe fn find_activate(device_id: &str) -> Result<IMFActivate, String> {
     let mut attributes = None;
     unsafe { MFCreateAttributes(&mut attributes, 1) }.map_err(|e| e.to_string())?;
     let attributes = attributes.ok_or("MFCreateAttributes returned null")?;
-    unsafe {
-        attributes.SetGUID(
-            &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
-            &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID,
-        )
-    }
-    .map_err(|e| e.to_string())?;
+    unsafe { attributes.SetGUID(&MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE, &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID) }.map_err(|e| e.to_string())?;
 
     let mut raw_devices: *mut Option<IMFActivate> = std::ptr::null_mut();
     let mut count = 0u32;
@@ -416,8 +387,7 @@ unsafe fn find_activate(device_id: &str) -> Result<IMFActivate, String> {
             chosen = Some(activate.clone());
             break;
         }
-        if let Some(link) =
-            unsafe { read_string(activate, &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK) }
+        if let Some(link) = unsafe { read_string(activate, &MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK) }
             && link == device_id
         {
             chosen = Some(activate.clone());
@@ -444,21 +414,15 @@ unsafe fn read_string(attributes: &IMFActivate, key: &GUID) -> Option<String> {
 /// Output media type for the requested subtype. An explicit size/rate pins the
 /// device to a requested mode; leaving them unset lets the device pick its
 /// default.
-unsafe fn build_output_type(
-    cfg: &MediaFoundationSourceConfig,
-    subtype: &GUID,
-) -> Result<IMFMediaType, String> {
+unsafe fn build_output_type(cfg: &MediaFoundationSourceConfig, subtype: &GUID) -> Result<IMFMediaType, String> {
     let media_type = unsafe { MFCreateMediaType() }.map_err(|e| e.to_string())?;
-    unsafe { media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video) }
-        .map_err(|e| e.to_string())?;
+    unsafe { media_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video) }.map_err(|e| e.to_string())?;
     unsafe { media_type.SetGUID(&MF_MT_SUBTYPE, subtype) }.map_err(|e| e.to_string())?;
     if cfg.width > 0 && cfg.height > 0 {
-        unsafe { media_type.SetUINT64(&MF_MT_FRAME_SIZE, pack_u32_pair(cfg.width, cfg.height)) }
-            .map_err(|e| e.to_string())?;
+        unsafe { media_type.SetUINT64(&MF_MT_FRAME_SIZE, pack_u32_pair(cfg.width, cfg.height)) }.map_err(|e| e.to_string())?;
     }
     if cfg.fps_num > 0 && cfg.fps_den > 0 {
-        unsafe { media_type.SetUINT64(&MF_MT_FRAME_RATE, pack_u32_pair(cfg.fps_num, cfg.fps_den)) }
-            .map_err(|e| e.to_string())?;
+        unsafe { media_type.SetUINT64(&MF_MT_FRAME_RATE, pack_u32_pair(cfg.fps_num, cfg.fps_den)) }.map_err(|e| e.to_string())?;
     }
     Ok(media_type)
 }
@@ -481,10 +445,7 @@ const MF_FORMATS: &[(GUID, PixelFormat)] = &[
 
 /// Internal pixel format for a negotiated MF subtype.
 fn pixel_format_for_subtype(subtype: &GUID) -> Option<PixelFormat> {
-    return MF_FORMATS
-        .iter()
-        .find(|(guid, _)| guid == subtype)
-        .map(|(_, format)| *format);
+    return MF_FORMATS.iter().find(|(guid, _)| guid == subtype).map(|(_, format)| *format);
 }
 
 /// Subtypes to request for `choice`, in preference order. `None` (Auto) tries
@@ -493,17 +454,12 @@ fn pixel_format_for_subtype(subtype: &GUID) -> Option<PixelFormat> {
 fn candidates_for(choice: Option<PixelFormat>) -> Vec<&'static GUID> {
     return match choice {
         None => MF_FORMATS.iter().map(|(guid, _)| guid).collect(),
-        Some(format) => MF_FORMATS
-            .iter()
-            .filter(|(_, candidate)| *candidate == format)
-            .map(|(guid, _)| guid)
-            .collect(),
+        Some(format) => MF_FORMATS.iter().filter(|(_, candidate)| *candidate == format).map(|(guid, _)| guid).collect(),
     };
 }
 
 fn negotiated_pixel_format(reader: &IMFSourceReader) -> Option<PixelFormat> {
-    let media_type =
-        unsafe { reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32) }.ok()?;
+    let media_type = unsafe { reader.GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32) }.ok()?;
     let subtype = unsafe { media_type.GetGUID(&MF_MT_SUBTYPE) }.ok()?;
     return pixel_format_for_subtype(&subtype);
 }
@@ -575,16 +531,7 @@ fn capture_frames(
         // ReadSample return E_POINTER. `pdwActualStreamIndex` and
         // `pllTimestamp` are optional.
         let mut flags = 0u32;
-        let result = unsafe {
-            reader.ReadSample(
-                MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32,
-                0,
-                None,
-                Some(&mut flags),
-                None,
-                Some(&mut sample),
-            )
-        };
+        let result = unsafe { reader.ReadSample(MF_SOURCE_READER_FIRST_VIDEO_STREAM.0 as u32, 0, None, Some(&mut flags), None, Some(&mut sample)) };
         if let Err(e) = result {
             if !logged_read_error {
                 logged_read_error = true;
@@ -617,7 +564,11 @@ fn capture_frames(
             {
                 pixel_format = format;
                 bpp = format.bpp();
-                tracing::info!(source = source_ref, "MediaFoundation: output format is now {} ({bpp} bytes/px)", pixel_format.label());
+                tracing::info!(
+                    source = source_ref,
+                    "MediaFoundation: output format is now {} ({bpp} bytes/px)",
+                    pixel_format.label()
+                );
             }
         }
 
@@ -667,7 +618,11 @@ fn capture_frames(
         }
         if !logged_first_frame {
             logged_first_frame = true;
-            tracing::debug!(source = source_ref, "MediaFoundation: first frame {w}x{h} {} pitch={pitch} ({copy_len} bytes)", pixel_format.label());
+            tracing::debug!(
+                source = source_ref,
+                "MediaFoundation: first frame {w}x{h} {} pitch={pitch} ({copy_len} bytes)",
+                pixel_format.label()
+            );
         }
 
         let old = {
@@ -692,15 +647,9 @@ unsafe fn frame_info(reader: &IMFSourceReader) -> (u32, u32, u32, u32, u32) {
     let Ok(media_type) = (unsafe { reader.GetCurrentMediaType(stream) }) else {
         return (0, 0, 0, 0, 0);
     };
-    let (w, h) = unsafe { media_type.GetUINT64(&MF_MT_FRAME_SIZE) }
-        .map(|p| ((p >> 32) as u32, (p & 0xFFFF_FFFF) as u32))
-        .unwrap_or((0, 0));
-    let stride = unsafe { media_type.GetUINT32(&MF_MT_DEFAULT_STRIDE) }
-        .map(|s| (s as i32).unsigned_abs())
-        .unwrap_or(0);
-    let (num, den) = unsafe { media_type.GetUINT64(&MF_MT_FRAME_RATE) }
-        .map(|p| ((p >> 32) as u32, (p & 0xFFFF_FFFF) as u32))
-        .unwrap_or((0, 0));
+    let (w, h) = unsafe { media_type.GetUINT64(&MF_MT_FRAME_SIZE) }.map(|p| ((p >> 32) as u32, (p & 0xFFFF_FFFF) as u32)).unwrap_or((0, 0));
+    let stride = unsafe { media_type.GetUINT32(&MF_MT_DEFAULT_STRIDE) }.map(|s| (s as i32).unsigned_abs()).unwrap_or(0);
+    let (num, den) = unsafe { media_type.GetUINT64(&MF_MT_FRAME_RATE) }.map(|p| ((p >> 32) as u32, (p & 0xFFFF_FFFF) as u32)).unwrap_or((0, 0));
     return (w, h, stride, num, den);
 }
 
@@ -792,9 +741,24 @@ mod tests {
     #[test]
     fn normalize_modes_sorts_and_dedupes() {
         let input = vec![
-            CaptureMode { width: 1920, height: 1080, fps_num: 30, fps_den: 1 },
-            CaptureMode { width: 1280, height: 720, fps_num: 60, fps_den: 1 },
-            CaptureMode { width: 1920, height: 1080, fps_num: 30, fps_den: 1 },
+            CaptureMode {
+                width: 1920,
+                height: 1080,
+                fps_num: 30,
+                fps_den: 1,
+            },
+            CaptureMode {
+                width: 1280,
+                height: 720,
+                fps_num: 60,
+                fps_den: 1,
+            },
+            CaptureMode {
+                width: 1920,
+                height: 1080,
+                fps_num: 30,
+                fps_den: 1,
+            },
         ];
         let out = normalize_modes(input);
         assert_eq!(out.len(), 2);
@@ -804,14 +768,34 @@ mod tests {
 
     #[test]
     fn format_label_renders_integral_and_fractional_rates() {
-        let integral = CaptureMode { width: 1280, height: 720, fps_num: 30, fps_den: 1 };
+        let integral = CaptureMode {
+            width: 1280,
+            height: 720,
+            fps_num: 30,
+            fps_den: 1,
+        };
         assert_eq!(integral.label(), "1280x720 @ 30");
-        let ntsc = CaptureMode { width: 1920, height: 1080, fps_num: 30000, fps_den: 1001 };
+        let ntsc = CaptureMode {
+            width: 1920,
+            height: 1080,
+            fps_num: 30000,
+            fps_den: 1001,
+        };
         assert_eq!(ntsc.label(), "1920x1080 @ 29.97");
-        let unknown = CaptureMode { width: 640, height: 480, fps_num: 0, fps_den: 0 };
+        let unknown = CaptureMode {
+            width: 640,
+            height: 480,
+            fps_num: 0,
+            fps_den: 0,
+        };
         assert_eq!(unknown.label(), "640x480 @ ?");
         // An unreduced 30 fps ratio must still print whole.
-        let unreduced = CaptureMode { width: 1280, height: 720, fps_num: 30_000_000, fps_den: 1_000_000 };
+        let unreduced = CaptureMode {
+            width: 1280,
+            height: 720,
+            fps_num: 30_000_000,
+            fps_den: 1_000_000,
+        };
         assert_eq!(unreduced.label(), "1280x720 @ 30");
     }
 
@@ -819,26 +803,14 @@ mod tests {
     /// would swap red and blue). Regression guard for the naming trap.
     #[test]
     fn rgb32_maps_to_bgra_not_rgba() {
-        assert_eq!(
-            pixel_format_for_subtype(&MFVideoFormat_RGB32),
-            Some(PixelFormat::Bgra8)
-        );
+        assert_eq!(pixel_format_for_subtype(&MFVideoFormat_RGB32), Some(PixelFormat::Bgra8));
     }
 
     #[test]
     fn yuv_subtypes_map() {
-        assert_eq!(
-            pixel_format_for_subtype(&MFVideoFormat_UYVY),
-            Some(PixelFormat::Uyvy422)
-        );
-        assert_eq!(
-            pixel_format_for_subtype(&MFVideoFormat_YUY2),
-            Some(PixelFormat::Yuy2)
-        );
-        assert_eq!(
-            pixel_format_for_subtype(&MFVideoFormat_NV12),
-            Some(PixelFormat::Nv12)
-        );
+        assert_eq!(pixel_format_for_subtype(&MFVideoFormat_UYVY), Some(PixelFormat::Uyvy422));
+        assert_eq!(pixel_format_for_subtype(&MFVideoFormat_YUY2), Some(PixelFormat::Yuy2));
+        assert_eq!(pixel_format_for_subtype(&MFVideoFormat_NV12), Some(PixelFormat::Nv12));
     }
 
     #[test]
@@ -847,10 +819,7 @@ mod tests {
         assert_eq!(effective_pitch(0, 1280 * 4 * 720, 1280 * 4, 720), 1280 * 4);
         assert_eq!(effective_pitch(0, 1280 * 2 * 720, 1280 * 2, 720), 1280 * 2);
         // A padded media-type stride wins when it fits the buffer.
-        assert_eq!(
-            effective_pitch(1280 * 2 + 64, (1280 * 2 + 64) * 720, 1280 * 2, 720),
-            1280 * 2 + 64
-        );
+        assert_eq!(effective_pitch(1280 * 2 + 64, (1280 * 2 + 64) * 720, 1280 * 2, 720), 1280 * 2 + 64);
         // NV12: rows = h + h/2, tight = w.
         let (w, h) = (1920u32, 1080u32);
         let rows = h + h / 2;
@@ -861,22 +830,10 @@ mod tests {
     fn candidates_are_auto_fallback_or_a_single_explicit_subtype() {
         // Auto tries every supported subtype.
         assert_eq!(candidates_for(None).len(), MF_FORMATS.len());
-        assert_eq!(
-            candidates_for(Some(PixelFormat::Bgra8)),
-            vec![&MFVideoFormat_RGB32]
-        );
-        assert_eq!(
-            candidates_for(Some(PixelFormat::Uyvy422)),
-            vec![&MFVideoFormat_UYVY]
-        );
-        assert_eq!(
-            candidates_for(Some(PixelFormat::Yuy2)),
-            vec![&MFVideoFormat_YUY2]
-        );
-        assert_eq!(
-            candidates_for(Some(PixelFormat::Nv12)),
-            vec![&MFVideoFormat_NV12]
-        );
+        assert_eq!(candidates_for(Some(PixelFormat::Bgra8)), vec![&MFVideoFormat_RGB32]);
+        assert_eq!(candidates_for(Some(PixelFormat::Uyvy422)), vec![&MFVideoFormat_UYVY]);
+        assert_eq!(candidates_for(Some(PixelFormat::Yuy2)), vec![&MFVideoFormat_YUY2]);
+        assert_eq!(candidates_for(Some(PixelFormat::Nv12)), vec![&MFVideoFormat_NV12]);
         // Rgba8 has no requestable MF subtype: no candidates (Auto is used).
         assert!(candidates_for(Some(PixelFormat::Rgba8)).is_empty());
     }

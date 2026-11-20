@@ -61,11 +61,7 @@ impl SpoutOutput {
 }
 
 /// Open the Spout sender sharing wgpu's D3D12 device and command queue.
-fn open_sender(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    sender_name: &str,
-) -> Result<spout2::dx12::Sender, String> {
+fn open_sender(device: &wgpu::Device, queue: &wgpu::Queue, sender_name: &str) -> Result<spout2::dx12::Sender, String> {
     // Safety: device/queue outlive the sender; the app owns both for its lifetime.
     unsafe {
         let Some(hal_device) = device.as_hal::<Dx12Api>() else {
@@ -76,8 +72,7 @@ fn open_sender(
         };
         let device_ptr = hal_device.raw_device().as_raw();
         let mut queue_ptr = hal_queue.as_raw().as_raw();
-        spout2::dx12::Sender::with_device(sender_name, device_ptr, &mut queue_ptr)
-            .map_err(|e| e.to_string())
+        spout2::dx12::Sender::with_device(sender_name, device_ptr, &mut queue_ptr).map_err(|e| e.to_string())
     }
 }
 
@@ -93,13 +88,7 @@ fn texture_ptr(texture: &wgpu::Texture) -> Result<*mut c_void, &'static str> {
 }
 
 /// Create the sender, the intermediate texture and its Spout wrapper.
-fn create_state(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    sender_name: &str,
-    width: u32,
-    height: u32,
-) -> Result<SendState, String> {
+fn create_state(device: &wgpu::Device, queue: &wgpu::Queue, sender_name: &str, width: u32, height: u32) -> Result<SendState, String> {
     let sender = open_sender(device, queue, sender_name)?;
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some(sender_name),
@@ -117,10 +106,7 @@ fn create_state(
     });
     let ptr = texture_ptr(&texture)?;
     // Safety: the texture lives on the sender's device; the copy below leaves it in `COPY_DEST`, the state `send_wrapped_resource` requires.
-    let wrapped = unsafe {
-        sender.wrap_resource(ptr, COPY_DEST)
-    }
-    .map_err(|e| e.to_string())?;
+    let wrapped = unsafe { sender.wrap_resource(ptr, COPY_DEST) }.map_err(|e| e.to_string())?;
     Ok(SendState {
         wrapped,
         texture,
@@ -131,28 +117,18 @@ fn create_state(
 }
 
 impl VideoOutput for SpoutOutput {
-    fn present(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> bool {
+    fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
         if !self.enabled.load(Ordering::Relaxed) {
             return false;
         }
 
         let mut state_guard = self.state.lock().unwrap();
-        let recreate = state_guard
-            .as_ref()
-            .map(|s| s.width != width || s.height != height)
-            .unwrap_or(true);
+        let recreate = state_guard.as_ref().map(|s| s.width != width || s.height != height).unwrap_or(true);
 
         if recreate {
             match create_state(device, queue, &self.config.sender_name, width, height) {
                 Ok(state) => {
-                    tracing::info!(output=self.name, "Spout output created: ({}x{})", width, height);
+                    tracing::info!(output = self.name, "Spout output created: ({}x{})", width, height);
                     *state_guard = Some(state);
                     let mut s = self.stats.lock().unwrap();
                     s.width = width;
@@ -162,7 +138,7 @@ impl VideoOutput for SpoutOutput {
                     *state_guard = None;
                     // Retried every frame; log the first failure only.
                     if !self.diagnostics_logged.swap(true, Ordering::Relaxed) {
-                        tracing::error!(output=self.name, "Spout output open failed: {}", e);
+                        tracing::error!(output = self.name, "Spout output open failed: {}", e);
                     }
                     return false;
                 }
@@ -176,9 +152,7 @@ impl VideoOutput for SpoutOutput {
         {
             let copy_span = tracing::debug_span!("copy");
             let _copy_guard = copy_span.entered();
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("spout-output"),
-            });
+            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("spout-output") });
             encoder.copy_texture_to_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture,
@@ -212,7 +186,7 @@ impl VideoOutput for SpoutOutput {
             Ok(()) => s.record_sent(),
             Err(e) => {
                 s.frames_dropped += 1;
-                tracing::error!(output=self.name, "Spout send failed: {}", e);
+                tracing::error!(output = self.name, "Spout send failed: {}", e);
             }
         }
 

@@ -56,7 +56,12 @@ pub fn draw(ui: &mut egui::Ui, snapshot: &EngineSnapshot, recent: &[PathBuf]) ->
                 menu_item(ui, &mut actions, Shortcut::DuplicateSource, placement);
                 menu_item(ui, &mut actions, Shortcut::DeleteSource, placement);
                 ui.separator();
-                menu_item(ui, &mut actions, Shortcut::ExpandSource, snapshot.state.selected_source_id.is_some() || snapshot.state.expanded_source_id.is_some());
+                menu_item(
+                    ui,
+                    &mut actions,
+                    Shortcut::ExpandSource,
+                    snapshot.state.selected_source_id.is_some() || snapshot.state.expanded_source_id.is_some(),
+                );
                 menu_item(ui, &mut actions, Shortcut::ExitExpanded, snapshot.state.expanded_source_id.is_some());
                 ui.separator();
                 menu_item(ui, &mut actions, Shortcut::SelectPreviousSource, true);
@@ -127,10 +132,7 @@ fn open_recent_menu(ui: &mut egui::Ui, actions: &mut Vec<MenuAction>, recent: &[
             return;
         }
         for path in recent {
-            let label = path
-                .file_stem()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| path.display().to_string());
+            let label = path.file_stem().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| path.display().to_string());
             if ui.button(label).on_hover_text(path.display().to_string()).clicked() {
                 actions.push(MenuAction::OpenRecent(path.clone()));
                 ui.close();

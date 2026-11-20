@@ -19,10 +19,7 @@ pub struct EngineSnapshot {
 /// do not go through its command channel (the HTTP API, host project actions).
 pub(crate) fn publish_state(engine: &Engine, slot: &Mutex<Option<Arc<EngineSnapshot>>>) {
     let mut slot = slot.lock().unwrap();
-    let runtime = slot
-        .as_ref()
-        .map(|snapshot| snapshot.runtime.clone())
-        .unwrap_or_default();
+    let runtime = slot.as_ref().map(|snapshot| snapshot.runtime.clone()).unwrap_or_default();
     *slot = Some(Arc::new(EngineSnapshot {
         state: engine.state.clone(),
         runtime,

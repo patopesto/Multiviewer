@@ -1,10 +1,6 @@
 /// CPU reference matching the old DeckLink shim fixed-point conversion.
 fn ref_uyvy_to_rgb(u: u8, y: u8, v: u8, hd: bool) -> [u8; 3] {
-    let (rc, gc_u, gc_v, bc) = if hd {
-        (459, 55, 136, 541)
-    } else {
-        (409, 100, 208, 516)
-    };
+    let (rc, gc_u, gc_v, bc) = if hd { (459, 55, 136, 541) } else { (409, 100, 208, 516) };
     let u = u as i32 - 128;
     let y = y as i32 - 16;
     let v = v as i32 - 128;
@@ -21,17 +17,9 @@ fn shader_uyvy_to_rgb(u: u8, y: u8, v: u8, hd: bool) -> [u8; 3] {
     let yf = (y as f32 - 16.0) / 255.0;
     let vf = (v as f32 - 128.0) / 255.0;
     let (r, g, b) = if hd {
-        (
-            1.164 * yf + 1.793 * vf,
-            1.164 * yf - 0.213 * uf - 0.533 * vf,
-            1.164 * yf + 2.112 * uf,
-        )
+        (1.164 * yf + 1.793 * vf, 1.164 * yf - 0.213 * uf - 0.533 * vf, 1.164 * yf + 2.112 * uf)
     } else {
-        (
-            1.164 * yf + 1.596 * vf,
-            1.164 * yf - 0.391 * uf - 0.813 * vf,
-            1.164 * yf + 2.018 * uf,
-        )
+        (1.164 * yf + 1.596 * vf, 1.164 * yf - 0.391 * uf - 0.813 * vf, 1.164 * yf + 2.018 * uf)
     };
     let clamp = |v: f32| (v * 255.0).clamp(0.0, 255.0).round() as u8;
     [clamp(r), clamp(g), clamp(b)]
@@ -52,10 +40,7 @@ fn uyvy_to_rgb_matches_cpu_reference() {
             let expected = ref_uyvy_to_rgb(u, y, v, hd);
             let actual = shader_uyvy_to_rgb(u, y, v, hd);
             assert!(
-                expected
-                    .iter()
-                    .zip(&actual)
-                    .all(|(e, a)| e.abs_diff(*a) <= 1),
+                expected.iter().zip(&actual).all(|(e, a)| e.abs_diff(*a) <= 1),
                 "mismatch for U={u} Y={y} V={v} hd={hd}: expected {expected:?}, got {actual:?}"
             );
         }
@@ -105,15 +90,9 @@ fn texture_layout_matches_each_format() {
 /// catches syntax/semantic errors without a GPU device.
 #[test]
 fn shader_parses_and_validates() {
-    let module =
-        wgpu::naga::front::wgsl::parse_str(super::gpu::SHADER).expect("WGSL failed to parse");
-    let mut validator = wgpu::naga::valid::Validator::new(
-        wgpu::naga::valid::ValidationFlags::all(),
-        wgpu::naga::valid::Capabilities::all(),
-    );
-    validator
-        .validate(&module)
-        .expect("WGSL failed validation");
+    let module = wgpu::naga::front::wgsl::parse_str(super::gpu::SHADER).expect("WGSL failed to parse");
+    let mut validator = wgpu::naga::valid::Validator::new(wgpu::naga::valid::ValidationFlags::all(), wgpu::naga::valid::Capabilities::all());
+    validator.validate(&module).expect("WGSL failed validation");
 }
 
 /// UYVY and YUY2 produce the same texture format/dimensions, so `mode` must
@@ -126,10 +105,7 @@ fn uyvy_and_yuy2_share_layout_but_differ_in_mode() {
 
     let uyvy = PixelFormat::Uyvy422.texture_layout(1280, 720);
     let yuy2 = PixelFormat::Yuy2.texture_layout(1280, 720);
-    assert_eq!(
-        (uyvy.texture_format, uyvy.tex_w, uyvy.tex_h),
-        (yuy2.texture_format, yuy2.tex_w, yuy2.tex_h)
-    );
+    assert_eq!((uyvy.texture_format, uyvy.tex_w, uyvy.tex_h), (yuy2.texture_format, yuy2.tex_w, yuy2.tex_h));
     assert_ne!(uyvy.conv_mode, yuy2.conv_mode);
 }
 
@@ -139,19 +115,10 @@ fn source_uv_fits_within_placement() {
     use crate::config::TextureMode;
 
     // Wide source in a square placement: full width, scaled down vertically, full UVs.
-    assert_eq!(
-        source_uv(TextureMode::Fit, 2.0, 1.0),
-        (1.0, 0.5, [0.0, 0.0, 1.0, 1.0])
-    );
+    assert_eq!(source_uv(TextureMode::Fit, 2.0, 1.0), (1.0, 0.5, [0.0, 0.0, 1.0, 1.0]));
     // Tall source: scaled down horizontally.
-    assert_eq!(
-        source_uv(TextureMode::Fit, 1.0, 2.0),
-        (0.5, 1.0, [0.0, 0.0, 1.0, 1.0])
-    );
-    assert_eq!(
-        source_uv(TextureMode::Stretch, 2.0, 1.0),
-        (1.0, 1.0, [0.0, 0.0, 1.0, 1.0])
-    );
+    assert_eq!(source_uv(TextureMode::Fit, 1.0, 2.0), (0.5, 1.0, [0.0, 0.0, 1.0, 1.0]));
+    assert_eq!(source_uv(TextureMode::Stretch, 2.0, 1.0), (1.0, 1.0, [0.0, 0.0, 1.0, 1.0]));
 }
 
 #[test]
@@ -160,15 +127,9 @@ fn source_uv_fill_crops_the_long_axis() {
     use crate::config::TextureMode;
 
     // Wide source in a square placement: crop horizontally, keep vertical UVs.
-    assert_eq!(
-        source_uv(TextureMode::Fill, 2.0, 1.0),
-        (1.0, 1.0, [0.25, 0.0, 0.75, 1.0])
-    );
+    assert_eq!(source_uv(TextureMode::Fill, 2.0, 1.0), (1.0, 1.0, [0.25, 0.0, 0.75, 1.0]));
     // Tall source: crop vertically.
-    assert_eq!(
-        source_uv(TextureMode::Fill, 1.0, 2.0),
-        (1.0, 1.0, [0.0, 0.25, 1.0, 0.75])
-    );
+    assert_eq!(source_uv(TextureMode::Fill, 1.0, 2.0), (1.0, 1.0, [0.0, 0.25, 1.0, 0.75]));
 }
 
 #[test]
@@ -183,19 +144,7 @@ fn placement_maps_canvas_rect_to_clip_space() {
         w: 640.0,
         h: 360.0,
     };
-    let source = Source::new(
-        "cam".into(),
-        Protocol::Test,
-        None,
-        100.0,
-        50.0,
-        200,
-        100,
-        0,
-        TextureMode::Fit,
-        false,
-        false,
-    );
+    let source = Source::new("cam".into(), Protocol::Test, None, 100.0, 50.0, 200, 100, 0, TextureMode::Fit, false, false);
 
     let place = Placement::compute(&source, false, (0.0, 0.0, 640.0, 360.0), 1.0, &panel);
     assert_eq!((place.lx, place.ly, place.lw, place.lh), (100.0, 50.0, 200.0, 100.0));

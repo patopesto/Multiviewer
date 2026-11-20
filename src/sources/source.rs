@@ -256,17 +256,17 @@ impl SourceConfig {
 pub enum SourceRuntimeConfig {
     Test,
     Ndi {
-        discovered: NdiSourceInfo
+        discovered: NdiSourceInfo,
     },
     Omt {
-        discovered: OmtSourceInfo
+        discovered: OmtSourceInfo,
     },
     Decklink {
-        supported_connections: decklink::DecklinkVideoConnections
+        supported_connections: decklink::DecklinkVideoConnections,
     },
     #[cfg(target_os = "macos")]
     Syphon {
-        info: SyphonServerInfo
+        info: SyphonServerInfo,
     },
     #[cfg(target_os = "macos")]
     AvFoundation {
@@ -274,7 +274,7 @@ pub enum SourceRuntimeConfig {
     },
     #[cfg(target_os = "macos")]
     ScreenCaptureKit {
-        label: String
+        label: String,
     },
     #[cfg(target_os = "windows")]
     Spout,
@@ -323,18 +323,14 @@ impl SourceKind {
     fn new(key: &SourceKey, config: SourceConfig, runtime: SourceRuntimeConfig) -> Self {
         let started = Instant::now();
         let source: Box<dyn VideoSource> = match (&config, &runtime) {
-            (SourceConfig::Test(c), SourceRuntimeConfig::Test) => {
-                Box::new(test::TestSource::spawn(key.source_ref.clone(), c))
-            }
+            (SourceConfig::Test(c), SourceRuntimeConfig::Test) => Box::new(test::TestSource::spawn(key.source_ref.clone(), c)),
             (SourceConfig::Ndi(c), SourceRuntimeConfig::Ndi { discovered }) => {
                 Box::new(ndi::NdiSource::spawn(key.source_ref.clone(), discovered.clone(), c))
             }
             (SourceConfig::Omt(c), SourceRuntimeConfig::Omt { discovered }) => {
                 Box::new(omt::OmtSource::spawn(key.source_ref.clone(), discovered.clone(), c))
             }
-            (SourceConfig::Decklink(c), SourceRuntimeConfig::Decklink { .. }) => {
-                Box::new(decklink::DecklinkSource::spawn(key.source_ref.clone(), c))
-            }
+            (SourceConfig::Decklink(c), SourceRuntimeConfig::Decklink { .. }) => Box::new(decklink::DecklinkSource::spawn(key.source_ref.clone(), c)),
             #[cfg(target_os = "macos")]
             (SourceConfig::Syphon(_), SourceRuntimeConfig::Syphon { info }) => {
                 Box::new(syphon::SyphonSource::spawn(key.source_ref.clone(), info.clone()))
@@ -348,9 +344,7 @@ impl SourceKind {
                 Box::new(screencapturekit::ScreenCaptureKitSource::spawn(key.source_ref.clone(), c))
             }
             #[cfg(target_os = "windows")]
-            (SourceConfig::Spout(_), SourceRuntimeConfig::Spout) => {
-                Box::new(spout::SpoutSource::spawn(key.source_ref.clone()))
-            }
+            (SourceConfig::Spout(_), SourceRuntimeConfig::Spout) => Box::new(spout::SpoutSource::spawn(key.source_ref.clone())),
             #[cfg(target_os = "windows")]
             (SourceConfig::MediaFoundation(c), SourceRuntimeConfig::MediaFoundation { modes, .. }) => {
                 Box::new(mediafoundation::MediaFoundationSource::spawn(key.source_ref.clone(), c, modes.clone()))
@@ -363,12 +357,8 @@ impl SourceKind {
             (SourceConfig::WindowsCapture(c), SourceRuntimeConfig::WindowsCapture { .. }) => {
                 Box::new(windowscapture::WindowsCaptureSource::spawn(key.source_ref.clone(), c))
             }
-            (SourceConfig::Vnc(c), SourceRuntimeConfig::Vnc) => {
-                Box::new(vnc::VncSource::spawn(key.source_ref.clone(), c))
-            }
-            (SourceConfig::Rdp(c), SourceRuntimeConfig::Rdp) => {
-                Box::new(rdp::RdpSource::spawn(key.source_ref.clone(), c))
-            }
+            (SourceConfig::Vnc(c), SourceRuntimeConfig::Vnc) => Box::new(vnc::VncSource::spawn(key.source_ref.clone(), c)),
+            (SourceConfig::Rdp(c), SourceRuntimeConfig::Rdp) => Box::new(rdp::RdpSource::spawn(key.source_ref.clone(), c)),
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
             _ => unreachable!("source config paired with a foreign runtime config"),
@@ -538,11 +528,7 @@ impl SourceRegistry {
                 break key;
             }
         };
-        return self.add_new(
-            key,
-            SourceConfig::Test(config.unwrap_or_default()),
-            SourceRuntimeConfig::Test,
-        );
+        return self.add_new(key, SourceConfig::Test(config.unwrap_or_default()), SourceRuntimeConfig::Test);
     }
 
     /// Create a dedicated VNC source under a fresh key. The connection details
@@ -584,36 +570,25 @@ impl SourceRegistry {
     }
 
     pub fn add_ndi(&mut self, key: SourceKey, config: ndi::NdiSourceConfig, discovered: NdiSourceInfo) -> SourceKey {
-        return self.add_new(
-            key,
-            SourceConfig::Ndi(config),
-            SourceRuntimeConfig::Ndi { discovered },
-        );
+        return self.add_new(key, SourceConfig::Ndi(config), SourceRuntimeConfig::Ndi { discovered });
     }
 
     pub fn add_omt(&mut self, key: SourceKey, config: omt::OmtSourceConfig, discovered: OmtSourceInfo) -> SourceKey {
-        return self.add_new(
-            key,
-            SourceConfig::Omt(config),
-            SourceRuntimeConfig::Omt { discovered },
-        );
+        return self.add_new(key, SourceConfig::Omt(config), SourceRuntimeConfig::Omt { discovered });
     }
 
-    pub fn add_decklink(&mut self, key: SourceKey, config: decklink::DecklinkSourceConfig, supported_connections: decklink::DecklinkVideoConnections) -> SourceKey {
-        return self.add_new(
-            key,
-            SourceConfig::Decklink(config),
-            SourceRuntimeConfig::Decklink { supported_connections },
-        );
+    pub fn add_decklink(
+        &mut self,
+        key: SourceKey,
+        config: decklink::DecklinkSourceConfig,
+        supported_connections: decklink::DecklinkVideoConnections,
+    ) -> SourceKey {
+        return self.add_new(key, SourceConfig::Decklink(config), SourceRuntimeConfig::Decklink { supported_connections });
     }
 
     #[cfg(target_os = "macos")]
     pub fn add_syphon(&mut self, key: SourceKey, config: syphon::SyphonSourceConfig, info: SyphonServerInfo) -> SourceKey {
-        return self.add_new(
-            key,
-            SourceConfig::Syphon(config),
-            SourceRuntimeConfig::Syphon { info },
-        );
+        return self.add_new(key, SourceConfig::Syphon(config), SourceRuntimeConfig::Syphon { info });
     }
 
     #[cfg(target_os = "macos")]
@@ -631,11 +606,7 @@ impl SourceRegistry {
     pub fn add_screencapturekit(&mut self, key: SourceKey, config: screencapturekit::ScreenCaptureKitSourceConfig, label: String) -> SourceKey {
         // First SCK source in the process triggers the one-time TCC prompt.
         screencapturekit::ensure_screen_capture_access_requested();
-        return self.add_new(
-            key,
-            SourceConfig::ScreenCaptureKit(config),
-            SourceRuntimeConfig::ScreenCaptureKit { label },
-        );
+        return self.add_new(key, SourceConfig::ScreenCaptureKit(config), SourceRuntimeConfig::ScreenCaptureKit { label });
     }
 
     #[cfg(target_os = "windows")]
@@ -672,11 +643,7 @@ impl SourceRegistry {
     #[cfg(target_os = "windows")]
     pub fn add_windows_capture(&mut self, key: SourceKey, config: windowscapture::WindowsCaptureSourceConfig, label: String) -> SourceKey {
         tracing::debug!(source_ref = %key.source_ref, label = %label, "add_windows_capture");
-        return self.add_new(
-            key,
-            SourceConfig::WindowsCapture(config),
-            SourceRuntimeConfig::WindowsCapture { label },
-        );
+        return self.add_new(key, SourceConfig::WindowsCapture(config), SourceRuntimeConfig::WindowsCapture { label });
     }
 
     /// Whether the map holds an entry for this key, live or dead.
@@ -722,13 +689,11 @@ impl SourceRegistry {
         }
         let config = live.config.clone();
         let runtime = live.runtime.clone();
-        self.sources
-            .insert(key.clone(), SourceKind::pending(config.clone(), runtime.clone()));
+        self.sources.insert(key.clone(), SourceKind::pending(config.clone(), runtime.clone()));
         self.pending_restarts.insert(key.clone(), Instant::now());
         let key = key.clone();
         let tx = self.restart_tx.clone();
-        let thread_name =
-            format!("{}-restart-{}", key.protocol.name().to_lowercase(), key.source_ref);
+        let thread_name = format!("{}-restart-{}", key.protocol.name().to_lowercase(), key.source_ref);
         std::thread::Builder::new()
             .name(thread_name)
             .spawn(move || {
@@ -783,22 +748,14 @@ impl SourceRegistry {
     /// Remove all sources not referenced anymore.
     pub fn cleanup_orphaned_sources(&mut self, active_keys: &[SourceKey]) {
         let active: HashSet<&SourceKey> = active_keys.iter().collect();
-        let to_remove: Vec<SourceKey> = self
-            .sources
-            .keys()
-            .filter(|key| !active.contains(key))
-            .cloned()
-            .collect();
+        let to_remove: Vec<SourceKey> = self.sources.keys().filter(|key| !active.contains(key)).cloned().collect();
         for key in to_remove {
             self.sources.remove(&key);
         }
     }
 
     pub fn list_sources(&self, protocol: Protocol) -> Vec<(&SourceKey, &SourceKind)> {
-        self.sources
-            .iter()
-            .filter(|(key, _)| key.protocol == protocol)
-            .collect()
+        self.sources.iter().filter(|(key, _)| key.protocol == protocol).collect()
     }
 
     pub fn clear(&mut self) {
@@ -815,10 +772,7 @@ impl SourceRegistry {
         // Releasing a device (DeckLink stop, camera session, SDK thread) takes
         // seconds, and every caller of `clear` holds the engine lock.
         tracing::debug!(sources = drained.len(), "releasing sources in background");
-        std::thread::Builder::new()
-            .name("source-teardown".into())
-            .spawn(move || release_sources(drained))
-            .ok();
+        std::thread::Builder::new().name("source-teardown".into()).spawn(move || release_sources(drained)).ok();
     }
 }
 
@@ -862,11 +816,7 @@ mod tests {
     fn keys_are_protocol_scoped() {
         let mut registry = SourceRegistry::new();
         let key = SourceKey::new(Protocol::Test, "Camera".into());
-        registry.add_new(
-            key.clone(),
-            SourceConfig::Test(Default::default()),
-            SourceRuntimeConfig::Test,
-        );
+        registry.add_new(key.clone(), SourceConfig::Test(Default::default()), SourceRuntimeConfig::Test);
 
         assert!(registry.contains(&key));
         let other_protocol = SourceKey::new(Protocol::Ndi, "Camera".into());
@@ -884,11 +834,7 @@ mod tests {
         let key = registry.add_test(None);
         let count = registry.iter().count();
 
-        let again = registry.add_new(
-            key.clone(),
-            SourceConfig::Test(Default::default()),
-            SourceRuntimeConfig::Test,
-        );
+        let again = registry.add_new(key.clone(), SourceConfig::Test(Default::default()), SourceRuntimeConfig::Test);
         assert_eq!(again, key);
         assert_eq!(registry.iter().count(), count);
         assert!(registry.get(&key).is_some());
@@ -991,7 +937,13 @@ mod tests {
         registry.sources.get_mut(&key).unwrap().config = edited.clone();
         registry.pending_restarts.insert(key.clone(), Instant::now());
         let stale = SourceKind::new(&key, SourceConfig::Vnc(first), SourceRuntimeConfig::Vnc);
-        registry.restart_tx.send(RestartResult { key: key.clone(), kind: stale }).unwrap();
+        registry
+            .restart_tx
+            .send(RestartResult {
+                key: key.clone(),
+                kind: stale,
+            })
+            .unwrap();
 
         registry.apply_pending_restarts();
 
@@ -1008,10 +960,7 @@ mod tests {
             host: "studio.example".to_string(),
             ..Default::default()
         });
-        registry.pending_restarts.insert(
-            key.clone(),
-            Instant::now() - RESTART_TIMEOUT - Duration::from_secs(1),
-        );
+        registry.pending_restarts.insert(key.clone(), Instant::now() - RESTART_TIMEOUT - Duration::from_secs(1));
 
         registry.apply_pending_restarts();
 
@@ -1053,11 +1002,7 @@ mod tests {
         registry.retry_after.insert(key.clone(), Instant::now() - Duration::from_millis(1));
         assert!(registry.can_open(&key));
 
-        let reopened = registry.add_new(
-            key.clone(),
-            SourceConfig::Test(Default::default()),
-            SourceRuntimeConfig::Test,
-        );
+        let reopened = registry.add_new(key.clone(), SourceConfig::Test(Default::default()), SourceRuntimeConfig::Test);
         assert_eq!(reopened, key);
         assert!(registry.is_live(&key));
     }

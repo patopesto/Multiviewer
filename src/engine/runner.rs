@@ -257,16 +257,12 @@ impl EngineRuntime {
                     Err(e) => startup_error = Some(StartupError::Open(e.to_string())),
                 }
             } else {
-                startup_error = Some(StartupError::Missing(format!(
-                    "Startup project not found: {}",
-                    path.display()
-                )));
+                startup_error = Some(StartupError::Missing(format!("Startup project not found: {}", path.display())));
             }
         }
 
         let engine = Arc::new(Mutex::new(engine));
-        let runner = Runner::start(engine.clone(), device, queue, format, preview_enabled, wake)
-            .ok_or_else(|| "spawn engine runner".to_string())?;
+        let runner = Runner::start(engine.clone(), device, queue, format, preview_enabled, wake).ok_or_else(|| "spawn engine runner".to_string())?;
         return Ok(Self {
             engine,
             runner,
@@ -344,18 +340,10 @@ impl RunnerStats {
 }
 
 fn advance_deadline(prev: Instant, now: Instant, interval: Duration) -> Instant {
-    return if now >= prev + interval {
-        now + interval
-    } else {
-        prev + interval
-    };
+    return if now >= prev + interval { now + interval } else { prev + interval };
 }
 
-fn publish_if_changed(
-    engine: &Engine,
-    snapshot: &Mutex<Option<Arc<EngineSnapshot>>>,
-    published_revision: &mut u64,
-) {
+fn publish_if_changed(engine: &Engine, snapshot: &Mutex<Option<Arc<EngineSnapshot>>>, published_revision: &mut u64) {
     if engine.state.revision == *published_revision {
         return;
     }
@@ -363,21 +351,13 @@ fn publish_if_changed(
     *published_revision = engine.state.revision;
 }
 
-fn publish_snapshot(
-    engine: &Engine,
-    snapshot: &Mutex<Option<Arc<EngineSnapshot>>>,
-    refresh_runtime: bool,
-    focuses: &[Option<Protocol>],
-) {
+fn publish_snapshot(engine: &Engine, snapshot: &Mutex<Option<Arc<EngineSnapshot>>>, refresh_runtime: bool, focuses: &[Option<Protocol>]) {
     let mut slot = snapshot.lock().unwrap();
     if refresh_runtime {
         *slot = Some(Arc::new(engine.snapshot_focused(focuses)));
         return;
     }
-    let runtime = slot
-        .as_ref()
-        .map(|snapshot| snapshot.runtime.clone())
-        .unwrap_or_default();
+    let runtime = slot.as_ref().map(|snapshot| snapshot.runtime.clone()).unwrap_or_default();
     *slot = Some(Arc::new(EngineSnapshot {
         state: engine.state.clone(),
         runtime,
@@ -416,12 +396,7 @@ fn run(
         let _span = tracing::debug_span!("tick").entered();
         let (visible, preview_rect, pixels_per_point, discovery_focus) = {
             let state = state.lock().unwrap();
-            (
-                state.visible,
-                state.preview_rect,
-                state.pixels_per_point,
-                state.discovery_focus.clone(),
-            )
+            (state.visible, state.preview_rect, state.pixels_per_point, state.discovery_focus.clone())
         };
         let painting = preview_enabled && visible;
 
@@ -477,11 +452,7 @@ fn run(
             engine.auto_save();
         }
         if control && now + FRAME_TOLERANCE >= next_control {
-            next_control = advance_deadline(
-                next_control,
-                now,
-                Duration::from_secs_f64(1.0 / CONTROL_FPS),
-            );
+            next_control = advance_deadline(next_control, now, Duration::from_secs_f64(1.0 / CONTROL_FPS));
             engine.poll_control();
             publish_if_changed(&engine, &snapshot, &mut published_revision);
         }
@@ -495,18 +466,10 @@ fn run(
 
         if preview_due || output_due {
             if preview_due {
-                next_preview = advance_deadline(
-                    next_preview,
-                    now,
-                    Duration::from_secs_f64(1.0 / PREVIEW_FPS),
-                );
+                next_preview = advance_deadline(next_preview, now, Duration::from_secs_f64(1.0 / PREVIEW_FPS));
             }
             if output_due {
-                next_output = advance_deadline(
-                    next_output,
-                    now,
-                    Duration::from_secs_f64(1.0 / OUTPUT_FPS),
-                );
+                next_output = advance_deadline(next_output, now, Duration::from_secs_f64(1.0 / OUTPUT_FPS));
             }
             engine.ensure_compositor(&device, &queue, format);
             engine.begin_tick();
@@ -514,15 +477,10 @@ fn run(
             if preview_due {
                 engine.prefetch_preview(&device, &queue);
                 if preview_rect.width() > 0.0 && preview_rect.height() > 0.0 {
-                    let transform = super::transform::display_transform(
-                        &engine.state.view,
-                        &engine.state.cfg.canvas,
-                        &preview_rect,
-                        engine.state.ui_visible,
-                    );
+                    let transform =
+                        super::transform::display_transform(&engine.state.view, &engine.state.cfg.canvas, &preview_rect, engine.state.ui_visible);
                     let label_scale = transform.0 * pixels_per_point;
-                    let draw =
-                        engine.build_frame(&device, &queue, &preview_rect, transform, label_scale);
+                    let draw = engine.build_frame(&device, &queue, &preview_rect, transform, label_scale);
                     if let Some(shared) = engine.shared() {
                         new_preview = Some(PreviewFrame {
                             shared,

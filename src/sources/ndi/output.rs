@@ -42,17 +42,15 @@ impl NdiOutput {
                 let ndi = match NDI::new() {
                     Ok(n) => n,
                     Err(e) => {
-                        tracing::error!(output=thread_name, "NDI init failed: {}", e);
+                        tracing::error!(output = thread_name, "NDI init failed: {}", e);
                         return;
                     }
                 };
-                let options = SenderOptions::builder(&config.sender_name)
-                    .clock_video(true)
-                    .build();
+                let options = SenderOptions::builder(&config.sender_name).clock_video(true).build();
                 let mut sender = match Sender::new(&ndi, &options) {
                     Ok(s) => s,
                     Err(e) => {
-                        tracing::error!(output=thread_name, "NDI Sender creation failed: {}", e);
+                        tracing::error!(output = thread_name, "NDI Sender creation failed: {}", e);
                         return;
                     }
                 };
@@ -78,7 +76,7 @@ impl NdiOutput {
                     ) {
                         Ok(f) => f,
                         Err(e) => {
-                            tracing::error!(output=thread_name, "NDI output frame build failed: {}", e);
+                            tracing::error!(output = thread_name, "NDI output frame build failed: {}", e);
                             continue;
                         }
                     };

@@ -53,13 +53,7 @@ pub(super) fn label_origin(pos: LabelPosition, rect: [f32; 4], bg: (f32, f32)) -
 
 impl Frame<'_> {
     /// Emit the label background and text quads when this source shows a label.
-    pub(super) fn push_label(
-        &mut self,
-        source: &Source,
-        place: &Placement,
-        canvas: &Canvas,
-        expanded: bool,
-    ) {
+    pub(super) fn push_label(&mut self, source: &Source, place: &Placement, canvas: &Canvas, expanded: bool) {
         if expanded {
             return;
         }
@@ -91,23 +85,14 @@ impl Frame<'_> {
             raster,
             text_color: label.text_color,
         };
-        let (tex_w, tex_h, label_bg) = self.comp.ensure_label_texture(
-            self.device,
-            self.queue,
-            source.uuid.clone(),
-            &label_key,
-        );
+        let (tex_w, tex_h, label_bg) = self.comp.ensure_label_texture(self.device, self.queue, source.uuid.clone(), &label_key);
 
         let text_w = tex_w as f32 * self.scale / raster;
         let text_h = tex_h as f32 * self.scale / raster;
         let padding = 4.0 * self.scale;
         let bg_w = (text_w + padding * 2.0).min(place.lw);
         let bg_h = (text_h + padding * 2.0).min(place.lh);
-        let (bg_x, bg_y) = label_origin(
-            label.position,
-            [place.lx, place.ly, place.lw, place.lh],
-            (bg_w, bg_h),
-        );
+        let (bg_x, bg_y) = label_origin(label.position, [place.lx, place.ly, place.lw, place.lh], (bg_w, bg_h));
 
         let [bx0, by0] = clip(self.panel_rect, bg_x, bg_y);
         let [bx1, by1] = clip(self.panel_rect, bg_x + bg_w, bg_y + bg_h);
@@ -117,11 +102,7 @@ impl Frame<'_> {
         let tx_x = bg_x + padding;
         let tx_y = bg_y + padding;
         let [tx0, ty0] = clip(self.panel_rect, tx_x, tx_y);
-        let [tx1, ty1] = clip(
-            self.panel_rect,
-            tx_x + text_w,
-            tx_y + text_h,
-        );
+        let [tx1, ty1] = clip(self.panel_rect, tx_x + text_w, tx_y + text_h);
         self.quad([tx0, ty0, tx1, ty1], [0.0, 0.0, 1.0, 1.0], label_bg, Pipeline::Text);
     }
 }
@@ -133,7 +114,8 @@ impl Compositor {
     }
 
     /// Cached label texture for `uuid`; re-rasterizes when the key hash changes.
-    pub(super) fn ensure_label_texture(        &mut self,
+    pub(super) fn ensure_label_texture(
+        &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         uuid: String,
@@ -160,12 +142,7 @@ impl Compositor {
         return (w, h, bg);
     }
 
-    fn rasterize_label(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        key: &LabelKey,
-    ) -> (TextureTarget, Arc<wgpu::BindGroup>, u32, u32) {
+    fn rasterize_label(&self, device: &wgpu::Device, queue: &wgpu::Queue, key: &LabelKey) -> (TextureTarget, Arc<wgpu::BindGroup>, u32, u32) {
         let Some((width, height, pixels)) = label_pixels(&self.font, key) else {
             let bg = Arc::new(placeholder(device, queue, &self.bind_layout, &self.sampler));
             let texture = solid_texture(device, "label-empty");
@@ -177,13 +154,7 @@ impl Compositor {
 
         let layout = PixelFormat::Rgba8.texture_layout(width, height);
         let mut target = None;
-        TextureTarget::ensure(
-            &mut target,
-            device,
-            layout,
-            UPLOAD_TARGET_USAGE,
-            "label",
-        );
+        TextureTarget::ensure(&mut target, device, layout, UPLOAD_TARGET_USAGE, "label");
         let target = target.unwrap();
         queue.write_texture(
             wgpu::TexelCopyTextureInfo {
@@ -205,20 +176,8 @@ impl Compositor {
             },
         );
 
-        let uniform = conv_uniform(
-            device,
-            queue,
-            ConvMode::Passthrough,
-            width as f32,
-            height as f32,
-        );
-        let bg = Arc::new(texture_bind_group(
-            device,
-            &self.bind_layout,
-            &self.sampler,
-            &target.view,
-            &uniform,
-        ));
+        let uniform = conv_uniform(device, queue, ConvMode::Passthrough, width as f32, height as f32);
+        let bg = Arc::new(texture_bind_group(device, &self.bind_layout, &self.sampler, &target.view, &uniform));
         return (target, bg, width, height);
     }
 }
@@ -234,17 +193,9 @@ fn label_pixels(font: &fontdue::Font, key: &LabelKey) -> Option<(u32, u32, Vec<u
         return None;
     }
 
-    let max_x = glyphs
-        .iter()
-        .map(|g| g.x + g.width as f32)
-        .fold(0.0_f32, f32::max)
-        .ceil() as i32;
+    let max_x = glyphs.iter().map(|g| g.x + g.width as f32).fold(0.0_f32, f32::max).ceil() as i32;
     let min_y = glyphs.iter().map(|g| g.y.floor() as i32).min().unwrap_or(0);
-    let max_y = glyphs
-        .iter()
-        .map(|g| (g.y + g.height as f32).ceil() as i32)
-        .max()
-        .unwrap_or(0);
+    let max_y = glyphs.iter().map(|g| (g.y + g.height as f32).ceil() as i32).max().unwrap_or(0);
     let width = max_x.max(1) as u32;
     let height = (max_y - min_y).max(1) as u32;
 

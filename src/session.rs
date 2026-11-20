@@ -72,11 +72,7 @@ impl Session {
     pub fn load() -> Self {
         let mut s = Self::load_from(app_data_dir()).unwrap_or_default();
         if s.version > SESSION_VERSION {
-            tracing::warn!(
-                "Session file was saved by a newer version ({} > {}); using it as-is",
-                s.version,
-                SESSION_VERSION
-            );
+            tracing::warn!("Session file was saved by a newer version ({} > {}); using it as-is", s.version, SESSION_VERSION);
             s.version = SESSION_VERSION;
         }
         s.prune_missing();
@@ -112,9 +108,7 @@ impl Session {
 }
 
 pub fn app_data_dir() -> Result<PathBuf, SessionError> {
-    dirs::data_local_dir()
-        .map(|d| d.join(APP_NAME))
-        .ok_or(SessionError::NoAppDataDir)
+    dirs::data_local_dir().map(|d| d.join(APP_NAME)).ok_or(SessionError::NoAppDataDir)
 }
 
 #[cfg(test)]
@@ -179,4 +173,3 @@ mod tests {
         assert_eq!(s.recent_projects, vec![std::env::temp_dir()]);
     }
 }
-

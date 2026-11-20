@@ -23,13 +23,8 @@ fn queue_path(path: PathBuf) {
 // CoreFoundation types
 type CFStringRef = *const c_void;
 type CFNotificationCenterRef = *const c_void;
-type CFNotificationCallback = extern "C" fn(
-    center: CFNotificationCenterRef,
-    observer: *mut c_void,
-    name: CFStringRef,
-    object: *const c_void,
-    user_info: *const c_void,
-);
+type CFNotificationCallback =
+    extern "C" fn(center: CFNotificationCenterRef, observer: *mut c_void, name: CFStringRef, object: *const c_void, user_info: *const c_void);
 
 // Carbon AppleEvent types
 type AEEventClass = u32;
@@ -39,11 +34,7 @@ type AEEventHandler = extern "C" fn(event: AEDesc, reply: *mut c_void, refcon: *
 
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
-    fn CFStringCreateWithCString(
-        alloc: *const c_void,
-        cStr: *const c_char,
-        encoding: u32,
-    ) -> CFStringRef;
+    fn CFStringCreateWithCString(alloc: *const c_void, cStr: *const c_char, encoding: u32) -> CFStringRef;
     fn CFNotificationCenterGetLocalCenter() -> CFNotificationCenterRef;
     fn CFNotificationCenterAddObserver(
         center: CFNotificationCenterRef,
@@ -58,19 +49,8 @@ unsafe extern "C" {
 
 #[link(name = "Carbon", kind = "framework")]
 unsafe extern "C" {
-    fn AEInstallEventHandler(
-        eventClass: AEEventClass,
-        eventID: AEEventID,
-        handler: AEEventHandler,
-        refCon: *mut c_void,
-        isMainThread: bool,
-    ) -> i16;
-    fn AEGetParamDesc(
-        event: AEDesc,
-        keyword: u32,
-        desiredType: u32,
-        result: *mut c_void,
-    ) -> i16;
+    fn AEInstallEventHandler(eventClass: AEEventClass, eventID: AEEventID, handler: AEEventHandler, refCon: *mut c_void, isMainThread: bool) -> i16;
+    fn AEGetParamDesc(event: AEDesc, keyword: u32, desiredType: u32, result: *mut c_void) -> i16;
     fn AECountItems(theAEDescList: *const c_void, count: *mut c_long) -> i16;
     fn AEGetNthPtr(
         theAEDescList: *const c_void,
@@ -116,12 +96,7 @@ unsafe fn inject_open_urls_method() {
     let cls = unsafe { object_getClass(delegate) };
     let sel = sel!(application:openURLs:);
 
-    extern "C" fn handle_open_urls(
-        _this: *mut Object,
-        _cmd: Sel,
-        _app: *mut Object,
-        urls: *mut Object,
-    ) {
+    extern "C" fn handle_open_urls(_this: *mut Object, _cmd: Sel, _app: *mut Object, urls: *mut Object) {
         unsafe {
             let count: usize = msg_send![urls, count];
             if count > 0 {
@@ -129,7 +104,9 @@ unsafe fn inject_open_urls_method() {
                 let path_str: *mut Object = msg_send![url, path];
                 if !path_str.is_null() {
                     let bytes: *const c_char = msg_send![path_str, UTF8String];
-                    if !bytes.is_null() && let Ok(cstr) = CStr::from_ptr(bytes).to_str() {
+                    if !bytes.is_null()
+                        && let Ok(cstr) = CStr::from_ptr(bytes).to_str()
+                    {
                         queue_path(PathBuf::from(cstr));
                     }
                 }
@@ -139,28 +116,14 @@ unsafe fn inject_open_urls_method() {
 
     let types = CString::new("v@:@@").unwrap();
     unsafe {
-        class_addMethod(
-            cls,
-            sel,
-            handle_open_urls as *const c_void,
-            types.as_ptr(),
-        );
+        class_addMethod(cls, sel, handle_open_urls as *const c_void, types.as_ptr());
     }
 }
 
-extern "C" fn handle_open_documents(
-    event: AEDesc,
-    _reply: *mut c_void,
-    _refcon: *mut c_void,
-) -> i16 {
+extern "C" fn handle_open_documents(event: AEDesc, _reply: *mut c_void, _refcon: *mut c_void) -> i16 {
     unsafe {
         let mut list: [u8; 80] = [0; 80];
-        let err = AEGetParamDesc(
-            event,
-            u32::from_be_bytes(*b"----"),
-            u32::from_be_bytes(*b"list"),
-            list.as_mut_ptr() as *mut _,
-        );
+        let err = AEGetParamDesc(event, u32::from_be_bytes(*b"----"), u32::from_be_bytes(*b"list"), list.as_mut_ptr() as *mut _);
         if err != 0 {
             return 0;
         }
@@ -207,7 +170,9 @@ fn percent_decode(s: &str) -> String {
     while let Some(c) = chars.next() {
         if c == '%' {
             let hex: String = chars.by_ref().take(2).collect();
-            if hex.len() == 2 && let Ok(byte) = u8::from_str_radix(&hex, 16) {
+            if hex.len() == 2
+                && let Ok(byte) = u8::from_str_radix(&hex, 16)
+            {
                 result.push(byte as char);
                 continue;
             }

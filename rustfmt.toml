@@ -1,0 +1,6 @@
+max_width = 150
+fn_call_width = 100
+chain_width = 125
+
+# Import order within the std/external/crate groups is not load-bearing.
+reorder_imports = false

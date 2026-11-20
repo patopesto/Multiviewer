@@ -19,13 +19,7 @@ unsafe extern "C" {
         connections: *mut u32,
     );
     pub fn decklink_discovery_output_count(d: *mut DecklinkDiscovery) -> i32;
-    pub fn decklink_discovery_output_get(
-        d: *mut DecklinkDiscovery,
-        idx: i32,
-        name: *mut std::ffi::c_char,
-        name_len: usize,
-        mode_count: *mut i32,
-    );
+    pub fn decklink_discovery_output_get(d: *mut DecklinkDiscovery, idx: i32, name: *mut std::ffi::c_char, name_len: usize, mode_count: *mut i32);
     pub fn decklink_discovery_output_mode(
         d: *mut DecklinkDiscovery,
         idx: i32,
@@ -56,12 +50,7 @@ unsafe extern "C" {
     pub fn decklink_source_take_cpu_fallback(s: *mut DecklinkSourceHandle) -> bool;
     pub fn decklink_source_frame_generation(s: *mut DecklinkSourceHandle) -> u64;
     pub fn decklink_source_wait_frame(s: *mut DecklinkSourceHandle, seen: u64, timeout_ms: i32);
-    pub fn decklink_source_set_capture_buffers(
-        s: *mut DecklinkSourceHandle,
-        pointers: *mut *mut u8,
-        sizes: *const u32,
-        count: u32,
-    ) -> bool;
+    pub fn decklink_source_set_capture_buffers(s: *mut DecklinkSourceHandle, pointers: *mut *mut u8, sizes: *const u32, count: u32) -> bool;
     pub fn decklink_source_pinned_available(s: *mut DecklinkSourceHandle) -> bool;
     pub fn decklink_source_enable_pinned(s: *mut DecklinkSourceHandle) -> bool;
     pub fn decklink_source_disable_pinned(s: *mut DecklinkSourceHandle) -> bool;
@@ -75,12 +64,7 @@ unsafe extern "C" {
         nominal_fps_out: *mut f64,
     ) -> bool;
     pub fn decklink_source_return_buffer(s: *mut DecklinkSourceHandle, index: i32);
-    pub fn decklink_source_frame_info(
-        s: *mut DecklinkSourceHandle,
-        w: *mut u32,
-        h: *mut u32,
-        fmt_out: *mut u32,
-    );
+    pub fn decklink_source_frame_info(s: *mut DecklinkSourceHandle, w: *mut u32, h: *mut u32, fmt_out: *mut u32);
     pub fn decklink_cv_frame_release(cv: *mut std::ffi::c_void);
     pub fn decklink_source_start(s: *mut DecklinkSourceHandle) -> bool;
     pub fn decklink_source_stop(s: *mut DecklinkSourceHandle);
@@ -109,18 +93,11 @@ unsafe extern "C" {
         token: u64,
         token_queued: *mut bool,
     ) -> bool;
-    pub fn decklink_output_present_cv(
-        o: *mut DecklinkOutputHandle,
-        cv: *mut std::ffi::c_void,
-        token: u64,
-    ) -> bool;
+    pub fn decklink_output_present_cv(o: *mut DecklinkOutputHandle, cv: *mut std::ffi::c_void, token: u64) -> bool;
     pub fn decklink_cv_buffer_new(width: i32, height: i32) -> *mut std::ffi::c_void;
     pub fn decklink_cv_buffer_iosurface(cv: *mut std::ffi::c_void) -> *mut std::ffi::c_void;
     pub fn decklink_cv_buffer_release(cv: *mut std::ffi::c_void);
-    pub fn decklink_output_take_completed(
-        o: *mut DecklinkOutputHandle,
-        token: *mut u64,
-    ) -> bool;
+    pub fn decklink_output_take_completed(o: *mut DecklinkOutputHandle, token: *mut u64) -> bool;
     pub fn decklink_output_completion_available(o: *mut DecklinkOutputHandle) -> bool;
     pub fn decklink_output_pixel_format(o: *mut DecklinkOutputHandle) -> u32;
 }

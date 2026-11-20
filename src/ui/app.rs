@@ -4,9 +4,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use super::super::{APP_NAME, PROJECT_FILE_EXTENSION};
-use crate::engine::{
-    Command, Engine, EngineRuntime, RepaintWake, Runner, RunnerStats, ViewerId, publish_state,
-};
+use crate::engine::{Command, Engine, EngineRuntime, RepaintWake, Runner, RunnerStats, ViewerId, publish_state};
 use crate::platform::poll_open_file;
 use crate::ui::remote::RemoteHost;
 use crate::ui::viewer::{self, HostAction, HostView, UiMode, Viewer, ensure_extension};
@@ -45,10 +43,7 @@ impl App {
             }
             None => (None, None),
         };
-        let render_state = cc
-            .wgpu_render_state
-            .as_ref()
-            .expect("eframe wgpu render state");
+        let render_state = cc.wgpu_render_state.as_ref().expect("eframe wgpu render state");
         let runtime = EngineRuntime::start(
             startup_path,
             render_state.device.clone(),
@@ -66,12 +61,7 @@ impl App {
         viewer.last_error = runtime.startup_error.map(|error| error.message());
         viewer.last_warning = runtime.startup_warning;
 
-        let remote = RemoteHost::new(
-            engine.clone(),
-            runner.snapshot_slot(),
-            runner.commands(),
-            runner.focus_handle(ViewerId::Remote),
-        );
+        let remote = RemoteHost::new(engine.clone(), runner.snapshot_slot(), runner.commands(), runner.focus_handle(ViewerId::Remote));
 
         super::configure(&cc.egui_ctx);
 
@@ -98,10 +88,7 @@ impl App {
             let action = actions[index].clone();
             match action {
                 HostAction::OpenDialog => {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter(format!("{} project", APP_NAME), &[PROJECT_FILE_EXTENSION])
-                        .pick_file()
-                    {
+                    if let Some(path) = rfd::FileDialog::new().add_filter(format!("{} project", APP_NAME), &[PROJECT_FILE_EXTENSION]).pick_file() {
                         self.viewer.request_open(path, &snapshot, &mut actions);
                     }
                 }
@@ -147,9 +134,7 @@ impl App {
         let dropped = ctx.input_mut(|input| std::mem::take(&mut input.raw.dropped_files));
         for file in dropped {
             let path = file.path().to_path_buf();
-            if path.extension().and_then(|extension| extension.to_str())
-                == Some(PROJECT_FILE_EXTENSION)
-            {
+            if path.extension().and_then(|extension| extension.to_str()) == Some(PROJECT_FILE_EXTENSION) {
                 self.request_open(path);
                 break;
             }
@@ -158,8 +143,7 @@ impl App {
 
     fn handle_platform_open_files(&mut self) {
         if let Some(path) = poll_open_file()
-            && path.extension().and_then(|extension| extension.to_str())
-                == Some(PROJECT_FILE_EXTENSION)
+            && path.extension().and_then(|extension| extension.to_str()) == Some(PROJECT_FILE_EXTENSION)
         {
             self.request_open(path);
         }
@@ -177,9 +161,7 @@ impl App {
             .map(|stem| stem.to_string_lossy().to_string())
             .unwrap_or_else(|| "Untitled".to_string());
         let prefix = if snapshot.state.dirty { "* " } else { "" };
-        ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
-            "{prefix}{filename} — {APP_NAME}"
-        )));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!("{prefix}{filename} — {APP_NAME}")));
     }
 }
 
@@ -208,11 +190,7 @@ impl eframe::App for App {
         let visible = !minimized && occluded != Some(true);
         self.runner.set_window_state(visible);
 
-        let interval = if visible {
-            VISIBLE_REPAINT
-        } else {
-            HIDDEN_REPAINT
-        };
+        let interval = if visible { VISIBLE_REPAINT } else { HIDDEN_REPAINT };
         ctx.request_repaint_after(interval);
     }
 
@@ -224,8 +202,7 @@ impl eframe::App for App {
         self.present_stats.record_frame();
 
         let discovery_focus = viewer::selected_protocol(&snapshot);
-        self.runner
-            .set_discovery_focus(ViewerId::Native, discovery_focus.as_ref());
+        self.runner.set_discovery_focus(ViewerId::Native, discovery_focus.as_ref());
 
         let (tick_fps, work_ms, gpu_ms) = {
             let stats = self.runner.stats();
@@ -234,9 +211,7 @@ impl eframe::App for App {
         };
         let present_fps = self.present_stats.fps();
         let mut status = format!("{tick_fps:.0} tick · {present_fps:.0} present · {work_ms:.1} ms");
-        let mut tooltip = String::from(
-            "Engine ticks over the last 2s · UI frames presented over the last 2s · CPU time per tick",
-        );
+        let mut tooltip = String::from("Engine ticks over the last 2s · UI frames presented over the last 2s · CPU time per tick");
         if let Some(gpu_ms) = gpu_ms {
             status.push_str(&format!(" · {gpu_ms:.1} ms GPU"));
             tooltip.push_str(" · GPU canvas time");
@@ -256,8 +231,7 @@ impl eframe::App for App {
                 web_status: remote_status.as_deref(),
             },
         );
-        self.runner
-            .set_preview_rect(output.canvas_rect, ui.ctx().pixels_per_point());
+        self.runner.set_preview_rect(output.canvas_rect, ui.ctx().pixels_per_point());
         self.execute_actions(output.actions);
     }
 

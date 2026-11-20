@@ -4,12 +4,7 @@ use super::Engine;
 use crate::compositor::{Compositor, Draw, Rect, Shared};
 
 impl Engine {
-    pub fn ensure_compositor(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        target_format: wgpu::TextureFormat,
-    ) {
+    pub fn ensure_compositor(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, target_format: wgpu::TextureFormat) {
         if self.comp.is_none() {
             self.comp = Some(Compositor::new(device, queue, target_format));
         }
@@ -58,13 +53,7 @@ impl Engine {
         let Some(comp) = self.comp.as_mut() else {
             return;
         };
-        comp.prefetch_sources(
-            device,
-            queue,
-            &self.registry,
-            &self.state.cfg.canvas,
-            self.state.expanded_source_id.as_deref(),
-        );
+        comp.prefetch_sources(device, queue, &self.registry, &self.state.cfg.canvas, self.state.expanded_source_id.as_deref());
         comp.flush_uploads(queue);
     }
 
@@ -94,13 +83,7 @@ impl Engine {
             return;
         }
         let comp = self.comp.as_mut().expect("compositor not initialized");
-        comp.render_canvas(
-            device,
-            queue,
-            &self.state.cfg.canvas,
-            &self.registry,
-            self.state.expanded_source_id.as_deref(),
-        );
+        comp.render_canvas(device, queue, &self.state.cfg.canvas, &self.registry, self.state.expanded_source_id.as_deref());
         if let Some((texture, w, h)) = comp.canvas_texture() {
             self.output_registry.present_all(texture, w, h, device, queue);
         }

@@ -7,10 +7,7 @@ use tokio::net::TcpStream;
 use vnc::{PixelFormat as VncPixelFormat, VncClient, VncConnector, VncEncoding, VncEvent, X11Event};
 
 use crate::secret;
-use super::super::{
-    CpuFrame, Frame, FramePool, Framebuffer, SourceRef, SourceStats, VideoSource,
-    PUBLISH_INTERVAL, publish_due, sleep_while_running,
-};
+use super::super::{CpuFrame, Frame, FramePool, Framebuffer, SourceRef, SourceStats, VideoSource, PUBLISH_INTERVAL, publish_due, sleep_while_running};
 
 /// Default RFB port.
 const DEFAULT_PORT: u16 = 5900;
@@ -381,13 +378,7 @@ async fn run_session(
 
 /// Open and authenticate one session. Returns `None` on any failure so the
 /// caller retries after a delay.
-async fn connect(
-    host: &str,
-    port: u16,
-    label: &str,
-    config: &VncSourceConfig,
-    source_ref: &str,
-) -> Option<VncClient> {
+async fn connect(host: &str, port: u16, label: &str, config: &VncSourceConfig, source_ref: &str) -> Option<VncClient> {
     let stream = match tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect((host, port))).await {
         Ok(Ok(stream)) => stream,
         Ok(Err(e)) => {
@@ -473,22 +464,14 @@ fn track(result: Applied, pending: &mut bool) -> bool {
 /// published.
 fn apply_event(event: VncEvent, framebuffer: &mut Option<Framebuffer>, rects: &mut u64) -> Applied {
     return match event {
-        VncEvent::SetResolution(screen) => {
-            resize(framebuffer, screen.width as u32, screen.height as u32)
-        }
+        VncEvent::SetResolution(screen) => resize(framebuffer, screen.width as u32, screen.height as u32),
         VncEvent::DesktopUpdate(update) => match &update.layout {
             Some(layout) => resize(framebuffer, layout.width as u32, layout.height as u32),
             None => Applied::None,
         },
         VncEvent::RawImage(rect, data) => match framebuffer.as_mut() {
             Some(fb) => {
-                fb.blit(
-                    rect.x as u32,
-                    rect.y as u32,
-                    rect.width as u32,
-                    rect.height as u32,
-                    &data,
-                );
+                fb.blit(rect.x as u32, rect.y as u32, rect.width as u32, rect.height as u32, &data);
                 *rects += 1;
                 Applied::Dirty
             }
@@ -497,14 +480,7 @@ fn apply_event(event: VncEvent, framebuffer: &mut Option<Framebuffer>, rects: &m
         VncEvent::Copy(dst, src) => match framebuffer.as_mut() {
             Some(fb) => {
                 let (width, height) = (dst.width.min(src.width) as u32, dst.height.min(src.height) as u32);
-                fb.copy_rect(
-                    dst.x as u32,
-                    dst.y as u32,
-                    src.x as u32,
-                    src.y as u32,
-                    width,
-                    height,
-                );
+                fb.copy_rect(dst.x as u32, dst.y as u32, src.x as u32, src.y as u32, width, height);
                 *rects += 1;
                 Applied::Dirty
             }
@@ -571,8 +547,20 @@ mod tests {
     #[test]
     fn is_configured_requires_a_host() {
         assert!(!VncSourceConfig::default().is_configured());
-        assert!(!VncSourceConfig { host: "   ".into(), ..Default::default() }.is_configured());
-        assert!(VncSourceConfig { host: "studio".into(), ..Default::default() }.is_configured());
+        assert!(
+            !VncSourceConfig {
+                host: "   ".into(),
+                ..Default::default()
+            }
+            .is_configured()
+        );
+        assert!(
+            VncSourceConfig {
+                host: "studio".into(),
+                ..Default::default()
+            }
+            .is_configured()
+        );
     }
 
     #[test]
@@ -641,9 +629,7 @@ mod tests {
     }
 
     /// 32 bpp, 24 depth, little-endian BGRA, matching `VncPixelFormat::bgra()`.
-    const SERVER_PIXEL_FORMAT: [u8; 16] = [
-        32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 16, 8, 0, 0, 0, 0,
-    ];
+    const SERVER_PIXEL_FORMAT: [u8; 16] = [32, 24, 0, 1, 0, 255, 0, 255, 0, 255, 16, 8, 0, 0, 0, 0];
 
     /// Drive one real RFB session: version exchange, no-auth handshake, a 2x2
     /// desktop painted by a single Raw rectangle, then hang up.
@@ -691,8 +677,7 @@ mod tests {
                     let mut request = [0u8; 9];
                     stream.read_exact(&mut request).unwrap();
                     let pixels: [u8; 16] = [
-                        0x11, 0x22, 0x33, 0xff, 0x44, 0x55, 0x66, 0xff, 0x77, 0x88, 0x99, 0xff,
-                        0xaa, 0xbb, 0xcc, 0xff,
+                        0x11, 0x22, 0x33, 0xff, 0x44, 0x55, 0x66, 0xff, 0x77, 0x88, 0x99, 0xff, 0xaa, 0xbb, 0xcc, 0xff,
                     ];
                     let mut update = vec![0u8, 0u8];
                     update.extend_from_slice(&1u16.to_be_bytes()); // one rectangle
@@ -732,10 +717,7 @@ mod tests {
             {
                 return frame;
             }
-            assert!(
-                Instant::now() < deadline,
-                "VNC source never published the test rectangle"
-            );
+            assert!(Instant::now() < deadline, "VNC source never published the test rectangle");
             std::thread::sleep(Duration::from_millis(20));
         }
     }

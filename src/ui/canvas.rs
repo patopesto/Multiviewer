@@ -4,9 +4,7 @@ use std::sync::mpsc::Sender;
 use eframe::egui_wgpu;
 
 use crate::compositor::{self, Draw, Rect};
-use crate::config::{
-    Canvas, Source, SourceBorderVisibility, SourceId, SourceLabelVisibility, TextureMode,
-};
+use crate::config::{Canvas, Source, SourceBorderVisibility, SourceId, SourceLabelVisibility, TextureMode};
 use crate::engine::{Command, EngineSnapshot, PreviewFrame, Selector};
 use crate::sources::{SourceKey, SourceStats};
 
@@ -110,13 +108,7 @@ fn scroll_device(previous: ScrollDevice, events: &[egui::Event]) -> ScrollDevice
     return device;
 }
 
-fn scroll_nav(
-    zoom_delta: f32,
-    scroll: egui::Vec2,
-    shift: bool,
-    device: ScrollDevice,
-    zoom_speed: f32,
-) -> Option<Command> {
+fn scroll_nav(zoom_delta: f32, scroll: egui::Vec2, shift: bool, device: ScrollDevice, zoom_speed: f32) -> Option<Command> {
     if zoom_delta != 1.0 {
         return Some(Command::Zoom { factor: zoom_delta });
     }
@@ -128,9 +120,7 @@ fn scroll_nav(
     } else if device == ScrollDevice::Wheel {
         1.1_f32.powf(scroll.y / 50.0)
     } else {
-        return Some(Command::Pan {
-            delta: [scroll.x, scroll.y],
-        });
+        return Some(Command::Pan { delta: [scroll.x, scroll.y] });
     };
     if factor == 1.0 {
         return None;
@@ -157,12 +147,7 @@ impl egui_wgpu::CallbackTrait for CanvasCallback {
         Vec::new()
     }
 
-    fn paint(
-        &self,
-        _info: egui::PaintCallbackInfo,
-        rpass: &mut wgpu::RenderPass<'static>,
-        _resources: &egui_wgpu::CallbackResources,
-    ) {
+    fn paint(&self, _info: egui::PaintCallbackInfo, rpass: &mut wgpu::RenderPass<'static>, _resources: &egui_wgpu::CallbackResources) {
         let [x, y, w, h] = self.rect_px;
         rpass.set_viewport(x, y, w, h, 0.0, 1.0);
         rpass.set_scissor_rect(x as u32, y as u32, w as u32, h as u32);
@@ -239,19 +224,8 @@ pub fn update(
                 start: pos,
                 pan: doc.view.pan,
             });
-        } else if let Some((id, handle)) = hit_resize_handle(
-            canvas,
-            doc.selected_source_id.as_deref(),
-            pos,
-            scale,
-            origin_x,
-            origin_y,
-        ) {
-            let source = canvas
-                .sources
-                .iter()
-                .find(|source| source.uuid == id)
-                .expect("hit-tested source exists");
+        } else if let Some((id, handle)) = hit_resize_handle(canvas, doc.selected_source_id.as_deref(), pos, scale, origin_x, origin_y) {
+            let source = canvas.sources.iter().find(|source| source.uuid == id).expect("hit-tested source exists");
             state.drag = Some(CanvasDrag::Resize {
                 id,
                 handle,
@@ -260,11 +234,7 @@ pub fn update(
             });
         } else if let Some(id) = hit_test(canvas, pos, scale, origin_x, origin_y) {
             let _ = commands.send(Command::SelectSource(Selector::Id(id.clone())));
-            let source = canvas
-                .sources
-                .iter()
-                .find(|source| source.uuid == id)
-                .expect("hit-tested source exists");
+            let source = canvas.sources.iter().find(|source| source.uuid == id).expect("hit-tested source exists");
             state.drag = Some(CanvasDrag::Move {
                 id,
                 start: pos,
@@ -303,22 +273,10 @@ pub fn update(
                     });
                 }
             }
-            Some(CanvasDrag::Resize {
-                id,
-                handle,
-                start,
-                origin,
-            }) => {
+            Some(CanvasDrag::Resize { id, handle, start, origin }) => {
                 let pointer = response.interact_pointer_pos().unwrap_or(*start);
-                let ((x, y, width, height), next) = snap_resize(
-                    canvas,
-                    id,
-                    *handle,
-                    *origin,
-                    (pointer.x - start.x, pointer.y - start.y),
-                    scale,
-                    guides,
-                );
+                let ((x, y, width, height), next) =
+                    snap_resize(canvas, id, *handle, *origin, (pointer.x - start.x, pointer.y - start.y), scale, guides);
                 guides = next;
                 let _ = commands.send(Command::SetSourceRect {
                     source: Selector::Id(id.clone()),
@@ -343,16 +301,12 @@ pub fn update(
         state.snap_guides = guides;
     }
 
-    if ui_visible && response.hovered() && !primary_down && !middle_down
+    if ui_visible
+        && response.hovered()
+        && !primary_down
+        && !middle_down
         && let Some(pos) = response.hover_pos()
-        && let Some((_, handle)) = hit_resize_handle(
-            canvas,
-            doc.selected_source_id.as_deref(),
-            pos,
-            scale,
-            origin_x,
-            origin_y,
-        )
+        && let Some((_, handle)) = hit_resize_handle(canvas, doc.selected_source_id.as_deref(), pos, scale, origin_x, origin_y)
     {
         ui.output_mut(|output| output.cursor_icon = cursor_for_handle(handle));
     }
@@ -362,8 +316,7 @@ pub fn update(
     }
 
     if ui_visible && response.hovered() {
-        let (zoom_delta, scroll, shift) =
-            ctx.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.modifiers.shift));
+        let (zoom_delta, scroll, shift) = ctx.input(|i| (i.zoom_delta(), i.smooth_scroll_delta, i.modifiers.shift));
         let zoom_speed = ctx.options(|o| o.input_options.scroll_zoom_speed);
         let nav = scroll_nav(zoom_delta, scroll, shift, state.scroll_device, zoom_speed);
         if let Some(command) = nav {
@@ -379,12 +332,7 @@ pub fn update(
             painter.add(egui_wgpu::Callback::new_paint_callback(
                 rect,
                 CanvasCallback {
-                    rect_px: [
-                        rect.min.x * ppp,
-                        rect.min.y * ppp,
-                        rect.width() * ppp,
-                        rect.height() * ppp,
-                    ],
+                    rect_px: [rect.min.x * ppp, rect.min.y * ppp, rect.width() * ppp, rect.height() * ppp],
                     shared: preview.shared.clone(),
                     draw: preview.draw.clone(),
                 },
@@ -410,9 +358,7 @@ pub fn update(
 
     if ui_visible {
         if response.secondary_clicked() && doc.expanded_source_id.is_none() {
-            let target = response
-                .interact_pointer_pos()
-                .and_then(|pos| hit_test(canvas, pos, scale, origin_x, origin_y));
+            let target = response.interact_pointer_pos().and_then(|pos| hit_test(canvas, pos, scale, origin_x, origin_y));
             if let Some(id) = &target {
                 let _ = commands.send(Command::SelectSource(Selector::Id(id.clone())));
             }
@@ -438,10 +384,7 @@ pub fn update(
         if doc.expanded_source_id.is_some() {
             let close_icon = asset_image!("close.svg");
             let close_image = egui::Image::new(close_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
-            let close_rect = egui::Rect::from_min_size(
-                egui::pos2(rect.max.x - 80.0, rect.min.y + 10.0),
-                egui::vec2(30.0, 30.0),
-            );
+            let close_rect = egui::Rect::from_min_size(egui::pos2(rect.max.x - 80.0, rect.min.y + 10.0), egui::vec2(30.0, 30.0));
             let close_btn = egui::Button::image(close_image).corner_radius(5.0);
             if ui.put(close_rect, close_btn).on_hover_text("Exit expanded view").clicked() {
                 let _ = commands.send(Command::ExitExpanded);
@@ -450,10 +393,7 @@ pub fn update(
 
         let btn_icon = asset_image!("compress.svg");
         let btn_image = egui::Image::new(btn_icon).fit_to_exact_size(egui::vec2(25.0, 25.0));
-        let btn_rect = egui::Rect::from_min_size(
-            egui::pos2(rect.max.x - 40.0, rect.min.y + 10.0),
-            egui::vec2(30.0, 30.0),
-        );
+        let btn_rect = egui::Rect::from_min_size(egui::pos2(rect.max.x - 40.0, rect.min.y + 10.0), egui::vec2(30.0, 30.0));
         let btn = egui::Button::image(btn_image).corner_radius(5.0);
         if ui.put(btn_rect, btn).on_hover_text("Re-center view").clicked() {
             let _ = commands.send(Command::RecenterView);
@@ -537,16 +477,9 @@ fn source_menu(ui: &mut egui::Ui, canvas: &Canvas, id: &SourceId, commands: &Sen
     ui.separator();
 
     ui.menu_button("Label", |ui| {
-        for visibility in [
-            SourceLabelVisibility::Inherit,
-            SourceLabelVisibility::Show,
-            SourceLabelVisibility::Hide,
-        ] {
+        for visibility in [SourceLabelVisibility::Inherit, SourceLabelVisibility::Show, SourceLabelVisibility::Hide] {
             let label = visibility.label();
-            if ui
-                .selectable_label(source.label_visibility == visibility, label)
-                .clicked()
-            {
+            if ui.selectable_label(source.label_visibility == visibility, label).clicked() {
                 let _ = commands.send(Command::SetSourceLabelVisibility {
                     source: selector.clone(),
                     value: visibility,
@@ -562,10 +495,7 @@ fn source_menu(ui: &mut egui::Ui, canvas: &Canvas, id: &SourceId, commands: &Sen
             SourceBorderVisibility::Hide,
         ] {
             let label = visibility.label();
-            if ui
-                .selectable_label(source.border_visibility == visibility, label)
-                .clicked()
-            {
+            if ui.selectable_label(source.border_visibility == visibility, label).clicked() {
                 let _ = commands.send(Command::SetSourceBorderVisibility {
                     source: selector.clone(),
                     value: visibility,
@@ -589,11 +519,7 @@ fn source_menu(ui: &mut egui::Ui, canvas: &Canvas, id: &SourceId, commands: &Sen
 
 fn display_transform(canvas: &Canvas, zoom: f32, pan: [f32; 2], panel: &Rect) -> (f32, f32, f32) {
     let (base_scale, base_ox, base_oy) = compositor::canvas_transform(canvas, panel);
-    return (
-        base_scale * zoom,
-        base_ox + pan[0],
-        base_oy + pan[1],
-    );
+    return (base_scale * zoom, base_ox + pan[0], base_oy + pan[1]);
 }
 
 fn hit_test(canvas: &Canvas, pos: egui::Pos2, scale: f32, origin_x: f32, origin_y: f32) -> Option<SourceId> {
@@ -661,13 +587,7 @@ fn snap_candidates(canvas: &Canvas, exclude_uuid: &str) -> SnapCandidates {
     return SnapCandidates { x, y };
 }
 
-fn snap_value(
-    value: f32,
-    candidates: &[f32],
-    snap_threshold: f32,
-    break_threshold: f32,
-    current: Option<f32>,
-) -> Option<f32> {
+fn snap_value(value: f32, candidates: &[f32], snap_threshold: f32, break_threshold: f32, current: Option<f32>) -> Option<f32> {
     let mut best = None;
     let mut best_dist = f32::INFINITY;
     for &candidate in candidates {
@@ -691,12 +611,7 @@ fn snap_value(
     return None;
 }
 
-fn resolve_axis_snap(
-    snap_lo: Option<f32>,
-    snap_hi: Option<f32>,
-    lo: f32,
-    hi: f32,
-) -> (f32, f32) {
+fn resolve_axis_snap(snap_lo: Option<f32>, snap_hi: Option<f32>, lo: f32, hi: f32) -> (f32, f32) {
     return match (snap_lo, snap_hi) {
         (Some(lo_snap), Some(hi_snap)) => {
             if (lo_snap - lo).abs() < (hi_snap - hi).abs() {
@@ -740,10 +655,7 @@ fn snap_move(
     let (y_offset, guide_y) = resolve_axis_snap(snap_top, snap_bottom, top, bottom);
 
     return (
-        (
-            (proposed_x + x_offset).round(),
-            (proposed_y + y_offset).round(),
-        ),
+        ((proposed_x + x_offset).round(), (proposed_y + y_offset).round()),
         SnapGuides {
             x: if x_offset != 0.0 { Some(guide_x) } else { None },
             y: if y_offset != 0.0 { Some(guide_y) } else { None },
@@ -775,76 +687,27 @@ fn snap_resize(
 
     let (x, y, w, h, guide_x, guide_y) = match handle {
         ResizeHandle::Left => {
-            let (x, w, guide) = resize_leading(
-                start.x,
-                start.w,
-                dx,
-                &candidates.x,
-                snap_threshold,
-                break_threshold,
-                guides.x,
-            );
+            let (x, w, guide) = resize_leading(start.x, start.w, dx, &candidates.x, snap_threshold, break_threshold, guides.x);
             (x, start.y, w, start.h, guide, None)
         }
         ResizeHandle::Right => {
-            let (_, w, guide) = resize_trailing(
-                start.x,
-                start.w,
-                dx,
-                &candidates.x,
-                snap_threshold,
-                break_threshold,
-                guides.x,
-            );
+            let (_, w, guide) = resize_trailing(start.x, start.w, dx, &candidates.x, snap_threshold, break_threshold, guides.x);
             (start.x, start.y, w, start.h, guide, None)
         }
         ResizeHandle::Top => {
-            let (y, h, guide) = resize_leading(
-                start.y,
-                start.h,
-                dy,
-                &candidates.y,
-                snap_threshold,
-                break_threshold,
-                guides.y,
-            );
+            let (y, h, guide) = resize_leading(start.y, start.h, dy, &candidates.y, snap_threshold, break_threshold, guides.y);
             (start.x, y, start.w, h, None, guide)
         }
         ResizeHandle::Bottom => {
-            let (_, h, guide) = resize_trailing(
-                start.y,
-                start.h,
-                dy,
-                &candidates.y,
-                snap_threshold,
-                break_threshold,
-                guides.y,
-            );
+            let (_, h, guide) = resize_trailing(start.y, start.h, dy, &candidates.y, snap_threshold, break_threshold, guides.y);
             (start.x, start.y, start.w, h, None, guide)
         }
-        _ => resize_corner(
-            handle,
-            start,
-            dx,
-            dy,
-            &candidates,
-            snap_threshold,
-            break_threshold,
-            guides,
-        ),
+        _ => resize_corner(handle, start, dx, dy, &candidates, snap_threshold, break_threshold, guides),
     };
 
     return (
-        (
-            x.round(),
-            y.round(),
-            w.max(1.0).round() as u32,
-            h.max(1.0).round() as u32,
-        ),
-        SnapGuides {
-            x: guide_x,
-            y: guide_y,
-        },
+        (x.round(), y.round(), w.max(1.0).round() as u32, h.max(1.0).round() as u32),
+        SnapGuides { x: guide_x, y: guide_y },
     );
 }
 
@@ -857,13 +720,7 @@ fn resize_leading(
     break_threshold: f32,
     current_guide: Option<f32>,
 ) -> (f32, f32, Option<f32>) {
-    if let Some(snap) = snap_value(
-        start + delta,
-        candidates,
-        snap_threshold,
-        break_threshold,
-        current_guide,
-    ) {
+    if let Some(snap) = snap_value(start + delta, candidates, snap_threshold, break_threshold, current_guide) {
         let pos = snap.min(start + size - 1.0);
         return (pos, (start + size) - pos, Some(snap));
     }
@@ -884,13 +741,7 @@ fn resize_trailing(
     break_threshold: f32,
     current_guide: Option<f32>,
 ) -> (f32, f32, Option<f32>) {
-    if let Some(snap) = snap_value(
-        start + size + delta,
-        candidates,
-        snap_threshold,
-        break_threshold,
-        current_guide,
-    ) {
+    if let Some(snap) = snap_value(start + size + delta, candidates, snap_threshold, break_threshold, current_guide) {
         return (start, (snap - start).max(1.0), Some(snap));
     }
     return (start, (size + delta).max(1.0), None);
@@ -998,10 +849,7 @@ fn draw_overlays(
     painter.rect_stroke(
         egui::Rect::from_min_size(egui::pos2(cx, cy), egui::vec2(cw, ch)),
         0.0,
-        egui::Stroke::new(
-            2.0_f32,
-            egui::Color32::from_rgba_unmultiplied(60, 60, 60, 120),
-        ),
+        egui::Stroke::new(2.0_f32, egui::Color32::from_rgba_unmultiplied(60, 60, 60, 120)),
         egui::StrokeKind::Inside,
     );
 
@@ -1037,12 +885,7 @@ fn draw_overlays(
     }
 }
 
-fn draw_placeholders(
-    painter: &egui::Painter,
-    snapshot: &EngineSnapshot,
-    panel_rect: &Rect,
-    transform: (f32, f32, f32),
-) {
+fn draw_placeholders(painter: &egui::Painter, snapshot: &EngineSnapshot, panel_rect: &Rect, transform: (f32, f32, f32)) {
     let doc = &snapshot.state;
     let canvas = &doc.cfg.canvas;
     let (scale, offset_x, offset_y) = transform;
@@ -1052,10 +895,7 @@ fn draw_placeholders(
     let ch = canvas.height as f32 * scale;
     let expanded = doc.expanded_source_id.is_some();
 
-    let clip = egui::Rect::from_min_size(
-        egui::pos2(panel_rect.x, panel_rect.y),
-        egui::vec2(panel_rect.w.max(0.0), panel_rect.h.max(0.0)),
-    );
+    let clip = egui::Rect::from_min_size(egui::pos2(panel_rect.x, panel_rect.y), egui::vec2(panel_rect.w.max(0.0), panel_rect.h.max(0.0)));
     let painter = painter.with_clip_rect(clip);
 
     let mut sources: Vec<&Source> = canvas.sources.iter().collect();
@@ -1076,25 +916,13 @@ fn draw_placeholders(
         };
         let source_rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w.max(1.0), h.max(1.0)));
         let color = source_color(&source.uuid);
-        painter.rect_filled(
-            source_rect,
-            2.0,
-            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 45),
-        );
-        painter.rect_stroke(
-            source_rect,
-            2.0,
-            egui::Stroke::new(1.0, color),
-            egui::StrokeKind::Inside,
-        );
+        painter.rect_filled(source_rect, 2.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 45));
+        painter.rect_stroke(source_rect, 2.0, egui::Stroke::new(1.0, color), egui::StrokeKind::Inside);
 
         if w < 40.0 || h < 24.0 {
             continue;
         }
-        let panel_clip = egui::Rect::from_min_size(
-            egui::pos2(panel_rect.x, panel_rect.y),
-            egui::vec2(panel_rect.w.max(0.0), panel_rect.h.max(0.0)),
-        );
+        let panel_clip = egui::Rect::from_min_size(egui::pos2(panel_rect.x, panel_rect.y), egui::vec2(panel_rect.w.max(0.0), panel_rect.h.max(0.0)));
         let text_painter = painter.with_clip_rect(panel_clip.intersect(source_rect));
         text_painter.text(
             egui::pos2(x + 8.0, y + 6.0),
@@ -1165,10 +993,7 @@ fn placeholder_stats(snapshot: &EngineSnapshot, source: &Source) -> String {
     if stats.width == 0 || stats.height == 0 {
         return "connecting".to_string();
     }
-    return format!(
-        "{}x{} · {:.0} fps",
-        stats.width, stats.height, stats.computed_fps
-    );
+    return format!("{}x{} · {:.0} fps", stats.width, stats.height, stats.computed_fps);
 }
 
 /// Extended stats rows for a placed source; empty when it is not bound.
@@ -1178,10 +1003,7 @@ fn source_stats_lines(snapshot: &EngineSnapshot, source: &Source) -> Vec<String>
     };
     let key = SourceKey::new(source.protocol.clone(), source_ref.clone());
     let runtime = snapshot.runtime.source(&key);
-    return stats_lines(
-        runtime.map(|runtime| &runtime.stats),
-        runtime.is_some_and(|runtime| runtime.restart_pending),
-    );
+    return stats_lines(runtime.map(|runtime| &runtime.stats), runtime.is_some_and(|runtime| runtime.restart_pending));
 }
 
 fn stats_lines(stats: Option<&SourceStats>, restarting: bool) -> Vec<String> {
@@ -1195,15 +1017,9 @@ fn stats_lines(stats: Option<&SourceStats>, restarting: bool) -> Vec<String> {
         return vec!["connecting".to_string()];
     }
 
-    let mut lines = vec![format!(
-        "{}x{} {}",
-        stats.width, stats.height, stats.pixel_format
-    )];
+    let mut lines = vec![format!("{}x{} {}", stats.width, stats.height, stats.pixel_format)];
     if stats.nominal_fps > 0.0 {
-        lines.push(format!(
-            "{:.2} / {:.2} fps",
-            stats.computed_fps, stats.nominal_fps
-        ));
+        lines.push(format!("{:.2} / {:.2} fps", stats.computed_fps, stats.nominal_fps));
     } else {
         lines.push(format!("{:.2} fps", stats.computed_fps));
     }
@@ -1235,22 +1051,14 @@ fn stats_lines(stats: Option<&SourceStats>, restarting: bool) -> Vec<String> {
 
 /// Draw the stats block over each visible placement. Viewer-only: never part of
 /// the compositor draw, so it cannot reach an output.
-fn draw_source_stats_overlay(
-    painter: &egui::Painter,
-    snapshot: &EngineSnapshot,
-    panel_rect: &Rect,
-    transform: (f32, f32, f32),
-) {
+fn draw_source_stats_overlay(painter: &egui::Painter, snapshot: &EngineSnapshot, panel_rect: &Rect, transform: (f32, f32, f32)) {
     let doc = &snapshot.state;
     let canvas = &doc.cfg.canvas;
     let (scale, offset_x, offset_y) = transform;
     let cx = panel_rect.x + offset_x;
     let cy = panel_rect.y + offset_y;
     let expanded = doc.expanded_source_id.as_deref();
-    let clip = egui::Rect::from_min_size(
-        egui::pos2(panel_rect.x, panel_rect.y),
-        egui::vec2(panel_rect.w.max(0.0), panel_rect.h.max(0.0)),
-    );
+    let clip = egui::Rect::from_min_size(egui::pos2(panel_rect.x, panel_rect.y), egui::vec2(panel_rect.w.max(0.0), panel_rect.h.max(0.0)));
     let painter = painter.with_clip_rect(clip);
     let font = egui::FontId::monospace(11.0);
 
@@ -1296,25 +1104,14 @@ fn draw_source_stats_overlay(
             continue;
         }
 
-        let text_w = galleys[..used]
-            .iter()
-            .map(|galley| galley.size().x)
-            .fold(0.0_f32, f32::max);
+        let text_w = galleys[..used].iter().map(|galley| galley.size().x).fold(0.0_f32, f32::max);
         let text_x = (x + STATS_INSET).min(x + w);
         let text_y = (y + h - STATS_INSET - used as f32 * STATS_LINE_HEIGHT).max(y + STATS_INSET);
         let box_rect = egui::Rect::from_min_size(
             egui::pos2(text_x - 4.0, text_y - 3.0),
-            egui::vec2(
-                (text_w + 8.0).min(x + w - text_x + 4.0),
-                used as f32 * STATS_LINE_HEIGHT + 6.0,
-            ),
+            egui::vec2((text_w + 8.0).min(x + w - text_x + 4.0), used as f32 * STATS_LINE_HEIGHT + 6.0),
         );
-        let text_painter = painter.with_clip_rect(
-            clip.intersect(egui::Rect::from_min_size(
-                egui::pos2(x, y),
-                egui::vec2(w, h),
-            )),
-        );
+        let text_painter = painter.with_clip_rect(clip.intersect(egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h))));
         text_painter.rect_filled(box_rect, 2.0, egui::Color32::from_black_alpha(160));
         let mut line_y = text_y;
         for (index, galley) in galleys.into_iter().take(used).enumerate() {
@@ -1340,9 +1137,7 @@ fn source_color(uuid: &str) -> egui::Color32 {
         egui::Color32::from_rgb(190, 190, 110),
         egui::Color32::from_rgb(160, 150, 230),
     ];
-    let hash = uuid
-        .bytes()
-        .fold(0u32, |hash, byte| hash.wrapping_mul(31).wrapping_add(byte as u32));
+    let hash = uuid.bytes().fold(0u32, |hash, byte| hash.wrapping_mul(31).wrapping_add(byte as u32));
     return COLORS[hash as usize % COLORS.len()];
 }
 
@@ -1354,19 +1149,7 @@ mod tests {
     use crate::sources::Protocol;
 
     fn source(uuid: &str, x: f32, y: f32, width: u32, height: u32, z: i32) -> Source {
-        let mut source = Source::new(
-            uuid.into(),
-            Protocol::Test,
-            None,
-            x,
-            y,
-            width,
-            height,
-            z,
-            TextureMode::Fit,
-            false,
-            false,
-        );
+        let mut source = Source::new(uuid.into(), Protocol::Test, None, x, y, width, height, z, TextureMode::Fit, false, false);
         source.uuid = uuid.into();
         return source;
     }
@@ -1383,18 +1166,8 @@ mod tests {
         let mut engine = Engine::test_instance(Canvas::default());
         let uuid = engine.add_source();
         let snapshot = engine.snapshot();
-        let source = snapshot
-            .state
-            .cfg
-            .canvas
-            .sources
-            .iter()
-            .find(|source| source.uuid == uuid)
-            .unwrap();
-        assert_eq!(
-            source_heading(source),
-            format!("Test · {}", source.source_ref.clone().unwrap())
-        );
+        let source = snapshot.state.cfg.canvas.sources.iter().find(|source| source.uuid == uuid).unwrap();
+        assert_eq!(source_heading(source), format!("Test · {}", source.source_ref.clone().unwrap()));
     }
 
     #[test]
@@ -1405,39 +1178,18 @@ mod tests {
         let engine = Engine::test_instance(canvas(vec![bound, unbound]));
         let snapshot = engine.snapshot();
 
-        assert_eq!(
-            source_heading(&snapshot.state.cfg.canvas.sources[0]),
-            "Test · missing"
-        );
-        assert_eq!(
-            placeholder_stats(&snapshot, &snapshot.state.cfg.canvas.sources[0]),
-            "not connected"
-        );
-        assert_eq!(
-            source_heading(&snapshot.state.cfg.canvas.sources[1]),
-            "Test"
-        );
-        assert_eq!(
-            placeholder_stats(&snapshot, &snapshot.state.cfg.canvas.sources[1]),
-            ""
-        );
+        assert_eq!(source_heading(&snapshot.state.cfg.canvas.sources[0]), "Test · missing");
+        assert_eq!(placeholder_stats(&snapshot, &snapshot.state.cfg.canvas.sources[0]), "not connected");
+        assert_eq!(source_heading(&snapshot.state.cfg.canvas.sources[1]), "Test");
+        assert_eq!(placeholder_stats(&snapshot, &snapshot.state.cfg.canvas.sources[1]), "");
     }
 
     #[test]
     fn hit_test_uses_canvas_coordinates_and_topmost_z() {
-        let canvas = canvas(vec![
-            source("a", 0.0, 0.0, 640, 360, 0),
-            source("b", 100.0, 100.0, 640, 360, 1),
-        ]);
+        let canvas = canvas(vec![source("a", 0.0, 0.0, 640, 360, 0), source("b", 100.0, 100.0, 640, 360, 1)]);
 
-        assert_eq!(
-            hit_test(&canvas, egui::Pos2::new(200.0, 200.0), 1.0, 0.0, 0.0).as_deref(),
-            Some("b")
-        );
-        assert_eq!(
-            hit_test(&canvas, egui::Pos2::new(500.0, 50.0), 1.0, 0.0, 0.0).as_deref(),
-            Some("a")
-        );
+        assert_eq!(hit_test(&canvas, egui::Pos2::new(200.0, 200.0), 1.0, 0.0, 0.0).as_deref(), Some("b"));
+        assert_eq!(hit_test(&canvas, egui::Pos2::new(500.0, 50.0), 1.0, 0.0, 0.0).as_deref(), Some("a"));
         assert!(hit_test(&canvas, egui::Pos2::new(900.0, 900.0), 1.0, 0.0, 0.0).is_none());
     }
 
@@ -1445,10 +1197,7 @@ mod tests {
     fn hit_test_converts_screen_offsets_and_scale() {
         let canvas = canvas(vec![source("a", 100.0, 50.0, 640, 360, 0)]);
 
-        assert_eq!(
-            hit_test(&canvas, egui::Pos2::new(200.0, 100.0), 2.0, 0.0, 0.0).as_deref(),
-            Some("a")
-        );
+        assert_eq!(hit_test(&canvas, egui::Pos2::new(200.0, 100.0), 2.0, 0.0, 0.0).as_deref(), Some("a"));
         assert!(hit_test(&canvas, egui::Pos2::new(0.0, 0.0), 2.0, 0.0, 0.0).is_none());
     }
 
@@ -1464,14 +1213,8 @@ mod tests {
             hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(740.0, 50.0), 1.0, 0.0, 0.0),
             Some(("a".into(), ResizeHandle::TopRight))
         );
-        assert!(
-            hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(400.0, 200.0), 1.0, 0.0, 0.0)
-                .is_none()
-        );
-        assert!(
-            hit_resize_handle(&canvas, None, egui::Pos2::new(100.0, 50.0), 1.0, 0.0, 0.0)
-                .is_none()
-        );
+        assert!(hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(400.0, 200.0), 1.0, 0.0, 0.0).is_none());
+        assert!(hit_resize_handle(&canvas, None, egui::Pos2::new(100.0, 50.0), 1.0, 0.0, 0.0).is_none());
     }
 
     #[test]
@@ -1479,32 +1222,18 @@ mod tests {
         let canvas = canvas(vec![source("a", 100.0, 50.0, 640, 360, 0)]);
 
         // World (100, 50) is screen (380, 90) with a panel origin of (280, 40).
-        assert_eq!(
-            hit_test(&canvas, egui::Pos2::new(400.0, 100.0), 1.0, 280.0, 40.0).as_deref(),
-            Some("a")
-        );
-        assert!(
-            hit_test(&canvas, egui::Pos2::new(120.0, 60.0), 1.0, 280.0, 40.0).is_none()
-        );
+        assert_eq!(hit_test(&canvas, egui::Pos2::new(400.0, 100.0), 1.0, 280.0, 40.0).as_deref(), Some("a"));
+        assert!(hit_test(&canvas, egui::Pos2::new(120.0, 60.0), 1.0, 280.0, 40.0).is_none());
     }
 
     #[test]
     fn hit_test_with_panel_origin_picks_the_topmost_source() {
-        let canvas = canvas(vec![
-            source("a", 100.0, 50.0, 640, 360, 0),
-            source("b", 200.0, 100.0, 640, 360, 1),
-        ]);
+        let canvas = canvas(vec![source("a", 100.0, 50.0, 640, 360, 0), source("b", 200.0, 100.0, 640, 360, 1)]);
 
         // World (250, 150) is screen (530, 190) with a panel origin of (280, 40).
-        assert_eq!(
-            hit_test(&canvas, egui::Pos2::new(530.0, 190.0), 1.0, 280.0, 40.0).as_deref(),
-            Some("b")
-        );
+        assert_eq!(hit_test(&canvas, egui::Pos2::new(530.0, 190.0), 1.0, 280.0, 40.0).as_deref(), Some("b"));
         // World (150, 75) is screen (430, 115); only the lower source contains it.
-        assert_eq!(
-            hit_test(&canvas, egui::Pos2::new(430.0, 115.0), 1.0, 280.0, 40.0).as_deref(),
-            Some("a")
-        );
+        assert_eq!(hit_test(&canvas, egui::Pos2::new(430.0, 115.0), 1.0, 280.0, 40.0).as_deref(), Some("a"));
     }
 
     #[test]
@@ -1515,25 +1244,14 @@ mod tests {
             hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(380.0, 90.0), 1.0, 280.0, 40.0),
             Some(("a".into(), ResizeHandle::TopLeft))
         );
-        assert!(
-            hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(100.0, 50.0), 1.0, 280.0, 40.0)
-                .is_none()
-        );
+        assert!(hit_resize_handle(&canvas, Some("a"), egui::Pos2::new(100.0, 50.0), 1.0, 280.0, 40.0).is_none());
     }
 
     #[test]
     fn snap_move_snaps_to_the_canvas_edge() {
         let canvas = canvas(vec![source("a", 15.0, 100.0, 100, 100, 0)]);
 
-        let ((x, y), guides) = snap_move(
-            &canvas,
-            &"a".into(),
-            (15.0, 100.0),
-            (100.0, 100.0),
-            (-14.0, 0.0),
-            1.0,
-            SnapGuides::default(),
-        );
+        let ((x, y), guides) = snap_move(&canvas, &"a".into(), (15.0, 100.0), (100.0, 100.0), (-14.0, 0.0), 1.0, SnapGuides::default());
 
         assert_eq!((x, y), (0.0, 100.0));
         assert!(guides.x.is_some());
@@ -1541,20 +1259,9 @@ mod tests {
 
     #[test]
     fn snap_move_snaps_to_another_source_edge() {
-        let canvas = canvas(vec![
-            source("a", 0.0, 0.0, 100, 100, 0),
-            source("b", 300.0, 0.0, 100, 100, 1),
-        ]);
+        let canvas = canvas(vec![source("a", 0.0, 0.0, 100, 100, 0), source("b", 300.0, 0.0, 100, 100, 1)]);
 
-        let ((x, _), guides) = snap_move(
-            &canvas,
-            &"a".into(),
-            (0.0, 0.0),
-            (100.0, 100.0),
-            (199.0, 0.0),
-            1.0,
-            SnapGuides::default(),
-        );
+        let ((x, _), guides) = snap_move(&canvas, &"a".into(), (0.0, 0.0), (100.0, 100.0), (199.0, 0.0), 1.0, SnapGuides::default());
 
         assert_eq!(x, 200.0);
         assert!(guides.x.is_some());
@@ -1568,10 +1275,7 @@ mod tests {
 
     #[test]
     fn snap_resize_snaps_the_right_edge_to_a_neighbour() {
-        let canvas = canvas(vec![
-            source("a", 100.0, 100.0, 100, 100, 0),
-            source("b", 300.0, 100.0, 100, 100, 1),
-        ]);
+        let canvas = canvas(vec![source("a", 100.0, 100.0, 100, 100, 0), source("b", 300.0, 100.0, 100, 100, 1)]);
 
         let ((x, y, width, height), guides) = snap_resize(
             &canvas,
@@ -1603,10 +1307,7 @@ mod tests {
 
         assert_eq!((x, y), (100.0, 100.0));
         let aspect = width as f32 / height as f32;
-        assert!(
-            (aspect - 2.0).abs() < 0.02,
-            "aspect should be preserved, got {aspect}"
-        );
+        assert!((aspect - 2.0).abs() < 0.02, "aspect should be preserved, got {aspect}");
     }
 
     #[test]
@@ -1638,9 +1339,7 @@ mod tests {
         );
         assert_eq!(
             scroll_nav(1.0, delta, false, ScrollDevice::Trackpad, speed),
-            Some(Command::Pan {
-                delta: [3.0, 40.0]
-            })
+            Some(Command::Pan { delta: [3.0, 40.0] })
         );
         assert_eq!(
             scroll_nav(1.0, delta, true, ScrollDevice::Trackpad, speed),
@@ -1648,51 +1347,19 @@ mod tests {
                 factor: (43.0 * speed).exp()
             })
         );
-        assert_eq!(
-            scroll_nav(1.2, delta, false, ScrollDevice::Trackpad, speed),
-            Some(Command::Zoom { factor: 1.2 })
-        );
-        assert_eq!(
-            scroll_nav(1.0, egui::Vec2::ZERO, false, ScrollDevice::Trackpad, speed),
-            None
-        );
+        assert_eq!(scroll_nav(1.2, delta, false, ScrollDevice::Trackpad, speed), Some(Command::Zoom { factor: 1.2 }));
+        assert_eq!(scroll_nav(1.0, egui::Vec2::ZERO, false, ScrollDevice::Trackpad, speed), None);
     }
 
     #[test]
     fn scroll_nav_ignores_a_zoom_with_no_change() {
         let speed = 1.0 / 200.0;
 
+        assert_eq!(scroll_nav(1.0, egui::vec2(30.0, 0.0), false, ScrollDevice::Wheel, speed), None);
+        assert_eq!(scroll_nav(1.0, egui::vec2(30.0, -30.0), true, ScrollDevice::Trackpad, speed), None);
         assert_eq!(
-            scroll_nav(
-                1.0,
-                egui::vec2(30.0, 0.0),
-                false,
-                ScrollDevice::Wheel,
-                speed
-            ),
-            None
-        );
-        assert_eq!(
-            scroll_nav(
-                1.0,
-                egui::vec2(30.0, -30.0),
-                true,
-                ScrollDevice::Trackpad,
-                speed
-            ),
-            None
-        );
-        assert_eq!(
-            scroll_nav(
-                1.0,
-                egui::vec2(30.0, 0.0),
-                false,
-                ScrollDevice::Trackpad,
-                speed
-            ),
-            Some(Command::Pan {
-                delta: [30.0, 0.0]
-            })
+            scroll_nav(1.0, egui::vec2(30.0, 0.0), false, ScrollDevice::Trackpad, speed),
+            Some(Command::Pan { delta: [30.0, 0.0] })
         );
     }
 
@@ -1718,10 +1385,7 @@ mod tests {
         device = scroll_device(device, &[point(egui::TouchPhase::End)]);
         assert_eq!(device, ScrollDevice::Wheel);
 
-        device = scroll_device(
-            ScrollDevice::Trackpad,
-            &[wheel(egui::MouseWheelUnit::Line, egui::TouchPhase::Move)],
-        );
+        device = scroll_device(ScrollDevice::Trackpad, &[wheel(egui::MouseWheelUnit::Line, egui::TouchPhase::Move)]);
         assert_eq!(device, ScrollDevice::Wheel);
     }
 

@@ -19,10 +19,6 @@ pub fn configure(ctx: &egui::Context) {
 
     // Add "Hack" font to render glyphs (→, ←, ↓, ↑, etc..)
     let mut fonts = egui::FontDefinitions::default();
-    fonts
-        .families
-        .entry(egui::FontFamily::Proportional)
-        .or_default()
-        .push("Hack".to_owned());
+    fonts.families.entry(egui::FontFamily::Proportional).or_default().push("Hack".to_owned());
     ctx.set_fonts(fonts);
 }

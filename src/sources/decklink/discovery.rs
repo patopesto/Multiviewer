@@ -2,9 +2,8 @@ use std::ffi::c_char;
 use std::sync::{Arc, Mutex};
 
 use multiviewer_decklink::{
-    DisplayMode, VideoConnections, decklink_discovery_free, decklink_discovery_input_count,
-    decklink_discovery_input_get, decklink_discovery_new, decklink_discovery_output_count,
-    decklink_discovery_output_get, decklink_discovery_output_mode,
+    DisplayMode, VideoConnections, decklink_discovery_free, decklink_discovery_input_count, decklink_discovery_input_get, decklink_discovery_new,
+    decklink_discovery_output_count, decklink_discovery_output_get, decklink_discovery_output_mode,
 };
 
 use crate::sources::PollGate;
@@ -67,14 +66,7 @@ impl Discovery {
                         let mut name = [0u8; 256];
                         let mut has_signal = false;
                         let mut connections = 0u32;
-                        decklink_discovery_input_get(
-                            d,
-                            i,
-                            name.as_mut_ptr() as *mut c_char,
-                            name.len(),
-                            &mut has_signal,
-                            &mut connections,
-                        );
+                        decklink_discovery_input_get(d, i, name.as_mut_ptr() as *mut c_char, name.len(), &mut has_signal, &mut connections);
                         let name_len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
                         let name = String::from_utf8_lossy(&name[..name_len]).to_string();
                         inputs.push(InputPort {
@@ -90,13 +82,7 @@ impl Discovery {
                     for i in 0..output_count {
                         let mut name = [0u8; 256];
                         let mut mode_count = 0i32;
-                        decklink_discovery_output_get(
-                            d,
-                            i,
-                            name.as_mut_ptr() as *mut c_char,
-                            name.len(),
-                            &mut mode_count,
-                        );
+                        decklink_discovery_output_get(d, i, name.as_mut_ptr() as *mut c_char, name.len(), &mut mode_count);
                         let name_len = name.iter().position(|&b| b == 0).unwrap_or(name.len());
                         let name = String::from_utf8_lossy(&name[..name_len]).to_string();
 
@@ -118,10 +104,8 @@ impl Discovery {
                                 &mut h,
                                 &mut fps,
                             );
-                            let mode_name_len =
-                                mode_name.iter().position(|&b| b == 0).unwrap_or(mode_name.len());
-                            let mode_name =
-                                String::from_utf8_lossy(&mode_name[..mode_name_len]).to_string();
+                            let mode_name_len = mode_name.iter().position(|&b| b == 0).unwrap_or(mode_name.len());
+                            let mode_name = String::from_utf8_lossy(&mode_name[..mode_name_len]).to_string();
                             if let Ok(mode) = DisplayMode::try_from(mode_id) {
                                 modes.push(OutputMode {
                                     name: mode_name,
@@ -158,12 +142,7 @@ impl Discovery {
     }
 
     pub fn find_by_name(&self, name: &str) -> Option<InputPort> {
-        self.input_ports
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|p| p.name == name)
-            .cloned()
+        self.input_ports.lock().unwrap().iter().find(|p| p.name == name).cloned()
     }
 
     pub fn list_outputs(&self) -> Vec<OutputPort> {
@@ -172,11 +151,6 @@ impl Discovery {
 
     #[allow(dead_code)]
     pub fn find_output_by_name(&self, name: &str) -> Option<OutputPort> {
-        self.output_ports
-            .lock()
-            .unwrap()
-            .iter()
-            .find(|p| p.name == name)
-            .cloned()
+        self.output_ports.lock().unwrap().iter().find(|p| p.name == name).cloned()
     }
 }

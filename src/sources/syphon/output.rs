@@ -1,10 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2_metal::{
-    MTLBlitCommandEncoder, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLDevice,
-    MTLOrigin, MTLSize, MTLTexture,
-};
+use objc2_metal::{MTLBlitCommandEncoder, MTLCommandBuffer, MTLCommandEncoder, MTLCommandQueue, MTLDevice, MTLOrigin, MTLSize, MTLTexture};
 use serde::{Deserialize, Serialize};
 use syphon_core::SyphonServer;
 use syphon_metal::wgpu_interop::{self, SharedEvent};
@@ -102,16 +99,11 @@ unsafe impl Send for SyphonPublisher {}
 impl SyphonPublisher {
     fn new(name: &str, device: &wgpu::Device, width: u32, height: u32) -> Option<Self> {
         let metal = MetalContext::from_wgpu_device(device)?;
-        let device_ptr =
-            metal.device() as *const ProtocolObject<dyn MTLDevice> as *mut AnyObject;
-        let server =
-            SyphonServer::new_with_name_and_device(name, device_ptr, width, height).ok()?;
+        let device_ptr = metal.device() as *const ProtocolObject<dyn MTLDevice> as *mut AnyObject;
+        let server = SyphonServer::new_with_name_and_device(name, device_ptr, width, height).ok()?;
         let event = wgpu_interop::new_shared_event(device);
         if event.is_none() {
-            tracing::warn!(
-                output = name,
-                "Syphon shared event unavailable; falling back to a GPU drain per publish"
-            );
+            tracing::warn!(output = name, "Syphon shared event unavailable; falling back to a GPU drain per publish");
         }
         return Some(Self {
             server,
@@ -135,12 +127,7 @@ impl SyphonPublisher {
     ///
     /// `wait` is the event value the flip submit signalled; `None` means no
     /// fence was staged, so fall back to the CPU drain before the blit.
-    fn publish(
-        &mut self,
-        flipped: &wgpu::Texture,
-        device: &wgpu::Device,
-        wait: Option<u64>,
-    ) -> PublishOutcome {
+    fn publish(&mut self, flipped: &wgpu::Texture, device: &wgpu::Device, wait: Option<u64>) -> PublishOutcome {
         let Some(surface) = self.pool.acquire() else {
             return PublishOutcome::PoolExhausted;
         };
@@ -154,8 +141,7 @@ impl SyphonPublisher {
         objc2::rc::autoreleasepool(|_| {
             wgpu_interop::with_metal_texture(flipped, |src| {
                 let Some(src) = src else { return };
-                let Some(dest) = self.metal.create_texture_from_iosurface(&surface, width, height)
-                else {
+                let Some(dest) = self.metal.create_texture_from_iosurface(&surface, width, height) else {
                     return;
                 };
                 let Some(cmd) = self.metal.queue().commandBuffer() else {
@@ -189,10 +175,8 @@ impl SyphonPublisher {
 
                 // Syphon references the command buffer and the texture before
                 // the commit, so the frame is on the GPU when it is announced.
-                let tex_ptr =
-                    &*dest as *const ProtocolObject<dyn MTLTexture> as *mut AnyObject;
-                let cmd_ptr =
-                    &*cmd as *const ProtocolObject<dyn MTLCommandBuffer> as *mut AnyObject;
+                let tex_ptr = &*dest as *const ProtocolObject<dyn MTLTexture> as *mut AnyObject;
+                let cmd_ptr = &*cmd as *const ProtocolObject<dyn MTLCommandBuffer> as *mut AnyObject;
                 unsafe { self.server.publish_metal_texture(tex_ptr, cmd_ptr) };
                 cmd.commit();
                 published = true;
@@ -203,11 +187,7 @@ impl SyphonPublisher {
         // comes around again; releasing immediately keeps the pool free.
         self.pool.release(surface);
 
-        return if published {
-            PublishOutcome::ZeroCopy
-        } else {
-            PublishOutcome::Failed
-        };
+        return if published { PublishOutcome::ZeroCopy } else { PublishOutcome::Failed };
     }
 }
 
@@ -343,18 +323,9 @@ impl SyphonOutput {
         });
     }
 
-    fn ensure_flipped_texture(
-        &self,
-        device: &wgpu::Device,
-        width: u32,
-        height: u32,
-        texture: &wgpu::Texture,
-    ) {
+    fn ensure_flipped_texture(&self, device: &wgpu::Device, width: u32, height: u32, texture: &wgpu::Texture) {
         let mut flipped = self.flipped.lock().unwrap();
-        let recreate = flipped
-            .as_ref()
-            .map(|target| target.layout.width != width || target.layout.height != height)
-            .unwrap_or(true);
+        let recreate = flipped.as_ref().map(|target| target.layout.width != width || target.layout.height != height).unwrap_or(true);
 
         TextureTarget::ensure(
             &mut flipped,
@@ -371,15 +342,11 @@ impl SyphonOutput {
                 entries: &[
                     wgpu::BindGroupEntry {
                         binding: 0,
-                        resource: wgpu::BindingResource::TextureView(
-                            &texture.create_view(&Default::default()),
-                        ),
+                        resource: wgpu::BindingResource::TextureView(&texture.create_view(&Default::default())),
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
-                        resource: wgpu::BindingResource::Sampler(
-                            self.flip_sampler.get().unwrap(),
-                        ),
+                        resource: wgpu::BindingResource::Sampler(self.flip_sampler.get().unwrap()),
                     },
                 ],
             });
@@ -391,14 +358,7 @@ impl SyphonOutput {
     /// Render the vertical flip. When `signal` is given, the event is staged so
     /// the submit raises it once the flip has been drawn; returns whether the
     /// submit is fenced. `None` means no flip was submitted.
-    fn render_flip(
-        &self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        width: u32,
-        height: u32,
-        signal: Option<(&SharedEvent, u64)>,
-    ) -> Option<bool> {
+    fn render_flip(&self, device: &wgpu::Device, queue: &wgpu::Queue, width: u32, height: u32, signal: Option<(&SharedEvent, u64)>) -> Option<bool> {
         let vb = self.flip_vb.get().unwrap();
         queue.write_buffer(vb, 0, bytemuck::cast_slice(&FLIP_VERTICES));
 
@@ -408,9 +368,7 @@ impl SyphonOutput {
         let bind_group = self.flipped_bind_group.lock().unwrap();
         let bind_group = (*bind_group).as_ref()?;
 
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("syphon-flip"),
-        });
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("syphon-flip") });
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("syphon-flip"),
@@ -448,14 +406,7 @@ impl SyphonOutput {
 }
 
 impl VideoOutput for SyphonOutput {
-    fn present(
-        &self,
-        texture: &wgpu::Texture,
-        width: u32,
-        height: u32,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-    ) -> bool {
+    fn present(&self, texture: &wgpu::Texture, width: u32, height: u32, device: &wgpu::Device, queue: &wgpu::Queue) -> bool {
         if !self.enabled.load(Ordering::Relaxed) {
             return false;
         }
@@ -463,10 +414,7 @@ impl VideoOutput for SyphonOutput {
         self.ensure_flip_resources(device, queue);
 
         let mut output_guard = self.output.lock().unwrap();
-        let stale = output_guard
-            .as_ref()
-            .map(|p| p.width != width || p.height != height)
-            .unwrap_or(true);
+        let stale = output_guard.as_ref().map(|p| p.width != width || p.height != height).unwrap_or(true);
         if stale {
             let server_name = if self.config.server_name.is_empty() {
                 self.name.as_str()
@@ -474,10 +422,10 @@ impl VideoOutput for SyphonOutput {
                 self.config.server_name.as_str()
             };
             let Some(publisher) = SyphonPublisher::new(server_name, device, width, height) else {
-                tracing::error!(output=self.name, "Syphon output creation failed");
+                tracing::error!(output = self.name, "Syphon output creation failed");
                 return false;
             };
-            tracing::info!(output=self.name, "Syphon output created: ({}x{})", width, height);
+            tracing::info!(output = self.name, "Syphon output created: ({}x{})", width, height);
             {
                 let mut s = self.stats.lock().unwrap();
                 s.width = width;
@@ -517,14 +465,10 @@ impl VideoOutput for SyphonOutput {
         };
 
         let start = std::time::Instant::now();
-        let outcome = publisher.publish(
-            &flipped.texture,
-            device,
-            if signalled { Some(value) } else { None },
-        );
+        let outcome = publisher.publish(&flipped.texture, device, if signalled { Some(value) } else { None });
         let elapsed = start.elapsed().as_secs_f32() * 1000.0;
 
-        tracing::trace!(output=self.name, "Syphon publish: elapsed {:.2}ms", elapsed);
+        tracing::trace!(output = self.name, "Syphon publish: elapsed {:.2}ms", elapsed);
 
         let mut s = self.stats.lock().unwrap();
         s.send_time_ms = elapsed;

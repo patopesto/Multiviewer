@@ -207,8 +207,7 @@ fn mediafoundation_source_round_trips_on_unavailable_platform() {
         "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"MediaFoundation","device_id":"\\\\?\\usb#vid_046d&pid_085b","width":0,"height":0,"fps_num":0,"fps_den":0,"pixel_format":"Bgra8"}
     }"#;
-    let parsed: Source =
-        assert_unavailable_round_trip(json, "MediaFoundation", cfg!(target_os = "windows"));
+    let parsed: Source = assert_unavailable_round_trip(json, "MediaFoundation", cfg!(target_os = "windows"));
     #[cfg(target_os = "windows")]
     {
         assert_eq!(parsed.protocol, Protocol::MediaFoundation);
@@ -235,8 +234,7 @@ fn directshow_source_round_trips_on_unavailable_platform() {
         "label_visibility":"Inherit","border_visibility":"Inherit",
         "config":{"protocol":"DirectShow","device_id":"\\\\?\\usb#vid_1edb&pid_bd3f","width":0,"height":0,"fps_num":0,"fps_den":0,"pixel_format":"Yuy2"}
     }"#;
-    let parsed: Source =
-        assert_unavailable_round_trip(json, "DirectShow", cfg!(target_os = "windows"));
+    let parsed: Source = assert_unavailable_round_trip(json, "DirectShow", cfg!(target_os = "windows"));
     #[cfg(target_os = "windows")]
     {
         assert_eq!(parsed.protocol, Protocol::DirectShow);
@@ -262,8 +260,7 @@ fn screencapturekit_source_round_trips_on_unavailable_platform() {
                   "display_id":"724561234",
                   "settings":{"show_cursor":true}}
     }"#;
-    let parsed: Source =
-        assert_unavailable_round_trip(json, "ScreenCaptureKit", cfg!(target_os = "macos"));
+    let parsed: Source = assert_unavailable_round_trip(json, "ScreenCaptureKit", cfg!(target_os = "macos"));
     #[cfg(target_os = "macos")]
     {
         assert_eq!(parsed.protocol, Protocol::ScreenCaptureKit);
@@ -293,8 +290,7 @@ fn screencapturekit_window_source_round_trip() {
                   "window_id":4242,"bundle_id":"com.apple.TextEdit",
                   "title":"Untitled"}
     }"#;
-    let parsed: Source =
-        assert_unavailable_round_trip(window_json, "ScreenCaptureKit", cfg!(target_os = "macos"));
+    let parsed: Source = assert_unavailable_round_trip(window_json, "ScreenCaptureKit", cfg!(target_os = "macos"));
     #[cfg(target_os = "macos")]
     {
         assert_eq!(parsed.protocol, Protocol::ScreenCaptureKit);
@@ -302,10 +298,7 @@ fn screencapturekit_window_source_round_trip() {
             panic!("expected ScreenCaptureKit config")
         };
         let ScreenCaptureKitSourceConfig::Window {
-            window_id,
-            bundle_id,
-            title,
-            ..
+            window_id, bundle_id, title, ..
         } = c
         else {
             panic!("expected window target, got {c:?}")
@@ -333,8 +326,7 @@ fn windows_capture_source_round_trips_on_unavailable_platform() {
                   "device_name":"\\\\.\\DISPLAY1",
                   "settings":{"cursor":"default","border":"default","secondary_windows":"default"}}
     }"#;
-    let parsed: Source =
-        assert_unavailable_round_trip(json, "WindowsCapture", cfg!(target_os = "windows"));
+    let parsed: Source = assert_unavailable_round_trip(json, "WindowsCapture", cfg!(target_os = "windows"));
     #[cfg(target_os = "windows")]
     {
         assert_eq!(parsed.protocol, Protocol::WindowsCapture);
@@ -367,8 +359,7 @@ fn windows_capture_window_source_round_trip() {
                               "border":"hide",
                               "secondary_windows":"include"}}
     }"#;
-    let parsed: Source =
-        assert_unavailable_round_trip(window_json, "WindowsCapture", cfg!(target_os = "windows"));
+    let parsed: Source = assert_unavailable_round_trip(window_json, "WindowsCapture", cfg!(target_os = "windows"));
     #[cfg(target_os = "windows")]
     {
         assert_eq!(parsed.protocol, Protocol::WindowsCapture);
@@ -389,10 +380,7 @@ fn windows_capture_window_source_round_trip() {
         assert_eq!(title, "Untitled");
         assert_eq!(settings.cursor, WindowsCaptureCursor::Hide);
         assert_eq!(settings.border, WindowsCaptureBorder::Hide);
-        assert_eq!(
-            settings.secondary_windows,
-            WindowsCaptureSecondaryWindows::Include
-        );
+        assert_eq!(settings.secondary_windows, WindowsCaptureSecondaryWindows::Include);
     }
     let saved = serde_json::to_value(&parsed).unwrap();
     assert!(saved["config"].get("device_name").is_none());
@@ -527,14 +515,19 @@ fn test_source_config_round_trips() {
         "Test".to_string(),
         Protocol::Test,
         Some("test-1".to_string()),
-        0.0, 0.0, 1280, 720, 0,
+        0.0,
+        0.0,
+        1280,
+        720,
+        0,
         TextureMode::Fit,
-        false, false,
+        false,
+        false,
     );
-    source.config = SourceConfig::Test(TestSourceConfig { 
-        width: 1920, 
+    source.config = SourceConfig::Test(TestSourceConfig {
+        width: 1920,
         height: 1080,
-        ..Default::default() 
+        ..Default::default()
     });
     let json = serde_json::to_string(&source).unwrap();
     let parsed: Source = serde_json::from_str(&json).unwrap();
@@ -554,9 +547,14 @@ fn vnc_source_config_round_trips_without_leaking_the_password() {
         "Desktop".to_string(),
         Protocol::Vnc,
         Some("VNC 1".to_string()),
-        0.0, 0.0, 1280, 720, 0,
+        0.0,
+        0.0,
+        1280,
+        720,
+        0,
         TextureMode::Fit,
-        false, false,
+        false,
+        false,
     );
     source.config = SourceConfig::Vnc(VncSourceConfig {
         host: "studio.example".to_string(),
@@ -587,9 +585,14 @@ fn rdp_source_config_round_trips_without_leaking_the_password() {
         "Server".to_string(),
         Protocol::Rdp,
         Some("RDP 1".to_string()),
-        0.0, 0.0, 1280, 720, 0,
+        0.0,
+        0.0,
+        1280,
+        720,
+        0,
         TextureMode::Fit,
-        false, false,
+        false,
+        false,
     );
     source.config = SourceConfig::Rdp(RdpSourceConfig {
         host: "winbox.example".to_string(),
@@ -626,9 +629,14 @@ fn ndi_source_config_round_trips() {
         "NDI".to_string(),
         Protocol::Ndi,
         Some("ndi-1".to_string()),
-        0.0, 0.0, 1920, 1080, 0,
+        0.0,
+        0.0,
+        1920,
+        1080,
+        0,
         TextureMode::Fit,
-        false, false,
+        false,
+        false,
     );
     source.config = SourceConfig::Ndi(NdiSourceConfig {
         bandwidth: NdiReceiverBandwidth::Highest,
@@ -651,9 +659,14 @@ fn decklink_source_config_round_trips() {
         "DeckLink".to_string(),
         Protocol::Decklink,
         Some("decklink-1".to_string()),
-        0.0, 0.0, 1920, 1080, 0,
+        0.0,
+        0.0,
+        1920,
+        1080,
+        0,
         TextureMode::Fit,
-        false, false,
+        false,
+        false,
     );
     source.config = SourceConfig::Decklink(DecklinkSourceConfig {
         connection: DecklinkVideoConnection::Hdmi,
@@ -674,9 +687,14 @@ fn omt_source_config_round_trips() {
         "OMT".to_string(),
         Protocol::Omt,
         Some("HOST (Cam)".to_string()),
-        0.0, 0.0, 1920, 1080, 0,
+        0.0,
+        0.0,
+        1920,
+        1080,
+        0,
         TextureMode::Fit,
-        false, false,
+        false,
+        false,
     );
     source.config = SourceConfig::Omt(OmtSourceConfig {
         quality: OmtQuality::High,
@@ -705,9 +723,14 @@ fn config_round_trips_through_path() {
         "Test".to_string(),
         Protocol::Test,
         Some("test-1".to_string()),
-        0.0, 0.0, 1280, 720, 0,
+        0.0,
+        0.0,
+        1280,
+        720,
+        0,
         TextureMode::Fit,
-        false, false,
+        false,
+        false,
     ));
     cfg.save_to(&path).unwrap();
     let loaded = Config::load_from(&path).unwrap();
@@ -900,10 +923,7 @@ fn osc_prefix_round_trips() {
 #[test]
 fn config_without_prefix_defaults_to_root() {
     let mut v = serde_json::to_value(Config::default()).unwrap();
-    v["control"]["osc"]
-        .as_object_mut()
-        .unwrap()
-        .remove("prefix");
+    v["control"]["osc"].as_object_mut().unwrap().remove("prefix");
 
     let cfg: Config = serde_json::from_value(v).unwrap();
 
@@ -928,19 +948,7 @@ fn osc_feedback_round_trips() {
 fn z_bounds_report_the_back_and_front_extremes() {
     let mut canvas = Canvas::default();
     for (uuid, z) in [("a", 7), ("b", -3), ("c", 2)] {
-        let mut source = Source::new(
-            uuid.to_string(),
-            Protocol::Test,
-            None,
-            0.0,
-            0.0,
-            640,
-            360,
-            z,
-            TextureMode::Fit,
-            false,
-            false,
-        );
+        let mut source = Source::new(uuid.to_string(), Protocol::Test, None, 0.0, 0.0, 640, 360, z, TextureMode::Fit, false, false);
         source.uuid = uuid.to_string();
         canvas.sources.push(source);
     }

@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::config::{
-    BorderConfig, LabelConfig, SourceBorderVisibility, SourceId, SourceLabelVisibility, TextureMode,
-};
+use crate::config::{BorderConfig, LabelConfig, SourceBorderVisibility, SourceId, SourceLabelVisibility, TextureMode};
 use crate::control::ControlConfig;
 use crate::sources::{OutputConfig, Protocol, SourceConfig, SourceRef};
 
