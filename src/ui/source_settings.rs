@@ -1,11 +1,12 @@
-use crate::ui::side_panel::{settings_grid, settings_row};
-use crate::sources::{SourceRuntimeConfig, SourceConfig};
+use crate::ui::side_panel::{color_picker_rgba_row, settings_grid, settings_row};
+use crate::sources::{SourceConfig, SourceRuntimeConfig};
 use crate::sources::{TestSourceConfig, TestPattern, RadarDirection};
+use crate::sources::{TextSourceConfig, TextAlign, TextStyle};
 use crate::sources::{NdiSourceConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{OmtSourceConfig, OmtQuality};
 use crate::sources::{DecklinkSourceConfig, DecklinkVideoConnection, DecklinkVideoConnections};
 use crate::sources::VncSourceConfig;
-use crate::sources::{RdpColorDepth, RdpSourceConfig};
+use crate::sources::{RdpSourceConfig, RdpColorDepth};
 #[cfg(target_os = "windows")]
 use crate::sources::PixelFormat;
 #[cfg(target_os = "macos")]
@@ -29,8 +30,6 @@ pub fn render_source_settings_config(config: &mut SourceConfig, runtime: &Source
         SourceConfig::Ndi(cfg) => ndi_settings_ui(cfg, ui),
         SourceConfig::Omt(cfg) => omt_settings_ui(cfg, ui),
         SourceConfig::Decklink(cfg) => decklink_settings_ui(cfg, runtime, ui),
-        SourceConfig::Vnc(cfg) => vnc_settings_ui(cfg, ui),
-        SourceConfig::Rdp(cfg) => rdp_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
         SourceConfig::Syphon(cfg) => syphon_settings_ui(cfg, ui),
         #[cfg(target_os = "macos")]
@@ -45,6 +44,9 @@ pub fn render_source_settings_config(config: &mut SourceConfig, runtime: &Source
         SourceConfig::DirectShow(cfg) => directshow_settings_ui(cfg, runtime, ui),
         #[cfg(target_os = "windows")]
         SourceConfig::WindowsCapture(cfg) => windowscapture_settings_ui(cfg, ui),
+        SourceConfig::Vnc(cfg) => vnc_settings_ui(cfg, ui),
+        SourceConfig::Rdp(cfg) => rdp_settings_ui(cfg, ui),
+        SourceConfig::Text(cfg) => text_settings_ui(cfg, ui),
         // Config from a platform that has this protocol; no runtime source.
         SourceConfig::Unknown(_) => false,
     };
@@ -606,6 +608,56 @@ fn rdp_settings_ui(cfg: &mut RdpSourceConfig, ui: &mut egui::Ui) -> bool {
         });
     });
     return committed;
+}
+
+fn text_settings_ui(cfg: &mut TextSourceConfig, ui: &mut egui::Ui) -> bool {
+    let mut changed = false;
+    settings_grid(ui, "text_settings_grid", |ui| {
+        settings_row(ui, "Text", |ui| {
+            let response = ui.add(egui::TextEdit::multiline(&mut cfg.text).desired_rows(2).desired_width(ui.available_width()).hint_text("Text"));
+            changed |= response.changed();
+        });
+
+        changed |= text_style_rows(ui, &mut cfg.style);
+    });
+    return changed;
+}
+
+/// Frame and text appearance rows, shared by every text-rendering source.
+fn text_style_rows(ui: &mut egui::Ui, style: &mut TextStyle) -> bool {
+    let mut changed = false;
+
+    settings_row(ui, "Size", |ui| {
+        ui.label("W");
+        let width = ui.add(egui::DragValue::new(&mut style.width).range(16..=4096).update_while_editing(false));
+        changed |= commit_field_edit(ui, "text_width", width.changed(), width.lost_focus(), width.drag_stopped());
+        ui.label("H");
+        let height = ui.add(egui::DragValue::new(&mut style.height).range(16..=4096).update_while_editing(false));
+        changed |= commit_field_edit(ui, "text_height", height.changed(), height.lost_focus(), height.drag_stopped());
+    });
+
+    settings_row(ui, "Font size", |ui| {
+        let response = ui.add(egui::DragValue::new(&mut style.font_size).range(1.0..=1024.0).speed(1.0).update_while_editing(false));
+        changed |= commit_field_edit(ui, "text_font_size", response.changed(), response.lost_focus(), response.drag_stopped());
+    });
+
+    let text_color = style.text_color;
+    color_picker_rgba_row(ui, "Text color", &mut style.text_color);
+    changed |= style.text_color != text_color;
+
+    let background_color = style.background_color;
+    color_picker_rgba_row(ui, "Background", &mut style.background_color);
+    changed |= style.background_color != background_color;
+
+    settings_row(ui, "Align", |ui| {
+        egui::ComboBox::from_id_salt("text_align").width(ui.available_width()).selected_text(style.align.label()).show_ui(ui, |ui| {
+            for align in [TextAlign::Left, TextAlign::Center, TextAlign::Right] {
+                changed |= ui.selectable_value(&mut style.align, align, align.label()).changed();
+            }
+        });
+    });
+
+    return changed;
 }
 
 // Helpers

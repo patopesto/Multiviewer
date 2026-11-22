@@ -76,6 +76,7 @@ impl Engine {
             self.reconnect_windowscapture();
             self.reconnect_manual(Protocol::Vnc);
             self.reconnect_manual(Protocol::Rdp);
+            self.reconnect_manual(Protocol::Text);
         }
 
         self.registry.apply_pending_restarts();
@@ -323,6 +324,9 @@ impl Engine {
                 SourceConfig::Rdp(config) => {
                     self.registry.add_rdp_at(key.clone(), config.clone());
                 }
+                SourceConfig::Text(config) => {
+                    self.registry.add_text_at(key.clone(), config.clone());
+                }
                 _ => {}
             }
         }
@@ -400,8 +404,8 @@ impl Engine {
     pub fn connect(&mut self, protocol: Protocol, name: &str) {
         let key = SourceKey::new(protocol.clone(), name.to_string());
         match protocol {
-            // Test, VNC and RDP sources are created locally, never connected to a discovered source.
-            Protocol::Test | Protocol::Vnc | Protocol::Rdp => {}
+            // Test, Text, VNC and RDP sources are created locally, never connected to a discovered source.
+            Protocol::Test | Protocol::Text | Protocol::Vnc | Protocol::Rdp => {}
             Protocol::Ndi => {
                 if let Some(ref discovery) = self.ndi
                     && let Some(src) = discovery.find_by_name(name)

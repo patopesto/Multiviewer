@@ -2,13 +2,11 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use fontdue::layout::{CoordinateSystem, Layout, LayoutSettings, TextStyle};
-
 use super::build::{clip, Frame, Placement};
 use super::gpu::{conv_uniform, placeholder, solid_bind_group, solid_texture, texture_bind_group};
 use super::{Compositor, ConvMode, LabelKey, Pipeline};
 use crate::config::{Canvas, LabelPosition, LabelVisibility, Source, SourceLabelVisibility};
-use crate::sources::{PixelFormat, TextureTarget, UPLOAD_TARGET_USAGE};
+use crate::sources::{rasterize_text, PixelFormat, TextureTarget, UPLOAD_TARGET_USAGE};
 
 pub(super) struct LabelTex {
     _target: TextureTarget,
@@ -143,7 +141,7 @@ impl Compositor {
     }
 
     fn rasterize_label(&self, device: &wgpu::Device, queue: &wgpu::Queue, key: &LabelKey) -> (TextureTarget, Arc<wgpu::BindGroup>, u32, u32) {
-        let Some((width, height, pixels)) = label_pixels(&self.font, key) else {
+        let Some((width, height, pixels)) = rasterize_text(&key.name, key.size * key.raster, key.text_color) else {
             let bg = Arc::new(placeholder(device, queue, &self.bind_layout, &self.sampler));
             let texture = solid_texture(device, "label-empty");
             let view = texture.create_view(&Default::default());
@@ -180,52 +178,6 @@ impl Compositor {
         let bg = Arc::new(texture_bind_group(device, &self.bind_layout, &self.sampler, &target.view, &uniform));
         return (target, bg, width, height);
     }
-}
-
-/// Rasterize `key`'s glyphs into an RGBA buffer, or `None` when it is empty.
-fn label_pixels(font: &fontdue::Font, key: &LabelKey) -> Option<(u32, u32, Vec<u8>)> {
-    let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
-    layout.reset(&LayoutSettings::default());
-    layout.append(&[font], &TextStyle::new(&key.name, key.size * key.raster, 0));
-
-    let glyphs = layout.glyphs();
-    if glyphs.is_empty() {
-        return None;
-    }
-
-    let max_x = glyphs.iter().map(|g| g.x + g.width as f32).fold(0.0_f32, f32::max).ceil() as i32;
-    let min_y = glyphs.iter().map(|g| g.y.floor() as i32).min().unwrap_or(0);
-    let max_y = glyphs.iter().map(|g| (g.y + g.height as f32).ceil() as i32).max().unwrap_or(0);
-    let width = max_x.max(1) as u32;
-    let height = (max_y - min_y).max(1) as u32;
-
-    let mut pixels = vec![0u8; (width * height * 4) as usize];
-    let [tr, tg, tb, ta] = key.text_color;
-
-    for glyph in glyphs {
-        let (metrics, coverage) = font.rasterize_config(glyph.key);
-        let gx = glyph.x as u32;
-        let gy = (glyph.y as i32 - min_y) as u32;
-        for row in 0..metrics.height as u32 {
-            for col in 0..metrics.width as u32 {
-                let src_idx = (row * metrics.width as u32 + col) as usize;
-                let dst_x = gx + col;
-                let dst_y = gy + row;
-                if dst_x < width && dst_y < height {
-                    let dst_idx = ((dst_y * width + dst_x) * 4) as usize;
-                    let cov = coverage[src_idx];
-                    // alpha-blend with existing pixel (simple over)
-                    let src_a = ((cov as u32 * ta as u32) / 255) as u8;
-                    let inv_dst_a = 255 - src_a;
-                    pixels[dst_idx] = ((tr as u32 * src_a as u32 + pixels[dst_idx] as u32 * inv_dst_a as u32) / 255) as u8;
-                    pixels[dst_idx + 1] = ((tg as u32 * src_a as u32 + pixels[dst_idx + 1] as u32 * inv_dst_a as u32) / 255) as u8;
-                    pixels[dst_idx + 2] = ((tb as u32 * src_a as u32 + pixels[dst_idx + 2] as u32 * inv_dst_a as u32) / 255) as u8;
-                    pixels[dst_idx + 3] = (src_a as u32 + (pixels[dst_idx + 3] as u32 * inv_dst_a as u32) / 255) as u8;
-                }
-            }
-        }
-    }
-    return Some((width, height, pixels));
 }
 
 #[cfg(test)]

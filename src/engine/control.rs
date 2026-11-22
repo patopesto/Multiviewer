@@ -3,7 +3,7 @@ use super::transform::{MAX_ZOOM, MIN_ZOOM};
 use super::project::ProjectError;
 use crate::config::{BorderVisibility, LabelVisibility, Source};
 use crate::control::{Command, Selector, feedback_values, normalize_prefix};
-use crate::sources::{Protocol, RdpSourceConfig, SourceConfig, SourceKey, VncSourceConfig};
+use crate::sources::{Protocol, RdpSourceConfig, SourceConfig, SourceKey, TextSourceConfig, VncSourceConfig};
 
 #[derive(Debug)]
 pub enum ControlError {
@@ -168,6 +168,11 @@ impl Engine {
                 let uuid = self.resolve_source(&source).ok_or(ControlError::UnknownSource)?;
                 let (source_ref, config) = match protocol {
                     Protocol::Test => (self.registry.add_test(None).source_ref, Some(SourceConfig::for_protocol(&Protocol::Test))),
+                    Protocol::Text => {
+                        let config = TextSourceConfig::default();
+                        let key = self.registry.add_text(config.clone());
+                        (key.source_ref, Some(SourceConfig::Text(config)))
+                    }
                     Protocol::Vnc => {
                         let config = VncSourceConfig::default();
                         let key = self.registry.add_vnc(config.clone());

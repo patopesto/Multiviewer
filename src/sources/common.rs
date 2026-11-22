@@ -6,6 +6,7 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Protocol {
+    // Video
     Test,
     Ndi,
     Omt,
@@ -26,6 +27,8 @@ pub enum Protocol {
     DirectShow,
     #[cfg(target_os = "windows")]
     WindowsCapture,
+    // Other
+    Text,
     /// A protocol that is not available on this platform. Holds the original
     /// protocol name as serialized in the project file so it round-trips
     /// unchanged when the project is opened on a platform that supports it.
@@ -57,6 +60,7 @@ impl Protocol {
             Protocol::WindowsCapture => "WindowsCapture",
             Protocol::Vnc => "Vnc",
             Protocol::Rdp => "Rdp",
+            Protocol::Text => "Text",
             Protocol::Unknown(name) => name,
         }
     }
@@ -85,6 +89,7 @@ impl Protocol {
             "windowscapture" => Protocol::WindowsCapture,
             "vnc" => Protocol::Vnc,
             "rdp" => Protocol::Rdp,
+            "text" => Protocol::Text,
             _ => Protocol::Unknown(name.to_string()),
         };
     }
@@ -111,6 +116,7 @@ impl Protocol {
             Protocol::WindowsCapture => "Windows Screen Capture".to_string(),
             Protocol::Vnc => "VNC".to_string(),
             Protocol::Rdp => "RDP".to_string(),
+            Protocol::Text => "Text".to_string(),
             Protocol::Unknown(name) => format!("{name} (Unavailable)"),
         }
     }
@@ -367,7 +373,9 @@ pub struct CpuFrame {
     pub fmt: PixelFormat,
     /// Row stride in bytes; 0 means tightly packed (`w * bpp`).
     pub pitch: u32,
-    /// Monotonic per-source counter; compositor uploads only when this changes.
+    /// Monotonic per-source frame counter; the compositor uploads only when
+    /// this changes. The registry re-bases it on each source instance, so a
+    /// reopened source keeps counting up instead of restarting at zero.
     pub seq: u64,
 }
 
@@ -394,6 +402,20 @@ impl Frame {
         return match self {
             Frame::Cpu(f) => f.seq,
             Frame::Gpu(f) => f.seq,
+        };
+    }
+
+    /// The same frame stamped with a different counter.
+    pub fn with_seq(self, seq: u64) -> Self {
+        return match self {
+            Frame::Cpu(mut f) => {
+                f.seq = seq;
+                Frame::Cpu(f)
+            }
+            Frame::Gpu(mut f) => {
+                f.seq = seq;
+                Frame::Gpu(f)
+            }
         };
     }
 }
@@ -695,6 +717,26 @@ mod tests {
         let fb = Framebuffer::new(1, 1);
         assert_eq!(fb.format(), PixelFormat::Bgra8);
         assert_eq!(fb.format().bpp() as usize, 4);
+    }
+
+    #[test]
+    fn with_seq_restamps_the_frame_only() {
+        let frame = Frame::Cpu(CpuFrame {
+            data: Arc::new(vec![1, 2, 3, 4]),
+            w: 1,
+            h: 1,
+            fmt: PixelFormat::Rgba8,
+            pitch: 0,
+            seq: 3,
+        });
+        let frame = frame.with_seq(99);
+        assert_eq!(frame.seq(), 99);
+        let Frame::Cpu(cpu) = frame else {
+            unreachable!("a CPU frame stays a CPU frame");
+        };
+        assert_eq!((cpu.w, cpu.h), (1, 1));
+        assert_eq!((cpu.fmt, cpu.pitch), (PixelFormat::Rgba8, 0));
+        assert_eq!(cpu.data.as_slice(), &[1, 2, 3, 4]);
     }
 
     /// A 4x4 framebuffer whose pixel value encodes its position.

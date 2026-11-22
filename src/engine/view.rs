@@ -160,6 +160,7 @@ impl Engine {
 
         self.push_discovery(&mut views, Protocol::Vnc, Vec::new());
         self.push_discovery(&mut views, Protocol::Rdp, Vec::new());
+        self.push_discovery(&mut views, Protocol::Text, Vec::new());
 
         #[cfg(target_os = "macos")]
         {

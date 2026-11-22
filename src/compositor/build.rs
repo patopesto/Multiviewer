@@ -6,7 +6,7 @@ use tracing::instrument;
 use super::gpu::solid_bind_group;
 use super::{Compositor, Draw, DrawCall, FrameStats, Pipeline, Rect, ResolvedSource, Vert};
 use crate::config::{BorderVisibility, Canvas, Source, SourceBorderVisibility, TextureMode};
-use crate::sources::{Frame as SourceFrame, SourceKey, SourceRegistry};
+use crate::sources::{Frame as SourceFrame, Protocol, SourceKey, SourceRegistry};
 
 /// Resolved geometry for one source this frame, in canvas and clip space.
 /// `(x0, y0)` is the top-left clip corner, `(x1, y1)` the bottom-right.
@@ -134,7 +134,14 @@ impl Frame<'_> {
         let cy = (place.y0 + place.y1) / 2.0;
         let hx = (place.x1 - place.x0) / 2.0 * sx;
         let hy = (place.y0 - place.y1) / 2.0 * sy;
-        self.quad([cx - hx, cy + hy, cx + hx, cy - hy], [u0, v0, u1, v1], bg, Pipeline::Main);
+        // A text card carries its own alpha; every other source replaces the
+        // pixel so a frame with an unexpected alpha cannot punch a hole.
+        let pipeline = if source.protocol == Protocol::Text {
+            Pipeline::Text
+        } else {
+            Pipeline::Main
+        };
+        self.quad([cx - hx, cy + hy, cx + hx, cy - hy], [u0, v0, u1, v1], bg, pipeline);
     }
 
     /// Emit the four inside-edge quads when this source shows a border.

@@ -4,7 +4,7 @@ use crate::config::{Canvas, Config, Output, Source, TextureMode, CONFIG_VERSION}
 use crate::control::{Command, Selector};
 use crate::sources::{
     Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection,
-    NdiReceiverBandwidth, NdiReceiverColorFormat,
+    NdiReceiverBandwidth, NdiReceiverColorFormat, TextSourceConfig,
 };
 use crate::sources::VncSourceConfig;
 use std::time::{Duration, Instant};
@@ -78,6 +78,49 @@ fn load_project_with_unavailable_protocol_warns_and_skips_runtime() {
     assert!(engine.load_warnings[0].contains("fake"));
 
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A Text source is opened while the project loads, so a new Text source
+/// created right after cannot take its key and overwrite the saved text.
+#[test]
+fn text_sources_are_open_when_the_project_loads() {
+    let mut source = Source::new(
+        "Title".to_string(),
+        Protocol::Text,
+        Some("Text 1".to_string()),
+        0.0,
+        0.0,
+        640,
+        360,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
+    );
+    source.config = SourceConfig::Text(TextSourceConfig {
+        text: "STUDIO A".to_string(),
+        ..Default::default()
+    });
+    let mut engine = test_engine(Canvas {
+        width: 1920,
+        height: 1080,
+        sources: vec![source],
+        outputs: Vec::new(),
+        ..Default::default()
+    });
+
+    engine.rebuild_from_config();
+
+    let key = SourceKey::new(Protocol::Text, "Text 1".to_string());
+    assert!(engine.registry.get(&key).is_some());
+    // The next synthesized key skips the restored one instead of colliding.
+    let next = engine.registry.add_text(TextSourceConfig::default());
+    assert_eq!(next.source_ref, "Text 2");
+    // The saved text survives the load.
+    let SourceConfig::Text(config) = &engine.state.cfg.canvas.sources[0].config else {
+        panic!("expected Text config");
+    };
+    assert_eq!(config.text, "STUDIO A");
 }
 
 #[test]

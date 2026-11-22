@@ -102,4 +102,10 @@ export const protocols: Protocol[] = [
     platforms: ['macos', 'windows', 'linux'],
     inputNote: 'SMPTE bars and generative patterns',
   },
+  {
+    name: 'Text',
+    input: true,
+    platforms: ['macos', 'windows', 'linux'],
+    inputNote: 'Fixed text as a source',
+  },
 ];

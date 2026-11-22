@@ -56,9 +56,6 @@ impl Compositor {
             mapped_at_creation: false,
         });
 
-        let font =
-            fontdue::Font::from_bytes(epaint_default_fonts::HACK_REGULAR as &[u8], fontdue::FontSettings::default()).expect("embedded font is valid");
-
         let text_pipeline = render_pipeline(device, &layout, &shader, "compositor-text", target_format, wgpu::BlendState::ALPHA_BLENDING);
 
         let label_bg_color = [0, 0, 0, 180];
@@ -81,7 +78,6 @@ impl Compositor {
             canvas_pipeline,
             border_bg,
             border_color,
-            font,
             label_textures: HashMap::new(),
             label_bg_color,
             label_bg_bg,

@@ -1,4 +1,5 @@
 mod common;
+mod common_text;
 mod output;
 mod output_convert;
 mod source;
@@ -21,6 +22,7 @@ mod spout;
 #[cfg(target_os = "macos")]
 mod syphon;
 mod test;
+mod text;
 mod vnc;
 #[cfg(target_os = "windows")]
 mod windowscapture;
@@ -31,12 +33,14 @@ pub use common::{RENDER_TARGET_USAGE, UPLOAD_TARGET_USAGE};
 pub use common::{FramePool, Framebuffer};
 pub use common::{ColorRange, ColorSpace};
 pub use common::{PUBLISH_INTERVAL, PollGate, publish_due, sleep_while_running};
+pub use common_text::{rasterize_text, TextAlign, TextStyle};
 pub use source::{SourceKey, SourceRef, SourceKind, SourceRuntimeConfig, SourceConfig, SourceRegistry, VideoSource};
 pub use output::{OutputConfig, OutputRegistry};
 pub use output_convert::YuvConverter;
 pub use stats::{OutputStats, SourceStats};
 
 pub use test::{TestSourceConfig, TestPattern, RadarDirection};
+pub use text::TextSourceConfig;
 pub use ndi::{NdiDiscovery, NdiSourceConfig, NdiOutputConfig, ndi_version, NdiReceiverBandwidth, NdiReceiverColorFormat, NdiSourceInfo};
 pub use omt::{OmtDiscovery, OmtSourceConfig, OmtOutputConfig, omt_version, OmtQuality, OmtSourceInfo};
 pub use decklink::{

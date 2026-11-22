@@ -477,10 +477,15 @@ fn draw_source_properties_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, 
                 egui::ComboBox::from_id_salt("source_protocol").width(ui.available_width()).selected_text(source.protocol.label()).show_ui(
                     ui,
                     |ui| {
-                        for protocol in all_protocols() {
-                            if ui.selectable_value(&mut source.protocol, protocol.clone(), protocol.label()).clicked() {
-                                protocol_changed = true;
-                                refresh = Some(protocol);
+                        for (index, group) in protocol_groups().into_iter().enumerate() {
+                            if index > 0 {
+                                ui.separator();
+                            }
+                            for protocol in group {
+                                if ui.selectable_value(&mut source.protocol, protocol.clone(), protocol.label()).clicked() {
+                                    protocol_changed = true;
+                                    refresh = Some(protocol);
+                                }
                             }
                         }
                     },
@@ -499,9 +504,10 @@ fn draw_source_properties_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, 
                         Protocol::Test => Some("+ New Test Source".to_string()),
                         Protocol::Vnc => Some("+ New VNC Source".to_string()),
                         Protocol::Rdp => Some("+ New RDP Source".to_string()),
+                        Protocol::Text => Some("+ New Text Source".to_string()),
                         _ => None,
                     };
-                    let scanning = !matches!(source.protocol, Protocol::Test | Protocol::Vnc | Protocol::Rdp);
+                    let scanning = !matches!(source.protocol, Protocol::Test | Protocol::Text | Protocol::Vnc | Protocol::Rdp);
                     let picker = source_picker(ui, &picker_id(&source.protocol), current, connected, groups, new_entry, scanning);
                     if let Some(selected) = picker.selected {
                         source.source_ref = Some(selected);
@@ -684,24 +690,26 @@ fn draw_source_properties_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, 
     }
 }
 
-fn all_protocols() -> Vec<Protocol> {
-    let mut protocols = vec![Protocol::Test, Protocol::Ndi, Protocol::Omt, Protocol::Decklink];
+/// Protocol choices, grouped into sources that ingest a signal or device and
+/// sources that only render their own content. The dropdown separates groups.
+fn protocol_groups() -> Vec<Vec<Protocol>> {
+    let mut video = vec![Protocol::Test, Protocol::Ndi, Protocol::Omt, Protocol::Decklink];
     #[cfg(target_os = "macos")]
     {
-        protocols.push(Protocol::Syphon);
-        protocols.push(Protocol::AvFoundation);
-        protocols.push(Protocol::ScreenCaptureKit);
+        video.push(Protocol::Syphon);
+        video.push(Protocol::AvFoundation);
+        video.push(Protocol::ScreenCaptureKit);
     }
     #[cfg(target_os = "windows")]
     {
-        protocols.push(Protocol::Spout);
-        protocols.push(Protocol::MediaFoundation);
-        protocols.push(Protocol::DirectShow);
-        protocols.push(Protocol::WindowsCapture);
+        video.push(Protocol::Spout);
+        video.push(Protocol::MediaFoundation);
+        video.push(Protocol::DirectShow);
+        video.push(Protocol::WindowsCapture);
     }
-    protocols.push(Protocol::Vnc);
-    protocols.push(Protocol::Rdp);
-    return protocols;
+    video.push(Protocol::Vnc);
+    video.push(Protocol::Rdp);
+    return vec![video, vec![Protocol::Text]];
 }
 
 fn picker_id(protocol: &Protocol) -> String {
@@ -995,7 +1003,7 @@ fn resolution_preset_rows(ui: &mut Ui, presets: &[(&str, u32, u32)], min_size: u
     return changed;
 }
 
-fn color_picker_rgba_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 4]) {
+pub fn color_picker_rgba_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 4]) {
     settings_row(ui, label, |ui| {
         let mut color_f32 = [
             color[0] as f32 / 255.0,
@@ -1025,7 +1033,7 @@ mod tests {
     /// service running and one placement selected.
     #[test]
     fn picker_draws_for_every_available_protocol() {
-        for protocol in all_protocols() {
+        for protocol in protocol_groups().into_iter().flatten() {
             let mut canvas = Canvas::default();
             canvas.sources.push(Source::new(
                 "Source".to_string(),

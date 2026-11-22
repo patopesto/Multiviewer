@@ -7,7 +7,7 @@ use crate::config::{Config, ConfigError, Source, TextureMode, CONFIG_VERSION};
 #[cfg(test)]
 use crate::config::Canvas;
 use crate::session::{Session, SessionError};
-use crate::sources::{OutputRegistry, Protocol, SourceConfig, SourceRegistry};
+use crate::sources::{OutputRegistry, Protocol, SourceConfig, SourceKey, SourceRegistry};
 use crate::sources::DecklinkDiscovery;
 use crate::sources::NdiDiscovery;
 use crate::sources::OmtDiscovery;
@@ -149,7 +149,7 @@ impl Engine {
 
         let load_started = Instant::now();
         self.warn_unavailable_protocols();
-        self.restore_test_sources();
+        self.restore_local_sources();
         self.seed_demo_layout();
         self.load_outputs();
         self.restart_control();
@@ -206,9 +206,10 @@ impl Engine {
         }
     }
 
-    /// Restore Test sources for all Test sources in the loaded config.
-    /// Each Test source gets a fresh dedicated test source.
-    fn restore_test_sources(&mut self) {
+    /// Restore the sources that are created locally and have no discovery
+    /// service: Test patterns and Text. Opening them here takes their keys
+    /// before any command can allocate a fresh one.
+    fn restore_local_sources(&mut self) {
         for (i, source) in self.state.cfg.canvas.sources.iter_mut().enumerate() {
             if source.uuid.is_empty() {
                 source.uuid = uuid::Uuid::new_v4().to_string();
@@ -226,6 +227,20 @@ impl Engine {
                 let key = self.registry.add_test(test_config);
                 source.source_ref = Some(key.source_ref);
                 self.state.dirty = true;
+            }
+            if source.protocol == Protocol::Text {
+                let text_config = match &source.config {
+                    SourceConfig::Text(c) => Some(c.clone()),
+                    _ => None,
+                };
+                if let Some(text_config) = text_config {
+                    let key = match source.source_ref.clone() {
+                        Some(source_ref) => self.registry.add_text_at(SourceKey::new(Protocol::Text, source_ref), text_config),
+                        None => self.registry.add_text(text_config),
+                    };
+                    source.source_ref = Some(key.source_ref);
+                    self.state.dirty = true;
+                }
             }
             // NDI and Syphon sources keep their source_ref; auto-connect happens in update()
         }

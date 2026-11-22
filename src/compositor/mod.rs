@@ -88,7 +88,6 @@ pub struct Compositor {
     canvas_pipeline: wgpu::RenderPipeline,
     border_bg: Arc<wgpu::BindGroup>,
     border_color: [u8; 4],
-    font: fontdue::Font,
     label_textures: HashMap<String, label::LabelTex>,
     label_bg_color: [u8; 4],
     label_bg_bg: Arc<wgpu::BindGroup>,

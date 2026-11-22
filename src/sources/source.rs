@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -27,6 +28,7 @@ use super::mediafoundation;
 use super::directshow;
 #[cfg(target_os = "windows")]
 use super::windowscapture;
+use super::text;
 
 pub type SourceRef = String;
 
@@ -63,6 +65,7 @@ pub trait VideoSource: Send + Sync {
 /// platform that does understand it.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SourceConfig {
+    // Video sources
     Test(test::TestSourceConfig),
     Ndi(ndi::NdiSourceConfig),
     Omt(omt::OmtSourceConfig),
@@ -83,6 +86,8 @@ pub enum SourceConfig {
     WindowsCapture(windowscapture::WindowsCaptureSourceConfig),
     Vnc(vnc::VncSourceConfig),
     Rdp(rdp::RdpSourceConfig),
+    // Other
+    Text(text::TextSourceConfig),
     Unknown(serde_json::Value),
 }
 
@@ -117,6 +122,7 @@ enum SourceConfigInner {
     WindowsCapture(windowscapture::WindowsCaptureSourceConfig),
     Vnc(vnc::VncSourceConfig),
     Rdp(rdp::RdpSourceConfig),
+    Text(text::TextSourceConfig),
 }
 
 impl From<SourceConfigInner> for SourceConfig {
@@ -142,6 +148,7 @@ impl From<SourceConfigInner> for SourceConfig {
             SourceConfigInner::WindowsCapture(c) => SourceConfig::WindowsCapture(c),
             SourceConfigInner::Vnc(c) => SourceConfig::Vnc(c),
             SourceConfigInner::Rdp(c) => SourceConfig::Rdp(c),
+            SourceConfigInner::Text(c) => SourceConfig::Text(c),
         }
     }
 }
@@ -174,6 +181,7 @@ impl Serialize for SourceConfig {
             SourceConfig::WindowsCapture(c) => SourceConfigInner::WindowsCapture(c.clone()).serialize(serializer),
             SourceConfig::Vnc(c) => SourceConfigInner::Vnc(c.clone()).serialize(serializer),
             SourceConfig::Rdp(c) => SourceConfigInner::Rdp(c.clone()).serialize(serializer),
+            SourceConfig::Text(c) => SourceConfigInner::Text(c.clone()).serialize(serializer),
         }
     }
 }
@@ -218,6 +226,7 @@ impl SourceConfig {
             Protocol::WindowsCapture => SourceConfig::WindowsCapture(windowscapture::WindowsCaptureSourceConfig::default()),
             Protocol::Vnc => SourceConfig::Vnc(vnc::VncSourceConfig::default()),
             Protocol::Rdp => SourceConfig::Rdp(rdp::RdpSourceConfig::default()),
+            Protocol::Text => SourceConfig::Text(text::TextSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
         }
     }
@@ -244,6 +253,7 @@ impl SourceConfig {
             (SourceConfig::WindowsCapture(_), Protocol::WindowsCapture) => true,
             (SourceConfig::Vnc(_), Protocol::Vnc) => true,
             (SourceConfig::Rdp(_), Protocol::Rdp) => true,
+            (SourceConfig::Text(_), Protocol::Text) => true,
             _ => false,
         };
     }
@@ -294,6 +304,7 @@ pub enum SourceRuntimeConfig {
     },
     Vnc,
     Rdp,
+    Text,
 }
 
 /// A live source: its boxed runtime, the config persisted in the project, and
@@ -303,9 +314,20 @@ pub struct SourceKind {
     source: Box<dyn VideoSource>,
     pub config: SourceConfig,
     pub runtime: SourceRuntimeConfig,
+    seq_base: u64,
 }
 
+/// Instance number of a runtime source. Frames are re-based on it so their
+/// sequence keeps increasing when a source is rebuilt under the same key.
+/// shortcut: 32 bits of frame counter per instance (~2 years at 60 fps), wraps
+/// into the next range; only equality matters for uploads.
+static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(0);
+
 impl SourceKind {
+    fn next_seq_base() -> u64 {
+        return NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed) << 32;
+    }
+
     /// A kind that resolves but has no live source behind it yet. A restart puts
     /// one in place while the old source is released and its replacement opens:
     /// the device has to be free before it is reopened, and every binding on the
@@ -317,6 +339,7 @@ impl SourceKind {
             }),
             config,
             runtime,
+            seq_base: Self::next_seq_base(),
         };
     }
 
@@ -359,6 +382,7 @@ impl SourceKind {
             }
             (SourceConfig::Vnc(c), SourceRuntimeConfig::Vnc) => Box::new(vnc::VncSource::spawn(key.source_ref.clone(), c)),
             (SourceConfig::Rdp(c), SourceRuntimeConfig::Rdp) => Box::new(rdp::RdpSource::spawn(key.source_ref.clone(), c)),
+            (SourceConfig::Text(c), SourceRuntimeConfig::Text) => Box::new(text::TextSource::spawn(c)),
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
             _ => unreachable!("source config paired with a foreign runtime config"),
@@ -372,19 +396,27 @@ impl SourceKind {
                 "source open is slow"
             );
         }
-        return Self { source, config, runtime };
+        return Self {
+            source,
+            config,
+            runtime,
+            seq_base: Self::next_seq_base(),
+        };
     }
 
     /// Rebuild this source under the same key from the config and runtime data.
     /// The old runtime is dropped before the new one is constructed.
     fn respawn(self, key: &SourceKey) -> Self {
-        let Self { source, config, runtime } = self;
+        // The replacement is a new instance, so it takes a new sequence base.
+        let Self { source, config, runtime, .. } = self;
         drop(source);
         return Self::new(key, config, runtime);
     }
 
     pub fn latest(&self, device: &wgpu::Device, queue: &wgpu::Queue) -> Option<Frame> {
-        return self.source.latest(device, queue);
+        let frame = self.source.latest(device, queue)?;
+        let seq = frame.seq();
+        return Some(frame.with_seq(self.seq_base.wrapping_add(seq)));
     }
 
     pub fn stats(&self) -> Arc<Mutex<SourceStats>> {
@@ -458,6 +490,7 @@ impl VideoSource for PendingSource {
 pub struct SourceRegistry {
     sources: HashMap<SourceKey, SourceKind>,
     next_test: u32,
+    next_text: u32,
     next_vnc: u32,
     next_rdp: u32,
     pending_restarts: HashMap<SourceKey, Instant>,
@@ -473,6 +506,7 @@ impl SourceRegistry {
         Self {
             sources: HashMap::new(),
             next_test: 0,
+            next_text: 0,
             next_vnc: 0,
             next_rdp: 0,
             pending_restarts: HashMap::new(),
@@ -529,6 +563,25 @@ impl SourceRegistry {
             }
         };
         return self.add_new(key, SourceConfig::Test(config.unwrap_or_default()), SourceRuntimeConfig::Test);
+    }
+
+    /// Create a dedicated text source under a fresh key. The content lives in
+    /// the config, so the key only has to be unique.
+    pub fn add_text(&mut self, config: text::TextSourceConfig) -> SourceKey {
+        let key = loop {
+            self.next_text += 1;
+            let key = SourceKey::new(Protocol::Text, format!("Text {}", self.next_text));
+            if !self.contains(&key) {
+                break key;
+            }
+        };
+        return self.add_text_at(key, config);
+    }
+
+    /// Create a text source under a known key, preserving the binding a project
+    /// was saved with.
+    pub fn add_text_at(&mut self, key: SourceKey, config: text::TextSourceConfig) -> SourceKey {
+        return self.add_new(key, SourceConfig::Text(config), SourceRuntimeConfig::Text);
     }
 
     /// Create a dedicated VNC source under a fresh key. The connection details
@@ -679,6 +732,7 @@ impl SourceRegistry {
         // rebuild inline (no blocking work)
         let inline = match &live.runtime {
             SourceRuntimeConfig::Test => true,
+            SourceRuntimeConfig::Text => true,
             #[cfg(target_os = "windows")]
             SourceRuntimeConfig::Spout => true,
             _ => false,
@@ -761,6 +815,7 @@ impl SourceRegistry {
     pub fn clear(&mut self) {
         let drained: Vec<(SourceKey, SourceKind)> = self.sources.drain().collect();
         self.next_test = 0;
+        self.next_text = 0;
         self.next_vnc = 0;
         self.next_rdp = 0;
         self.pending_restarts.clear();
@@ -880,6 +935,21 @@ mod tests {
         assert_eq!(key.source_ref, "VNC 2");
     }
 
+    /// Text sources are keyed by a synthesized name; several must not collide,
+    /// and a new one never overwrites a source restored from a project.
+    #[test]
+    fn add_text_keys_stay_unique_and_skip_restored_ones() {
+        let mut registry = SourceRegistry::new();
+        let restored = SourceKey::new(Protocol::Text, "Text 1".to_string());
+        registry.add_text_at(restored, text::TextSourceConfig::default());
+        let mut keys = HashSet::new();
+        for _ in 0..3 {
+            let key = registry.add_text(text::TextSourceConfig::default());
+            assert!(keys.insert(key.clone()), "duplicate key {:?}", key);
+        }
+        assert_eq!(registry.list_sources(Protocol::Text).len(), 4);
+    }
+
     /// A restart rebuilds the source under the same key.
     #[test]
     fn restart_keeps_the_key() {
@@ -887,6 +957,20 @@ mod tests {
         let key = registry.add_test(None);
         registry.restart(&key);
         assert!(registry.get(&key).is_some());
+    }
+
+    /// A rebuilt source must hand out frame numbers past the ones it used
+    /// before, or the compositor keeps the texture it already uploaded.
+    #[test]
+    fn a_rebuilt_source_starts_a_new_frame_sequence() {
+        let mut registry = SourceRegistry::new();
+        let key = registry.add_text(text::TextSourceConfig::default());
+        let first = registry.get(&key).unwrap().seq_base;
+
+        registry.restart(&key);
+        let second = registry.get(&key).unwrap().seq_base;
+
+        assert!(second > first, "rebuilt source reused {first} as its sequence base");
     }
 
     /// A source being rebuilt on a thread stays live and keeps its config, so
@@ -1036,6 +1120,7 @@ mod tests {
                 source: Box::new(SlowDrop),
                 config: SourceConfig::Test(Default::default()),
                 runtime: SourceRuntimeConfig::Test,
+                seq_base: 0,
             },
         );
 

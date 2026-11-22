@@ -4,6 +4,7 @@ use serde::Serialize;
 use super::*;
 use crate::control::FeedbackMode;
 use crate::sources::TestSourceConfig;
+use crate::sources::{TextAlign, TextSourceConfig, TextStyle};
 use crate::sources::{NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{DecklinkSourceConfig, DecklinkOutputConfig, DecklinkVideoConnection, DecklinkMode};
 use crate::sources::{OmtOutputConfig, OmtSourceConfig, OmtQuality};
@@ -538,6 +539,48 @@ fn test_source_config_round_trips() {
             assert_eq!(c.height, 1080);
         }
         _ => panic!("expected Test source config"),
+    }
+}
+
+#[test]
+fn text_source_config_round_trips() {
+    let mut source = Source::new(
+        "Lower third".to_string(),
+        Protocol::Text,
+        Some("Text 1".to_string()),
+        0.0,
+        0.0,
+        640,
+        360,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
+    );
+    source.config = SourceConfig::Text(TextSourceConfig {
+        text: "STUDIO A\nLIVE".to_string(),
+        style: TextStyle {
+            width: 960,
+            height: 540,
+            font_size: 72.0,
+            align: TextAlign::Left,
+            background_color: [0, 0, 0, 128],
+            ..Default::default()
+        },
+    });
+    let json = serde_json::to_string(&source).unwrap();
+    assert!(json.contains("\"protocol\":\"Text\""));
+    let parsed: Source = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.protocol, Protocol::Text);
+    match parsed.config {
+        SourceConfig::Text(c) => {
+            assert_eq!(c.text, "STUDIO A\nLIVE");
+            assert_eq!((c.style.width, c.style.height), (960, 540));
+            assert_eq!(c.style.font_size, 72.0);
+            assert_eq!(c.style.align, TextAlign::Left);
+            assert_eq!(c.style.background_color, [0, 0, 0, 128]);
+        }
+        _ => panic!("expected Text source config"),
     }
 }
 
