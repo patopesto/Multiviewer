@@ -1,5 +1,5 @@
 use crate::config::OutputId;
-use crate::sources::{DecklinkOutputPort, OutputStats, Protocol, SourceConfig, SourceKey, SourceKind, SourceRuntimeConfig, SourceStats};
+use crate::sources::{DecklinkOutputPort, OutputStats, Protocol, SourceConfig, SourceKey, SourceKind, SourceRuntimeConfig, SourceStats, TimecodeStatus};
 
 use super::Engine;
 
@@ -25,6 +25,7 @@ pub struct SourceView {
     pub runtime: SourceRuntimeConfig,
     pub stats: SourceStats,
     pub restart_pending: bool,
+    pub timecode: Option<TimecodeStatus>,
 }
 
 #[derive(Clone)]
@@ -110,6 +111,7 @@ impl Engine {
                 runtime: kind.runtime.clone(),
                 stats: kind.stats().lock().unwrap().clone(),
                 restart_pending: self.registry.is_pending_restart(key),
+                timecode: kind.timecode(),
             });
         }
         return views;
@@ -161,6 +163,7 @@ impl Engine {
         self.push_discovery(&mut views, Protocol::Vnc, Vec::new());
         self.push_discovery(&mut views, Protocol::Rdp, Vec::new());
         self.push_discovery(&mut views, Protocol::Text, Vec::new());
+        self.push_discovery(&mut views, Protocol::Timecode, Vec::new());
 
         #[cfg(target_os = "macos")]
         {

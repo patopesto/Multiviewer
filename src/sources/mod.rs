@@ -23,6 +23,7 @@ mod spout;
 mod syphon;
 mod test;
 mod text;
+mod timecode;
 mod vnc;
 #[cfg(target_os = "windows")]
 mod windowscapture;
@@ -41,6 +42,7 @@ pub use stats::{OutputStats, SourceStats};
 
 pub use test::{TestSourceConfig, TestPattern, RadarDirection};
 pub use text::TextSourceConfig;
+pub use timecode::{TimecodeProtocol, TimecodeSourceConfig, TimecodeState, TimecodeStatus, TimecodeDisplay};
 pub use ndi::{NdiDiscovery, NdiSourceConfig, NdiOutputConfig, ndi_version, NdiReceiverBandwidth, NdiReceiverColorFormat, NdiSourceInfo};
 pub use omt::{OmtDiscovery, OmtSourceConfig, OmtOutputConfig, omt_version, OmtQuality, OmtSourceInfo};
 pub use decklink::{

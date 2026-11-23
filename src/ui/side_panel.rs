@@ -505,9 +505,13 @@ fn draw_source_properties_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, 
                         Protocol::Vnc => Some("+ New VNC Source".to_string()),
                         Protocol::Rdp => Some("+ New RDP Source".to_string()),
                         Protocol::Text => Some("+ New Text Source".to_string()),
+                        Protocol::Timecode => Some("+ New Timecode Source".to_string()),
                         _ => None,
                     };
-                    let scanning = !matches!(source.protocol, Protocol::Test | Protocol::Text | Protocol::Vnc | Protocol::Rdp);
+                    let scanning = !matches!(
+                        source.protocol,
+                        Protocol::Test | Protocol::Text | Protocol::Timecode | Protocol::Vnc | Protocol::Rdp
+                    );
                     let picker = source_picker(ui, &picker_id(&source.protocol), current, connected, groups, new_entry, scanning);
                     if let Some(selected) = picker.selected {
                         source.source_ref = Some(selected);
@@ -626,7 +630,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, 
 
             subsection_separator(ui);
             collapsable_section(ui, "Protocol Settings", false, true, |ui| {
-                if source_settings::render_source_settings_config(&mut source.config, &runtime.runtime, ui) {
+                if source_settings::render_source_settings_config(&mut source.config, &runtime.runtime, runtime.timecode.as_ref(), ui) {
                     config_changed = true;
                 }
             });
@@ -709,7 +713,7 @@ fn protocol_groups() -> Vec<Vec<Protocol>> {
     }
     video.push(Protocol::Vnc);
     video.push(Protocol::Rdp);
-    return vec![video, vec![Protocol::Text]];
+    return vec![video, vec![Protocol::Text, Protocol::Timecode]];
 }
 
 fn picker_id(protocol: &Protocol) -> String {
@@ -1027,6 +1031,7 @@ mod tests {
     use super::*;
     use crate::config::{Canvas, Source, TextureMode};
     use crate::engine::Engine;
+    use crate::sources::{SourceConfig, TimecodeProtocol, TimecodeSourceConfig};
 
     /// Every protocol the host supports has its own picker arm; each must build
     /// its item list and draw a frame without panicking, with no discovery
@@ -1062,6 +1067,48 @@ mod tests {
             output.textures_delta.clear();
             assert!(receiver.try_recv().is_err());
         }
+    }
+
+    /// The timecode settings need a live source for the input fields and the
+    /// received value to draw.
+    #[test]
+    fn timecode_settings_draw_with_a_live_source() {
+        let config = TimecodeSourceConfig {
+            input: TimecodeProtocol::ArtNet {
+                bind: "127.0.0.1".to_string(),
+                port: 0,
+                stream_id: 0,
+            },
+            ..Default::default()
+        };
+        let mut engine = Engine::test_instance(Canvas::default());
+        let key = engine.registry.add_timecode(config.clone());
+        let mut source = Source::new(
+            "Timecode".to_string(),
+            Protocol::Timecode,
+            Some(key.source_ref),
+            0.0,
+            0.0,
+            640,
+            360,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        );
+        source.config = SourceConfig::Timecode(config);
+        engine.state.selected_source_id = Some(source.uuid.clone());
+        engine.state.cfg.canvas.sources.push(source);
+
+        let snapshot = engine.snapshot();
+        let mut panel = SidePanel::default();
+        let (commands, receiver) = std::sync::mpsc::channel();
+        let ctx = egui::Context::default();
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            draw(ui, &snapshot, &mut panel, &commands);
+        });
+        output.textures_delta.clear();
+        assert!(receiver.try_recv().is_err());
     }
 
     #[test]

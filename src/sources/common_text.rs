@@ -53,6 +53,20 @@ impl Default for TextStyle {
 }
 
 impl TextStyle {
+    /// Largest raster the settings and a project file may ask for, in pixels.
+    pub const MAX_SIZE: (u32, u32) = (4096, 4096);
+
+    /// Bounds the raster size a project file may carry.
+    pub fn bounded(self) -> Self {
+        let (max_width, max_height) = Self::MAX_SIZE;
+        return Self {
+            width: self.width.clamp(1, max_width),
+            height: self.height.clamp(1, max_height),
+            font_size: self.font_size.clamp(1.0, 1024.0),
+            ..self
+        };
+    }
+
     /// Render `text` into a fresh RGBA frame.
     pub fn render(&self, text: &str) -> Vec<u8> {
         return render_text_frame(self.width, self.height, text, self.font_size, self.text_color, self.background_color, self.align);

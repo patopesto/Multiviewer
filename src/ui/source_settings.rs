@@ -2,6 +2,7 @@ use crate::ui::side_panel::{color_picker_rgba_row, settings_grid, settings_row};
 use crate::sources::{SourceConfig, SourceRuntimeConfig};
 use crate::sources::{TestSourceConfig, TestPattern, RadarDirection};
 use crate::sources::{TextSourceConfig, TextAlign, TextStyle};
+use crate::sources::{TimecodeSourceConfig, TimecodeProtocol, TimecodeState, TimecodeStatus, TimecodeDisplay};
 use crate::sources::{NdiSourceConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{OmtSourceConfig, OmtQuality};
 use crate::sources::{DecklinkSourceConfig, DecklinkVideoConnection, DecklinkVideoConnections};
@@ -24,7 +25,12 @@ use crate::sources::{DirectShowSourceConfig, DirectShowMode};
 #[cfg(target_os = "windows")]
 use crate::sources::{WindowsCaptureBorder, WindowsCaptureCursor, WindowsCaptureSecondaryWindows, WindowsCaptureSourceConfig};
 
-pub fn render_source_settings_config(config: &mut SourceConfig, runtime: &SourceRuntimeConfig, ui: &mut egui::Ui) -> bool {
+pub fn render_source_settings_config(
+    config: &mut SourceConfig,
+    runtime: &SourceRuntimeConfig,
+    timecode: Option<&TimecodeStatus>,
+    ui: &mut egui::Ui,
+) -> bool {
     return match config {
         SourceConfig::Test(cfg) => test_settings_ui(cfg, ui),
         SourceConfig::Ndi(cfg) => ndi_settings_ui(cfg, ui),
@@ -47,6 +53,7 @@ pub fn render_source_settings_config(config: &mut SourceConfig, runtime: &Source
         SourceConfig::Vnc(cfg) => vnc_settings_ui(cfg, ui),
         SourceConfig::Rdp(cfg) => rdp_settings_ui(cfg, ui),
         SourceConfig::Text(cfg) => text_settings_ui(cfg, ui),
+        SourceConfig::Timecode(cfg) => timecode_settings_ui(cfg, timecode, ui),
         // Config from a platform that has this protocol; no runtime source.
         SourceConfig::Unknown(_) => false,
     };
@@ -618,21 +625,22 @@ fn text_settings_ui(cfg: &mut TextSourceConfig, ui: &mut egui::Ui) -> bool {
             changed |= response.changed();
         });
 
-        changed |= text_style_rows(ui, &mut cfg.style);
+        changed |= text_style_rows(ui, &mut cfg.style, TextStyle::MAX_SIZE);
     });
     return changed;
 }
 
 /// Frame and text appearance rows, shared by every text-rendering source.
-fn text_style_rows(ui: &mut egui::Ui, style: &mut TextStyle) -> bool {
+fn text_style_rows(ui: &mut egui::Ui, style: &mut TextStyle, max: (u32, u32)) -> bool {
     let mut changed = false;
+    let (max_width, max_height) = max;
 
     settings_row(ui, "Size", |ui| {
         ui.label("W");
-        let width = ui.add(egui::DragValue::new(&mut style.width).range(16..=4096).update_while_editing(false));
+        let width = ui.add(egui::DragValue::new(&mut style.width).range(16..=max_width).update_while_editing(false));
         changed |= commit_field_edit(ui, "text_width", width.changed(), width.lost_focus(), width.drag_stopped());
         ui.label("H");
-        let height = ui.add(egui::DragValue::new(&mut style.height).range(16..=4096).update_while_editing(false));
+        let height = ui.add(egui::DragValue::new(&mut style.height).range(16..=max_height).update_while_editing(false));
         changed |= commit_field_edit(ui, "text_height", height.changed(), height.lost_focus(), height.drag_stopped());
     });
 
@@ -658,6 +666,80 @@ fn text_style_rows(ui: &mut egui::Ui, style: &mut TextStyle) -> bool {
     });
 
     return changed;
+}
+
+fn timecode_settings_ui(cfg: &mut TimecodeSourceConfig, status: Option<&TimecodeStatus>, ui: &mut egui::Ui) -> bool {
+    let mut changed = false;
+    settings_grid(ui, "timecode_settings_grid", |ui| {
+        settings_row(ui, "Input", |ui| {
+            egui::ComboBox::from_id_salt("timecode_input")
+                .width(ui.available_width())
+                .selected_text(cfg.input.label())
+                .show_ui(ui, |ui| {
+                    for variant in TimecodeProtocol::variants() {
+                        if ui.selectable_label(cfg.input.label() == variant.label(), variant.label()).clicked()
+                            && cfg.input.label() != variant.label()
+                        {
+                            cfg.input = variant;
+                            changed = true;
+                        }
+                    }
+                });
+        });
+
+        match &mut cfg.input {
+            TimecodeProtocol::ArtNet { bind, port, stream_id } => {
+                settings_row(ui, "Bind", |ui| {
+                    let response = ui.add(egui::TextEdit::singleline(bind).desired_width(ui.available_width()));
+                    changed |= commit_field_edit(ui, "timecode_bind", response.changed(), response.lost_focus(), false);
+                });
+
+                settings_row(ui, "Port", |ui| {
+                    let response = ui.add(egui::DragValue::new(port).range(1..=65535).update_while_editing(false));
+                    changed |= commit_field_edit(ui, "timecode_port", response.changed(), response.lost_focus(), response.drag_stopped());
+                });
+
+                settings_row(ui, "StreamID", |ui| {
+                    let response = ui.add(egui::DragValue::new(stream_id).range(0..=255).update_while_editing(false));
+                    changed |= commit_field_edit(ui, "timecode_stream_id", response.changed(), response.lost_focus(), response.drag_stopped());
+                });
+            }
+        }
+
+        settings_row(ui, "Display", |ui| {
+            egui::ComboBox::from_id_salt("timecode_display")
+                .width(ui.available_width())
+                .selected_text(cfg.display.label())
+                .show_ui(ui, |ui| {
+                    for display in TimecodeDisplay::ALL {
+                        changed |= ui.selectable_value(&mut cfg.display, display, display.label()).changed();
+                    }
+                });
+        });
+
+        settings_row(ui, "Signal", |ui| {
+            let (text, timecode) = match status {
+                Some(status) => (status_text(&status.state), status.timecode),
+                None => ("No runtime".to_string(), None),
+            };
+            let response = ui.label(text);
+            if let Some(timecode) = timecode {
+                response.on_hover_text(timecode.label());
+            }
+        });
+
+        changed |= text_style_rows(ui, &mut cfg.style, TimecodeSourceConfig::MAX_SIZE);
+    });
+    return changed;
+}
+
+fn status_text(state: &TimecodeState) -> String {
+    return match state {
+        TimecodeState::Waiting => "Waiting for timecode".to_string(),
+        TimecodeState::Receiving => "Receiving".to_string(),
+        TimecodeState::Lost => "No signal, holding the last value".to_string(),
+        TimecodeState::Error(error) => format!("Error: {error}"),
+    };
 }
 
 // Helpers

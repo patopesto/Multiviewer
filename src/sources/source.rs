@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 
-use super::{Protocol, Frame, NdiSourceInfo, OmtSourceInfo, SourceStats};
+use super::{Protocol, Frame, NdiSourceInfo, OmtSourceInfo, SourceStats, TimecodeStatus};
 use super::decklink;
 use super::ndi;
 use super::omt;
@@ -29,6 +29,7 @@ use super::directshow;
 #[cfg(target_os = "windows")]
 use super::windowscapture;
 use super::text;
+use super::timecode;
 
 pub type SourceRef = String;
 
@@ -54,6 +55,10 @@ pub trait VideoSource: Send + Sync {
     /// key as absent and the reconnect pass retries it.
     fn alive(&self) -> bool {
         return true;
+    }
+    /// The timecode receiver snapshot, for sources that receive timecode.
+    fn timecode(&self) -> Option<TimecodeStatus> {
+        return None;
     }
 }
 
@@ -88,6 +93,7 @@ pub enum SourceConfig {
     Rdp(rdp::RdpSourceConfig),
     // Other
     Text(text::TextSourceConfig),
+    Timecode(timecode::TimecodeSourceConfig),
     Unknown(serde_json::Value),
 }
 
@@ -123,6 +129,7 @@ enum SourceConfigInner {
     Vnc(vnc::VncSourceConfig),
     Rdp(rdp::RdpSourceConfig),
     Text(text::TextSourceConfig),
+    Timecode(timecode::TimecodeSourceConfig),
 }
 
 impl From<SourceConfigInner> for SourceConfig {
@@ -149,6 +156,7 @@ impl From<SourceConfigInner> for SourceConfig {
             SourceConfigInner::Vnc(c) => SourceConfig::Vnc(c),
             SourceConfigInner::Rdp(c) => SourceConfig::Rdp(c),
             SourceConfigInner::Text(c) => SourceConfig::Text(c),
+            SourceConfigInner::Timecode(c) => SourceConfig::Timecode(c),
         }
     }
 }
@@ -182,6 +190,7 @@ impl Serialize for SourceConfig {
             SourceConfig::Vnc(c) => SourceConfigInner::Vnc(c.clone()).serialize(serializer),
             SourceConfig::Rdp(c) => SourceConfigInner::Rdp(c.clone()).serialize(serializer),
             SourceConfig::Text(c) => SourceConfigInner::Text(c.clone()).serialize(serializer),
+            SourceConfig::Timecode(c) => SourceConfigInner::Timecode(c.clone()).serialize(serializer),
         }
     }
 }
@@ -227,6 +236,7 @@ impl SourceConfig {
             Protocol::Vnc => SourceConfig::Vnc(vnc::VncSourceConfig::default()),
             Protocol::Rdp => SourceConfig::Rdp(rdp::RdpSourceConfig::default()),
             Protocol::Text => SourceConfig::Text(text::TextSourceConfig::default()),
+            Protocol::Timecode => SourceConfig::Timecode(timecode::TimecodeSourceConfig::default()),
             Protocol::Unknown(_) => SourceConfig::default(),
         }
     }
@@ -254,6 +264,7 @@ impl SourceConfig {
             (SourceConfig::Vnc(_), Protocol::Vnc) => true,
             (SourceConfig::Rdp(_), Protocol::Rdp) => true,
             (SourceConfig::Text(_), Protocol::Text) => true,
+            (SourceConfig::Timecode(_), Protocol::Timecode) => true,
             _ => false,
         };
     }
@@ -305,6 +316,7 @@ pub enum SourceRuntimeConfig {
     Vnc,
     Rdp,
     Text,
+    Timecode,
 }
 
 /// A live source: its boxed runtime, the config persisted in the project, and
@@ -383,6 +395,7 @@ impl SourceKind {
             (SourceConfig::Vnc(c), SourceRuntimeConfig::Vnc) => Box::new(vnc::VncSource::spawn(key.source_ref.clone(), c)),
             (SourceConfig::Rdp(c), SourceRuntimeConfig::Rdp) => Box::new(rdp::RdpSource::spawn(key.source_ref.clone(), c)),
             (SourceConfig::Text(c), SourceRuntimeConfig::Text) => Box::new(text::TextSource::spawn(c)),
+            (SourceConfig::Timecode(c), SourceRuntimeConfig::Timecode) => Box::new(timecode::TimecodeSource::spawn(key.source_ref.clone(), c)),
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
             _ => unreachable!("source config paired with a foreign runtime config"),
@@ -421,6 +434,10 @@ impl SourceKind {
 
     pub fn stats(&self) -> Arc<Mutex<SourceStats>> {
         return self.source.stats();
+    }
+
+    pub fn timecode(&self) -> Option<TimecodeStatus> {
+        return self.source.timecode();
     }
 
     fn alive(&self) -> bool {
@@ -491,6 +508,7 @@ pub struct SourceRegistry {
     sources: HashMap<SourceKey, SourceKind>,
     next_test: u32,
     next_text: u32,
+    next_timecode: u32,
     next_vnc: u32,
     next_rdp: u32,
     pending_restarts: HashMap<SourceKey, Instant>,
@@ -507,6 +525,7 @@ impl SourceRegistry {
             sources: HashMap::new(),
             next_test: 0,
             next_text: 0,
+            next_timecode: 0,
             next_vnc: 0,
             next_rdp: 0,
             pending_restarts: HashMap::new(),
@@ -582,6 +601,25 @@ impl SourceRegistry {
     /// was saved with.
     pub fn add_text_at(&mut self, key: SourceKey, config: text::TextSourceConfig) -> SourceKey {
         return self.add_new(key, SourceConfig::Text(config), SourceRuntimeConfig::Text);
+    }
+
+    /// Create a dedicated timecode source under a fresh key. The input lives in
+    /// the config, so the key only has to be unique.
+    pub fn add_timecode(&mut self, config: timecode::TimecodeSourceConfig) -> SourceKey {
+        let key = loop {
+            self.next_timecode += 1;
+            let key = SourceKey::new(Protocol::Timecode, format!("Timecode {}", self.next_timecode));
+            if !self.contains(&key) {
+                break key;
+            }
+        };
+        return self.add_timecode_at(key, config);
+    }
+
+    /// Create a timecode source under a known key, preserving the binding a
+    /// project was saved with.
+    pub fn add_timecode_at(&mut self, key: SourceKey, config: timecode::TimecodeSourceConfig) -> SourceKey {
+        return self.add_new(key, SourceConfig::Timecode(config), SourceRuntimeConfig::Timecode);
     }
 
     /// Create a dedicated VNC source under a fresh key. The connection details
@@ -816,6 +854,7 @@ impl SourceRegistry {
         let drained: Vec<(SourceKey, SourceKind)> = self.sources.drain().collect();
         self.next_test = 0;
         self.next_text = 0;
+        self.next_timecode = 0;
         self.next_vnc = 0;
         self.next_rdp = 0;
         self.pending_restarts.clear();
@@ -948,6 +987,30 @@ mod tests {
             assert!(keys.insert(key.clone()), "duplicate key {:?}", key);
         }
         assert_eq!(registry.list_sources(Protocol::Text).len(), 4);
+    }
+
+    fn timecode_config() -> timecode::TimecodeSourceConfig {
+        return timecode::TimecodeSourceConfig {
+            input: timecode::TimecodeProtocol::ArtNet {
+                bind: "127.0.0.1".to_string(),
+                port: 0,
+                stream_id: 0,
+            },
+            ..Default::default()
+        };
+    }
+
+    #[test]
+    fn add_timecode_keys_stay_unique_and_skip_restored_ones() {
+        let mut registry = SourceRegistry::new();
+        let restored = SourceKey::new(Protocol::Timecode, "Timecode 1".to_string());
+        registry.add_timecode_at(restored, timecode_config());
+        let mut keys = HashSet::new();
+        for _ in 0..3 {
+            let key = registry.add_timecode(timecode_config());
+            assert!(keys.insert(key.clone()), "duplicate key {:?}", key);
+        }
+        assert_eq!(registry.list_sources(Protocol::Timecode).len(), 4);
     }
 
     /// A restart rebuilds the source under the same key.

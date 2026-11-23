@@ -10,6 +10,7 @@ pub struct TextSourceConfig {
     /// Lines of text to display; newlines start a new line.
     pub text: String,
     /// Frame size, colours and alignment.
+    #[serde(flatten)]
     pub style: TextStyle,
 }
 
@@ -31,13 +32,7 @@ pub struct TextSource {
 
 impl TextSource {
     pub fn spawn(config: &TextSourceConfig) -> Self {
-        // A project file can carry sizes the UI cannot produce; bound them once
-        // so the frame and its pixels agree.
-        let mut style = config.style.clone();
-        style.width = style.width.clamp(1, 4096);
-        style.height = style.height.clamp(1, 4096);
-        style.font_size = style.font_size.clamp(1.0, 1024.0);
-
+        let style = config.style.clone().bounded();
         let pixels = style.render(&config.text);
         let mut stats = SourceStats::new();
         stats.record_frame(style.width, style.height, PixelFormat::Rgba8.label(), 0.0);

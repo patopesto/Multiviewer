@@ -169,3 +169,22 @@ transparent background by default, so a text source can sit over a video source 
 
 <SettingsTable name="Text" direction="input" />
 
+### Timecode
+
+Display a timecode received from the network. The source shows the last value it received and keeps it when the signal
+stops; before the first value it shows a placeholder in the shape of the chosen display. Nothing is generated locally,
+so the card updates at the sender's rate.
+
+**Display** chooses the fields drawn: `HH:MM:SS:FF` (with `;` for drop-frame), `HH:MM:SS`, `HH:MM`, `MM:SS`, the total
+frame count, seconds as a decimal, or `HH:MM:SS.mmm`. Frames and seconds exclude drop-frame numbers, so they show
+real elapsed time; `HH:MM:SS.mmm` converts the received label's frame part to milliseconds.
+
+**Art-Net** carries timecode as `ArtTimeCode` packets on UDP port 6454. Set the bind address, port and stream in
+**Protocol Settings**. Only one source can bind a given port, so share the source across placements or use a different
+port for a second one.
+
+The card raster is capped at 1920x1080, because it is redrawn for every received value. A larger size in a project file
+is clamped.
+
+<SettingsTable name="Timecode" direction="input" />
+

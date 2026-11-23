@@ -134,9 +134,10 @@ impl Frame<'_> {
         let cy = (place.y0 + place.y1) / 2.0;
         let hx = (place.x1 - place.x0) / 2.0 * sx;
         let hy = (place.y0 - place.y1) / 2.0 * sy;
-        // A text card carries its own alpha; every other source replaces the
-        // pixel so a frame with an unexpected alpha cannot punch a hole.
-        let pipeline = if source.protocol == Protocol::Text {
+        // Text and timecode cards carry their own alpha; every other source
+        // replaces the pixel so a frame with an unexpected alpha cannot punch a
+        // hole.
+        let pipeline = if matches!(source.protocol, Protocol::Text | Protocol::Timecode) {
             Pipeline::Text
         } else {
             Pipeline::Main

@@ -3,7 +3,7 @@ use super::transform::{MAX_ZOOM, MIN_ZOOM};
 use super::project::ProjectError;
 use crate::config::{BorderVisibility, LabelVisibility, Source};
 use crate::control::{Command, Selector, feedback_values, normalize_prefix};
-use crate::sources::{Protocol, RdpSourceConfig, SourceConfig, SourceKey, TextSourceConfig, VncSourceConfig};
+use crate::sources::{Protocol, RdpSourceConfig, SourceConfig, SourceKey, TextSourceConfig, TimecodeSourceConfig, VncSourceConfig};
 
 #[derive(Debug)]
 pub enum ControlError {
@@ -172,6 +172,11 @@ impl Engine {
                         let config = TextSourceConfig::default();
                         let key = self.registry.add_text(config.clone());
                         (key.source_ref, Some(SourceConfig::Text(config)))
+                    }
+                    Protocol::Timecode => {
+                        let config = TimecodeSourceConfig::default();
+                        let key = self.registry.add_timecode(config.clone());
+                        (key.source_ref, Some(SourceConfig::Timecode(config)))
                     }
                     Protocol::Vnc => {
                         let config = VncSourceConfig::default();

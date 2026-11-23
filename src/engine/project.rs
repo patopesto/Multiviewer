@@ -207,8 +207,8 @@ impl Engine {
     }
 
     /// Restore the sources that are created locally and have no discovery
-    /// service: Test patterns and Text. Opening them here takes their keys
-    /// before any command can allocate a fresh one.
+    /// service: Test patterns, Text and Timecode. Opening them here takes their
+    /// keys before any command can allocate a fresh one.
     fn restore_local_sources(&mut self) {
         for (i, source) in self.state.cfg.canvas.sources.iter_mut().enumerate() {
             if source.uuid.is_empty() {
@@ -237,6 +237,20 @@ impl Engine {
                     let key = match source.source_ref.clone() {
                         Some(source_ref) => self.registry.add_text_at(SourceKey::new(Protocol::Text, source_ref), text_config),
                         None => self.registry.add_text(text_config),
+                    };
+                    source.source_ref = Some(key.source_ref);
+                    self.state.dirty = true;
+                }
+            }
+            if source.protocol == Protocol::Timecode {
+                let timecode_config = match &source.config {
+                    SourceConfig::Timecode(c) => Some(c.clone()),
+                    _ => None,
+                };
+                if let Some(timecode_config) = timecode_config {
+                    let key = match source.source_ref.clone() {
+                        Some(source_ref) => self.registry.add_timecode_at(SourceKey::new(Protocol::Timecode, source_ref), timecode_config),
+                        None => self.registry.add_timecode(timecode_config),
                     };
                     source.source_ref = Some(key.source_ref);
                     self.state.dirty = true;

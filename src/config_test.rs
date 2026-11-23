@@ -5,6 +5,7 @@ use super::*;
 use crate::control::FeedbackMode;
 use crate::sources::TestSourceConfig;
 use crate::sources::{TextAlign, TextSourceConfig, TextStyle};
+use crate::sources::{TimecodeDisplay, TimecodeProtocol, TimecodeSourceConfig};
 use crate::sources::{NdiSourceConfig, NdiOutputConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{DecklinkSourceConfig, DecklinkOutputConfig, DecklinkVideoConnection, DecklinkMode};
 use crate::sources::{OmtOutputConfig, OmtSourceConfig, OmtQuality};
@@ -570,6 +571,10 @@ fn text_source_config_round_trips() {
     });
     let json = serde_json::to_string(&source).unwrap();
     assert!(json.contains("\"protocol\":\"Text\""));
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert!(value["config"].get("style").is_none(), "the style is flattened");
+    assert_eq!(value["config"]["width"], serde_json::json!(960));
+    assert_eq!(value["config"]["font_size"], serde_json::json!(72.0));
     let parsed: Source = serde_json::from_str(&json).unwrap();
     assert_eq!(parsed.protocol, Protocol::Text);
     match parsed.config {
@@ -581,6 +586,59 @@ fn text_source_config_round_trips() {
             assert_eq!(c.style.background_color, [0, 0, 0, 128]);
         }
         _ => panic!("expected Text source config"),
+    }
+}
+
+#[test]
+fn timecode_source_config_round_trips() {
+    let mut source = Source::new(
+        "Timecode".to_string(),
+        Protocol::Timecode,
+        Some("Timecode 1".to_string()),
+        0.0,
+        0.0,
+        960,
+        270,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
+    );
+    source.config = SourceConfig::Timecode(TimecodeSourceConfig {
+        input: TimecodeProtocol::ArtNet {
+            bind: "127.0.0.1".to_string(),
+            port: 6455,
+            stream_id: 2,
+        },
+        display: TimecodeDisplay::Minutes,
+        style: TextStyle {
+            width: 960,
+            height: 270,
+            font_size: 96.0,
+            ..Default::default()
+        },
+    });
+    let json = serde_json::to_string(&source).unwrap();
+    assert!(json.contains("\"protocol\":\"Timecode\""));
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert!(value["config"].get("style").is_none(), "the style is flattened");
+    assert_eq!(value["config"]["width"], serde_json::json!(960));
+    assert_eq!(value["config"]["display"], serde_json::json!("Minutes"));
+    let parsed: Source = serde_json::from_str(&json).unwrap();
+    assert_eq!(parsed.protocol, Protocol::Timecode);
+    match parsed.config {
+        SourceConfig::Timecode(c) => {
+            assert_eq!((c.style.width, c.style.height), (960, 270));
+            assert_eq!(c.style.font_size, 96.0);
+            assert_eq!(c.display, TimecodeDisplay::Minutes);
+            match c.input {
+                TimecodeProtocol::ArtNet { bind, port, stream_id } => {
+                    assert_eq!(bind, "127.0.0.1");
+                    assert_eq!((port, stream_id), (6455, 2));
+                }
+            }
+        }
+        _ => panic!("expected Timecode source config"),
     }
 }
 

@@ -29,6 +29,7 @@ pub enum Protocol {
     WindowsCapture,
     // Other
     Text,
+    Timecode,
     /// A protocol that is not available on this platform. Holds the original
     /// protocol name as serialized in the project file so it round-trips
     /// unchanged when the project is opened on a platform that supports it.
@@ -61,6 +62,7 @@ impl Protocol {
             Protocol::Vnc => "Vnc",
             Protocol::Rdp => "Rdp",
             Protocol::Text => "Text",
+            Protocol::Timecode => "Timecode",
             Protocol::Unknown(name) => name,
         }
     }
@@ -90,6 +92,7 @@ impl Protocol {
             "vnc" => Protocol::Vnc,
             "rdp" => Protocol::Rdp,
             "text" => Protocol::Text,
+            "timecode" => Protocol::Timecode,
             _ => Protocol::Unknown(name.to_string()),
         };
     }
@@ -117,6 +120,7 @@ impl Protocol {
             Protocol::Vnc => "VNC".to_string(),
             Protocol::Rdp => "RDP".to_string(),
             Protocol::Text => "Text".to_string(),
+            Protocol::Timecode => "Timecode".to_string(),
             Protocol::Unknown(name) => format!("{name} (Unavailable)"),
         }
     }

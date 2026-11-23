@@ -6,6 +6,7 @@ use crate::sources::{
     Protocol, SourceConfig, SourceKey, OutputConfig, DecklinkSourceConfig, NdiOutputConfig, NdiSourceConfig, DecklinkVideoConnection,
     NdiReceiverBandwidth, NdiReceiverColorFormat, TextSourceConfig,
 };
+use crate::sources::{TimecodeProtocol, TimecodeSourceConfig};
 use crate::sources::VncSourceConfig;
 use std::time::{Duration, Instant};
 
@@ -121,6 +122,51 @@ fn text_sources_are_open_when_the_project_loads() {
         panic!("expected Text config");
     };
     assert_eq!(config.text, "STUDIO A");
+}
+
+/// A Timecode source is opened while the project loads, so a new one created
+/// right after cannot take its key and replace the saved input.
+#[test]
+fn timecode_sources_are_open_when_the_project_loads() {
+    let mut source = Source::new(
+        "Timecode".to_string(),
+        Protocol::Timecode,
+        Some("Timecode 1".to_string()),
+        0.0,
+        0.0,
+        640,
+        360,
+        0,
+        TextureMode::Fit,
+        false,
+        false,
+    );
+    source.config = SourceConfig::Timecode(timecode_config());
+    let mut engine = test_engine(Canvas {
+        width: 1920,
+        height: 1080,
+        sources: vec![source],
+        outputs: Vec::new(),
+        ..Default::default()
+    });
+
+    engine.rebuild_from_config();
+
+    let key = SourceKey::new(Protocol::Timecode, "Timecode 1".to_string());
+    assert!(engine.registry.get(&key).is_some());
+    let next = engine.registry.add_timecode(timecode_config());
+    assert_eq!(next.source_ref, "Timecode 2");
+}
+
+fn timecode_config() -> TimecodeSourceConfig {
+    return TimecodeSourceConfig {
+        input: TimecodeProtocol::ArtNet {
+            bind: "127.0.0.1".to_string(),
+            port: 0,
+            stream_id: 0,
+        },
+        ..Default::default()
+    };
 }
 
 #[test]

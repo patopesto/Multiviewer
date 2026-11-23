@@ -108,4 +108,10 @@ export const protocols: Protocol[] = [
     platforms: ['macos', 'windows', 'linux'],
     inputNote: 'Fixed text as a source',
   },
+  {
+    name: 'Timecode',
+    input: true,
+    platforms: ['macos', 'windows', 'linux'],
+    inputNote: 'Displays timecode received over Art-Net',
+  },
 ];
