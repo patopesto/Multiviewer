@@ -630,7 +630,13 @@ fn draw_source_properties_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, 
 
             subsection_separator(ui);
             collapsable_section(ui, "Protocol Settings", false, true, |ui| {
-                if source_settings::render_source_settings_config(&mut source.config, &runtime.runtime, runtime.timecode.as_ref(), ui) {
+                if source_settings::render_source_settings_config(
+                    &mut source.config,
+                    &runtime.runtime,
+                    runtime.timecode.as_ref(),
+                    &snapshot.runtime.mtc_ports,
+                    ui,
+                ) {
                     config_changed = true;
                 }
             });

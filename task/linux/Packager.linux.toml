@@ -15,4 +15,4 @@ resources = [
 ]
 
 [deb]
-depends = ["libgl1", "libvulkan1", "libx11-6", "libxkbcommon0", "libwayland-client0"]
+depends = ["libgl1", "libvulkan1", "libx11-6", "libxkbcommon0", "libwayland-client0", "libasound2"]

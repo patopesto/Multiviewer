@@ -1,5 +1,7 @@
 use crate::config::OutputId;
-use crate::sources::{DecklinkOutputPort, OutputStats, Protocol, SourceConfig, SourceKey, SourceKind, SourceRuntimeConfig, SourceStats, TimecodeStatus};
+use crate::sources::{
+    mtc_ports, DecklinkOutputPort, OutputStats, Protocol, SourceConfig, SourceKey, SourceKind, SourceRuntimeConfig, SourceStats, TimecodeStatus,
+};
 
 use super::Engine;
 
@@ -10,6 +12,7 @@ pub struct RuntimeView {
     pub outputs: Vec<OutputView>,
     pub discoveries: Vec<DiscoveryView>,
     pub decklink_outputs: Vec<DecklinkOutputPort>,
+    pub mtc_ports: Vec<String>,
     pub control: ControlView,
 }
 
@@ -92,11 +95,13 @@ impl RuntimeView {
 
 impl Engine {
     pub fn runtime_view(&self, focuses: &[Option<Protocol>]) -> RuntimeView {
+        let ports = if wants(focuses, &Protocol::Timecode) { mtc_ports() } else { Vec::new() };
         return RuntimeView {
             sources: self.source_views(),
             outputs: self.output_views(),
             discoveries: self.discovery_views(focuses),
             decklink_outputs: self.decklink.as_ref().map(|d| d.list_outputs()).unwrap_or_default(),
+            mtc_ports: ports,
             control: ControlView {
                 osc: self.control.status_label(),
             },

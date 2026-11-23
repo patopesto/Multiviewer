@@ -29,6 +29,7 @@ pub fn render_source_settings_config(
     config: &mut SourceConfig,
     runtime: &SourceRuntimeConfig,
     timecode: Option<&TimecodeStatus>,
+    mtc_ports: &[String],
     ui: &mut egui::Ui,
 ) -> bool {
     return match config {
@@ -53,7 +54,7 @@ pub fn render_source_settings_config(
         SourceConfig::Vnc(cfg) => vnc_settings_ui(cfg, ui),
         SourceConfig::Rdp(cfg) => rdp_settings_ui(cfg, ui),
         SourceConfig::Text(cfg) => text_settings_ui(cfg, ui),
-        SourceConfig::Timecode(cfg) => timecode_settings_ui(cfg, timecode, ui),
+        SourceConfig::Timecode(cfg) => timecode_settings_ui(cfg, timecode, mtc_ports, ui),
         // Config from a platform that has this protocol; no runtime source.
         SourceConfig::Unknown(_) => false,
     };
@@ -668,7 +669,7 @@ fn text_style_rows(ui: &mut egui::Ui, style: &mut TextStyle, max: (u32, u32)) ->
     return changed;
 }
 
-fn timecode_settings_ui(cfg: &mut TimecodeSourceConfig, status: Option<&TimecodeStatus>, ui: &mut egui::Ui) -> bool {
+fn timecode_settings_ui(cfg: &mut TimecodeSourceConfig, status: Option<&TimecodeStatus>, mtc_ports: &[String], ui: &mut egui::Ui) -> bool {
     let mut changed = false;
     settings_grid(ui, "timecode_settings_grid", |ui| {
         settings_row(ui, "Input", |ui| {
@@ -677,10 +678,15 @@ fn timecode_settings_ui(cfg: &mut TimecodeSourceConfig, status: Option<&Timecode
                 .selected_text(cfg.input.label())
                 .show_ui(ui, |ui| {
                     for variant in TimecodeProtocol::variants() {
-                        if ui.selectable_label(cfg.input.label() == variant.label(), variant.label()).clicked()
-                            && cfg.input.label() != variant.label()
-                        {
+                        let selected = cfg.input.label() == variant.label();
+                        if ui.selectable_label(selected, variant.label()).clicked() && !selected {
                             cfg.input = variant;
+                            if let TimecodeProtocol::Mtc { port } = &mut cfg.input
+                                && port.is_empty()
+                                && let Some(first) = mtc_ports.first()
+                            {
+                                *port = first.clone();
+                            }
                             changed = true;
                         }
                     }
@@ -702,6 +708,29 @@ fn timecode_settings_ui(cfg: &mut TimecodeSourceConfig, status: Option<&Timecode
                 settings_row(ui, "StreamID", |ui| {
                     let response = ui.add(egui::DragValue::new(stream_id).range(0..=255).update_while_editing(false));
                     changed |= commit_field_edit(ui, "timecode_stream_id", response.changed(), response.lost_focus(), response.drag_stopped());
+                });
+            }
+            TimecodeProtocol::Mtc { port } => {
+                settings_row(ui, "MIDI input", |ui| {
+                    let selected = if port.is_empty() {
+                        "Select a MIDI input".to_string()
+                    } else if mtc_ports.iter().any(|candidate| candidate.as_str() == port.as_str()) {
+                        port.clone()
+                    } else {
+                        format!("{port} (not found)")
+                    };
+                    egui::ComboBox::from_id_salt("timecode_midi_port")
+                        .width(ui.available_width())
+                        .selected_text(selected)
+                        .show_ui(ui, |ui| {
+                            for candidate in mtc_ports {
+                                let is_selected = candidate.as_str() == port.as_str();
+                                if ui.selectable_label(is_selected, candidate.as_str()).clicked() && !is_selected {
+                                    *port = candidate.clone();
+                                    changed = true;
+                                }
+                            }
+                        });
                 });
             }
         }

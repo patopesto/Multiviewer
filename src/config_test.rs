@@ -636,6 +636,7 @@ fn timecode_source_config_round_trips() {
                     assert_eq!(bind, "127.0.0.1");
                     assert_eq!((port, stream_id), (6455, 2));
                 }
+                TimecodeProtocol::Mtc { .. } => panic!("expected the Art-Net input"),
             }
         }
         _ => panic!("expected Timecode source config"),

@@ -24,9 +24,35 @@ impl Timecode {
         );
     }
 
-    /// The label's nominal frame rate: 24, 25 or 30.
+    /// The timecode's nominal frame rate: 24, 25, 30 or 60.
     pub fn nominal_fps(&self) -> u64 {
         return self.fps.round() as u64;
+    }
+
+    /// Move the timecode forward by `frames`, carrying seconds/minutes/hours and
+    /// skipping drop-frame numbers at a minute boundary.
+    pub(super) fn add_frames(&self, frames: u8) -> Timecode {
+        let mut timecode = *self;
+        for _ in 0..frames {
+            timecode.frames += 1;
+            if u64::from(timecode.frames) < timecode.nominal_fps() {
+                continue;
+            }
+            timecode.frames = 0;
+            timecode.seconds += 1;
+            if timecode.seconds == 60 {
+                timecode.seconds = 0;
+                timecode.minutes += 1;
+                if timecode.minutes == 60 {
+                    timecode.minutes = 0;
+                    timecode.hours = (timecode.hours + 1) % 24;
+                }
+            }
+            if timecode.drop_frame && timecode.seconds == 0 && timecode.minutes % 10 != 0 {
+                timecode.frames = (timecode.nominal_fps() * 2 / 30) as u8;
+            }
+        }
+        return timecode;
     }
 
     /// Frames elapsed since 00:00:00:00, with drop-frame numbers removed.
@@ -193,6 +219,57 @@ mod tests {
             ..drop_frame
         };
         assert_eq!(tenth_minute.frame_index(), 17_982, "the tenth minute keeps every number");
+    }
+
+    #[test]
+    fn add_frames_carries_the_label() {
+        assert_eq!(test_timecode().add_frames(2).label(), "01:02:03:06");
+
+        let minute = Timecode {
+            hours: 0,
+            minutes: 0,
+            seconds: 59,
+            frames: 29,
+            fps: 30.0,
+            drop_frame: false,
+        };
+        assert_eq!(minute.add_frames(2).label(), "00:01:00:01");
+
+        let midnight = Timecode {
+            hours: 23,
+            minutes: 59,
+            seconds: 59,
+            frames: 23,
+            fps: 24.0,
+            drop_frame: false,
+        };
+        assert_eq!(midnight.add_frames(2).label(), "00:00:00:01");
+    }
+
+    #[test]
+    fn add_frames_skips_drop_frame_numbers() {
+        let minute = Timecode {
+            hours: 0,
+            minutes: 0,
+            seconds: 59,
+            frames: 29,
+            fps: 30_000.0 / 1001.0,
+            drop_frame: true,
+        };
+        assert_eq!(minute.add_frames(2).label(), "00:01:00;03");
+
+        let tenth_minute = Timecode { minutes: 9, ..minute };
+        assert_eq!(tenth_minute.add_frames(2).label(), "00:10:00;01");
+
+        let high_rate = Timecode {
+            hours: 0,
+            minutes: 0,
+            seconds: 59,
+            frames: 59,
+            fps: 60_000.0 / 1001.0,
+            drop_frame: true,
+        };
+        assert_eq!(high_rate.add_frames(2).label(), "00:01:00;05");
     }
 
     #[test]

@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use super::artnet;
+use super::mtc;
 use super::{Timecode, TimecodeDisplay, TimecodeState, TimecodeStatus};
 use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, TextStyle, VideoSource};
 
@@ -25,6 +26,10 @@ impl ReceiverState {
         self.timecode = None;
         self.received_at = None;
         self.error = Some(error);
+    }
+
+    pub(super) fn clear_error(&mut self) {
+        self.error = None;
     }
 
     pub(super) fn publish(&mut self, timecode: Timecode) {
@@ -87,18 +92,25 @@ impl Default for TimecodeSourceConfig {
 #[serde(tag = "protocol")]
 pub enum TimecodeProtocol {
     ArtNet { bind: String, port: u16, stream_id: u8 },
+    Mtc { port: String },
 }
 
 impl TimecodeProtocol {
     pub fn label(&self) -> &'static str {
         return match self {
             TimecodeProtocol::ArtNet { .. } => "Art-Net",
+            TimecodeProtocol::Mtc { .. } => "MTC",
         };
     }
 
     /// Every known input with its default settings, for the settings picker.
     pub fn variants() -> Vec<Self> {
-        return vec![Self::default()];
+        return vec![
+            Self::default(),
+            Self::Mtc {
+                port: String::new(),
+            },
+        ];
     }
 }
 
@@ -173,6 +185,14 @@ fn start_receiver(
             std::thread::Builder::new()
                 .name(format!("timecode-{source}"))
                 .spawn(move || artnet::run(&source, &bind, port, stream_id, state, running))
+                .expect("spawn timecode receiver")
+        }
+        TimecodeProtocol::Mtc { port } => {
+            let source = source_ref.to_string();
+            let port = port.clone();
+            std::thread::Builder::new()
+                .name(format!("timecode-{source}"))
+                .spawn(move || mtc::run(&source, &port, state, running))
                 .expect("spawn timecode receiver")
         }
     };
@@ -264,6 +284,31 @@ mod tests {
                 timecode: Some(test_timecode()),
                 state: TimecodeState::Receiving,
             })
+        );
+    }
+
+    #[test]
+    fn the_mtc_input_round_trips_through_a_project() {
+        let config = TimecodeSourceConfig {
+            input: TimecodeProtocol::Mtc {
+                port: "IAC Driver Bus 1".to_string(),
+            },
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"protocol\":\"Mtc\""));
+        assert_eq!(serde_json::from_str::<TimecodeSourceConfig>(&json).unwrap(), config);
+    }
+
+    #[test]
+    fn an_mtc_input_ignores_a_stored_id() {
+        let input: TimecodeProtocol =
+            serde_json::from_str(r#"{"protocol":"Mtc","port":"IAC Driver Bus 1","id":"coremidi:1234"}"#).unwrap();
+        assert_eq!(
+            input,
+            TimecodeProtocol::Mtc {
+                port: "IAC Driver Bus 1".to_string(),
+            }
         );
     }
 

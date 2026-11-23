@@ -42,7 +42,7 @@ pub use stats::{OutputStats, SourceStats};
 
 pub use test::{TestSourceConfig, TestPattern, RadarDirection};
 pub use text::TextSourceConfig;
-pub use timecode::{TimecodeProtocol, TimecodeSourceConfig, TimecodeState, TimecodeStatus, TimecodeDisplay};
+pub use timecode::{TimecodeProtocol, TimecodeSourceConfig, TimecodeState, TimecodeStatus, TimecodeDisplay, mtc_ports};
 pub use ndi::{NdiDiscovery, NdiSourceConfig, NdiOutputConfig, ndi_version, NdiReceiverBandwidth, NdiReceiverColorFormat, NdiSourceInfo};
 pub use omt::{OmtDiscovery, OmtSourceConfig, OmtOutputConfig, omt_version, OmtQuality, OmtSourceInfo};
 pub use decklink::{

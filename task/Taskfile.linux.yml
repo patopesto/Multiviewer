@@ -11,7 +11,7 @@ tasks:
     desc: Install the Linux build dependencies
     cmds:
       - apt-get update -qq
-      - apt-get install -y build-essential clang libclang-dev curl libavahi-client3
+      - apt-get install -y build-essential clang libclang-dev curl libavahi-client3 libasound2-dev
     preconditions:
       - command -v apt-get
 
