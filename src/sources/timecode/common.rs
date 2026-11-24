@@ -29,6 +29,34 @@ impl Timecode {
         return self.fps.round() as u64;
     }
 
+    /// Real frame rate and drop-frame flag for a timecode rate code:
+    /// 0 = 24, 1 = 25, 2 = 29.97 drop-frame, 3 = 30.
+    fn rate(code: u8) -> Option<(f64, bool)> {
+        return match code {
+            0 => Some((24.0, false)),
+            1 => Some((25.0, false)),
+            2 => Some((30_000.0 / 1001.0, true)),
+            3 => Some((30.0, false)),
+            _ => None,
+        };
+    }
+
+    /// Checked timecode from label fields and a rate code.
+    pub(super) fn from_rate(hours: u8, minutes: u8, seconds: u8, frames: u8, code: u8) -> Option<Timecode> {
+        let (fps, drop_frame) = Self::rate(code)?;
+        if hours > 23 || minutes > 59 || seconds > 59 || u64::from(frames) >= fps.round() as u64 {
+            return None;
+        }
+        return Some(Timecode {
+            hours,
+            minutes,
+            seconds,
+            frames,
+            fps,
+            drop_frame,
+        });
+    }
+
     /// Move the timecode forward by `frames`, carrying seconds/minutes/hours and
     /// skipping drop-frame numbers at a minute boundary.
     pub(super) fn add_frames(&self, frames: u8) -> Timecode {

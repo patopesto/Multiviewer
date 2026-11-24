@@ -112,6 +112,6 @@ export const protocols: Protocol[] = [
     name: 'Timecode',
     input: true,
     platforms: ['macos', 'windows', 'linux'],
-    inputNote: 'Displays timecode received over Art-Net or MIDI Time Code (MTC)',
+    inputNote: 'Displays timecode received over Art-Net, MTC or LTC',
   },
 ];

@@ -3,9 +3,12 @@
 <plist version="1.0">
 <dict>
   <!-- TCC usage descriptions: the system permission prompt shows these texts
-       on first access (camera via AVFoundation, screen via ScreenCaptureKit). -->
+       on first access (camera via AVFoundation, microphone via LTC audio input,
+       screen via ScreenCaptureKit). -->
   <key>NSCameraUsageDescription</key>
   <string>Multiviewer uses the camera to display video sources.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Multiviewer uses an audio input to read LTC timecode.</string>
   <key>NSScreenCaptureUsageDescription</key>
   <string>Multiviewer captures your screens to display them as video sources.</string>
   <key>NSLocalNetworkUsageDescription</key>

@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use super::artnet;
+use super::ltc;
 use super::mtc;
 use super::{Timecode, TimecodeDisplay, TimecodeState, TimecodeStatus};
 use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, TextStyle, VideoSource};
@@ -78,6 +79,13 @@ impl TimecodeSourceConfig {
     pub const MAX_SIZE: (u32, u32) = (1920, 1080);
 }
 
+/// Inputs the Timecode settings panel offers for this machine.
+#[derive(Clone, Debug, Default)]
+pub struct TimecodeInputs {
+    pub mtc_ports: Vec<String>,
+    pub ltc_devices: Vec<ltc::LtcDevice>,
+}
+
 impl Default for TimecodeSourceConfig {
     fn default() -> Self {
         return Self {
@@ -93,6 +101,7 @@ impl Default for TimecodeSourceConfig {
 pub enum TimecodeProtocol {
     ArtNet { bind: String, port: u16, stream_id: u8 },
     Mtc { port: String },
+    Ltc { device: String, channel: u16 },
 }
 
 impl TimecodeProtocol {
@@ -100,6 +109,7 @@ impl TimecodeProtocol {
         return match self {
             TimecodeProtocol::ArtNet { .. } => "Art-Net",
             TimecodeProtocol::Mtc { .. } => "MTC",
+            TimecodeProtocol::Ltc { .. } => "LTC",
         };
     }
 
@@ -107,8 +117,10 @@ impl TimecodeProtocol {
     pub fn variants() -> Vec<Self> {
         return vec![
             Self::default(),
-            Self::Mtc {
-                port: String::new(),
+            Self::Mtc { port: String::new() },
+            Self::Ltc {
+                device: String::new(),
+                channel: 1,
             },
         ];
     }
@@ -193,6 +205,15 @@ fn start_receiver(
             std::thread::Builder::new()
                 .name(format!("timecode-{source}"))
                 .spawn(move || mtc::run(&source, &port, state, running))
+                .expect("spawn timecode receiver")
+        }
+        TimecodeProtocol::Ltc { device, channel } => {
+            let source = source_ref.to_string();
+            let device = device.clone();
+            let channel = *channel;
+            std::thread::Builder::new()
+                .name(format!("timecode-{source}"))
+                .spawn(move || ltc::run(&source, &device, channel, state, running))
                 .expect("spawn timecode receiver")
         }
     };
@@ -302,14 +323,27 @@ mod tests {
 
     #[test]
     fn an_mtc_input_ignores_a_stored_id() {
-        let input: TimecodeProtocol =
-            serde_json::from_str(r#"{"protocol":"Mtc","port":"IAC Driver Bus 1","id":"coremidi:1234"}"#).unwrap();
+        let input: TimecodeProtocol = serde_json::from_str(r#"{"protocol":"Mtc","port":"IAC Driver Bus 1","id":"coremidi:1234"}"#).unwrap();
         assert_eq!(
             input,
             TimecodeProtocol::Mtc {
                 port: "IAC Driver Bus 1".to_string(),
             }
         );
+    }
+
+    #[test]
+    fn the_ltc_input_round_trips_through_a_project() {
+        let config = TimecodeSourceConfig {
+            input: TimecodeProtocol::Ltc {
+                device: "Scarlett 2i2 USB".to_string(),
+                channel: 2,
+            },
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"protocol\":\"Ltc\""));
+        assert_eq!(serde_json::from_str::<TimecodeSourceConfig>(&json).unwrap(), config);
     }
 
     #[test]

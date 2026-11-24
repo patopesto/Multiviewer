@@ -63,6 +63,8 @@ dirs = "6"
 pollster = "0.4"
 rosc = "0.11"
 midir = "0.11"
+cpal = "0.18"
+timecode-tools = "0.1"
 
 [build-dependencies]
 cc = "1.0"

@@ -634,7 +634,7 @@ fn draw_source_properties_section(ui: &mut egui::Ui, snapshot: &EngineSnapshot, 
                     &mut source.config,
                     &runtime.runtime,
                     runtime.timecode.as_ref(),
-                    &snapshot.runtime.mtc_ports,
+                    &snapshot.runtime.timecode_inputs,
                     ui,
                 ) {
                     config_changed = true;

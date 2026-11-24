@@ -102,7 +102,7 @@ impl Parser {
             [0xF1, data] => return self.quarter(*data),
             [0xF0, 0x7F, _device, 0x01, 0x01, hours, minutes, seconds, frames, 0xF7] => {
                 self.reset();
-                self.last = build(*hours & 0x1F, *minutes, *seconds, *frames, (*hours >> 5) & 0x03);
+                self.last = Timecode::from_rate(*hours & 0x1F, *minutes, *seconds, *frames, (*hours >> 5) & 0x03);
                 return self.last;
             }
             _ => return None,
@@ -146,7 +146,7 @@ impl Parser {
         let minutes = self.pieces[4] | ((self.pieces[5] & 0x03) << 4);
         let seconds = self.pieces[2] | ((self.pieces[3] & 0x03) << 4);
         let frames = self.pieces[0] | ((self.pieces[1] & 0x01) << 4);
-        let Some(timecode) = build(hours, minutes, seconds, frames, rate) else {
+        let Some(timecode) = Timecode::from_rate(hours, minutes, seconds, frames, rate) else {
             self.last = None;
             return None;
         };
@@ -160,27 +160,6 @@ impl Parser {
         self.seen = 0;
         self.expected = 0;
     }
-}
-
-fn build(hours: u8, minutes: u8, seconds: u8, frames: u8, rate: u8) -> Option<Timecode> {
-    let (fps, real_rate, drop_frame) = match rate {
-        0 => (24, 24.0, false),
-        1 => (25, 25.0, false),
-        2 => (30, 30_000.0 / 1001.0, true),
-        3 => (30, 30.0, false),
-        _ => return None,
-    };
-    if hours > 23 || minutes > 59 || seconds > 59 || u32::from(frames) >= fps {
-        return None;
-    }
-    return Some(Timecode {
-        hours,
-        minutes,
-        seconds,
-        frames,
-        fps: real_rate,
-        drop_frame,
-    });
 }
 
 #[cfg(test)]

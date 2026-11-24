@@ -68,26 +68,9 @@ pub(super) fn parse(packet: &[u8], stream_id: u8) -> Option<Timecode> {
         return None;
     }
 
-    let (fps, rate, drop_frame) = match packet[TYPE] {
-        0 => (24, 24.0, false),
-        1 => (25, 25.0, false),
-        2 => (30, 30_000.0 / 1001.0, true),
-        3 => (30, 30.0, false),
-        _ => return None,
-    };
-    let timecode = Timecode {
-        hours: packet[HOURS],
-        minutes: packet[MINUTES],
-        seconds: packet[SECONDS],
-        frames: packet[FRAMES],
-        fps: rate,
-        drop_frame,
-    };
-    if u32::from(timecode.frames) >= fps || timecode.seconds > 59 || timecode.minutes > 59 || timecode.hours > 23 {
-        return None;
-    }
-    let dropped = fps * 2 / 30;
-    if timecode.drop_frame && timecode.seconds == 0 && !timecode.minutes.is_multiple_of(10) && u32::from(timecode.frames) < dropped {
+    let timecode = Timecode::from_rate(packet[HOURS], packet[MINUTES], packet[SECONDS], packet[FRAMES], packet[TYPE])?;
+    let dropped = timecode.nominal_fps() * 2 / 30;
+    if timecode.drop_frame && timecode.seconds == 0 && !timecode.minutes.is_multiple_of(10) && u64::from(timecode.frames) < dropped {
         return None;
     }
     return Some(timecode);

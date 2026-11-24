@@ -43,7 +43,7 @@
 | **VNC** | ✅ | — | macOS, Windows, Linux | Remote Desktop over VNC/RFB |
 | **RDP** | ✅ | — | macOS, Windows, Linux | Microsoft Remote Desktop |
 | **Text** | ✅ | — | macOS, Windows, Linux | Static text cards rendered as a source |
-| **Timecode** | ✅ | — | macOS, Windows, Linux | Displays timecode received over Art-Net or MTC |
+| **Timecode** | ✅ | — | macOS, Windows, Linux | Displays timecode received over Art-Net, MTC or LTC |
 
 ---
 

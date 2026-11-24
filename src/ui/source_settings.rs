@@ -2,7 +2,7 @@ use crate::ui::side_panel::{color_picker_rgba_row, settings_grid, settings_row};
 use crate::sources::{SourceConfig, SourceRuntimeConfig};
 use crate::sources::{TestSourceConfig, TestPattern, RadarDirection};
 use crate::sources::{TextSourceConfig, TextAlign, TextStyle};
-use crate::sources::{TimecodeSourceConfig, TimecodeProtocol, TimecodeState, TimecodeStatus, TimecodeDisplay};
+use crate::sources::{TimecodeSourceConfig, TimecodeProtocol, TimecodeState, TimecodeStatus, TimecodeDisplay, TimecodeInputs};
 use crate::sources::{NdiSourceConfig, NdiReceiverBandwidth, NdiReceiverColorFormat};
 use crate::sources::{OmtSourceConfig, OmtQuality};
 use crate::sources::{DecklinkSourceConfig, DecklinkVideoConnection, DecklinkVideoConnections};
@@ -29,7 +29,7 @@ pub fn render_source_settings_config(
     config: &mut SourceConfig,
     runtime: &SourceRuntimeConfig,
     timecode: Option<&TimecodeStatus>,
-    mtc_ports: &[String],
+    inputs: &TimecodeInputs,
     ui: &mut egui::Ui,
 ) -> bool {
     return match config {
@@ -54,7 +54,7 @@ pub fn render_source_settings_config(
         SourceConfig::Vnc(cfg) => vnc_settings_ui(cfg, ui),
         SourceConfig::Rdp(cfg) => rdp_settings_ui(cfg, ui),
         SourceConfig::Text(cfg) => text_settings_ui(cfg, ui),
-        SourceConfig::Timecode(cfg) => timecode_settings_ui(cfg, timecode, mtc_ports, ui),
+        SourceConfig::Timecode(cfg) => timecode_settings_ui(cfg, timecode, inputs, ui),
         // Config from a platform that has this protocol; no runtime source.
         SourceConfig::Unknown(_) => false,
     };
@@ -669,7 +669,7 @@ fn text_style_rows(ui: &mut egui::Ui, style: &mut TextStyle, max: (u32, u32)) ->
     return changed;
 }
 
-fn timecode_settings_ui(cfg: &mut TimecodeSourceConfig, status: Option<&TimecodeStatus>, mtc_ports: &[String], ui: &mut egui::Ui) -> bool {
+fn timecode_settings_ui(cfg: &mut TimecodeSourceConfig, status: Option<&TimecodeStatus>, inputs: &TimecodeInputs, ui: &mut egui::Ui) -> bool {
     let mut changed = false;
     settings_grid(ui, "timecode_settings_grid", |ui| {
         settings_row(ui, "Input", |ui| {
@@ -681,11 +681,19 @@ fn timecode_settings_ui(cfg: &mut TimecodeSourceConfig, status: Option<&Timecode
                         let selected = cfg.input.label() == variant.label();
                         if ui.selectable_label(selected, variant.label()).clicked() && !selected {
                             cfg.input = variant;
-                            if let TimecodeProtocol::Mtc { port } = &mut cfg.input
-                                && port.is_empty()
-                                && let Some(first) = mtc_ports.first()
-                            {
-                                *port = first.clone();
+                            match &mut cfg.input {
+                                TimecodeProtocol::Mtc { port } if port.is_empty() => {
+                                    if let Some(first) = inputs.mtc_ports.first() {
+                                        *port = first.clone();
+                                    }
+                                }
+                                TimecodeProtocol::Ltc { device, channel } if device.is_empty() => {
+                                    if let Some(first) = inputs.ltc_devices.first() {
+                                        *device = first.name.clone();
+                                        *channel = 1;
+                                    }
+                                }
+                                _ => {}
                             }
                             changed = true;
                         }
@@ -714,23 +722,62 @@ fn timecode_settings_ui(cfg: &mut TimecodeSourceConfig, status: Option<&Timecode
                 settings_row(ui, "MIDI input", |ui| {
                     let selected = if port.is_empty() {
                         "Select a MIDI input".to_string()
-                    } else if mtc_ports.iter().any(|candidate| candidate.as_str() == port.as_str()) {
+                    } else if inputs.mtc_ports.iter().any(|candidate| candidate.as_str() == port.as_str()) {
                         port.clone()
                     } else {
                         format!("{port} (not found)")
                     };
-                    egui::ComboBox::from_id_salt("timecode_midi_port")
-                        .width(ui.available_width())
-                        .selected_text(selected)
-                        .show_ui(ui, |ui| {
-                            for candidate in mtc_ports {
-                                let is_selected = candidate.as_str() == port.as_str();
-                                if ui.selectable_label(is_selected, candidate.as_str()).clicked() && !is_selected {
-                                    *port = candidate.clone();
-                                    changed = true;
-                                }
+                    egui::ComboBox::from_id_salt("timecode_midi_port").width(ui.available_width()).selected_text(selected).show_ui(ui, |ui| {
+                        for candidate in &inputs.mtc_ports {
+                            let is_selected = candidate.as_str() == port.as_str();
+                            if ui.selectable_label(is_selected, candidate.as_str()).clicked() && !is_selected {
+                                *port = candidate.clone();
+                                changed = true;
                             }
-                        });
+                        }
+                    });
+                });
+            }
+            TimecodeProtocol::Ltc { device, channel } => {
+                settings_row(ui, "Audio input", |ui| {
+                    let selected = if device.is_empty() {
+                        "Select an audio input".to_string()
+                    } else if inputs.ltc_devices.iter().any(|candidate| candidate.name.as_str() == device.as_str()) {
+                        device.clone()
+                    } else {
+                        format!("{device} (not found)")
+                    };
+                    egui::ComboBox::from_id_salt("timecode_audio_input").width(ui.available_width()).selected_text(selected).show_ui(ui, |ui| {
+                        for candidate in &inputs.ltc_devices {
+                            let is_selected = candidate.name.as_str() == device.as_str();
+                            if ui.selectable_label(is_selected, candidate.name.as_str()).clicked() && !is_selected {
+                                *device = candidate.name.clone();
+                                *channel = 1;
+                                changed = true;
+                            }
+                        }
+                    });
+                });
+
+                let channels = inputs
+                    .ltc_devices
+                    .iter()
+                    .find(|candidate| candidate.name.as_str() == device.as_str())
+                    .map_or(0, |candidate| candidate.channels);
+                settings_row(ui, "Channel", |ui| {
+                    let selected = if *channel <= channels {
+                        channel.to_string()
+                    } else {
+                        format!("{channel} (unavailable)")
+                    };
+                    egui::ComboBox::from_id_salt("timecode_audio_channel").width(ui.available_width()).selected_text(selected).show_ui(ui, |ui| {
+                        for number in 1..=channels {
+                            if ui.selectable_label(*channel == number, number.to_string()).clicked() {
+                                *channel = number;
+                                changed = true;
+                            }
+                        }
+                    });
                 });
             }
         }
