@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use eframe::egui_wgpu::WgpuSetup;
@@ -50,7 +50,7 @@ fn run_native(
     install_device_descriptor(&mut options);
     platform::configure_wgpu(&mut options);
 
-    println!("Hello from Multiviewer");
+    println!("Hello from {APP_NAME}");
     eframe::run_native(
         APP_NAME,
         options,
@@ -110,6 +110,8 @@ fn run_headless(
     return Ok(());
 }
 
+static WGPU_DEVICE_LABEL: LazyLock<String> = LazyLock::new(|| format!("{APP_NAME} wgpu device"));
+
 /// Ask for the texture storage feature `vmx` checks to pick its decode path:
 /// without it the decoder computes into a buffer and copies it into the frame.
 fn device_descriptor(adapter: &wgpu::Adapter) -> DeviceDescriptor<'static> {
@@ -128,7 +130,7 @@ fn device_descriptor(adapter: &wgpu::Adapter) -> DeviceDescriptor<'static> {
         Limits::default()
     };
     return DeviceDescriptor {
-        label: Some("Multiviewer wgpu device"),
+        label: Some(WGPU_DEVICE_LABEL.as_str()),
         required_features: features,
         required_limits: Limits {
             max_texture_dimension_2d: 8192,

@@ -24,6 +24,7 @@ use crate::control::Command;
 use crate::engine::{ControlError, Engine, EngineSnapshot, EngineState, ProjectError, SnapshotSlot, publish_state};
 use crate::sources::SourceKey;
 use crate::APP_NAME;
+use crate::PROJECT_FILE_EXTENSION;
 
 const MAX_PROJECT_BYTES: usize = 2 * 1024 * 1024;
 
@@ -330,7 +331,7 @@ async fn get_project(State(state): State<ApiState>) -> Result<Response, ApiError
         .as_ref()
         .and_then(|path| path.file_name())
         .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| "project.multiviewer".to_string());
+        .unwrap_or_else(|| format!("project.{PROJECT_FILE_EXTENSION}"));
     let name = sanitize_filename(&name);
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
@@ -554,7 +555,7 @@ fn sanitize_filename(name: &str) -> String {
         })
         .collect();
     if cleaned.is_empty() {
-        return "project.multiviewer".to_string();
+        return format!("project.{PROJECT_FILE_EXTENSION}");
     }
     return cleaned;
 }

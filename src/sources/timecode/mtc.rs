@@ -5,13 +5,13 @@ use std::time::Duration;
 use midir::{MidiInput, MidiInputConnection};
 
 use crate::sources::PollGate;
-
 use crate::APP_NAME;
+
 use super::source::ReceiverState;
 use super::Timecode;
 
 const CLIENT: &str = APP_NAME;
-const CONNECTION: &str = format!("{CLIENT}-mtc");
+const CONNECTION: &str = "multiviewer-mtc";
 const POLL: Duration = Duration::from_millis(200);
 const RETRY: Duration = Duration::from_secs(1);
 const DISCOVERY: Duration = Duration::from_secs(2);

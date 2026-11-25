@@ -11,6 +11,7 @@ use tokio::sync::broadcast;
 use crate::control::{ApiHandles, Command, Frame, HttpControlConfig, InputEvent, PointerButton, Server, Status, TextureUpload, encode_frame, texture_key};
 use crate::engine::{Engine, FocusHandle, PreviewFrame, SnapshotSlot, publish_state};
 use crate::ui::viewer::{HostView, UiMode, Viewer};
+use crate::APP_NAME;
 
 const SESSION_FPS: f64 = 30.0;
 const SHUTDOWN_GRACE: Duration = Duration::from_millis(500);
@@ -446,11 +447,12 @@ fn run_session(config: SessionConfig, stop: Arc<AtomicBool>) {
         let web_status = config.status.lock().unwrap().label(config.clients.load(Ordering::Relaxed));
         let mut actions = Vec::new();
         let mut output = ctx.run_ui(raw_input, |ui| {
+            let tooltip = format!("This interface runs on the {APP_NAME} host and is streamed to the browser");
             let host = HostView {
                 preview: None::<&PreviewFrame>,
                 focus: Some(&config.focus),
                 status: "remote",
-                status_tooltip: "This interface runs on the Multiviewer host and is streamed to the browser",
+                status_tooltip: &tooltip,
                 web_status: Some(&web_status),
             };
             let out = viewer.draw(ui, &snapshot, &config.commands, host);

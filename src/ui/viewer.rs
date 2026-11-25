@@ -354,7 +354,7 @@ impl Viewer {
             PathPrompt::SaveAs => "Save project as",
         };
         let open = centered_window(ctx, title, false, Some([520.0, 160.0]), |ui| {
-            ui.label("Project path on the Multiviewer machine:");
+            ui.label(format!("Project path on the {APP_NAME} machine:"));
             let response = ui.add(egui::TextEdit::singleline(&mut self.path_input).desired_width(f32::INFINITY).hint_text("/shows/main.multiviewer"));
             if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
                 submit = true;

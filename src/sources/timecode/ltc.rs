@@ -159,12 +159,7 @@ pub(super) fn run(source: &str, device_name: &str, channel: u16, state: Arc<Mute
 /// Last backend error reported by the audio callback.
 type ErrorSlot = Arc<Mutex<Option<String>>>;
 
-fn open_stream(
-    source: &str,
-    device_name: &str,
-    channel: u16,
-    state: &Arc<Mutex<ReceiverState>>,
-) -> Result<(Stream, ErrorSlot), String> {
+fn open_stream(source: &str, device_name: &str, channel: u16, state: &Arc<Mutex<ReceiverState>>) -> Result<(Stream, ErrorSlot), String> {
     let host = cpal::default_host();
     let devices = host.input_devices().map_err(|error| format!("audio inputs unavailable: {error}"))?;
     let Some(device) = devices.into_iter().find(|device| device.description().is_ok_and(|description| description.name() == device_name)) else {
