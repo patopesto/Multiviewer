@@ -9,6 +9,8 @@ use crate::config::Canvas;
 use crate::session::{Session, SessionError};
 use crate::sources::{OutputRegistry, Protocol, SourceConfig, SourceKey, SourceRegistry};
 use crate::sources::DecklinkDiscovery;
+use crate::sources::LtcDiscovery;
+use crate::sources::MtcDiscovery;
 use crate::sources::NdiDiscovery;
 use crate::sources::OmtDiscovery;
 #[cfg(target_os = "macos")]
@@ -84,6 +86,8 @@ impl Engine {
             ndi: None,
             decklink: None,
             omt: None,
+            mtc: None,
+            ltc: None,
             #[cfg(target_os = "macos")]
             syphon: None,
             #[cfg(target_os = "macos")]
@@ -118,6 +122,8 @@ impl Engine {
         engine.ndi = Some(NdiDiscovery::start());
         engine.decklink = Some(DecklinkDiscovery::start());
         engine.omt = Some(OmtDiscovery::start());
+        engine.mtc = Some(MtcDiscovery::start());
+        engine.ltc = Some(LtcDiscovery::start());
         #[cfg(target_os = "macos")]
         {
             engine.syphon = Some(SyphonDiscovery::start());

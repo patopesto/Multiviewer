@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -8,15 +8,16 @@ use timecode_tools::ltc::{PcmChunk, Samples};
 use timecode_tools::receiver::{LtcReceiver, ReceiverEvent, ReceiverOptions, TimecodeReceiver};
 use timecode_tools::timecode::{FrameRate, Timecode as ReceivedTimecode};
 
+use crate::sources::PollGate;
+
 use super::source::ReceiverState;
 use super::Timecode;
 
 const POLL: Duration = Duration::from_millis(200);
 const RETRY: Duration = Duration::from_secs(1);
+const DISCOVERY: Duration = Duration::from_secs(2);
 /// How long the decoder waits without a frame before it drops lock.
 const LOST_AFTER: Duration = Duration::from_secs(3);
-/// Audio device enumeration can block, so it runs off the engine thread.
-const SCAN: Duration = Duration::from_secs(2);
 
 /// An audio input and the number of channels its supported configs offer.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,52 +26,61 @@ pub struct LtcDevice {
     pub channels: u16,
 }
 
-static DEVICES: OnceLock<Arc<Mutex<Vec<LtcDevice>>>> = OnceLock::new();
-static REQUESTED: AtomicBool = AtomicBool::new(false);
-
-/// Audio inputs the app can open. The scan runs only while the settings ask
-/// for the list, at most once per `SCAN`; the thread stays idle otherwise.
-pub fn devices() -> Vec<LtcDevice> {
-    let cache = DEVICES.get_or_init(|| {
-        let cache = Arc::new(Mutex::new(Vec::new()));
-        let scan = cache.clone();
-        std::thread::Builder::new()
-            .name("ltc-devices".to_string())
-            .spawn(move || {
-                let mut last = None;
-                loop {
-                    let requested = REQUESTED.swap(false, Ordering::Relaxed);
-                    if requested && last.is_none_or(|last: Instant| last.elapsed() >= SCAN) {
-                        let devices = scan_devices();
-                        *scan.lock().unwrap() = devices;
-                        last = Some(Instant::now());
-                    }
-                    std::thread::sleep(POLL);
-                }
-            })
-            .expect("spawn ltc device scan");
-        return cache;
-    });
-    REQUESTED.store(true, Ordering::Relaxed);
-    return cache.lock().unwrap().clone();
+/// Background audio input discovery, like the other protocol discoveries.
+pub struct LtcDiscovery {
+    devices: Arc<Mutex<Vec<LtcDevice>>>,
+    gate: PollGate,
 }
 
+impl LtcDiscovery {
+    pub fn start() -> Self {
+        let devices = Arc::new(Mutex::new(Vec::new()));
+        let cache = devices.clone();
+        let gate = PollGate::with_interval(DISCOVERY);
+        let wait = gate.clone();
+        std::thread::Builder::new()
+            .name("ltc-discovery".to_string())
+            .spawn(move || {
+                loop {
+                    let next = scan_devices();
+                    let mut current = cache.lock().unwrap();
+                    if *current != next {
+                        tracing::debug!(devices = next.len(), "LTC inputs changed");
+                    }
+                    *current = next;
+                    drop(current);
+                    wait.wait();
+                }
+            })
+            .expect("spawn ltc-discovery");
+        return Self { devices, gate };
+    }
+
+    pub fn list(&self) -> Vec<LtcDevice> {
+        return self.devices.lock().unwrap().clone();
+    }
+
+    pub fn request_refresh(&self) {
+        self.gate.request();
+    }
+}
+
+/// Audio inputs the app can open. Called from the discovery thread, never the
+/// engine tick.
 fn scan_devices() -> Vec<LtcDevice> {
     let Ok(devices) = cpal::default_host().input_devices() else {
         return Vec::new();
     };
     let mut devices: Vec<LtcDevice> = devices
         .filter_map(|device| {
+            let name = device.description().ok()?.name().to_owned();
             let channels = device
                 .supported_input_configs()
                 .ok()?
                 .filter(|config| supported_format(config.sample_format()))
                 .map(|config| config.channels())
                 .max()?;
-            return Some(LtcDevice {
-                name: device.to_string(),
-                channels,
-            });
+            return Some(LtcDevice { name, channels });
         })
         .collect();
     devices.sort_by(|a, b| a.name.cmp(&b.name));
@@ -146,15 +156,18 @@ pub(super) fn run(source: &str, device_name: &str, channel: u16, state: Arc<Mute
     }
 }
 
+/// Last backend error reported by the audio callback.
+type ErrorSlot = Arc<Mutex<Option<String>>>;
+
 fn open_stream(
     source: &str,
     device_name: &str,
     channel: u16,
     state: &Arc<Mutex<ReceiverState>>,
-) -> Result<(Stream, Arc<Mutex<Option<String>>>), String> {
+) -> Result<(Stream, ErrorSlot), String> {
     let host = cpal::default_host();
     let devices = host.input_devices().map_err(|error| format!("audio inputs unavailable: {error}"))?;
-    let Some(device) = devices.into_iter().find(|device| device.to_string() == device_name) else {
+    let Some(device) = devices.into_iter().find(|device| device.description().is_ok_and(|description| description.name() == device_name)) else {
         return Err(format!("audio input '{device_name}' not found"));
     };
     let supported = select_config(&device, channel).map_err(|error| format!("audio input '{device_name}': {error}"))?;
@@ -196,7 +209,7 @@ fn build_input<T>(
     channel: u16,
     source: &str,
     state: &Arc<Mutex<ReceiverState>>,
-    errors: &Arc<Mutex<Option<String>>>,
+    errors: &ErrorSlot,
 ) -> Result<Stream, cpal::Error>
 where
     T: SizedSample + Send + 'static,

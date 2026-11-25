@@ -626,17 +626,23 @@ pub const DISCOVERY_INTERVAL: Duration = Duration::from_secs(30);
 /// How often a waiting discovery thread rechecks its refresh request.
 const DISCOVERY_WAKE_SLICE: Duration = Duration::from_millis(200);
 
-/// Poll cadence for a discovery thread: wait out [`DISCOVERY_INTERVAL`], or
-/// wake as soon as the UI requests a refresh.
+/// Poll cadence for a discovery thread: wait out the interval, or wake as soon
+/// as the UI requests a refresh.
 #[derive(Clone)]
 pub struct PollGate {
     refresh: Arc<AtomicBool>,
+    interval: Duration,
 }
 
 impl PollGate {
     pub fn new() -> Self {
+        return Self::with_interval(DISCOVERY_INTERVAL);
+    }
+
+    pub fn with_interval(interval: Duration) -> Self {
         return Self {
             refresh: Arc::new(AtomicBool::new(false)),
+            interval,
         };
     }
 
@@ -647,7 +653,7 @@ impl PollGate {
 
     /// Block until the next poll is due, returning early on [`PollGate::request`].
     pub fn wait(&self) {
-        let deadline = Instant::now() + DISCOVERY_INTERVAL;
+        let deadline = Instant::now() + self.interval;
         while Instant::now() < deadline {
             if self.refresh.swap(false, Ordering::AcqRel) {
                 return;

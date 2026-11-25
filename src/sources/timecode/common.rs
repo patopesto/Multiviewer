@@ -76,7 +76,7 @@ impl Timecode {
                     timecode.hours = (timecode.hours + 1) % 24;
                 }
             }
-            if timecode.drop_frame && timecode.seconds == 0 && timecode.minutes % 10 != 0 {
+            if timecode.drop_frame && timecode.seconds == 0 && !timecode.minutes.is_multiple_of(10) {
                 timecode.frames = (timecode.nominal_fps() * 2 / 30) as u8;
             }
         }

@@ -6,6 +6,7 @@ use crate::sources::{OutputRegistry, SourceRegistry};
 use crate::sources::{DecklinkDiscovery, decklink_version};
 use crate::sources::{NdiDiscovery, ndi_version};
 use crate::sources::{OmtDiscovery, omt_version};
+use crate::sources::{LtcDiscovery, MtcDiscovery};
 #[cfg(target_os = "macos")]
 use crate::sources::{SyphonDiscovery, syphon_version};
 #[cfg(target_os = "macos")]
@@ -53,6 +54,8 @@ pub struct Engine {
     pub ndi: Option<NdiDiscovery>,
     pub decklink: Option<DecklinkDiscovery>,
     pub omt: Option<OmtDiscovery>,
+    pub mtc: Option<MtcDiscovery>,
+    pub ltc: Option<LtcDiscovery>,
     #[cfg(target_os = "macos")]
     pub syphon: Option<SyphonDiscovery>,
     #[cfg(target_os = "macos")]

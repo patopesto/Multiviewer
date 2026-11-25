@@ -1,21 +1,83 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 use midir::{MidiInput, MidiInputConnection};
 
+use crate::sources::PollGate;
+
+use crate::APP_NAME;
 use super::source::ReceiverState;
 use super::Timecode;
 
-const CLIENT: &str = "Multiviewer";
-const CONNECTION: &str = "multiviewer-mtc";
+const CLIENT: &str = APP_NAME;
+const CONNECTION: &str = format!("{CLIENT}-mtc");
 const POLL: Duration = Duration::from_millis(200);
 const RETRY: Duration = Duration::from_secs(1);
+const DISCOVERY: Duration = Duration::from_secs(2);
 /// Quarter frames describe the time at piece 0, two frames before piece 7.
 const QUARTER_FRAME_ADVANCE: u8 = 2;
 
+static GATE: OnceLock<PollGate> = OnceLock::new();
+
+/// Wake the MTC discovery from a CoreMIDI device-change notification.
+pub fn request_refresh() {
+    if let Some(gate) = GATE.get() {
+        gate.request();
+    }
+}
+
+/// Background MIDI input discovery, like the other protocol discoveries.
+pub struct MtcDiscovery {
+    ports: Arc<Mutex<Vec<String>>>,
+    gate: PollGate,
+}
+
+impl MtcDiscovery {
+    pub fn start() -> Self {
+        let ports = Arc::new(Mutex::new(Vec::new()));
+        let cache = ports.clone();
+        let gate = PollGate::with_interval(DISCOVERY);
+        let _ = GATE.set(gate.clone());
+        let wait = gate.clone();
+        std::thread::Builder::new()
+            .name("mtc-discovery".to_string())
+            .spawn(move || {
+                loop {
+                    let next = scan_ports();
+                    let mut current = cache.lock().unwrap();
+                    if *current != next {
+                        tracing::debug!(ports = next.len(), "MTC inputs changed");
+                    }
+                    *current = next;
+                    drop(current);
+                    wait.wait();
+                }
+            })
+            .expect("spawn mtc-discovery");
+        return Self { ports, gate };
+    }
+
+    pub fn list(&self) -> Vec<String> {
+        return self.ports.lock().unwrap().clone();
+    }
+
+    pub fn request_refresh(&self) {
+        self.gate.request();
+    }
+}
+
 /// MIDI inputs this process can open, for the settings picker.
-pub fn ports() -> Vec<String> {
+#[cfg(target_os = "macos")]
+fn scan_ports() -> Vec<String> {
+    let mut names: Vec<String> = coremidi::Sources.into_iter().filter_map(|source| source.display_name()).collect();
+    names.sort();
+    names.dedup();
+    return names;
+}
+
+#[cfg(not(target_os = "macos"))]
+fn scan_ports() -> Vec<String> {
     let Ok(input) = MidiInput::new(CLIENT) else {
         return Vec::new();
     };
@@ -31,16 +93,25 @@ pub(super) fn run(source: &str, port_name: &str, state: Arc<Mutex<ReceiverState>
         state.lock().unwrap().fail("no MIDI input selected".to_string());
         return;
     }
+    let mut input = match MidiInput::new(CLIENT) {
+        Ok(input) => input,
+        Err(error) => {
+            state.lock().unwrap().fail(format!("MIDI unavailable: {error}"));
+            return;
+        }
+    };
     while running.load(Ordering::Relaxed) {
-        match connect(source, port_name, &state) {
+        match connect(input, source, port_name, &state) {
             Ok(connection) => {
                 state.lock().unwrap().clear_error();
                 while running.load(Ordering::Relaxed) {
                     std::thread::sleep(POLL);
                 }
                 drop(connection);
+                return;
             }
-            Err(error) => {
+            Err((returned, error)) => {
+                input = returned;
                 state.lock().unwrap().fail(error);
                 std::thread::sleep(RETRY);
             }
@@ -50,31 +121,40 @@ pub(super) fn run(source: &str, port_name: &str, state: Arc<Mutex<ReceiverState>
 
 /// Match by name, not by backend id: a project moved to another computer must
 /// find the same device, and ids are machine-local. Same-named inputs resolve
-/// to the first one.
-fn connect(source: &str, port_name: &str, state: &Arc<Mutex<ReceiverState>>) -> Result<MidiInputConnection<Receiver>, String> {
-    let input = MidiInput::new(CLIENT).map_err(|error| format!("MIDI unavailable: {error}"))?;
+/// to the first one. Reuses the caller's client so a retry does not create a
+/// new CoreMIDI client.
+fn connect(
+    input: MidiInput,
+    source: &str,
+    port_name: &str,
+    state: &Arc<Mutex<ReceiverState>>,
+) -> Result<MidiInputConnection<Receiver>, (MidiInput, String)> {
     let Some(port) = input.ports().into_iter().find(|port| input.port_name(port).is_ok_and(|name| name == port_name)) else {
-        return Err(format!("MIDI input '{port_name}' not found"));
+        return Err((input, format!("MIDI input '{port_name}' not found")));
     };
     let receiver = Receiver {
         source: source.to_string(),
         state: state.clone(),
         parser: Parser::default(),
     };
-    return input
-        .connect(
-            &port,
-            CONNECTION,
-            |_timestamp, message, receiver: &mut Receiver| {
-                let Some(timecode) = receiver.parser.push(message) else {
-                    return;
-                };
-                tracing::debug!(source = %receiver.source, timecode = %timecode.label(), "mtc timecode");
-                receiver.state.lock().unwrap().publish(timecode);
-            },
-            receiver,
-        )
-        .map_err(|error| format!("MIDI input '{port_name}' failed: {error}"));
+    return match input.connect(
+        &port,
+        CONNECTION,
+        |_timestamp, message, receiver: &mut Receiver| {
+            let Some(timecode) = receiver.parser.push(message) else {
+                return;
+            };
+            tracing::debug!(source = %receiver.source, timecode = %timecode.label(), "mtc timecode");
+            receiver.state.lock().unwrap().publish(timecode);
+        },
+        receiver,
+    ) {
+        Ok(connection) => Ok(connection),
+        Err(error) => {
+            let message = format!("MIDI input '{port_name}' failed: {error}");
+            return Err((error.into_inner(), message));
+        }
+    };
 }
 
 struct Receiver {
@@ -130,10 +210,7 @@ impl Parser {
         self.expected = (piece + 1) & 0x07;
         // F1 4X marks the second frame boundary of the two-frame cycle.
         if piece == 4 && self.seen == 0x1F {
-            let Some(last) = self.last else {
-                return None;
-            };
-            let next = last.add_frames(1);
+            let next = self.last?.add_frames(1);
             self.last = Some(next);
             return Some(next);
         }

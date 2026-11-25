@@ -1,7 +1,6 @@
 use crate::config::OutputId;
 use crate::sources::{
-    ltc_devices, mtc_ports, DecklinkOutputPort, OutputStats, Protocol, SourceConfig, SourceKey, SourceKind, SourceRuntimeConfig, SourceStats,
-    TimecodeInputs, TimecodeStatus,
+    DecklinkOutputPort, OutputStats, Protocol, SourceConfig, SourceKey, SourceKind, SourceRuntimeConfig, SourceStats, TimecodeInputs, TimecodeStatus,
 };
 
 use super::Engine;
@@ -96,13 +95,9 @@ impl RuntimeView {
 
 impl Engine {
     pub fn runtime_view(&self, focuses: &[Option<Protocol>]) -> RuntimeView {
-        let timecode_inputs = if wants(focuses, &Protocol::Timecode) {
-            TimecodeInputs {
-                mtc_ports: mtc_ports(),
-                ltc_devices: ltc_devices(),
-            }
-        } else {
-            TimecodeInputs::default()
+        let timecode_inputs = TimecodeInputs {
+            mtc_ports: self.mtc.as_ref().map(|discovery| discovery.list()).unwrap_or_default(),
+            ltc_devices: self.ltc.as_ref().map(|discovery| discovery.list()).unwrap_or_default(),
         };
         return RuntimeView {
             sources: self.source_views(),

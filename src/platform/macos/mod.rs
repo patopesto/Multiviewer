@@ -6,6 +6,9 @@ use std::sync::Mutex;
 use objc::runtime::{Class, Object, Sel};
 use objc::{msg_send, sel, sel_impl};
 
+use crate::APP_NAME;
+use crate::sources::request_mtc_refresh;
+
 mod cv;
 pub use cv::{CvFrame, CvFramePipeline, texture_from_iosurface};
 
@@ -186,6 +189,15 @@ fn percent_decode(s: &str) -> String {
 }
 
 pub fn setup_app() {
+    // CoreMIDI endpoint enumeration (`coremidi::Sources`) only stays live while one
+    // client created with notifications is alive on the main run loop. `Client` has no
+    // `Drop`, so it is never disposed and the notification block keeps firing.
+    if let Err(status) = coremidi::Client::new_with_notifications(APP_NAME, |_: &coremidi::Notification| {
+        request_mtc_refresh();
+    }) {
+        tracing::warn!(?status, "CoreMIDI notification client failed");
+    }
+
     unsafe {
         let name = CFStringCreateWithCString(
             std::ptr::null(),

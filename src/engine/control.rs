@@ -380,6 +380,14 @@ impl Engine {
                     discovery.request_refresh();
                 }
             }
+            Protocol::Timecode => {
+                if let Some(discovery) = &self.mtc {
+                    discovery.request_refresh();
+                }
+                if let Some(discovery) = &self.ltc {
+                    discovery.request_refresh();
+                }
+            }
             #[cfg(target_os = "macos")]
             Protocol::ScreenCaptureKit => {
                 if let Some(discovery) = &self.screencapturekit {
