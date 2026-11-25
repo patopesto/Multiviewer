@@ -95,6 +95,13 @@ impl RuntimeView {
 
 impl Engine {
     pub fn runtime_view(&self, focuses: &[Option<Protocol>]) -> RuntimeView {
+        let timecode_active = self.selected_timecode();
+        if let Some(discovery) = &self.mtc {
+            discovery.set_active(timecode_active);
+        }
+        if let Some(discovery) = &self.ltc {
+            discovery.set_active(timecode_active);
+        }
         let timecode_inputs = TimecodeInputs {
             mtc_ports: self.mtc.as_ref().map(|discovery| discovery.list()).unwrap_or_default(),
             ltc_devices: self.ltc.as_ref().map(|discovery| discovery.list()).unwrap_or_default(),
@@ -109,6 +116,13 @@ impl Engine {
                 osc: self.control.status_label(),
             },
         };
+    }
+
+    /// Whether the selected source shows a Timecode input picker.
+    fn selected_timecode(&self) -> bool {
+        return self.state.selected_source_id.as_ref().is_some_and(|id| {
+            self.state.cfg.canvas.sources.iter().any(|source| &source.uuid == id && source.protocol == Protocol::Timecode)
+        });
     }
 
     fn source_views(&self) -> Vec<SourceView> {

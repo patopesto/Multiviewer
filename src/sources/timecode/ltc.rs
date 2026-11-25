@@ -30,6 +30,7 @@ pub struct LtcDevice {
 pub struct LtcDiscovery {
     devices: Arc<Mutex<Vec<LtcDevice>>>,
     gate: PollGate,
+    active: Arc<AtomicBool>,
 }
 
 impl LtcDiscovery {
@@ -37,27 +38,38 @@ impl LtcDiscovery {
         let devices = Arc::new(Mutex::new(Vec::new()));
         let cache = devices.clone();
         let gate = PollGate::with_interval(DISCOVERY);
+        let active = Arc::new(AtomicBool::new(false));
+        let scan = active.clone();
         let wait = gate.clone();
         std::thread::Builder::new()
             .name("ltc-discovery".to_string())
             .spawn(move || {
                 loop {
-                    let next = scan_devices();
-                    let mut current = cache.lock().unwrap();
-                    if *current != next {
-                        tracing::debug!(devices = next.len(), "LTC inputs changed");
+                    if scan.load(Ordering::Relaxed) {
+                        let next = scan_devices();
+                        let mut current = cache.lock().unwrap();
+                        if *current != next {
+                            tracing::debug!(devices = next.len(), "LTC inputs changed");
+                        }
+                        *current = next;
                     }
-                    *current = next;
-                    drop(current);
                     wait.wait();
                 }
             })
             .expect("spawn ltc-discovery");
-        return Self { devices, gate };
+        return Self { devices, gate, active };
     }
 
     pub fn list(&self) -> Vec<LtcDevice> {
         return self.devices.lock().unwrap().clone();
+    }
+
+    /// Scan the devices only while a Timecode picker is on screen.
+    pub fn set_active(&self, active: bool) {
+        let was = self.active.swap(active, Ordering::AcqRel);
+        if active && !was {
+            self.gate.request();
+        }
     }
 
     pub fn request_refresh(&self) {

@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use midir::{MidiInput, MidiInputConnection};
 
@@ -15,14 +15,18 @@ const CONNECTION: &str = "multiviewer-mtc";
 const POLL: Duration = Duration::from_millis(200);
 const RETRY: Duration = Duration::from_secs(1);
 const DISCOVERY: Duration = Duration::from_secs(2);
+/// How long a connected port may stay silent before it is re-subscribed.
+/// MTC is silent while the generator is stopped, so this is a grace period,
+/// not a liveness check: midir reports no device removal.
+const SILENCE: Duration = Duration::from_secs(5);
 /// Quarter frames describe the time at piece 0, two frames before piece 7.
 const QUARTER_FRAME_ADVANCE: u8 = 2;
 
-static GATE: OnceLock<PollGate> = OnceLock::new();
+static GATE: Mutex<Option<PollGate>> = Mutex::new(None);
 
 /// Wake the MTC discovery from a CoreMIDI device-change notification.
 pub fn request_refresh() {
-    if let Some(gate) = GATE.get() {
+    if let Some(gate) = GATE.lock().unwrap().as_ref() {
         gate.request();
     }
 }
@@ -31,6 +35,7 @@ pub fn request_refresh() {
 pub struct MtcDiscovery {
     ports: Arc<Mutex<Vec<String>>>,
     gate: PollGate,
+    active: Arc<AtomicBool>,
 }
 
 impl MtcDiscovery {
@@ -38,28 +43,39 @@ impl MtcDiscovery {
         let ports = Arc::new(Mutex::new(Vec::new()));
         let cache = ports.clone();
         let gate = PollGate::with_interval(DISCOVERY);
-        let _ = GATE.set(gate.clone());
+        let active = Arc::new(AtomicBool::new(false));
+        let scan = active.clone();
+        *GATE.lock().unwrap() = Some(gate.clone());
         let wait = gate.clone();
         std::thread::Builder::new()
             .name("mtc-discovery".to_string())
             .spawn(move || {
                 loop {
-                    let next = scan_ports();
-                    let mut current = cache.lock().unwrap();
-                    if *current != next {
-                        tracing::debug!(ports = next.len(), "MTC inputs changed");
+                    if scan.load(Ordering::Relaxed) {
+                        let next = scan_ports();
+                        let mut current = cache.lock().unwrap();
+                        if *current != next {
+                            tracing::debug!(ports = next.len(), "MTC inputs changed");
+                        }
+                        *current = next;
                     }
-                    *current = next;
-                    drop(current);
                     wait.wait();
                 }
             })
             .expect("spawn mtc-discovery");
-        return Self { ports, gate };
+        return Self { ports, gate, active };
     }
 
     pub fn list(&self) -> Vec<String> {
         return self.ports.lock().unwrap().clone();
+    }
+
+    /// Scan the ports only while a Timecode picker is on screen.
+    pub fn set_active(&self, active: bool) {
+        let was = self.active.swap(active, Ordering::AcqRel);
+        if active && !was {
+            self.gate.request();
+        }
     }
 
     pub fn request_refresh(&self) {
@@ -93,25 +109,38 @@ pub(super) fn run(source: &str, port_name: &str, state: Arc<Mutex<ReceiverState>
         state.lock().unwrap().fail("no MIDI input selected".to_string());
         return;
     }
-    let mut input = match MidiInput::new(CLIENT) {
-        Ok(input) => input,
-        Err(error) => {
-            state.lock().unwrap().fail(format!("MIDI unavailable: {error}"));
-            return;
-        }
-    };
+    let mut input: Option<MidiInput> = None;
     while running.load(Ordering::Relaxed) {
-        match connect(input, source, port_name, &state) {
+        let client = match input.take() {
+            Some(client) => client,
+            None => match MidiInput::new(CLIENT) {
+                Ok(client) => client,
+                Err(error) => {
+                    state.lock().unwrap().fail(format!("MIDI unavailable: {error}"));
+                    std::thread::sleep(RETRY);
+                    continue;
+                }
+            },
+        };
+        match connect(client, source, port_name, &state) {
             Ok(connection) => {
                 state.lock().unwrap().clear_error();
+                let opened = Instant::now();
                 while running.load(Ordering::Relaxed) {
                     std::thread::sleep(POLL);
+                    let last = state.lock().unwrap().received_at().filter(|at| *at > opened).unwrap_or(opened);
+                    if last.elapsed() >= SILENCE {
+                        break;
+                    }
                 }
-                drop(connection);
-                return;
+                let (returned, _) = connection.close();
+                if !running.load(Ordering::Relaxed) {
+                    return;
+                }
+                input = Some(returned);
             }
             Err((returned, error)) => {
-                input = returned;
+                input = Some(returned);
                 state.lock().unwrap().fail(error);
                 std::thread::sleep(RETRY);
             }

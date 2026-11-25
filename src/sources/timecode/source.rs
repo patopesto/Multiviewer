@@ -46,6 +46,11 @@ impl ReceiverState {
         };
     }
 
+    /// When the last value arrived, if one ever did.
+    pub(super) fn received_at(&self) -> Option<Instant> {
+        return self.received_at;
+    }
+
     fn state(&self) -> TimecodeState {
         if let Some(error) = &self.error {
             return TimecodeState::Error(error.clone());
