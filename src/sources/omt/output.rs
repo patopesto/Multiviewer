@@ -162,7 +162,7 @@ fn run_sender(
                     let send_span = tracing::debug_span!("send");
                     let _send_guard = send_span.entered();
                     let start = Instant::now();
-                    let result = sender.send_video_texture(&ctx, &target.texture, meta);
+                    let result = sender.send_video_texture_view(&ctx, &target.texture, &target.view, meta);
                     {
                         let mut s = stats.lock().unwrap();
                         s.width = size.width;

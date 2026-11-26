@@ -161,6 +161,7 @@ fn run_capture(
             connect_timeout: Duration::from_secs(2),
             auto_reconnect: true,
             gpu: Some(ctx.clone()),
+            ..ReceiverConfig::default()
         };
         let session = match ReceiverSession::connect(discovered.to_url(), receiver_config) {
             Ok(s) => s,
