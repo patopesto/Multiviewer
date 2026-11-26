@@ -120,9 +120,11 @@ impl Engine {
 
     /// Whether the selected source shows a Timecode input picker.
     fn selected_timecode(&self) -> bool {
-        return self.state.selected_source_id.as_ref().is_some_and(|id| {
-            self.state.cfg.canvas.sources.iter().any(|source| &source.uuid == id && source.protocol == Protocol::Timecode)
-        });
+        return self
+            .state
+            .selected_source_id
+            .as_ref()
+            .is_some_and(|id| self.state.cfg.canvas.sources.iter().any(|source| &source.uuid == id && source.protocol == Protocol::Timecode));
     }
 
     fn source_views(&self) -> Vec<SourceView> {

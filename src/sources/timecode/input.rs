@@ -136,6 +136,11 @@ impl SharedInput {
         return self.state.lock().unwrap().status();
     }
 
+    /// The input this receiver is bound to.
+    pub(super) fn key(&self) -> &TimecodeProtocol {
+        return &self.key;
+    }
+
     #[cfg(test)]
     pub(super) fn state(&self) -> &Arc<Mutex<ReceiverState>> {
         return &self.state;

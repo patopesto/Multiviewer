@@ -36,11 +36,12 @@ impl Default for SidePanel {
 impl SidePanel {
     fn sync(&mut self, snapshot: &EngineSnapshot, ctx: &egui::Context) {
         // Reloading the draft while one of the panel's own widgets is held reverts
-        // it mid-drag. A canvas drag holds the pointer down too, so the guard is
-        // scoped to presses inside the panel instead of the whole window.
+        // it mid-drag. A canvas drag holds the pointer down too, so presses are
+        // scoped to the panel; popups (a colour picker) are drawn outside it, so an
+        // open popup counts as interaction as well.
         let pointer_in_panel = ctx.input(|input| input.pointer.any_down())
             && self.panel_rect.is_some_and(|rect| ctx.pointer_latest_pos().is_some_and(|pos| rect.contains(pos)));
-        let interacting = ctx.text_edit_focused() || pointer_in_panel;
+        let interacting = ctx.text_edit_focused() || pointer_in_panel || egui::Popup::is_any_open(ctx);
         if !self.initialized || (!interacting && snapshot.state.revision != self.draft_revision) {
             self.draft = snapshot.state.cfg.clone();
             self.draft_revision = snapshot.state.revision;
@@ -1143,6 +1144,30 @@ mod tests {
         let snapshot = engine.snapshot();
         panel.sync(&snapshot, &ctx);
         assert_eq!(panel.draft.canvas.width, 1234);
+    }
+
+    #[test]
+    fn an_open_popup_holds_the_draft() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let ctx = egui::Context::default();
+        let mut panel = SidePanel::default();
+
+        let snapshot = engine.snapshot();
+        panel.sync(&snapshot, &ctx);
+        assert_eq!(panel.draft.canvas.width, 1920);
+
+        // A colour picker popup is drawn outside the panel, so the pointer is not
+        // inside `panel_rect` while it is being dragged.
+        egui::Popup::open_id(&ctx, egui::Id::new("colour-popup"));
+        engine.state.cfg.canvas.width = 1234;
+        engine.state.revision = engine.state.revision.wrapping_add(1);
+        let snapshot = engine.snapshot();
+        panel.sync(&snapshot, &ctx);
+        assert_eq!(panel.draft.canvas.width, 1920, "an open popup holds the draft");
+
+        egui::Popup::close_all(&ctx);
+        panel.sync(&snapshot, &ctx);
+        assert_eq!(panel.draft.canvas.width, 1234, "the draft catches up once the popup closes");
     }
 
     fn pointer_button(ctx: &egui::Context, pos: egui::Pos2, pressed: bool) {

@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Serialize, Deserialize};
 
-use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
+use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceConfig, SourceRef, SourceStats, VideoSource};
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ColorSpace {
@@ -147,6 +147,7 @@ impl Default for TestSourceConfig {
 
 /// Generated color-bars feed with a moving marker, on its own thread.
 pub struct TestSource {
+    config: Arc<Mutex<TestSourceConfig>>,
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     source_ref: SourceRef,
@@ -156,26 +157,24 @@ pub struct TestSource {
 
 impl TestSource {
     pub fn spawn(source_ref: SourceRef, cfg: &TestSourceConfig) -> Self {
+        let config = Arc::new(Mutex::new(cfg.clone()));
         let slot = Arc::new(Mutex::new(None));
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let running = Arc::new(AtomicBool::new(true));
 
+        let config2 = config.clone();
         let slot2 = slot.clone();
         let stats2 = stats.clone();
         let running2 = running.clone();
-        let width = cfg.width;
-        let height = cfg.height;
-        let fps = cfg.fps;
-        let pattern = cfg.pattern.clone();
-        let cursor = cfg.cursor;
 
         let thread = std::thread::Builder::new()
             .name(format!("test-in-{source_ref}"))
             .spawn(move || {
-                run_capture(width, height, fps, pattern, cursor, slot2, stats2, running2);
+                run_capture(config2, slot2, stats2, running2);
             })
             .expect("spawn test source");
         Self {
+            config,
             slot,
             stats,
             source_ref,
@@ -185,40 +184,82 @@ impl TestSource {
     }
 }
 
-/// Generate and publish frames on the source's thread until `running` clears.
-#[allow(clippy::too_many_arguments)]
-fn run_capture(
-    width: u32,
-    height: u32,
-    fps: f64,
-    pattern: TestPattern,
-    cursor: CursorConfig,
-    slot: Arc<Mutex<Option<Frame>>>,
-    stats: Arc<Mutex<SourceStats>>,
-    running: Arc<AtomicBool>,
-) {
-    let w = width;
-    let h = height;
-    let fps = fps.max(1.0);
-    let size = (w * h * 4) as usize;
-    let frame_interval = Duration::from_secs_f64(1.0 / fps);
-    let mut seq = 0u64;
+/// Step a wrapped position by `speed`, keeping it inside `[0, limit)`.
+/// Accumulating (rather than `seq * speed`) lets a speed edit continue from
+/// where the marker is instead of teleporting it.
+fn advance(position: f32, speed: f32, limit: f32) -> f32 {
+    if !limit.is_finite() || limit <= 0.0 {
+        return 0.0;
+    }
+    return (position + speed).rem_euclid(limit);
+}
 
-    // Render the static base once and reuse it every frame.
-    let mut base = vec![0u8; size];
-    generate_base(&mut base, w, h, &pattern);
-    let base = Arc::new(base);
-    let mut pool = FramePool::new();
+/// The pattern a static base is generated for; Radar is drawn per frame and
+/// has none, so its edits must not rebuild one.
+fn base_pattern(pattern: &TestPattern) -> Option<TestPattern> {
+    return match pattern {
+        TestPattern::Radar { .. } => None,
+        pattern => Some(pattern.clone()),
+    };
+}
+
+/// Length of one radar sweep for a direction, in pixels.
+fn radar_cycle(w: u32, h: u32, width: u32, direction: &RadarDirection) -> f32 {
+    let dim_main = match direction {
+        RadarDirection::Right | RadarDirection::Left => w,
+        RadarDirection::Down | RadarDirection::Up => h,
+    };
+    return dim_main as f32 + width as f32;
+}
+
+/// Generate and publish frames on the source's thread until `running` clears.
+/// The config is re-read every iteration, so `fps`, the pattern and the cursor
+/// and radar settings apply without reopening the source.
+fn run_capture(config: Arc<Mutex<TestSourceConfig>>, slot: Arc<Mutex<Option<Frame>>>, stats: Arc<Mutex<SourceStats>>, running: Arc<AtomicBool>) {
+    let mut applied: Option<TestPattern> = None;
+    let mut base = Arc::new(Vec::new());
+    let mut size = 0usize;
+    let mut seq = 0u64;
+    let mut cursor = (0.0f32, 0.0f32);
+    let mut radar = 0.0f32;
+    let mut interval = Duration::ZERO;
     let mut next_frame = Instant::now();
+    let mut pool = FramePool::new();
 
     while running.load(Ordering::Relaxed) {
+        let cfg = config.lock().unwrap().clone();
+        let w = cfg.width.max(1);
+        let h = cfg.height.max(1);
+        let bytes = (w * h * 4) as usize;
+        let fps = cfg.fps.max(1.0);
+
+        // The static base is regenerated only when the pattern changes.
+        let wanted = base_pattern(&cfg.pattern);
+        if size != bytes || wanted != applied {
+            if let Some(pattern) = &wanted {
+                let mut generated = vec![0u8; bytes];
+                generate_base(&mut generated, w, h, pattern);
+                base = Arc::new(generated);
+            }
+            applied = wanted;
+            size = bytes;
+        }
+
+        let frame_interval = Duration::from_secs_f64(1.0 / fps);
+        if frame_interval != interval {
+            interval = frame_interval;
+            // Cap the wait at one new interval: a faster rate applies now, a
+            // slower one keeps the frame already due instead of a burst.
+            next_frame = next_frame.min(Instant::now() + frame_interval);
+        }
+
         {
             let frame_span = tracing::debug_span!("test_frame");
             let _frame_guard = frame_span.entered();
             // Reclaims last frame's buffer if the compositor has dropped it; re-alloc only on lost race.
-            let mut back = pool.take(size);
+            let mut back = pool.take(bytes);
             let t0 = Instant::now();
-            match &pattern {
+            match &cfg.pattern {
                 TestPattern::Radar {
                     width,
                     speed,
@@ -226,14 +267,17 @@ fn run_capture(
                     line_color,
                     bg_color,
                 } => {
-                    generate_radar(&mut back, w, h, *width, *speed, seq, direction, *line_color, *bg_color);
+                    radar = advance(radar, *speed, radar_cycle(w, h, *width, direction));
+                    generate_radar(&mut back, w, h, *width, radar, direction, *line_color, *bg_color);
                 }
                 _ => {
                     back.copy_from_slice(&base);
                 }
             }
-            if cursor.enabled {
-                overlay_cursor(&mut back, w, h, seq, &cursor);
+            if cfg.cursor.enabled {
+                cursor.0 = advance(cursor.0, cfg.cursor.speed_x, w as f32);
+                cursor.1 = advance(cursor.1, cfg.cursor.speed_y, h as f32);
+                overlay_cursor(&mut back, w, h, cursor.0 as u32, cursor.1 as u32, &cfg.cursor);
             }
             let copy_ms = t0.elapsed().as_secs_f32() * 1000.0;
             {
@@ -259,7 +303,7 @@ fn run_capture(
             std::thread::sleep(next_frame - now);
         }
         let now = Instant::now();
-        next_frame = advance_deadline(next_frame, now, frame_interval);
+        next_frame = advance_deadline(next_frame, now, interval);
     }
 }
 
@@ -292,6 +336,21 @@ impl VideoSource for TestSource {
     fn alive(&self) -> bool {
         return self.thread.as_ref().is_none_or(|thread| !thread.is_finished());
     }
+
+    fn apply_config(&self, config: &SourceConfig) -> bool {
+        let SourceConfig::Test(config) = config else {
+            return false;
+        };
+        let mut current = self.config.lock().unwrap();
+        // The frame buffer and the static base are sized from the raster, so a
+        // resize reopens (inline and instant) instead of re-filling a base on
+        // every frame of a size drag.
+        if current.width != config.width || current.height != config.height {
+            return false;
+        }
+        *current = config.clone();
+        return true;
+    }
 }
 
 fn generate_base(buf: &mut [u8], w: u32, h: u32, pattern: &TestPattern) {
@@ -310,12 +369,12 @@ fn generate_base(buf: &mut [u8], w: u32, h: u32, pattern: &TestPattern) {
 }
 
 /// Overlay an optional moving cursor (white crosshair) on top of any pattern.
-fn overlay_cursor(buf: &mut [u8], w: u32, h: u32, seq: u64, cursor: &CursorConfig) {
+fn overlay_cursor(buf: &mut [u8], w: u32, h: u32, x: u32, y: u32, cursor: &CursorConfig) {
     if !cursor.enabled || cursor.width == 0 {
         return;
     }
-    let x = ((seq as f32 * cursor.speed_x) as u32) % w;
-    let y = ((seq as f32 * cursor.speed_y) as u32) % h;
+    let x = x % w;
+    let y = y % h;
     let x_end = (x + cursor.width).min(w);
     let y_end = (y + cursor.width).min(h);
 
@@ -625,17 +684,7 @@ fn generate_grid(buf: &mut [u8], w: u32, h: u32, cols: u32, rows: u32, line_colo
 }
 
 #[allow(clippy::too_many_arguments)]
-fn generate_radar(
-    buf: &mut [u8],
-    w: u32,
-    h: u32,
-    width: u32,
-    speed: f32,
-    seq: u64,
-    direction: &RadarDirection,
-    line_color: [u8; 3],
-    bg_color: [u8; 3],
-) {
+fn generate_radar(buf: &mut [u8], w: u32, h: u32, width: u32, pos: f32, direction: &RadarDirection, line_color: [u8; 3], bg_color: [u8; 3]) {
     let (dim_main, is_horizontal, reverse) = match direction {
         RadarDirection::Right => (w, true, false),
         RadarDirection::Left => (w, true, true),
@@ -643,8 +692,6 @@ fn generate_radar(
         RadarDirection::Up => (h, false, true),
     };
 
-    let cycle = dim_main as f32 + width as f32;
-    let pos = (seq as f32 * speed) % cycle;
     let edge_pos = pos as i32;
 
     for y in 0..h {
@@ -825,5 +872,85 @@ mod tests {
         // PLUGE -4 IRE (Y=7).
         let pluge_neg = pixel(&buf, w, (w as f32 * (5.0 / 7.0 + 1.0 / 21.0)) as u32, y);
         assert_eq!(pluge_neg, [7, 7, 7, 255]);
+    }
+
+    fn radar(speed: f32) -> TestPattern {
+        return TestPattern::Radar {
+            width: 12,
+            speed,
+            direction: RadarDirection::Right,
+            line_color: [255, 255, 255],
+            bg_color: [0, 0, 0],
+        };
+    }
+
+    #[test]
+    fn radar_edits_do_not_rebuild_a_static_base() {
+        assert_eq!(base_pattern(&radar(1.0)), base_pattern(&radar(9.0)));
+        assert!(base_pattern(&radar(1.0)).is_none(), "Radar needs no base");
+        assert!(
+            base_pattern(&TestPattern::Grid {
+                cols: 2,
+                rows: 2,
+                line_color: [255, 255, 255],
+                bg_color: [0, 0, 0],
+            })
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn a_marker_advances_by_the_current_speed() {
+        assert_eq!(advance(0.0, 8.0, 100.0), 8.0);
+        assert_eq!(advance(8.0, 2.0, 100.0), 10.0, "a speed change continues from the position");
+        assert_eq!(advance(99.0, 3.0, 100.0), 2.0);
+        assert_eq!(advance(5.0, 1.0, 0.0), 0.0);
+    }
+
+    #[test]
+    fn a_radar_sweep_wraps_on_its_cycle() {
+        assert_eq!(radar_cycle(100, 50, 10, &RadarDirection::Right), 110.0);
+        assert_eq!(radar_cycle(100, 50, 10, &RadarDirection::Up), 60.0);
+        assert_eq!(advance(108.0, 4.0, radar_cycle(100, 50, 10, &RadarDirection::Right)), 2.0);
+    }
+
+    #[test]
+    fn the_cursor_is_drawn_where_asked() {
+        let (w, h) = (16, 16);
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        let cursor = CursorConfig {
+            enabled: true,
+            speed_x: 0.0,
+            speed_y: 0.0,
+            width: 2,
+        };
+        overlay_cursor(&mut buf, w, h, 5, 7, &cursor);
+
+        assert_eq!(pixel(&buf, w, 5, 0), [255, 255, 255, 255], "the vertical band crosses the row");
+        assert_eq!(pixel(&buf, w, 0, 7), [255, 255, 255, 255], "the horizontal band crosses the column");
+        assert_eq!(pixel(&buf, w, 0, 0), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn edit_time_fields_are_adopted_but_a_resize_is_not() {
+        let config = TestSourceConfig::default();
+        let source = TestSource::spawn("Test A".to_string(), &config);
+
+        let mut tuned = config.clone();
+        tuned.cursor.enabled = true;
+        tuned.cursor.speed_x = 20.0;
+        tuned.fps = 30.0;
+        tuned.pattern = TestPattern::Radar {
+            width: 12,
+            speed: 4.0,
+            direction: RadarDirection::Down,
+            line_color: [255, 0, 0],
+            bg_color: [0, 0, 0],
+        };
+        assert!(source.apply_config(&SourceConfig::Test(tuned.clone())));
+
+        let mut resized = tuned;
+        resized.width = 640;
+        assert!(!source.apply_config(&SourceConfig::Test(resized)), "a resize reopens the source");
     }
 }

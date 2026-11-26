@@ -61,14 +61,16 @@ pub fn render_source_settings_config(
 }
 
 fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
-    let old = cfg.clone();
+    let mut changed = false;
     settings_grid(ui, "test_settings_grid", |ui| {
         settings_row(ui, "Size", |ui| {
             ui.horizontal(|ui| {
                 ui.label("W");
-                ui.add(egui::DragValue::new(&mut cfg.width).range(100..=4096));
+                let width = ui.add(egui::DragValue::new(&mut cfg.width).range(100..=4096).update_while_editing(false));
+                changed |= commit_field_edit(ui, "test_width", width.changed(), width.lost_focus(), width.drag_stopped());
                 ui.label("H");
-                ui.add(egui::DragValue::new(&mut cfg.height).range(100..=4096));
+                let height = ui.add(egui::DragValue::new(&mut cfg.height).range(100..=4096).update_while_editing(false));
+                changed |= commit_field_edit(ui, "test_height", height.changed(), height.lost_focus(), height.drag_stopped());
             });
         });
 
@@ -79,7 +81,7 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
                 .selected_text(cfg.pattern.label())
                 .show_ui(ui, |ui| {
                     for pattern in &patterns {
-                        ui.selectable_value(&mut cfg.pattern, pattern.clone(), pattern.label());
+                        changed |= ui.selectable_value(&mut cfg.pattern, pattern.clone(), pattern.label()).changed();
                     }
                 });
         });
@@ -87,14 +89,17 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
         if let TestPattern::UvGradient { red, green, blue, rotation } = &mut cfg.pattern {
             settings_row(ui, "Channels", |ui| {
                 ui.horizontal(|ui| {
-                    ui.checkbox(red, "R");
-                    ui.checkbox(green, "G");
-                    ui.checkbox(blue, "B");
+                    changed |= ui.checkbox(red, "R").changed();
+                    changed |= ui.checkbox(green, "G").changed();
+                    changed |= ui.checkbox(blue, "B").changed();
                 });
             });
 
+            // The static base is re-filled per rotation value, so the drag
+            // commits on release like the other numeric rows.
             settings_row(ui, "Rotation", |ui| {
-                ui.add(egui::DragValue::new(rotation).range(0.0..=360.0).speed(1.0).suffix("°"));
+                let response = ui.add(egui::DragValue::new(rotation).range(0.0..=360.0).speed(1.0).suffix("°").update_while_editing(false));
+                changed |= commit_field_edit(ui, "test_rotation", response.changed(), response.lost_focus(), response.drag_stopped());
             });
         }
 
@@ -108,14 +113,28 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
             settings_row(ui, "Grid", |ui| {
                 ui.horizontal(|ui| {
                     ui.label("Cols");
-                    ui.add(egui::DragValue::new(cols).range(1..=50));
+                    let cols_response = ui.add(egui::DragValue::new(cols).range(1..=50).update_while_editing(false));
+                    changed |= commit_field_edit(
+                        ui,
+                        "test_grid_cols",
+                        cols_response.changed(),
+                        cols_response.lost_focus(),
+                        cols_response.drag_stopped(),
+                    );
                     ui.label("Rows");
-                    ui.add(egui::DragValue::new(rows).range(1..=50));
+                    let rows_response = ui.add(egui::DragValue::new(rows).range(1..=50).update_while_editing(false));
+                    changed |= commit_field_edit(
+                        ui,
+                        "test_grid_rows",
+                        rows_response.changed(),
+                        rows_response.lost_focus(),
+                        rows_response.drag_stopped(),
+                    );
                 });
             });
 
-            color_picker_row(ui, "Primary Color", line_color);
-            color_picker_row(ui, "Background", bg_color);
+            changed |= color_picker_row(ui, "Primary Color", line_color);
+            changed |= color_picker_row(ui, "Background", bg_color);
         }
 
         if let TestPattern::Radar {
@@ -127,11 +146,11 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
         } = &mut cfg.pattern
         {
             settings_row(ui, "Width", |ui| {
-                ui.add(egui::DragValue::new(width).range(1..=cfg.width));
+                changed |= ui.add(egui::DragValue::new(width).range(1..=cfg.width)).changed();
             });
 
             settings_row(ui, "Speed", |ui| {
-                ui.add(egui::DragValue::new(speed).range(0.0..=50.0).speed(0.5));
+                changed |= ui.add(egui::DragValue::new(speed).range(0.0..=50.0).speed(0.5)).changed();
             });
 
             settings_row(ui, "Direction", |ui| {
@@ -139,41 +158,41 @@ fn test_settings_ui(cfg: &mut TestSourceConfig, ui: &mut egui::Ui) -> bool {
                     .width(ui.available_width())
                     .selected_text(format!("{:?}", direction))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(direction, RadarDirection::Right, "Right");
-                        ui.selectable_value(direction, RadarDirection::Left, "Left");
-                        ui.selectable_value(direction, RadarDirection::Down, "Down");
-                        ui.selectable_value(direction, RadarDirection::Up, "Up");
+                        changed |= ui.selectable_value(direction, RadarDirection::Right, "Right").changed();
+                        changed |= ui.selectable_value(direction, RadarDirection::Left, "Left").changed();
+                        changed |= ui.selectable_value(direction, RadarDirection::Down, "Down").changed();
+                        changed |= ui.selectable_value(direction, RadarDirection::Up, "Up").changed();
                     });
             });
 
-            color_picker_row(ui, "Primary Color", line_color);
-            color_picker_row(ui, "Background", bg_color);
+            changed |= color_picker_row(ui, "Primary Color", line_color);
+            changed |= color_picker_row(ui, "Background", bg_color);
         }
 
         settings_row(ui, "FPS", |ui| {
-            ui.add(egui::DragValue::new(&mut cfg.fps).range(1.0..=240.0).speed(1.0));
+            changed |= ui.add(egui::DragValue::new(&mut cfg.fps).range(1.0..=240.0).speed(1.0)).changed();
         });
 
         settings_row(ui, "Cursor", |ui| {
-            ui.checkbox(&mut cfg.cursor.enabled, "Enabled");
+            changed |= ui.checkbox(&mut cfg.cursor.enabled, "Enabled").changed();
         });
 
         if cfg.cursor.enabled {
             settings_row(ui, "Cursor speed", |ui| {
                 ui.horizontal(|ui| {
                     ui.label("X ");
-                    ui.add(egui::DragValue::new(&mut cfg.cursor.speed_x).range(0.0..=100.0).speed(0.5));
+                    changed |= ui.add(egui::DragValue::new(&mut cfg.cursor.speed_x).range(0.0..=100.0).speed(0.5)).changed();
                     ui.label("Y ");
-                    ui.add(egui::DragValue::new(&mut cfg.cursor.speed_y).range(0.0..=100.0).speed(0.5));
+                    changed |= ui.add(egui::DragValue::new(&mut cfg.cursor.speed_y).range(0.0..=100.0).speed(0.5)).changed();
                 });
             });
 
             settings_row(ui, "Cursor width", |ui| {
-                ui.add(egui::DragValue::new(&mut cfg.cursor.width).range(1..=100));
+                changed |= ui.add(egui::DragValue::new(&mut cfg.cursor.width).range(1..=100)).changed();
             });
         }
     });
-    return *cfg != old;
+    return changed;
 }
 
 fn ndi_format_label(cf: NdiReceiverColorFormat) -> String {
@@ -888,13 +907,16 @@ fn endpoint_rows(ui: &mut egui::Ui, id_prefix: &str, host: &mut String, port: &m
     return committed;
 }
 
-fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) {
+fn color_picker_row(ui: &mut egui::Ui, label: &str, color: &mut [u8; 3]) -> bool {
+    let mut changed = false;
     settings_row(ui, label, |ui| {
         let mut color_f32 = [color[0] as f32 / 255.0, color[1] as f32 / 255.0, color[2] as f32 / 255.0];
         if ui.color_edit_button_rgb(&mut color_f32).changed() {
             *color = [(color_f32[0] * 255.0) as u8, (color_f32[1] * 255.0) as u8, (color_f32[2] * 255.0) as u8];
+            changed = true;
         }
     });
+    return changed;
 }
 
 #[allow(dead_code)]

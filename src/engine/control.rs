@@ -119,16 +119,11 @@ impl Engine {
                 }
                 let key = source_ref.map(|source_ref| SourceKey::new(protocol, source_ref));
                 // A client may resend a config the runtime already holds; reopening
-                // for it would drop frames and could re-prompt for a device.
+                // for it would drop frames and could re-prompt for a device. Text and
+                // timecode presentation fields are adopted in place, so a colour drag
+                // does not reopen the source on every frame.
                 let restart = match &key {
-                    Some(key) => match self.registry.get_mut(key) {
-                        Some(kind) if kind.config == config => false,
-                        Some(kind) => {
-                            kind.config = config.clone();
-                            true
-                        }
-                        None => false,
-                    },
+                    Some(key) => self.registry.get_mut(key).is_some_and(|kind| kind.set_config(config.clone())),
                     None => false,
                 };
                 self.sync_source_config(&uuid, config);
@@ -445,7 +440,10 @@ mod tests {
     use crate::config::{BorderVisibility, Canvas, LabelVisibility, Source, SourceBorderVisibility, SourceLabelVisibility, TextureMode};
     use crate::engine::state::EngineState;
     use crate::engine::SourcePlacementPatch;
-    use crate::sources::{NdiOutputConfig, OutputConfig, Protocol, SourceConfig, SourceKey, TestSourceConfig};
+    use crate::sources::{
+        NdiOutputConfig, OutputConfig, Protocol, SourceConfig, SourceKey, TestSourceConfig, TextStyle, TextSourceConfig, TimecodeProtocol,
+        TimecodeSourceConfig,
+    };
 
     fn engine_with_source() -> (Engine, String) {
         let source = Source::new("Source".into(), Protocol::Test, None, 0.0, 0.0, 640, 360, 0, TextureMode::Fit, false, false);
@@ -453,6 +451,29 @@ mod tests {
         let mut canvas = Canvas::default();
         canvas.sources.push(source);
         return (Engine::test_instance(canvas), id);
+    }
+
+    fn engine_with_text_source() -> (Engine, String) {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let config = TextSourceConfig::default();
+        let key = engine.registry.add_text(config.clone());
+        let mut source = Source::new(
+            "Text".into(),
+            Protocol::Text,
+            Some(key.source_ref),
+            0.0,
+            0.0,
+            640,
+            360,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        );
+        source.config = SourceConfig::Text(config);
+        let id = source.uuid.clone();
+        engine.state.cfg.canvas.sources.push(source);
+        return (engine, id);
     }
 
     #[test]
@@ -881,6 +902,124 @@ mod tests {
             let decoded: Command = serde_json::from_str(&json).unwrap();
             assert_eq!(decoded, command);
         }
+    }
+
+    #[test]
+    fn a_style_change_is_adopted_without_reopening_the_source() {
+        let (mut engine, id) = engine_with_text_source();
+        let source_ref = engine.state.cfg.canvas.sources[0].source_ref.clone().unwrap();
+        let key = SourceKey::new(Protocol::Text, source_ref);
+        let stats = engine.registry.get(&key).unwrap().stats();
+
+        let changed = TextSourceConfig {
+            style: TextStyle {
+                text_color: [255, 0, 0, 255],
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        engine
+            .apply_command(Command::SetSourceConfig {
+                source: Selector::Id(id),
+                config: SourceConfig::Text(changed.clone()),
+            })
+            .unwrap();
+
+        assert!(Arc::ptr_eq(&stats, &engine.registry.get(&key).unwrap().stats()), "the source must not be reopened");
+        assert_eq!(engine.registry.get(&key).unwrap().config, SourceConfig::Text(changed));
+        let view = engine.runtime_view(&[]);
+        assert!(view.source(&key).is_some_and(|view| !view.restart_pending), "a style edit must not restart");
+    }
+
+    #[test]
+    fn an_input_change_reopens_the_timecode_source() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let config = TimecodeSourceConfig {
+            input: TimecodeProtocol::ArtNet {
+                bind: "127.0.0.1".to_string(),
+                port: 0,
+                stream_id: 0,
+            },
+            ..Default::default()
+        };
+        let key = engine.registry.add_timecode(config.clone());
+        let mut source = Source::new(
+            "Timecode".into(),
+            Protocol::Timecode,
+            Some(key.source_ref.clone()),
+            0.0,
+            0.0,
+            640,
+            360,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        );
+        source.config = SourceConfig::Timecode(config.clone());
+        let id = source.uuid.clone();
+        engine.state.cfg.canvas.sources.push(source);
+
+        let mut changed = config;
+        changed.input = TimecodeProtocol::ArtNet {
+            bind: "127.0.0.1".to_string(),
+            port: 0,
+            stream_id: 1,
+        };
+        engine
+            .apply_command(Command::SetSourceConfig {
+                source: Selector::Id(id),
+                config: SourceConfig::Timecode(changed),
+            })
+            .unwrap();
+
+        let view = engine.runtime_view(&[]);
+        assert!(view.source(&key).is_some_and(|view| view.restart_pending), "a new input must reopen the source");
+    }
+
+    #[test]
+    fn a_test_cursor_change_is_adopted_but_a_resize_reopens() {
+        let mut engine = Engine::test_instance(Canvas::default());
+        let config = TestSourceConfig::default();
+        let key = engine.registry.add_test(Some(config.clone()));
+        let mut source = Source::new(
+            "Test".into(),
+            Protocol::Test,
+            Some(key.source_ref.clone()),
+            0.0,
+            0.0,
+            640,
+            360,
+            0,
+            TextureMode::Fit,
+            false,
+            false,
+        );
+        source.config = SourceConfig::Test(config.clone());
+        let id = source.uuid.clone();
+        engine.state.cfg.canvas.sources.push(source);
+
+        let stats = engine.registry.get(&key).unwrap().stats();
+        let mut tuned = config.clone();
+        tuned.cursor.enabled = true;
+        tuned.fps = 30.0;
+        engine
+            .apply_command(Command::SetSourceConfig {
+                source: Selector::Id(id.clone()),
+                config: SourceConfig::Test(tuned),
+            })
+            .unwrap();
+        assert!(Arc::ptr_eq(&stats, &engine.registry.get(&key).unwrap().stats()), "an edit-time field is adopted");
+
+        let mut resized = config;
+        resized.width = 640;
+        engine
+            .apply_command(Command::SetSourceConfig {
+                source: Selector::Id(id),
+                config: SourceConfig::Test(resized),
+            })
+            .unwrap();
+        assert!(!Arc::ptr_eq(&stats, &engine.registry.get(&key).unwrap().stats()), "a resize reopens the source");
     }
 
     #[test]

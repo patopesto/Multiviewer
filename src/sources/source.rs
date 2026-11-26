@@ -48,11 +48,16 @@ impl SourceKey {
 
 // Runtime video source
 pub trait VideoSource: Send + Sync {
+    /// Adopt a changed config without reopening. A source returns true only when
+    /// every field of `config` was applied; a false return reopens it instead.
+    fn apply_config(&self, _config: &SourceConfig) -> bool {
+        return false;
+    }
+
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame>;
+
     fn stats(&self) -> Arc<Mutex<SourceStats>>;
-    /// Whether this source can still produce frames. A capture thread that
-    /// exited (failed open, SDK error) reports false, so the registry treats the
-    /// key as absent and the reconnect pass retries it.
+    /// Whether this source can still produce frames.
     fn alive(&self) -> bool {
         return true;
     }
@@ -437,6 +442,17 @@ impl SourceKind {
 
     pub fn stats(&self) -> Arc<Mutex<SourceStats>> {
         return self.source.stats();
+    }
+
+    /// Apply a changed config in place, or report that the source must reopen.
+    /// Returns true when a reopen is required.
+    pub fn set_config(&mut self, config: SourceConfig) -> bool {
+        if self.config == config {
+            return false;
+        }
+        let adopted = self.source.apply_config(&config);
+        self.config = config;
+        return !adopted;
     }
 
     pub fn timecode(&self) -> Option<TimecodeStatus> {

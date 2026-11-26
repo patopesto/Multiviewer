@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::input::{SharedInput, TimecodeHub, TimecodeProtocol};
 use super::ltc;
 use super::{TimecodeDisplay, TimecodeStatus};
-use super::super::{CpuFrame, Frame, PixelFormat, SourceStats, TextStyle, VideoSource};
+use super::super::{CpuFrame, Frame, PixelFormat, SourceConfig, SourceStats, TextStyle, VideoSource};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 // @docs protocol="Timecode" direction=input
@@ -44,15 +44,24 @@ impl Default for TimecodeSourceConfig {
 
 struct Cached {
     value: Option<String>,
+    generation: u64,
     frame: Frame,
     seq: u64,
 }
 
-/// A timecode display. The shared input publishes the last value, and the
-/// frame is re-rendered only when the formatted value changes.
-pub struct TimecodeSource {
+/// How the card is presented. Changing it re-renders on the next frame; it
+/// never touches the receiver.
+struct Presentation {
     display: TimecodeDisplay,
     style: TextStyle,
+    generation: u64,
+}
+
+/// A timecode display. The shared input publishes the last value, and the
+/// frame is re-rendered only when the formatted value or the presentation
+/// changes.
+pub struct TimecodeSource {
+    presentation: Mutex<Presentation>,
     hub: Arc<TimecodeHub>,
     input: Arc<SharedInput>,
     cache: Mutex<Cached>,
@@ -61,25 +70,62 @@ pub struct TimecodeSource {
 
 impl TimecodeSource {
     pub fn spawn(hub: Arc<TimecodeHub>, config: &TimecodeSourceConfig) -> Self {
-        let display = config.display;
-        let (max_width, max_height) = TimecodeSourceConfig::MAX_SIZE;
-        let mut style = config.style.clone().bounded();
-        style.width = style.width.min(max_width);
-        style.height = style.height.min(max_height);
+        let style = capped_style(config);
         let input = hub.attach(&config.input);
 
-        let frame = text_frame(&style, display.placeholder(), 0);
+        let frame = text_frame(&style, config.display.placeholder(), 0);
         let mut stats = SourceStats::new();
         stats.record_frame(style.width, style.height, PixelFormat::Rgba8.label(), 0.0);
         return Self {
-            display,
-            style,
+            presentation: Mutex::new(Presentation {
+                display: config.display,
+                style,
+                generation: 0,
+            }),
             hub,
             input,
-            cache: Mutex::new(Cached { value: None, frame, seq: 0 }),
+            cache: Mutex::new(Cached {
+                value: None,
+                generation: 0,
+                frame,
+                seq: 0,
+            }),
             stats: Arc::new(Mutex::new(stats)),
         };
     }
+
+    /// The picture for the current value and presentation, re-rendered only
+    /// when either changed.
+    fn current_frame(&self) -> Frame {
+        let status = self.input.status();
+        let presentation = self.presentation.lock().unwrap();
+        let value = status.timecode.map(|timecode| presentation.display.format(&timecode));
+        let mut cache = self.cache.lock().unwrap();
+        if cache.value != value || cache.generation != presentation.generation {
+            let text = value.as_deref().unwrap_or_else(|| presentation.display.placeholder());
+            let frame = text_frame(&presentation.style, text, cache.seq + 1);
+            cache.seq += 1;
+            cache.frame = frame;
+            cache.value = value;
+            cache.generation = presentation.generation;
+            let mut stats = self.stats.lock().unwrap();
+            stats.record_frame(
+                presentation.style.width,
+                presentation.style.height,
+                PixelFormat::Rgba8.label(),
+                status.timecode.map_or(0.0, |tc| tc.fps),
+            );
+        }
+        return cache.frame.clone();
+    }
+}
+
+fn capped_style(config: &TimecodeSourceConfig) -> TextStyle {
+    let (max_width, max_height) = TimecodeSourceConfig::MAX_SIZE;
+    let mut style = config.style.clone().bounded();
+    style.width = style.width.min(max_width);
+    style.height = style.height.min(max_height);
+    return style;
 }
 
 impl Drop for TimecodeSource {
@@ -90,24 +136,7 @@ impl Drop for TimecodeSource {
 
 impl VideoSource for TimecodeSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
-        let status = self.input.status();
-        let value = status.timecode.map(|timecode| self.display.format(&timecode));
-        let mut cache = self.cache.lock().unwrap();
-        if cache.value != value {
-            let text = value.as_deref().unwrap_or_else(|| self.display.placeholder());
-            let frame = text_frame(&self.style, text, cache.seq + 1);
-            cache.seq += 1;
-            cache.frame = frame;
-            cache.value = value;
-            let mut stats = self.stats.lock().unwrap();
-            stats.record_frame(
-                self.style.width,
-                self.style.height,
-                PixelFormat::Rgba8.label(),
-                status.timecode.map_or(0.0, |tc| tc.fps),
-            );
-        }
-        return Some(cache.frame.clone());
+        return Some(self.current_frame());
     }
 
     fn stats(&self) -> Arc<Mutex<SourceStats>> {
@@ -116,6 +145,25 @@ impl VideoSource for TimecodeSource {
 
     fn alive(&self) -> bool {
         return self.input.alive();
+    }
+
+    fn apply_config(&self, config: &SourceConfig) -> bool {
+        let SourceConfig::Timecode(config) = config else {
+            return false;
+        };
+        // A different input rebinds the receiver, which only a reopen can do.
+        if config.input != *self.input.key() {
+            return false;
+        }
+        let style = capped_style(config);
+        let mut presentation = self.presentation.lock().unwrap();
+        if presentation.display == config.display && presentation.style == style {
+            return true;
+        }
+        presentation.display = config.display;
+        presentation.style = style;
+        presentation.generation += 1;
+        return true;
     }
 
     fn timecode(&self) -> Option<TimecodeStatus> {
@@ -248,5 +296,59 @@ mod tests {
             unreachable!("timecode sources publish CPU frames");
         };
         assert_eq!((frame.w, frame.h), TimecodeSourceConfig::MAX_SIZE);
+    }
+
+    #[test]
+    fn a_presentation_change_rerenders_without_touching_the_input() {
+        let mut config = TimecodeSourceConfig {
+            input: TimecodeProtocol::ArtNet {
+                bind: "127.0.0.1".to_string(),
+                port: 0,
+                stream_id: 0,
+            },
+            ..Default::default()
+        };
+        let source = TimecodeSource::spawn(Arc::new(TimecodeHub::default()), &config);
+        let input = source.input.clone();
+        let seq = source.current_frame().seq();
+        assert_eq!(seq, 0);
+
+        config.display = TimecodeDisplay::Seconds;
+        config.style.text_color = [255, 0, 0, 255];
+        assert!(source.apply_config(&SourceConfig::Timecode(config.clone())));
+        assert!(Arc::ptr_eq(&source.input, &input), "a style edit must not rebind the receiver");
+        assert!(source.current_frame().seq() > seq, "the new presentation re-renders");
+    }
+
+    #[test]
+    fn an_identical_presentation_does_not_rerender() {
+        let config = TimecodeSourceConfig {
+            input: TimecodeProtocol::ArtNet {
+                bind: "127.0.0.1".to_string(),
+                port: 0,
+                stream_id: 0,
+            },
+            ..Default::default()
+        };
+        let source = TimecodeSource::spawn(Arc::new(TimecodeHub::default()), &config);
+        assert!(source.apply_config(&SourceConfig::Timecode(config)));
+        assert_eq!(source.current_frame().seq(), 0);
+    }
+
+    #[test]
+    fn an_input_change_is_not_adopted() {
+        let mut config = TimecodeSourceConfig {
+            input: TimecodeProtocol::ArtNet {
+                bind: "127.0.0.1".to_string(),
+                port: 0,
+                stream_id: 0,
+            },
+            ..Default::default()
+        };
+        let source = TimecodeSource::spawn(Arc::new(TimecodeHub::default()), &config);
+        config.input = TimecodeProtocol::Mtc {
+            port: "IAC Driver Bus 1".to_string(),
+        };
+        assert!(!source.apply_config(&SourceConfig::Timecode(config)), "a new input reopens the source");
     }
 }

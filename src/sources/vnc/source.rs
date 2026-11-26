@@ -7,7 +7,9 @@ use tokio::net::TcpStream;
 use vnc::{PixelFormat as VncPixelFormat, VncClient, VncConnector, VncEncoding, VncEvent, X11Event};
 
 use crate::secret;
-use super::super::{CpuFrame, Frame, FramePool, Framebuffer, SourceRef, SourceStats, VideoSource, PUBLISH_INTERVAL, publish_due, sleep_while_running};
+use super::super::{
+    CpuFrame, Frame, FramePool, Framebuffer, SourceConfig, SourceRef, SourceStats, VideoSource, PUBLISH_INTERVAL, publish_due, sleep_while_running,
+};
 
 /// Default RFB port.
 const DEFAULT_PORT: u16 = 5900;
@@ -123,6 +125,11 @@ pub struct VncSource {
     stats: Arc<Mutex<SourceStats>>,
     source_ref: SourceRef,
     running: Arc<AtomicBool>,
+    /// The config the session was opened with; only the connection fields are
+    /// still authoritative once connected.
+    config: VncSourceConfig,
+    /// Read by the session loop, so the checkbox does not reconnect the session.
+    keep_awake: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -131,22 +138,26 @@ impl VncSource {
         let slot = Arc::new(Mutex::new(None));
         let stats = Arc::new(Mutex::new(SourceStats::new()));
         let running = Arc::new(AtomicBool::new(true));
+        let keep_awake = Arc::new(AtomicBool::new(config.keep_awake));
 
         let slot2 = slot.clone();
         let stats2 = stats.clone();
         let running2 = running.clone();
-        let config = config.clone();
+        let keep_awake2 = keep_awake.clone();
         let trace_ref = source_ref.clone();
+        let thread_config = config.clone();
 
         let thread = std::thread::Builder::new()
             .name(format!("vnc-in-{source_ref}"))
-            .spawn(move || run_capture(config, slot2, stats2, running2, trace_ref))
+            .spawn(move || run_capture(thread_config, keep_awake2, slot2, stats2, running2, trace_ref))
             .expect("spawn vnc-recv");
         return Self {
             slot,
             stats,
             source_ref,
             running,
+            config: config.clone(),
+            keep_awake,
             thread: Some(thread),
         };
     }
@@ -178,6 +189,7 @@ fn next_wait(until_request: Duration, until_publish: Duration) -> Duration {
 /// Connect and publish frames until `running` clears, reconnecting on failure.
 fn run_capture(
     config: VncSourceConfig,
+    keep_awake: Arc<AtomicBool>,
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     running: Arc<AtomicBool>,
@@ -196,11 +208,12 @@ fn run_capture(
             return;
         }
     };
-    runtime.block_on(run_session(config, slot, stats, running, source_ref));
+    runtime.block_on(run_session(config, keep_awake, slot, stats, running, source_ref));
 }
 
 async fn run_session(
     config: VncSourceConfig,
+    keep_awake: Arc<AtomicBool>,
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     running: Arc<AtomicBool>,
@@ -362,7 +375,7 @@ async fn run_session(
             // or not the stream is busy: a request is not input, so only a real
             // pointer event stops the server blanking an idle session. The two
             // alternating positions make every event a genuine move.
-            if config.keep_awake && last_wake_at.elapsed() >= WAKE_INTERVAL {
+            if keep_awake.load(Ordering::Relaxed) && last_wake_at.elapsed() >= WAKE_INTERVAL {
                 let (x, y) = WAKE_POSITIONS[wake_index];
                 tracing::debug!(source = source_ref, "VNC keep-awake: pointer to ({x}, {y})");
                 if let Err(e) = client.input(X11Event::PointerEvent((x, y, 0).into())).await {
@@ -536,6 +549,23 @@ impl VideoSource for VncSource {
     fn alive(&self) -> bool {
         return self.thread.as_ref().is_none_or(|thread| !thread.is_finished());
     }
+
+    fn apply_config(&self, config: &SourceConfig) -> bool {
+        let SourceConfig::Vnc(config) = config else {
+            return false;
+        };
+        // A new endpoint or credential set needs a new RFB handshake; the
+        // keep-awake checkbox is just a timer the session loop reads.
+        if config.host != self.config.host
+            || config.port != self.config.port
+            || config.username != self.config.username
+            || config.password != self.config.password
+        {
+            return false;
+        }
+        self.keep_awake.store(config.keep_awake, Ordering::Relaxed);
+        return true;
+    }
 }
 
 #[cfg(test)]
@@ -543,6 +573,46 @@ mod tests {
     use super::*;
     use crate::sources::PixelFormat;
     use std::io::{Read, Write};
+
+    fn idle_source() -> VncSource {
+        return VncSource {
+            slot: Arc::new(Mutex::new(None)),
+            stats: Arc::new(Mutex::new(SourceStats::new())),
+            source_ref: "VNC".to_string(),
+            running: Arc::new(AtomicBool::new(true)),
+            config: VncSourceConfig::default(),
+            keep_awake: Arc::new(AtomicBool::new(false)),
+            thread: None,
+        };
+    }
+
+    #[test]
+    fn keep_awake_is_adopted_without_reconnecting() {
+        let source = idle_source();
+        let config = VncSourceConfig {
+            keep_awake: true,
+            ..Default::default()
+        };
+        assert!(source.apply_config(&SourceConfig::Vnc(config)));
+        assert!(source.keep_awake.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn a_connection_change_reopens_the_vnc_source() {
+        let source = idle_source();
+
+        let config = VncSourceConfig {
+            host: "other.example".to_string(),
+            ..Default::default()
+        };
+        assert!(!source.apply_config(&SourceConfig::Vnc(config)), "a new host needs a handshake");
+
+        let config = VncSourceConfig {
+            password: "secret".to_string(),
+            ..Default::default()
+        };
+        assert!(!source.apply_config(&SourceConfig::Vnc(config)), "new credentials need a handshake");
+    }
 
     #[test]
     fn is_configured_requires_a_host() {

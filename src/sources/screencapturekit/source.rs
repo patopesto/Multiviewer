@@ -23,7 +23,7 @@ use objc2_foundation::{NSArray, NSError, NSObject, NSObjectProtocol};
 use screen_capture_kit::shareable_content::SCShareableContent;
 use screen_capture_kit::stream::{SCContentFilter, SCStream, SCStreamConfiguration, SCStreamDelegate, SCStreamOutput, SCStreamOutputType};
 
-use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceRef, SourceStats, VideoSource};
+use super::super::{CpuFrame, Frame, FramePool, PixelFormat, SourceConfig, SourceRef, SourceStats, VideoSource};
 use super::discovery::fetch_content;
 
 define_class!(
@@ -197,6 +197,14 @@ enum StreamKey {
     Window { window_id: u32, w: usize, h: usize },
 }
 
+impl StreamKey {
+    fn size(&self) -> (usize, usize) {
+        return match self {
+            StreamKey::Display { w, h, .. } | StreamKey::Window { w, h, .. } => (*w, *h),
+        };
+    }
+}
+
 /// A running stream, dropped after `stop_stream`.
 struct ActiveStream {
     key: StreamKey,
@@ -210,6 +218,11 @@ pub struct ScreenCaptureKitSource {
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     running: Arc<AtomicBool>,
+    /// The target the stream was opened for; settings are read from `settings`.
+    config: ScreenCaptureKitSourceConfig,
+    /// Cursor and frame cap, read by the capture loop so an edit does not
+    /// restart the stream.
+    settings: Arc<Mutex<ScreenCaptureKitSettings>>,
     thread: Option<std::thread::JoinHandle<()>>,
 }
 
@@ -217,18 +230,20 @@ impl ScreenCaptureKitSource {
     pub fn spawn(source_ref: SourceRef, cfg: &ScreenCaptureKitSourceConfig) -> Self {
         let slot = Arc::new(Mutex::new(None::<Frame>));
         let stats = Arc::new(Mutex::new(SourceStats::new()));
+        let settings = Arc::new(Mutex::new(cfg.settings().clone()));
 
         let slot2 = slot.clone();
         let stats2 = stats.clone();
         let trace_ref = source_ref.clone();
         let config = cfg.clone();
+        let settings2 = settings.clone();
         let running = Arc::new(AtomicBool::new(true));
         let running2 = running.clone();
 
         let thread = std::thread::Builder::new()
             .name(format!("screencapturekit-in-{source_ref}"))
             .spawn(move || {
-                run_capture(trace_ref, config, slot2, stats2, running2);
+                run_capture(trace_ref, config, settings2, slot2, stats2, running2);
             })
             .expect("spawn screencapturekit capture thread");
 
@@ -237,6 +252,8 @@ impl ScreenCaptureKitSource {
             slot,
             stats,
             running,
+            config: cfg.clone(),
+            settings,
             thread: Some(thread),
         }
     }
@@ -247,6 +264,7 @@ impl ScreenCaptureKitSource {
 fn run_capture(
     source_ref: String,
     config: ScreenCaptureKitSourceConfig,
+    settings: Arc<Mutex<ScreenCaptureKitSettings>>,
     slot: Arc<Mutex<Option<Frame>>>,
     stats: Arc<Mutex<SourceStats>>,
     running: Arc<AtomicBool>,
@@ -255,8 +273,17 @@ fn run_capture(
     let mut active: Option<ActiveStream> = None;
     // The poll repeats every second, so each distinct error logs once.
     let mut last_error: Option<String> = None;
+    // What the running stream was configured with, so settings edits are only
+    // pushed when they change.
+    let mut applied: Option<ScreenCaptureKitSettings> = None;
+    // Set by a rejected update completion, so the next poll pushes it again.
+    let update_failed = Arc::new(AtomicBool::new(false));
     // Re-resolve each second: restart on size change, freeze when off-screen.
     while running.load(Ordering::Relaxed) {
+        let settings_now = settings.lock().unwrap().clone();
+        if update_failed.swap(false, Ordering::AcqRel) {
+            applied = None;
+        }
         // Preflight never prompts; SCShareableContent does — stay out of SCK while denied.
         let resolved = if !preflight_screen_capture_access() {
             Err("screen recording permission not granted".to_string())
@@ -274,13 +301,21 @@ fn run_capture(
                     if let Some(a) = active.take() {
                         stop_stream(&a.stream, &source_ref);
                     }
-                    match start_stream(&source_ref, key, filter, out_w, out_h, &slot, &stats, &queue, config.settings()) {
-                        Ok(stream) => active = Some(stream),
+                    match start_stream(&source_ref, key, filter, out_w, out_h, &slot, &stats, &queue, &settings_now) {
+                        Ok(stream) => {
+                            applied = Some(settings_now.clone());
+                            active = Some(stream);
+                        }
                         Err(e) => {
                             note_error(&mut last_error, e, &source_ref);
                             stats.lock().unwrap().set_off_screen(true);
                         }
                     }
+                } else if applied.as_ref() != Some(&settings_now)
+                    && let Some(stream) = active.as_ref()
+                {
+                    update_stream_settings(&stream.stream, &stream.key, &settings_now, &source_ref, &update_failed);
+                    applied = Some(settings_now.clone());
                 }
             }
             // Target missing or off-screen: stop and keep the last frame.
@@ -324,6 +359,19 @@ impl VideoSource for ScreenCaptureKitSource {
 
     fn alive(&self) -> bool {
         return self.thread.as_ref().is_none_or(|thread| !thread.is_finished());
+    }
+
+    fn apply_config(&self, config: &SourceConfig) -> bool {
+        let SourceConfig::ScreenCaptureKit(config) = config else {
+            return false;
+        };
+        // A different display or window is a different capture; the cursor and
+        // frame cap are pushed into the running stream by the poll loop.
+        if !same_target(&self.config, config) {
+            return false;
+        }
+        *self.settings.lock().unwrap() = config.settings().clone();
+        return true;
     }
 }
 
@@ -456,16 +504,7 @@ fn start_stream(
     queue: &DispatchQueue,
     settings: &ScreenCaptureKitSettings,
 ) -> Result<ActiveStream, String> {
-    let configuration = SCStreamConfiguration::new();
-    configuration.set_width(out_w);
-    configuration.set_height(out_h);
-    configuration.set_pixel_format(kCVPixelFormatType_32BGRA);
-    // Output size is already in pixels; scaling keeps a mismatch from cropping.
-    configuration.set_scales_to_fit(true);
-    set_shows_cursor(&configuration, settings.show_cursor);
-    if settings.max_fps > 0 {
-        configuration.set_minimum_frame_interval(CMTime::make(1, settings.max_fps as i32));
-    }
+    let configuration = stream_configuration(out_w, out_h, settings);
 
     let delegate = StreamDelegate::new(slot.clone(), stats.clone());
     let output: &ProtocolObject<dyn SCStreamOutput> = ProtocolObject::from_ref(&*delegate);
@@ -488,6 +527,53 @@ fn start_stream(
         stream,
         _delegate: delegate,
     });
+}
+
+/// Stream configuration for a target of this size; shared by a fresh start and
+/// a live settings update so both describe the same stream.
+fn stream_configuration(out_w: usize, out_h: usize, settings: &ScreenCaptureKitSettings) -> Retained<SCStreamConfiguration> {
+    let configuration = SCStreamConfiguration::new();
+    configuration.set_width(out_w);
+    configuration.set_height(out_h);
+    configuration.set_pixel_format(kCVPixelFormatType_32BGRA);
+    // Output size is already in pixels; scaling keeps a mismatch from cropping.
+    configuration.set_scales_to_fit(true);
+    set_shows_cursor(&configuration, settings.show_cursor);
+    if settings.max_fps > 0 {
+        configuration.set_minimum_frame_interval(CMTime::make(1, settings.max_fps as i32));
+    }
+    return configuration;
+}
+
+/// Push cursor and frame-cap changes into the running stream; the target and
+/// its size stay as they are, so no frames are lost to a restart.
+fn update_stream_settings(
+    stream: &SCStream,
+    key: &StreamKey,
+    settings: &ScreenCaptureKitSettings,
+    source_ref: &str,
+    failed: &Arc<AtomicBool>,
+) {
+    let (w, h) = key.size();
+    let configuration = stream_configuration(w, h, settings);
+    let label = source_ref.to_string();
+    let failed = failed.clone();
+    stream.update_configuration(&configuration, move |error| {
+        if let Some(error) = error {
+            failed.store(true, Ordering::Release);
+            tracing::warn!(source = %label, "ScreenCaptureKit settings update failed: {}", error.localizedDescription());
+        }
+    });
+}
+
+/// Whether two configs capture the same target; the settings on top are not
+/// part of that identity.
+fn same_target(a: &ScreenCaptureKitSourceConfig, b: &ScreenCaptureKitSourceConfig) -> bool {
+    return match (a, b) {
+        (ScreenCaptureKitSourceConfig::Display { display_id: a, .. }, ScreenCaptureKitSourceConfig::Display { display_id: b, .. }) => a == b,
+        (ScreenCaptureKitSourceConfig::Window { window_id: a, .. }, ScreenCaptureKitSourceConfig::Window { window_id: b, .. }) => a == b,
+        _ => false,
+    };
 }
 
 fn stop_stream(stream: &SCStream, source_ref: &str) {
@@ -531,6 +617,57 @@ fn sleep_while_running(running: &Arc<AtomicBool>, total: Duration) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn idle_source(config: ScreenCaptureKitSourceConfig) -> ScreenCaptureKitSource {
+        let settings = Arc::new(Mutex::new(config.settings().clone()));
+        return ScreenCaptureKitSource {
+            source_ref: "Screen".to_string(),
+            slot: Arc::new(Mutex::new(None)),
+            stats: Arc::new(Mutex::new(SourceStats::new())),
+            running: Arc::new(AtomicBool::new(true)),
+            config,
+            settings,
+            thread: None,
+        };
+    }
+
+    fn window(id: u32, settings: ScreenCaptureKitSettings) -> ScreenCaptureKitSourceConfig {
+        return ScreenCaptureKitSourceConfig::Window {
+            window_id: id,
+            bundle_id: "com.example".to_string(),
+            title: "Window".to_string(),
+            settings,
+        };
+    }
+
+    #[test]
+    fn settings_are_adopted_but_a_target_change_is_not() {
+        let source = idle_source(window(7, ScreenCaptureKitSettings::default()));
+
+        let tuned = window(
+            7,
+            ScreenCaptureKitSettings {
+                show_cursor: false,
+                max_fps: 30,
+            },
+        );
+        assert!(source.apply_config(&SourceConfig::ScreenCaptureKit(tuned.clone())));
+        assert_eq!(*source.settings.lock().unwrap(), *tuned.settings());
+
+        let retargeted = window(8, ScreenCaptureKitSettings::default());
+        assert!(!source.apply_config(&SourceConfig::ScreenCaptureKit(retargeted)), "a new window is a new capture");
+    }
+
+    #[test]
+    fn a_different_target_kind_is_not_the_same_target() {
+        let window = window(7, ScreenCaptureKitSettings::default());
+        let display = ScreenCaptureKitSourceConfig::Display {
+            display_id: "1".to_string(),
+            settings: ScreenCaptureKitSettings::default(),
+        };
+        assert!(same_target(&window, &window));
+        assert!(!same_target(&window, &display));
+    }
 
     #[test]
     fn stream_key_detects_target_change() {
