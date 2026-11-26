@@ -177,14 +177,19 @@ the selected display shape before the first value. Nothing is generated locally.
 Add one with **Protocol** set to **Timecode** and **Source** set to **+ New Timecode Source**. The input is configured
 under **Protocol Settings**:
 
-- **Art-Net**: **Bind** (default `0.0.0.0`), **Port** (default `6454`) and **StreamID** (default `0`). One source binds
-  a given port; share it across placements or give a second source another port.
+- **Art-Net**: **Bind** (default `0.0.0.0`), **Port** (default `6454`) and **StreamID** (default `0`). Sources using
+  the same bind, port and stream share one socket; a different stream on the same port needs its own port, because each
+  distinct stream opens a socket.
 - **MTC**: pick a **MIDI input**. The port is stored by name, so a project opened on another computer reconnects to the
   same-named input; reselect it if that machine exposes a different name. The rate (24, 25, 29.97 DF or 30) is
   read from the messages. Full-frame and quarter-frame messages are both supported.
 - **LTC**: pick an **Audio input** and a **Channel**. It defaults to channel `1`.
   Allow microphone access the first time (macOS prompts; Windows may block desktop apps in Privacy
   settings). The device is stored by name, so a project opened on another computer reconnects to the same-named input.
+
+Sources that name the same input share one receiver, so a socket, MIDI port or audio stream feeds every card. To show
+one timecode in several styles, add a Timecode source per style and pick the same input in each: they stay in step, and
+the input is opened once.
 
 **Display** selects the fields drawn:
 

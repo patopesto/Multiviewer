@@ -10,7 +10,7 @@ use timecode_tools::timecode::{FrameRate, Timecode as ReceivedTimecode};
 
 use crate::sources::PollGate;
 
-use super::source::ReceiverState;
+use super::input::ReceiverState;
 use super::Timecode;
 
 const POLL: Duration = Duration::from_millis(200);

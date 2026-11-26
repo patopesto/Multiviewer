@@ -43,7 +43,7 @@ pub use stats::{OutputStats, SourceStats};
 pub use test::{TestSourceConfig, TestPattern, RadarDirection};
 pub use text::TextSourceConfig;
 pub use timecode::{
-    LtcDiscovery, MtcDiscovery, TimecodeInputs, TimecodeProtocol, TimecodeSourceConfig, TimecodeState, TimecodeStatus, TimecodeDisplay,
+    LtcDiscovery, MtcDiscovery, TimecodeHub, TimecodeInputs, TimecodeProtocol, TimecodeSourceConfig, TimecodeState, TimecodeStatus, TimecodeDisplay,
     request_mtc_refresh,
 };
 pub use ndi::{NdiDiscovery, NdiSourceConfig, NdiOutputConfig, ndi_version, NdiReceiverBandwidth, NdiReceiverColorFormat, NdiSourceInfo};

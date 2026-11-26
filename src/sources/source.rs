@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 
-use super::{Protocol, Frame, NdiSourceInfo, OmtSourceInfo, SourceStats, TimecodeStatus};
+use super::{Protocol, Frame, NdiSourceInfo, OmtSourceInfo, SourceStats, TimecodeHub, TimecodeStatus};
 use super::decklink;
 use super::ndi;
 use super::omt;
@@ -316,7 +316,10 @@ pub enum SourceRuntimeConfig {
     Vnc,
     Rdp,
     Text,
-    Timecode,
+    Timecode {
+        /// Every card on one input shares its receiver through this handle.
+        hub: Arc<TimecodeHub>,
+    },
 }
 
 /// A live source: its boxed runtime, the config persisted in the project, and
@@ -395,7 +398,7 @@ impl SourceKind {
             (SourceConfig::Vnc(c), SourceRuntimeConfig::Vnc) => Box::new(vnc::VncSource::spawn(key.source_ref.clone(), c)),
             (SourceConfig::Rdp(c), SourceRuntimeConfig::Rdp) => Box::new(rdp::RdpSource::spawn(key.source_ref.clone(), c)),
             (SourceConfig::Text(c), SourceRuntimeConfig::Text) => Box::new(text::TextSource::spawn(c)),
-            (SourceConfig::Timecode(c), SourceRuntimeConfig::Timecode) => Box::new(timecode::TimecodeSource::spawn(key.source_ref.clone(), c)),
+            (SourceConfig::Timecode(c), SourceRuntimeConfig::Timecode { hub }) => Box::new(timecode::TimecodeSource::spawn(hub.clone(), c)),
             // Every add_* pairs one protocol's config with its own runtime
             // variant; no other pairing can exist.
             _ => unreachable!("source config paired with a foreign runtime config"),
@@ -516,6 +519,8 @@ pub struct SourceRegistry {
     retry_after: HashMap<SourceKey, Instant>,
     restart_tx: Sender<RestartResult>,
     restart_rx: Receiver<RestartResult>,
+    /// Shared per-input receivers, so several timecode cards open one device.
+    timecode_hub: Arc<TimecodeHub>,
 }
 
 impl SourceRegistry {
@@ -532,6 +537,7 @@ impl SourceRegistry {
             retry_after: HashMap::new(),
             restart_tx: tx,
             restart_rx: rx,
+            timecode_hub: Arc::new(TimecodeHub::default()),
         }
     }
 
@@ -619,7 +625,8 @@ impl SourceRegistry {
     /// Create a timecode source under a known key, preserving the binding a
     /// project was saved with.
     pub fn add_timecode_at(&mut self, key: SourceKey, config: timecode::TimecodeSourceConfig) -> SourceKey {
-        return self.add_new(key, SourceConfig::Timecode(config), SourceRuntimeConfig::Timecode);
+        let hub = self.timecode_hub.clone();
+        return self.add_new(key, SourceConfig::Timecode(config), SourceRuntimeConfig::Timecode { hub });
     }
 
     /// Create a dedicated VNC source under a fresh key. The connection details

@@ -7,7 +7,7 @@ use midir::{MidiInput, MidiInputConnection};
 use crate::sources::PollGate;
 use crate::APP_NAME;
 
-use super::source::ReceiverState;
+use super::input::ReceiverState;
 use super::Timecode;
 
 const CLIENT: &str = APP_NAME;

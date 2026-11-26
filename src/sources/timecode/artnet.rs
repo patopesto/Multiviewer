@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use super::source::ReceiverState;
+use super::input::ReceiverState;
 use super::Timecode;
 
 const RECEIVE_TIMEOUT: Duration = Duration::from_millis(200);
@@ -77,18 +77,19 @@ pub(super) fn parse(packet: &[u8], stream_id: u8) -> Option<Timecode> {
 }
 
 #[cfg(test)]
+pub(super) fn packet(stream_id: u8, frames: u8, seconds: u8, minutes: u8, hours: u8, kind: u8) -> Vec<u8> {
+    // ID, OpCode, ProtVer 0/14, Filler1, StreamId, Frames, Seconds, Minutes,
+    // Hours, Type.
+    let mut packet = Vec::with_capacity(19);
+    packet.extend_from_slice(b"Art-Net\0");
+    packet.extend_from_slice(&ART_TIMECODE.to_le_bytes());
+    packet.extend_from_slice(&[0, 14, 0, stream_id, frames, seconds, minutes, hours, kind]);
+    return packet;
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
-
-    fn packet(stream_id: u8, frames: u8, seconds: u8, minutes: u8, hours: u8, kind: u8) -> Vec<u8> {
-        // ID, OpCode, ProtVer 0/14, Filler1, StreamId, Frames, Seconds, Minutes,
-        // Hours, Type.
-        let mut packet = Vec::with_capacity(19);
-        packet.extend_from_slice(b"Art-Net\0");
-        packet.extend_from_slice(&ART_TIMECODE.to_le_bytes());
-        packet.extend_from_slice(&[0, 14, 0, stream_id, frames, seconds, minutes, hours, kind]);
-        return packet;
-    }
 
     #[test]
     fn parses_every_timecode_type_and_rate() {

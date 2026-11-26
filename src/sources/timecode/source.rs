@@ -1,70 +1,11 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use super::artnet;
+use super::input::{SharedInput, TimecodeHub, TimecodeProtocol};
 use super::ltc;
-use super::mtc;
-use super::{Timecode, TimecodeDisplay, TimecodeState, TimecodeStatus};
-use super::super::{CpuFrame, Frame, PixelFormat, SourceRef, SourceStats, TextStyle, VideoSource};
-
-/// How long a received value is reported as live before it is called lost.
-const STALE: Duration = Duration::from_secs(3);
-
-/// The last value a receiver thread published. The value is held when the
-/// signal stops; only the status changes.
-#[derive(Default)]
-pub(super) struct ReceiverState {
-    timecode: Option<Timecode>,
-    received_at: Option<Instant>,
-    error: Option<String>,
-}
-
-impl ReceiverState {
-    pub(super) fn fail(&mut self, error: String) {
-        self.timecode = None;
-        self.received_at = None;
-        self.error = Some(error);
-    }
-
-    pub(super) fn clear_error(&mut self) {
-        self.error = None;
-    }
-
-    pub(super) fn publish(&mut self, timecode: Timecode) {
-        self.error = None;
-        self.timecode = Some(timecode);
-        self.received_at = Some(Instant::now());
-    }
-
-    pub(super) fn status(&self) -> TimecodeStatus {
-        return TimecodeStatus {
-            timecode: self.timecode,
-            state: self.state(),
-        };
-    }
-
-    /// When the last value arrived, if one ever did.
-    pub(super) fn received_at(&self) -> Option<Instant> {
-        return self.received_at;
-    }
-
-    fn state(&self) -> TimecodeState {
-        if let Some(error) = &self.error {
-            return TimecodeState::Error(error.clone());
-        }
-        let Some(received_at) = self.received_at else {
-            return TimecodeState::Waiting;
-        };
-        return if received_at.elapsed() <= STALE {
-            TimecodeState::Receiving
-        } else {
-            TimecodeState::Lost
-        };
-    }
-}
+use super::{TimecodeDisplay, TimecodeStatus};
+use super::super::{CpuFrame, Frame, PixelFormat, SourceStats, TextStyle, VideoSource};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 // @docs protocol="Timecode" direction=input
@@ -101,74 +42,31 @@ impl Default for TimecodeSourceConfig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "protocol")]
-pub enum TimecodeProtocol {
-    ArtNet { bind: String, port: u16, stream_id: u8 },
-    Mtc { port: String },
-    Ltc { device: String, channel: u16 },
-}
-
-impl TimecodeProtocol {
-    pub fn label(&self) -> &'static str {
-        return match self {
-            TimecodeProtocol::ArtNet { .. } => "Art-Net",
-            TimecodeProtocol::Mtc { .. } => "MTC",
-            TimecodeProtocol::Ltc { .. } => "LTC",
-        };
-    }
-
-    /// Every known input with its default settings, for the settings picker.
-    pub fn variants() -> Vec<Self> {
-        return vec![
-            Self::default(),
-            Self::Mtc { port: String::new() },
-            Self::Ltc {
-                device: String::new(),
-                channel: 1,
-            },
-        ];
-    }
-}
-
-impl Default for TimecodeProtocol {
-    fn default() -> Self {
-        return Self::ArtNet {
-            bind: "0.0.0.0".to_string(),
-            port: 6454,
-            stream_id: 0,
-        };
-    }
-}
-
 struct Cached {
     value: Option<String>,
     frame: Frame,
     seq: u64,
 }
 
-/// A timecode display. The receiver thread publishes the last value, and the
+/// A timecode display. The shared input publishes the last value, and the
 /// frame is re-rendered only when the formatted value changes.
 pub struct TimecodeSource {
     display: TimecodeDisplay,
     style: TextStyle,
-    state: Arc<Mutex<ReceiverState>>,
+    hub: Arc<TimecodeHub>,
+    input: Arc<SharedInput>,
     cache: Mutex<Cached>,
     stats: Arc<Mutex<SourceStats>>,
-    running: Arc<AtomicBool>,
-    thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl TimecodeSource {
-    pub fn spawn(source_ref: SourceRef, config: &TimecodeSourceConfig) -> Self {
+    pub fn spawn(hub: Arc<TimecodeHub>, config: &TimecodeSourceConfig) -> Self {
         let display = config.display;
         let (max_width, max_height) = TimecodeSourceConfig::MAX_SIZE;
         let mut style = config.style.clone().bounded();
         style.width = style.width.min(max_width);
         style.height = style.height.min(max_height);
-        let state = Arc::new(Mutex::new(ReceiverState::default()));
-        let running = Arc::new(AtomicBool::new(true));
-        let thread = start_receiver(&source_ref, &config.input, state.clone(), running.clone());
+        let input = hub.attach(&config.input);
 
         let frame = text_frame(&style, display.placeholder(), 0);
         let mut stats = SourceStats::new();
@@ -176,66 +74,23 @@ impl TimecodeSource {
         return Self {
             display,
             style,
-            state,
+            hub,
+            input,
             cache: Mutex::new(Cached { value: None, frame, seq: 0 }),
             stats: Arc::new(Mutex::new(stats)),
-            running,
-            thread: Some(thread),
         };
     }
 }
 
-/// The thread owns the receiver for the source's whole life; the source only
-/// flips `running` and joins it.
-fn start_receiver(
-    source_ref: &str,
-    input: &TimecodeProtocol,
-    state: Arc<Mutex<ReceiverState>>,
-    running: Arc<AtomicBool>,
-) -> std::thread::JoinHandle<()> {
-    return match input {
-        TimecodeProtocol::ArtNet { bind, port, stream_id } => {
-            let source = source_ref.to_string();
-            let bind = bind.clone();
-            let port = *port;
-            let stream_id = *stream_id;
-            std::thread::Builder::new()
-                .name(format!("timecode-{source}"))
-                .spawn(move || artnet::run(&source, &bind, port, stream_id, state, running))
-                .expect("spawn timecode receiver")
-        }
-        TimecodeProtocol::Mtc { port } => {
-            let source = source_ref.to_string();
-            let port = port.clone();
-            std::thread::Builder::new()
-                .name(format!("timecode-{source}"))
-                .spawn(move || mtc::run(&source, &port, state, running))
-                .expect("spawn timecode receiver")
-        }
-        TimecodeProtocol::Ltc { device, channel } => {
-            let source = source_ref.to_string();
-            let device = device.clone();
-            let channel = *channel;
-            std::thread::Builder::new()
-                .name(format!("timecode-{source}"))
-                .spawn(move || ltc::run(&source, &device, channel, state, running))
-                .expect("spawn timecode receiver")
-        }
-    };
-}
-
 impl Drop for TimecodeSource {
     fn drop(&mut self) {
-        self.running.store(false, Ordering::Relaxed);
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
+        self.hub.detach(&self.input);
     }
 }
 
 impl VideoSource for TimecodeSource {
     fn latest(&self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Option<Frame> {
-        let status = self.timecode().unwrap_or_default();
+        let status = self.input.status();
         let value = status.timecode.map(|timecode| self.display.format(&timecode));
         let mut cache = self.cache.lock().unwrap();
         if cache.value != value {
@@ -260,11 +115,11 @@ impl VideoSource for TimecodeSource {
     }
 
     fn alive(&self) -> bool {
-        return self.thread.as_ref().is_none_or(|thread| !thread.is_finished());
+        return self.input.alive();
     }
 
     fn timecode(&self) -> Option<TimecodeStatus> {
-        return Some(self.state.lock().unwrap().status());
+        return Some(self.input.status());
     }
 }
 
@@ -281,6 +136,8 @@ fn text_frame(style: &TextStyle, text: &str, seq: u64) -> Frame {
 
 #[cfg(test)]
 mod tests {
+    use crate::sources::TimecodeState;
+
     use super::super::common::test_timecode;
     use super::*;
 
@@ -294,7 +151,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let source = TimecodeSource::spawn("Timecode 1".to_string(), &config);
+        let source = TimecodeSource::spawn(Arc::new(TimecodeHub::default()), &config);
         assert_eq!(
             source.timecode(),
             Some(TimecodeStatus {
@@ -303,7 +160,7 @@ mod tests {
             })
         );
 
-        source.state.lock().unwrap().publish(test_timecode());
+        source.input.state().lock().unwrap().publish(test_timecode());
         assert_eq!(
             source.timecode(),
             Some(TimecodeStatus {
@@ -311,6 +168,25 @@ mod tests {
                 state: TimecodeState::Receiving,
             })
         );
+    }
+
+    #[test]
+    fn two_cards_on_one_input_share_the_received_value() {
+        let hub = Arc::new(TimecodeHub::default());
+        let config = TimecodeSourceConfig {
+            input: TimecodeProtocol::ArtNet {
+                bind: "127.0.0.1".to_string(),
+                port: 0,
+                stream_id: 0,
+            },
+            ..Default::default()
+        };
+        let first = TimecodeSource::spawn(hub.clone(), &config);
+        let second = TimecodeSource::spawn(hub.clone(), &config);
+        assert!(Arc::ptr_eq(&first.input, &second.input));
+
+        first.input.state().lock().unwrap().publish(test_timecode());
+        assert_eq!(second.timecode().unwrap().timecode, Some(test_timecode()));
     }
 
     #[test]
@@ -366,50 +242,11 @@ mod tests {
             },
             ..Default::default()
         };
-        let source = TimecodeSource::spawn("Timecode 1".to_string(), &config);
+        let source = TimecodeSource::spawn(Arc::new(TimecodeHub::default()), &config);
         let cache = source.cache.lock().unwrap();
         let Frame::Cpu(frame) = &cache.frame else {
             unreachable!("timecode sources publish CPU frames");
         };
         assert_eq!((frame.w, frame.h), TimecodeSourceConfig::MAX_SIZE);
-    }
-
-    #[test]
-    fn a_lost_signal_keeps_its_last_value() {
-        let mut state = ReceiverState::default();
-        assert_eq!(state.status(), TimecodeStatus::default());
-
-        state.publish(test_timecode());
-        assert_eq!(
-            state.status(),
-            TimecodeStatus {
-                timecode: Some(test_timecode()),
-                state: TimecodeState::Receiving,
-            }
-        );
-
-        state.received_at = Some(Instant::now().checked_sub(STALE + Duration::from_secs(1)).unwrap());
-        assert_eq!(
-            state.status(),
-            TimecodeStatus {
-                timecode: Some(test_timecode()),
-                state: TimecodeState::Lost,
-            },
-            "a lost signal keeps the last value"
-        );
-    }
-
-    #[test]
-    fn an_error_wins_over_the_last_value() {
-        let mut state = ReceiverState::default();
-        state.publish(test_timecode());
-        state.fail("bind failed".to_string());
-        assert_eq!(
-            state.status(),
-            TimecodeStatus {
-                timecode: None,
-                state: TimecodeState::Error("bind failed".to_string()),
-            }
-        );
     }
 }
