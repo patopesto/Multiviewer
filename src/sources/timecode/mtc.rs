@@ -22,9 +22,11 @@ const SILENCE: Duration = Duration::from_secs(5);
 /// Quarter frames describe the time at piece 0, two frames before piece 7.
 const QUARTER_FRAME_ADVANCE: u8 = 2;
 
+#[cfg(target_os = "macos")]
 static GATE: Mutex<Option<PollGate>> = Mutex::new(None);
 
 /// Wake the MTC discovery from a CoreMIDI device-change notification.
+#[cfg(target_os = "macos")]
 pub fn request_refresh() {
     if let Some(gate) = GATE.lock().unwrap().as_ref() {
         gate.request();
@@ -45,7 +47,10 @@ impl MtcDiscovery {
         let gate = PollGate::with_interval(DISCOVERY);
         let active = Arc::new(AtomicBool::new(false));
         let scan = active.clone();
-        *GATE.lock().unwrap() = Some(gate.clone());
+        #[cfg(target_os = "macos")]
+        {
+            *GATE.lock().unwrap() = Some(gate.clone());
+        }
         let wait = gate.clone();
         std::thread::Builder::new()
             .name("mtc-discovery".to_string())

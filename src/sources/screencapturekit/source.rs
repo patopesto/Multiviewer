@@ -547,13 +547,7 @@ fn stream_configuration(out_w: usize, out_h: usize, settings: &ScreenCaptureKitS
 
 /// Push cursor and frame-cap changes into the running stream; the target and
 /// its size stay as they are, so no frames are lost to a restart.
-fn update_stream_settings(
-    stream: &SCStream,
-    key: &StreamKey,
-    settings: &ScreenCaptureKitSettings,
-    source_ref: &str,
-    failed: &Arc<AtomicBool>,
-) {
+fn update_stream_settings(stream: &SCStream, key: &StreamKey, settings: &ScreenCaptureKitSettings, source_ref: &str, failed: &Arc<AtomicBool>) {
     let (w, h) = key.size();
     let configuration = stream_configuration(w, h, settings);
     let label = source_ref.to_string();
