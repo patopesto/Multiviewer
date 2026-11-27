@@ -48,7 +48,7 @@ tasks:
       - bash task/linux/setup-ndi.sh
 
   check:
-    desc: Verify the pinned NDI SDK SHA256 for every platform, downloading any that are not cached
+    desc: Re-download and verify the NDI SDK SHA256 for every platform, so a rotated SDK is detected
     env:
       NDI_VERSION: '{{.NDI_VERSION}}'
       NDI_CACHE_DIR: '{{.NDI_CACHE_DIR}}'

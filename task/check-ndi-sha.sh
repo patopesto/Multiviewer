@@ -23,25 +23,14 @@ for platform in macos windows linux; do
     sha_file=${!sha_file_var}
     installer=${!installer_var}
 
-    # The hash in a cache dir name comes from the sha file, which may just have
-    # been updated, so key on the version prefix and ignore the rest.
-    cache_dir=""
-    for candidate in "$NDI_CACHE_DIR/$platform/$NDI_VERSION"-*/; do
-        [ -d "$candidate" ] || continue
-        if [ -z "$cache_dir" ] || [ "$candidate" -nt "$cache_dir" ]; then
-            cache_dir="$candidate"
-        fi
-    done
-
-    if [ -n "$cache_dir" ]; then
-        echo "$platform: using cached $cache_dir$installer"
-    else
-        cache_dir="$NDI_CACHE_DIR/$platform/$NDI_VERSION-unchecked/"
-        mkdir -p "$cache_dir"
-        echo "$platform: downloading $sdk_url"
-        # --fail so a 404 error page is never hashed and reported as a pin.
-        curl -fL -o "$cache_dir$installer" "$sdk_url"
-    fi
+    # The download URLs are unversioned filenames rotated in place, so a cached
+    # installer cannot tell us NDI has released a new SDK: always re-fetch.
+    cache_dir="$NDI_CACHE_DIR/$platform/$NDI_VERSION-unchecked/"
+    rm -rf "$cache_dir"
+    mkdir -p "$cache_dir"
+    echo "$platform: downloading $sdk_url"
+    # --fail so a 404 error page is never hashed and reported as a pin.
+    curl -fL -o "$cache_dir$installer" "$sdk_url"
 
     actual=$(shasum -a 256 "$cache_dir$installer" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
 
@@ -51,13 +40,11 @@ for platform in macos windows linux; do
         echo "✅ $platform: OK"
         echo "  actual: $actual"
         echo "  pinned: $sha_file"
-        # Hand the download to task ndi:setup:*, which looks the installer up by
-        # the primary hash; leave a mismatch alone, its version prefix makes the
-        # next run reuse it after the sha file is updated.
-        if [ "$(basename "$cache_dir")" = "$NDI_VERSION-unchecked" ]; then
-            primary=$(grep -v -e '^#' -e '^[[:space:]]*$' "$sha_file" | head -1 | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
-            mv "$cache_dir" "$NDI_CACHE_DIR/$platform/$NDI_VERSION-$primary"
-        fi
+        # Hand the verified download to task ndi:setup:*, which looks the
+        # installer up by the primary hash; a mismatch stays in -unchecked.
+        primary=$(grep -v -e '^#' -e '^[[:space:]]*$' "$sha_file" | head -1 | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')
+        rm -rf "$NDI_CACHE_DIR/$platform/$NDI_VERSION-$primary"
+        mv "$cache_dir" "$NDI_CACHE_DIR/$platform/$NDI_VERSION-$primary"
         continue
     fi
 
